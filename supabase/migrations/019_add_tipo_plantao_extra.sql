@@ -1,0 +1,3 @@
+ALTER TABLE substituicoes_temporarias
+ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Substituição',
+ADD COLUMN IF NOT EXISTS plantao_extra TEXT NOT NULL DEFAULT '';

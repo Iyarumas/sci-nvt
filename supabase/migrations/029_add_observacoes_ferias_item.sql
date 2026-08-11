@@ -1,0 +1,1 @@
+ALTER TABLE ferias_escala_item ADD COLUMN IF NOT EXISTS observacoes TEXT NOT NULL DEFAULT '';

@@ -50,7 +50,7 @@ Frontend components → frontend/src/services/*.ts → frontend/src/lib/supabase
 - Front-end: páginas em `frontend/src/pages/<Dominio>/<Dominio>.tsx`
 - Back-end: módulos em `backend/src/<dominio>/`, DTOs em `dto/`, services e controllers por domínio
 - Tabelas: `snake_case` na BD → `camelCase` no TypeScript (usar helpers `rowTo*` / `*ToRow`)
-- Comandos do projeto: usar `npm` na raiz (`npm run dev:frontend`, `npm run dev:backend`, `npm run db:migrate`, `npm run db:import:supabase -- -ReplaceLocalData`); no PowerShell do Windows, preferir `npm.cmd` se `npm` cair no shim `npm.ps1`.
+- Comandos do projeto: usar `npm` na raiz (`npm run dev:frontend`, `npm run dev:backend`, `npm run db:migrate`, `npm run db:import:supabase -- -ReplaceLocalData`, `npm run db:export:local`, `npm run prod:up`, `npm run prod:migrate`); no PowerShell do Windows, preferir `npm.cmd` se `npm` cair no shim `npm.ps1`.
 
 ### Regras de Negócio — Corrente de Substituição (Férias)
 
@@ -250,6 +250,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   │   ├── resources/      # CRUD REST genérico por tabela permitida
 │   │   ├── rpc/            # RPCs usados pelo front (login/hash/aprovação férias)
 │   │   └── storage/        # Storage local de PDFs
+│   ├── Dockerfile          # Imagem de produção da API NestJS
 │   └── package.json
 ├── frontend/               # Aplicação React/Vite existente
 │   ├── public/             # Assets estáticos
@@ -267,8 +268,18 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   │   ├── services/       # Services do front consumindo o adapter HTTP
 │   │   ├── types/          # Interfaces TypeScript
 │   │   └── utils/          # Regras/utilitários de UI/domínio ainda consumidos no front
+│   ├── Dockerfile          # Build Vite + Caddy para produção
 │   └── package.json
+├── deploy/                 # Configuração e scripts de deploy em VPS/Oracle
+│   ├── Caddyfile           # Front estático + reverse proxy para /api
+│   └── restore-data.sh     # Restore de dump SQL no PostgreSQL de produção
+├── .github/
+│   └── workflows/
+│       └── deploy-oracle.yml # Deploy automático na VM Oracle via GitHub Actions
 ├── docker-compose.yml      # PostgreSQL + pgAdmin
+├── docker-compose.prod.yml # Stack de produção: web + backend + PostgreSQL
+├── .env.production.example # Template de variáveis para produção
+├── DEPLOY_ORACLE.md        # Passo a passo de deploy na Oracle Always Free
 ├── package-lock.json       # Lockfile npm dos workspaces frontend/backend
 ├── AGENTS.md               # Este ficheiro — guia do agente
 ├── API_ENDPOINTS.md         # Fonte da verdade para contratos de dados/endpoints

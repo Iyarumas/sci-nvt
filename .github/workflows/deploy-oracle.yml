@@ -1,0 +1,68 @@
+name: Deploy Oracle VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oracle-production
+  cancel-in-progress: true
+
+env:
+  ORACLE_HOST: 137.131.207.151
+  ORACLE_USER: ubuntu
+  DEPLOY_PATH: /home/ubuntu/sci-nvt
+  DEPLOY_BRANCH: main
+
+jobs:
+  deploy:
+    name: Deploy production stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.ORACLE_SSH_KEY }}" > ~/.ssh/oracle_key
+          chmod 600 ~/.ssh/oracle_key
+          ssh-keyscan -H "$ORACLE_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy on Oracle VM
+        env:
+          GITHUB_TOKEN_VALUE: ${{ github.token }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
+        run: |
+          ssh -i ~/.ssh/oracle_key "$ORACLE_USER@$ORACLE_HOST" \
+            "DEPLOY_PATH='$DEPLOY_PATH' REPO_URL='$REPO_URL' DEPLOY_BRANCH='$DEPLOY_BRANCH' GITHUB_TOKEN_VALUE='$GITHUB_TOKEN_VALUE' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          mkdir -p "$DEPLOY_PATH"
+          cd "$DEPLOY_PATH"
+
+          if [ ! -d .git ]; then
+            git init
+          fi
+
+          git remote remove origin >/dev/null 2>&1 || true
+          git remote add origin "$REPO_URL"
+
+          auth_repo_url="$(printf '%s' "$REPO_URL" | sed "s#https://github.com/#https://x-access-token:${GITHUB_TOKEN_VALUE}@github.com/#")"
+          git fetch --prune "$auth_repo_url" "$DEPLOY_BRANCH"
+          git reset --hard FETCH_HEAD
+          git clean -fd -e .env.production -e local-public-data.sql
+
+          if [ ! -f .env.production ]; then
+            echo ".env.production is missing in $DEPLOY_PATH" >&2
+            exit 1
+          fi
+
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build postgres
+          docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backend npm run db:migrate
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+          docker image prune -f
+          REMOTE

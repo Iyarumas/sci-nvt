@@ -5,12 +5,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Format-CommandForError {
+  param([string[]]$CommandArgs)
+
+  return (($CommandArgs | ForEach-Object {
+    if ($_ -like "SUPABASE_DATABASE_URL=*") {
+      return "SUPABASE_DATABASE_URL=<redacted>"
+    }
+
+    return $_
+  }) -join " ")
+}
+
 function Invoke-DockerCompose {
   param([string[]]$ComposeArgs)
 
   & docker compose @ComposeArgs
   if ($LASTEXITCODE -ne 0) {
-    throw "docker compose $($ComposeArgs -join ' ') failed with exit code $LASTEXITCODE"
+    throw "docker compose $(Format-CommandForError $ComposeArgs) failed with exit code $LASTEXITCODE"
   }
 }
 
@@ -19,7 +31,7 @@ function Invoke-Docker {
 
   & docker @DockerArgs
   if ($LASTEXITCODE -ne 0) {
-    throw "docker $($DockerArgs -join ' ') failed with exit code $LASTEXITCODE"
+    throw "docker $(Format-CommandForError $DockerArgs) failed with exit code $LASTEXITCODE"
   }
 }
 
@@ -66,6 +78,12 @@ $localBackupHost = Join-Path $backupDir "local-before-supabase-import-$timestamp
 $supabaseDumpHost = Join-Path $backupDir "supabase-public-data-$timestamp.sql"
 $truncateSqlHost = Join-Path $backupDir "truncate-public-data-$timestamp.sql"
 $sequenceSqlHost = Join-Path $backupDir "fix-public-sequences-$timestamp.sql"
+$supabaseDumpFileName = Split-Path $supabaseDumpHost -Leaf
+$pgDumpClientImage = if ([string]::IsNullOrWhiteSpace($env:PG_DUMP_CLIENT_IMAGE)) {
+  "postgres:17-alpine"
+} else {
+  $env:PG_DUMP_CLIENT_IMAGE
+}
 
 $truncateSql = @'
 DO $$
@@ -136,12 +154,20 @@ Invoke-DockerCompose @(
 Invoke-Docker @("cp", "sescinc-postgres:$localBackupContainer", $localBackupHost)
 
 Write-Host "Exporting Supabase public data to $supabaseDumpHost ..."
-$dumpCommand = 'pg_dump "$SUPABASE_DATABASE_URL" --schema=public --data-only --column-inserts --no-owner --no-privileges --exclude-table-data=public.schema_migrations > ' + $supabaseDumpContainer
-Invoke-DockerCompose @(
-  "exec", "-T", "-e", "SUPABASE_DATABASE_URL=$SupabaseDatabaseUrl",
-  "postgres", "sh", "-lc", $dumpCommand
+$env:SUPABASE_DATABASE_URL = $SupabaseDatabaseUrl
+$dumpCommand = 'pg_dump "$SUPABASE_DATABASE_URL" --schema=public --data-only --column-inserts --no-owner --no-privileges --exclude-table-data=public.schema_migrations > /backup/' + $supabaseDumpFileName
+Invoke-Docker @(
+  "run", "--rm", "-e", "SUPABASE_DATABASE_URL",
+  "-v", "${backupDir}:/backup",
+  $pgDumpClientImage, "sh", "-lc", $dumpCommand
 )
-Invoke-Docker @("cp", "sescinc-postgres:$supabaseDumpContainer", $supabaseDumpHost)
+Invoke-Docker @("cp", $supabaseDumpHost, "sescinc-postgres:$supabaseDumpContainer")
+
+Write-Host "Normalizing dump for the local PostgreSQL version..."
+Invoke-DockerCompose @(
+  "exec", "-T", "postgres", "sh", "-lc",
+  "sed -i '/^SET transaction_timeout/d' $supabaseDumpContainer"
+)
 
 Write-Host "Replacing local data with Supabase data..."
 Invoke-Docker @("cp", $truncateSqlHost, "sescinc-postgres:$truncateSqlContainer")

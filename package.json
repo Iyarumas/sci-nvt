@@ -15,6 +15,11 @@
     "db:up": "docker compose up -d postgres pgadmin",
     "db:down": "docker compose down",
     "db:migrate": "npm run db:migrate --workspace=backend",
-    "db:import:supabase": "powershell -ExecutionPolicy Bypass -File backend/scripts/import-supabase-data.ps1"
+    "db:import:supabase": "powershell -ExecutionPolicy Bypass -File backend/scripts/import-supabase-data.ps1",
+    "db:export:local": "powershell -ExecutionPolicy Bypass -File backend/scripts/export-local-data.ps1",
+    "prod:up": "docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build",
+    "prod:down": "docker compose --env-file .env.production -f docker-compose.prod.yml down",
+    "prod:logs": "docker compose --env-file .env.production -f docker-compose.prod.yml logs -f",
+    "prod:migrate": "docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backend npm run db:migrate"
   }
 }

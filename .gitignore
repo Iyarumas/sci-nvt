@@ -8,6 +8,7 @@ frontend/dist
 frontend/.vite
 backend/dist
 backend/storage
+backend/database/backups/
 backend/.env
 *.local
 .env

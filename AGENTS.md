@@ -50,7 +50,7 @@ Frontend components → frontend/src/services/*.ts → frontend/src/lib/supabase
 - Front-end: páginas em `frontend/src/pages/<Dominio>/<Dominio>.tsx`
 - Back-end: módulos em `backend/src/<dominio>/`, DTOs em `dto/`, services e controllers por domínio
 - Tabelas: `snake_case` na BD → `camelCase` no TypeScript (usar helpers `rowTo*` / `*ToRow`)
-- Comandos do projeto: usar `npm` na raiz (`npm run dev:frontend`, `npm run dev:backend`, `npm run db:migrate`); no PowerShell do Windows, preferir `npm.cmd` se `npm` cair no shim `npm.ps1`.
+- Comandos do projeto: usar `npm` na raiz (`npm run dev:frontend`, `npm run dev:backend`, `npm run db:migrate`, `npm run db:import:supabase -- -ReplaceLocalData`); no PowerShell do Windows, preferir `npm.cmd` se `npm` cair no shim `npm.ps1`.
 
 ### Regras de Negócio — Corrente de Substituição (Férias)
 

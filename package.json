@@ -14,6 +14,7 @@
     "lint": "npm run lint --workspace=frontend && npm run lint --workspace=backend",
     "db:up": "docker compose up -d postgres pgadmin",
     "db:down": "docker compose down",
-    "db:migrate": "npm run db:migrate --workspace=backend"
+    "db:migrate": "npm run db:migrate --workspace=backend",
+    "db:import:supabase": "powershell -ExecutionPolicy Bypass -File backend/scripts/import-supabase-data.ps1"
   }
 }

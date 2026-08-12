@@ -234,7 +234,10 @@ export function OrdemServico() {
           numero: formNumero, dataEmissao: formData, dataConclusao: formConclusao,
           solicitanteId: formSolicitante, solicitanteNome: formSolicitanteNome, solicitanteCargo: formSolicitanteCargo, equipe: equipeAlvo, local: formLocal,
           descricao: formDescricao, imagem: formImagem, prioridade: formPrioridade as any, status: 'Aberta',
-          observacoes: formObservacoes, createdBy: user?.username || '',
+          motivoManutencao: '', manutencaoPor: '', manutencaoPorCargo: '', manutencaoEmpresa: '', manutencaoEmpresaPessoa: '',
+          dataManutencao: '', motivoCancelamento: '', canceladoPor: '', canceladoPorCargo: '', dataCancelamento: '',
+          finalizadoPor: '', finalizadoPorCargo: '', empresaFinalizacao: '', finalizacaoEmpresaPessoa: '', finalizacaoDescricao: '',
+          dataFinalizacao: '', observacoes: formObservacoes, createdBy: user?.username || '',
         });
       }
       await recarregar();

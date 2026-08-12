@@ -14,6 +14,7 @@ const benignErrorCodes = new Set([
 ]);
 
 function splitStatements(sql) {
+  sql = sql.replace(/^\s*--.*$/gm, '');
   const statements = [];
   let current = '';
   let singleQuote = false;

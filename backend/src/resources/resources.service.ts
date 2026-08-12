@@ -13,7 +13,7 @@ import { ALLOWED_TABLES } from './resources.config';
 import { DeleteDto, InsertDto, UpdateDto } from './dto/mutation.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
 
-interface ResourceResult<T = QueryResultRow[] | QueryResultRow | null> {
+export interface ResourceResult<T = QueryResultRow[] | QueryResultRow | null> {
   data: T;
   error: null;
   count?: number | null;

@@ -1,9 +1,0 @@
-packages:
-  - frontend
-  - backend
-ignoredBuiltDependencies:
-  - core-js
-  - puppeteer
-allowBuilds:
-  core-js: set this to true or false
-  puppeteer: set this to true or false

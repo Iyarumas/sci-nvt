@@ -37,6 +37,7 @@ function toCompatError(error: unknown): CompatError {
 }
 
 class QueryBuilder<T = any> implements PromiseLike<CompatResponse<T>> {
+  private readonly table: string;
   private action: 'select' | 'insert' | 'update' | 'delete' = 'select';
   private selection = '*';
   private payload: unknown;
@@ -49,7 +50,9 @@ class QueryBuilder<T = any> implements PromiseLike<CompatResponse<T>> {
   private returning = false;
   private singleMode: 'single' | 'maybeSingle' | null = null;
 
-  constructor(private readonly table: string) {}
+  constructor(table: string) {
+    this.table = table;
+  }
 
   select(columns = '*', options?: { count?: 'exact'; head?: boolean }): this {
     this.selection = columns || '*';
@@ -219,7 +222,11 @@ class QueryBuilder<T = any> implements PromiseLike<CompatResponse<T>> {
 }
 
 class StorageBucket {
-  constructor(private readonly bucket: string) {}
+  private readonly bucket: string;
+
+  constructor(bucket: string) {
+    this.bucket = bucket;
+  }
 
   async upload(path: string, file: File | Blob, _options?: Record<string, unknown>): Promise<CompatResponse<{ path: string }>> {
     try {

@@ -258,7 +258,7 @@ export function canGerenciarRegistroDiario(
   if (nomeIgual(username, registro.createdBy)) return true;
 
   if (contexto.cargo === 'BA-LR') {
-    return chefesDaEquipe(bombeiros, registro.equipe).some(c =>
+    return chefesDaEquipe(bombeiros ?? [], registro.equipe).some(c =>
       nomeIgual(c.nomeGuerra, registro.createdBy) ||
       nomeIgual(c.nomeCompleto, registro.createdBy) ||
       nomeIgual(c.email, registro.createdBy)

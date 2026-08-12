@@ -9,7 +9,7 @@ import { LocalStorageModule } from './storage/local-storage.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../.env'] }),
     DatabaseModule,
     HealthModule,
     ResourcesModule,

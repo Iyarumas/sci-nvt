@@ -1047,13 +1047,26 @@ export function GerarLRO() {
     const docs = await listarDocumentos().catch(() => []);
     let doc = docs.find((x: any) => x.source_module === 'lro');
     if (!doc) {
-      doc = await criarDocumento({ name: 'LIVRO ATA DE CHEFE DE EQUIPE', description: 'LRO gerado pelo wizard', category: 'lro', template_pdf_url: '', active: true, source_module: 'lro' });
+      doc = await criarDocumento({
+        name: 'LIVRO ATA DE CHEFE DE EQUIPE',
+        description: 'LRO gerado pelo wizard',
+        category: 'lro',
+        template_pdf_url: '',
+        template_pdf_pages: 0,
+        template_pdf_width: 0,
+        template_pdf_height: 0,
+        active: true,
+        source_module: 'lro',
+        created_by: username || null,
+      });
     }
     await criarPreenchimento({
       document_id: doc.id,
       filled_by: username,
       filled_data: { ...dados, equipeNome: dados.equipeNome || draft.equipe, dataInicio: dados.dataInicio || draft.data_plantao },
       status: 'archived',
+      autentique_document_id: null,
+      autentique_link: null,
     });
   }
 

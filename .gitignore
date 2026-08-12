@@ -1,5 +1,6 @@
 node_modules
 .pnpm-store
+.codex-logs/
 dist
 .vite
 .playwright-cli/

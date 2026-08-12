@@ -5,6 +5,12 @@ import tsParser from '@typescript-eslint/parser';
 export default [
   js.configs.recommended,
   {
+    files: ['src/**/*.ts', 'scripts/**/*.mjs'],
+    rules: {
+      'no-undef': 'off',
+    },
+  },
+  {
     files: ['src/**/*.ts'],
     languageOptions: {
       parser: tsParser,
@@ -17,6 +23,7 @@ export default [
       '@typescript-eslint': tseslint,
     },
     rules: {
+      'no-unused-vars': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',

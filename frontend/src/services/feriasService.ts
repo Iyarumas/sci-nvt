@@ -464,7 +464,7 @@ export async function excluirEscala(id: string): Promise<boolean> {
   // Buscar items para obter os gozos vinculados
   const { data: itens } = await db.from(TABLE_ITEM).select('ferias_gozo_id, funcionario_id').eq('escala_id', id);
   if (itens && itens.length > 0) {
-    const gozoIds = itens.map(i => i.ferias_gozo_id).filter(Boolean) as string[];
+    const gozoIds = itens.map((i: { ferias_gozo_id?: string }) => i.ferias_gozo_id).filter(Boolean) as string[];
     // Excluir vigencias de substituicao associadas a estes gozos
     if (gozoIds.length > 0) {
       await db.from('vigencia_substituicoes').delete().in('ferias_id', gozoIds);
@@ -750,5 +750,4 @@ export async function alertasFerias(
 
   return alertas.sort((a, b) => a.diasParaVencer - b.diasParaVencer);
 }
-
 

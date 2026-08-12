@@ -7,19 +7,13 @@
     "backend"
   ],
   "scripts": {
-    "dev:frontend": "pnpm --filter sescinc-manager dev",
-    "dev:backend": "pnpm --filter @sescinc/backend start:dev",
-    "build": "pnpm --filter @sescinc/backend build && pnpm --filter sescinc-manager build",
-    "typecheck": "pnpm --filter sescinc-manager typecheck && pnpm --filter @sescinc/backend typecheck",
-    "lint": "pnpm --filter sescinc-manager lint && pnpm --filter @sescinc/backend lint",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run start:dev --workspace=backend",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "typecheck": "npm run typecheck --workspace=frontend && npm run typecheck --workspace=backend",
+    "lint": "npm run lint --workspace=frontend && npm run lint --workspace=backend",
     "db:up": "docker compose up -d postgres pgadmin",
     "db:down": "docker compose down",
-    "db:migrate": "pnpm --filter @sescinc/backend db:migrate"
-  },
-  "pnpm": {
-    "ignoredBuiltDependencies": [
-      "core-js",
-      "puppeteer"
-    ]
+    "db:migrate": "npm run db:migrate --workspace=backend"
   }
 }

@@ -15,16 +15,16 @@ VITE_API_BASE_URL=http://localhost:3333/api
 Na raiz do repositorio:
 
 ```bash
-pnpm install
-pnpm run dev:frontend
+npm.cmd install
+npm.cmd run dev:frontend
 ```
 
 Para rodar a aplicacao completa, suba tambem o PostgreSQL e a API:
 
 ```bash
-pnpm run db:up
-pnpm run db:migrate
-pnpm run dev:backend
+npm.cmd run db:up
+npm.cmd run db:migrate
+npm.cmd run dev:backend
 ```
 
 ## Estrutura

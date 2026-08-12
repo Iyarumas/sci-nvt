@@ -2,6 +2,15 @@
 -- Estes indices protegem contra duplo clique e registros duplicados nos fluxos
 -- que alimentam escala diaria, escala anual e documentos.
 
+-- Algumas colunas existiam manualmente no Supabase original e migrations antigas
+-- assumiam sua presenca. Garante compatibilidade para bancos locais novos ou
+-- parcialmente migrados antes de criar funcoes/indices que dependem delas.
+ALTER TABLE public.ferias_escala_item ADD COLUMN IF NOT EXISTS periodo_numero INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE public.ferias_escala_item ADD COLUMN IF NOT EXISTS rejeitado BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.ferias_escala_item ADD COLUMN IF NOT EXISTS motivo_rejeicao TEXT NOT NULL DEFAULT '';
+ALTER TABLE public.ferias_escala_item ADD COLUMN IF NOT EXISTS rejeitado_por TEXT NOT NULL DEFAULT '';
+ALTER TABLE public.ferias_escala_item ADD COLUMN IF NOT EXISTS rejeitado_em TEXT NOT NULL DEFAULT '';
+
 DO $$
 BEGIN
   IF EXISTS (

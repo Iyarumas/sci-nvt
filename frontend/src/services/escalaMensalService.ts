@@ -60,9 +60,12 @@ export async function listarCompletas(): Promise<EscalaMensalCompleta[]> {
   if (err1) throw err1;
   const { data: geradas, error: err2 } = await db.from(GERADAS_TABLE).select('*');
   if (err2) throw err2;
-  const configMap = new Map((configs || []).map((c: any) => [c.id, rowToConfig(c)]));
-  return (geradas || []).map((g: any) => {
-    const config = configMap.get(g.config_id) || {} as EscalaMensalConfig;
+  const configMap = new Map<string, EscalaMensalConfig>(
+    (configs || []).map((c: any): [string, EscalaMensalConfig] => [c.id, rowToConfig(c)]),
+  );
+  return (geradas || []).flatMap((g: any) => {
+    const config = configMap.get(g.config_id);
+    if (!config) return [];
     return rowToCompleta(g, config);
   });
 }

@@ -314,7 +314,7 @@ export async function resolverEfetivo(
 
   if (vigenciasRaw.error) handleSupabaseError(vigenciasRaw.error);
 
-  const vigencias = (vigenciasRaw.data || []).map(rowToVigencia);
+  const vigencias = ((vigenciasRaw.data || []) as Record<string, unknown>[]).map(rowToVigencia);
   const bombeiroPorId = new Map(bombeiros.map(b => [b.id, b]));
 
   const equipeDaVaga = (v: VigenciaSubstituicao): string => {
@@ -435,6 +435,6 @@ export async function quemSubstitui(
 
   if (error) return null;
   if (!rows || rows.length === 0) return null;
-  const real = rows.find(row => row.substituto_id !== bombeiroId);
+  const real = (rows as Record<string, unknown>[]).find(row => row.substituto_id !== bombeiroId);
   return real ? rowToVigencia(real) : null;
 }

@@ -50,7 +50,7 @@ Frontend components → frontend/src/services/*.ts → frontend/src/lib/supabase
 - Front-end: páginas em `frontend/src/pages/<Dominio>/<Dominio>.tsx`
 - Back-end: módulos em `backend/src/<dominio>/`, DTOs em `dto/`, services e controllers por domínio
 - Tabelas: `snake_case` na BD → `camelCase` no TypeScript (usar helpers `rowTo*` / `*ToRow`)
-- Comandos do projeto: usar `pnpm` na raiz (`pnpm run dev:frontend`, `pnpm run dev:backend`, `pnpm run db:migrate`)
+- Comandos do projeto: usar `npm` na raiz (`npm run dev:frontend`, `npm run dev:backend`, `npm run db:migrate`); no PowerShell do Windows, preferir `npm.cmd` se `npm` cair no shim `npm.ps1`.
 
 ### Regras de Negócio — Corrente de Substituição (Férias)
 
@@ -269,7 +269,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   │   └── utils/          # Regras/utilitários de UI/domínio ainda consumidos no front
 │   └── package.json
 ├── docker-compose.yml      # PostgreSQL + pgAdmin
-├── pnpm-workspace.yaml     # Workspaces frontend/backend
+├── package-lock.json       # Lockfile npm dos workspaces frontend/backend
 ├── AGENTS.md               # Este ficheiro — guia do agente
 ├── API_ENDPOINTS.md         # Fonte da verdade para contratos de dados/endpoints
 ├── CLAUDE.md               # Instruções RTK (histórico)
@@ -409,8 +409,8 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 - [ ] Error handling com `handleSupabaseError(err)` — sem `console.error` silencioso
 
 ### Depois da implementação
-- [ ] `pnpm run typecheck` — sem erros de tipo
-- [ ] `pnpm run lint` — sem erros de lint
+- [ ] `npm run typecheck` — sem erros de tipo
+- [ ] `npm run lint` — sem erros de lint
 - [ ] `API_ENDPOINTS.md` atualizado se houve alteração de API
 - [ ] Testei o fluxo completo (criar, listar, editar, excluir)
 

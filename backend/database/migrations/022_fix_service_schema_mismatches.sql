@@ -7,9 +7,14 @@
 -- 1. ferias_escala_item: enviado column (migration 020 not applied)
 --    Service in feriasService.ts expects `enviado` column for item approval
 --    But the database DOES NOT have this column (verified via INSERT failure)
---    Note: periodo_numero, rejeitado, motivo_rejeicao, rejeitado_por,
---          rejeitado_em already exist (added manually)
+--    These columns existed manually in the original Supabase project, but must
+--    be created explicitly for a fresh PostgreSQL database.
 -- =====================================================
+ALTER TABLE ferias_escala_item ADD COLUMN IF NOT EXISTS periodo_numero INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ferias_escala_item ADD COLUMN IF NOT EXISTS rejeitado BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE ferias_escala_item ADD COLUMN IF NOT EXISTS motivo_rejeicao TEXT NOT NULL DEFAULT '';
+ALTER TABLE ferias_escala_item ADD COLUMN IF NOT EXISTS rejeitado_por TEXT NOT NULL DEFAULT '';
+ALTER TABLE ferias_escala_item ADD COLUMN IF NOT EXISTS rejeitado_em TEXT NOT NULL DEFAULT '';
 ALTER TABLE ferias_escala_item ADD COLUMN IF NOT EXISTS enviado BOOLEAN NOT NULL DEFAULT false;
 
 -- =====================================================

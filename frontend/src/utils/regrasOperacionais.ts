@@ -400,7 +400,7 @@ export function validarEscalaDiaria(params: {
     errors.push(`Ja existe escala diaria para ${escala.equipe} em ${escala.dataPlantao}.`);
   }
 
-  const slots: Array<{ nome: string; label: string }> = [];
+  const slots: Array<{ nome: string; label: string; isentoDuplicado?: boolean }> = [];
   adicionarSlot(slots, escala.guarnicoes?.cci02?.baMc, 'CCI 02 BA-MC');
   adicionarSlot(slots, escala.guarnicoes?.cci02?.baCe, 'CCI 02 BA-CE');
   adicionarSlot(slots, escala.guarnicoes?.cci02?.ba2, 'CCI 02 BA-2');

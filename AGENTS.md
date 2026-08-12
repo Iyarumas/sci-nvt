@@ -32,21 +32,25 @@ Sempre que fizeres alterações que afetem a estrutura do projeto, deves atualiz
 
 ### Arquitetura de Dados
 ```
-Components → services/*.ts → supabase.from(TABLE) → PostgreSQL
+Frontend components → frontend/src/services/*.ts → frontend/src/lib/supabase.ts (HTTP adapter) → backend NestJS → PostgreSQL
 ```
 
-- ❌ **Não usar Redux/RTK Query** — `store/api/*.ts` é dead code (localStorage)
+- ❌ **Não voltar a chamar Supabase diretamente no front-end** — `frontend/src/lib/supabase.ts` é apenas um adapter de compatibilidade HTTP
+- ❌ **Não usar Redux/RTK Query** — o padrão do app continua `useState` + `useEffect` + services
 - ✅ Usar `useState` + `useEffect` + chamadas diretas aos services
+- ✅ Backend novo em `backend/` segue NestJS (`Modules`, `Controllers`, `Services`, `DTOs`)
+- ✅ Banco local em PostgreSQL via `docker-compose.yml`
 - ✅ DataContext está planeado mas ainda não implementado
 - ✅ Error handling: usar `handleSupabaseError(err)` — **nunca** `console.error` silencioso
 
 ### Convenções de Código
-- Nomes de ficheiros: `camelCase.ts` para services/utils, `PascalCase.tsx` para componentes
-- Tipos em `src/types/<dominio>.ts`
-- Services em `src/services/<dominio>Service.ts`
-- Páginas em `src/pages/<Dominio>/<Dominio>.tsx`
+- Front-end: nomes de ficheiros `camelCase.ts` para services/utils, `PascalCase.tsx` para componentes
+- Front-end: tipos em `frontend/src/types/<dominio>.ts`
+- Front-end: services em `frontend/src/services/<dominio>Service.ts`
+- Front-end: páginas em `frontend/src/pages/<Dominio>/<Dominio>.tsx`
+- Back-end: módulos em `backend/src/<dominio>/`, DTOs em `dto/`, services e controllers por domínio
 - Tabelas: `snake_case` na BD → `camelCase` no TypeScript (usar helpers `rowTo*` / `*ToRow`)
-- Comandos: prefixar sempre com `rtk` (ex: `rtk tsc`, `rtk lint`, `rtk git status`)
+- Comandos do projeto: usar `pnpm` na raiz (`pnpm run dev:frontend`, `pnpm run dev:backend`, `pnpm run db:migrate`)
 
 ### Regras de Negócio — Corrente de Substituição (Férias)
 
@@ -229,67 +233,46 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 
 ```
 /
-├── api/                    # Vercel serverless functions (proxy Autentique)
-├── public/                 # Assets estáticos
-├── scripts/                # Scripts de build/utilidade
-├── supabase/
-│   ├── migrations/         # Migrations SQL (numeradas: 001_*.sql, 002_*.sql...)
-│   └── schema.sql          # Schema original (documentos apenas)
-├── src/
-│   ├── App.tsx             # Provider hierarchy (Auth → Theme → Sidebar → Router)
-│   ├── main.tsx            # Entry point (Redux Provider + App mount)
-│   ├── components/
-│   │   ├── chat/           # ChatPanel
-│   │   ├── documentos/     # PDF editor, field editor, autocomplete
-│   │   ├── layout/         # Layout, Sidebar, Header, AuthGuard, PageContainer
-│   │   └── ui/             # Button, Loading, EmptyCard, SearchSelect, Tooltip, AlertModal
-│   ├── context/
-│   │   ├── AuthContext.tsx  # Sessão, login/logout, hierarquia de cargos
-│   │   ├── GlobalAlertContext.tsx # Modal global de alertas; intercepta window.alert e expõe useGlobalAlert
-│   │   ├── ThemeContext.tsx # Tema claro/escuro
-│   │   └── SidebarContext.tsx # Estado da sidebar (collapsed/pinned)
-│   ├── data/               # Dados estáticos (templates de documentos)
-│   ├── hooks/              # useTheme, useSidebar, useDebounce, useContextoOperacional
-│   ├── lib/                # Cliente Supabase, setup pdfjs
-│   ├── pages/              # Páginas organizadas por domínio
-│   │   ├── AgentesExtintores/
-│   │   ├── APOC/
-│   │   ├── Arquivo/
-│   │   ├── Bombeiros/
-│   │   ├── Certificacoes/
-│   │   ├── Checklists/
-│   │   ├── Conferencia/
-│   │   ├── Configuracoes/
-│   │   ├── Dashboard/
-│   │   ├── Documentos/
-│   │   ├── EPIs/
-│   │   ├── Equipamentos/
-│   │   ├── Escalas/
-│   │   ├── Estatisticas/
-│   │   ├── Extintores/
-│   │   ├── Ferias/
-│   │   ├── Funcionarios/
-│   │   ├── GerarLRO/
-│   │   ├── Hidrantes/
-│   │   ├── Inspecoes/
-│   │   ├── Login/
-│   │   ├── Ocorrencias/
-│   │   ├── Perfil/
-│   │   ├── PreviewLRO/
-│   │   ├── RegistrosDiarios/
-│   │   ├── Relatorios/
-│   │   ├── Treinamentos/
-│   │   ├── Usuarios/
-│   │   └── Viaturas/
-│   ├── routes/             # Configuração do React Router
-│   ├── services/           # 41 ficheiros de serviço (comunicação com Supabase e geração local)
-│   ├── store/              # Redux store (vazio — apenas hosting RTK Query dead code)
-│   │   └── api/            # 10 ficheiros RTK Query com fakeBaseQuery (DEAD CODE)
-│   ├── types/              # Interfaces TypeScript (26 ficheiros)
-│   └── utils/              # Utilitários (equipes, permissoes, regrasOperacionais, validação de cursos, capitalize, etc.)
+├── backend/                # API NestJS + PostgreSQL + storage local
+│   ├── database/
+│   │   ├── migrations/     # Migrations SQL executadas por backend/scripts/migrate.mjs
+│   │   ├── legacy-scripts/ # Scripts Supabase antigos preservados como referência
+│   │   └── supabase-legacy/# Config/schema Supabase antigo preservado
+│   ├── legacy-vercel-api/  # Funções Vercel antigas preservadas como referência
+│   ├── scripts/            # Runner de migrations
+│   ├── src/
+│   │   ├── app.module.ts
+│   │   ├── main.ts
+│   │   ├── autentique/     # Proxy Autentique GraphQL
+│   │   ├── common/         # DTOs/utilitários compartilhados
+│   │   ├── database/       # Pool PostgreSQL
+│   │   ├── health/         # Health check
+│   │   ├── resources/      # CRUD REST genérico por tabela permitida
+│   │   ├── rpc/            # RPCs usados pelo front (login/hash/aprovação férias)
+│   │   └── storage/        # Storage local de PDFs
+│   └── package.json
+├── frontend/               # Aplicação React/Vite existente
+│   ├── public/             # Assets estáticos
+│   ├── scripts/            # Scripts de UI/teste que não acessam Supabase direto
+│   ├── src/
+│   │   ├── App.tsx         # Provider hierarchy (Auth → Theme → Sidebar → Router)
+│   │   ├── main.tsx        # Entry point
+│   │   ├── components/     # chat, documentos, layout, ui
+│   │   ├── context/        # Auth, GlobalAlert, Theme, Sidebar
+│   │   ├── data/           # Dados estáticos
+│   │   ├── hooks/          # Hooks compartilhados
+│   │   ├── lib/            # apiClient.ts + adapter HTTP supabase.ts + pdfjs
+│   │   ├── pages/          # Páginas por domínio
+│   │   ├── routes/         # React Router
+│   │   ├── services/       # Services do front consumindo o adapter HTTP
+│   │   ├── types/          # Interfaces TypeScript
+│   │   └── utils/          # Regras/utilitários de UI/domínio ainda consumidos no front
+│   └── package.json
+├── docker-compose.yml      # PostgreSQL + pgAdmin
+├── pnpm-workspace.yaml     # Workspaces frontend/backend
 ├── AGENTS.md               # Este ficheiro — guia do agente
-├── API_ENDPOINTS.md         # Fonte da verdade para endpoints Supabase
-├── CLAUDE.md               # Instruções RTK (token optimization)
+├── API_ENDPOINTS.md         # Fonte da verdade para contratos de dados/endpoints
+├── CLAUDE.md               # Instruções RTK (histórico)
 └── .opencode/
     └── skills/             # Skills especializadas
         ├── api-consistency/
@@ -414,7 +397,7 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 
 ### Antes de qualquer alteração
 - [ ] Li `API_ENDPOINTS.md` para entender o estado atual
-- [ ] Carreguei a skill adequada com `rtk skill <nome>`
+- [ ] Carreguei a skill adequada (preferir `rtk skill <nome>` quando disponível; se não existir, ler `.opencode/skills/<nome>/SKILL.md`)
 - [ ] Identifiquei os domínios afetados (types, services, pages)
 
 ### Durante a implementação
@@ -426,14 +409,14 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 - [ ] Error handling com `handleSupabaseError(err)` — sem `console.error` silencioso
 
 ### Depois da implementação
-- [ ] `rtk tsc --noEmit --pretty` — sem erros de tipo
-- [ ] `rtk lint` — sem erros de lint
+- [ ] `pnpm run typecheck` — sem erros de tipo
+- [ ] `pnpm run lint` — sem erros de lint
 - [ ] `API_ENDPOINTS.md` atualizado se houve alteração de API
 - [ ] Testei o fluxo completo (criar, listar, editar, excluir)
 
 ### Antes de commit/push
-- [ ] `rtk git status` — só os ficheiros esperados
-- [ ] `rtk git diff` — sem secrets ou debug code
+- [ ] `git status` — só os ficheiros esperados
+- [ ] `git diff` — sem secrets ou debug code
 - [ ] Mensagem de commit clara e concisa
 
 ---

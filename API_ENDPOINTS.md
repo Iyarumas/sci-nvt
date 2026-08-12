@@ -10,6 +10,30 @@
 
 ---
 
+## Transporte NestJS
+
+Base URL local: `http://localhost:3333/api`
+
+> **Atualizacao arquitetural (2026-08-11):** o front-end foi movido para `frontend/` e nao chama mais Supabase diretamente. Os services de `frontend/src/services/` continuam preservando os contratos abaixo, mas passam por `frontend/src/lib/supabase.ts`, um adapter HTTP que envia as operacoes para a API NestJS em `backend/`. O PostgreSQL local roda via `docker-compose.yml`; as migrations SQL foram copiadas para `backend/database/migrations/`.
+
+| Endpoint | Metodo | Descricao |
+|---|---|---|
+| `/health` | GET | Health check da API |
+| `/data/:table/query` | POST | Consulta tabelas permitidas com `select`, filtros, ordenacao, `limit`, `count` e `head` |
+| `/data/:table/insert` | POST | Insere objeto ou lista de objetos em tabela permitida |
+| `/data/:table/update` | POST | Atualiza registros com filtros obrigatorios |
+| `/data/:table/delete` | POST | Exclui registros com filtros obrigatorios |
+| `/rpc/:name` | POST | RPCs expostos: `verificar_senha`, `criar_usuario_com_hash`, `atualizar_senha`, `aprovar_escala_ferias_transacional` |
+| `/storage/:bucket/upload` | POST | Upload local de PDFs/arquivos |
+| `/storage/:bucket/list` | GET | Lista arquivos de um bucket/prefixo |
+| `/storage/:bucket/file` | GET | Download/visualizacao de arquivo |
+| `/storage/:bucket/remove` | POST | Remove arquivos |
+| `/storage/:bucket/signed-url` | POST | Gera URL local temporaria compativel com o front |
+| `/autentique/proxy` | POST | Proxy GraphQL Autentique para payload JSON |
+| `/autentique/proxy/upload` | POST | Proxy GraphQL Autentique para upload multipart |
+
+---
+
 ## Sumário
 
 | # | Serviço | Tabelas | Funções | Estado Geral |

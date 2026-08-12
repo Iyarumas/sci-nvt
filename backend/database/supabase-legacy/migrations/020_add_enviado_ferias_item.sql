@@ -1,0 +1,2 @@
+ALTER TABLE ferias_escala_item
+ADD COLUMN IF NOT EXISTS enviado BOOLEAN NOT NULL DEFAULT false;

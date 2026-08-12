@@ -1,4 +1,7 @@
-const API_URL = '/api/autentique-proxy';
+import { apiUrl } from '../lib/apiClient';
+
+const API_URL = apiUrl('/autentique/proxy');
+const UPLOAD_API_URL = apiUrl('/autentique/proxy/upload');
 
 async function graphqlRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const res = await fetch(API_URL, {
@@ -22,7 +25,7 @@ async function graphqlUpload<T>(query: string, variables: Record<string, unknown
   formData.append('operations', ops);
   formData.append('map', JSON.stringify({ 'file': ['variables.file'] }));
   formData.append('file', file, filename);
-  const res = await fetch(API_URL, {
+  const res = await fetch(UPLOAD_API_URL, {
     method: 'POST',
     headers: {
       'x-autentique-sandbox': String(sandbox),

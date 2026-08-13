@@ -142,7 +142,7 @@ function drawHeader(doc: jsPDF, registro: TreinamentoTAF, logoDataUrl: string | 
   const labelW = 28;
   const valueW = headerW - titleW - labelW;
 
-  drawMedGroupLogo(doc, logoDataUrl, M, y, logoW, 22);
+  drawMedGroupLogo(doc, logoDataUrl, M, y, logoW, 22, true);
   drawCell(doc, x0, y, titleW, 22, AIRPORTO_PADRAO, { bold: true, size: 15.5, align: 'center', minSize: 11 });
   drawCell(doc, x0 + titleW, y, labelW, 11, 'DATA', { bold: true, size: 11, align: 'center' });
   drawCell(doc, x0 + titleW + labelW, y, valueW, 11, formatDate(registro.data), { size: 8.5, align: 'center' });
@@ -191,10 +191,10 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTAF) {
   drawCell(doc, xs.abdominal, y0 + 8.2, cols.abdominal, 6.4, 'ADBOMINAL', { size: 7.4, align: 'center' });
   drawCell(doc, xs.polichinelo, y0 + 8.2, cols.polichinelo, 6.4, 'POLICHINELO', { size: 7.4, align: 'center' });
   drawCell(doc, xs.completo, y0 + 8.2, cols.completo, 6.4, 'COMPLETO', { size: 7.4, align: 'center' });
-  drawCell(doc, xs.flexao, y0 + 14.6, cols.flexao, 6.4, '1o Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.abdominal, y0 + 14.6, cols.abdominal, 6.4, '2o Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.polichinelo, y0 + 14.6, cols.polichinelo, 6.4, '3o Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.completo, y0 + 14.6, cols.completo, 6.4, '4o Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.flexao, y0 + 14.6, cols.flexao, 6.4, '1º Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.abdominal, y0 + 14.6, cols.abdominal, 6.4, '2º Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.polichinelo, y0 + 14.6, cols.polichinelo, 6.4, '3º Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.completo, y0 + 14.6, cols.completo, 6.4, '4º Tomada', { size: 7.1, align: 'center' });
   drawCell(doc, xs.assinatura, y0, cols.assinatura, headerH, 'ASSINATURA', { size: 8.5, align: 'center' });
 
   const pessoas = participantes(registro);

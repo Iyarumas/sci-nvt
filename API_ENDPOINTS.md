@@ -2164,7 +2164,11 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Tabela:** `treinamentos_taf`  
 **Ficheiro:** `src/services/tafService.ts`  
 **Tipo:** `src/types/taf.ts` — `TreinamentoTAF`  
-**Migration:** `supabase/migrations/035_treinamentos_taf.sql`
+**Migration:** `supabase/migrations/035_treinamentos_taf.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql`
+
+**Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`.
+
+**Campos de aprovação:** `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`.
 
 **Funções:** `listarTAFs`, `obterTAF`, `obterProximoNumero`, `criarTAF`, `atualizarTAF`, `excluirTAF` — todas ✅ OK
 
@@ -2175,7 +2179,9 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Tabela:** `treinamentos_tpepr`
 **Ficheiro:** `src/services/tpeprService.ts`
 **Tipo:** `src/types/tpepr.ts` — `TreinamentoTPEPR`
-**Migration:** `supabase/migrations/045_treinamentos_tpepr.sql`
+**Migration:** `supabase/migrations/045_treinamentos_tpepr.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql`
+
+**Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`.
 
 **Funções:** `listarTPEPRs`, `obterTPEPR`, `obterProximoNumeroTPEPR`, `criarTPEPR`, `atualizarTPEPR`, `excluirTPEPR` — todas ✅ OK
 
@@ -2194,6 +2200,10 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
   "turno": "Diurno | Noturno | string",
   "observacoes": "string",
   "chefeEquipe": "string",
+  "status": "Rascunho | Aprovado",
+  "aprovadoPor": "string",
+  "aprovadoPorNome": "string",
+  "aprovadoEm": "string (ISO datetime)",
   "participantes": [{
     "pessoaId": "string",
     "nomeCompleto": "string",

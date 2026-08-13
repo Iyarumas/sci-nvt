@@ -135,7 +135,7 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTPEPR) {
   labels.forEach((label, index) => {
     drawCell(doc, xTempo + index * timeW, y0 + 6, timeW, 9, label, { bold: true, size: 8.5, align: 'center' });
   });
-  ['1a Tomada', '2a Tomada', '3a Tomada', '4a Tomada'].forEach((label, index) => {
+  ['1º Tomada', '2º Tomada', '3º Tomada', '4º Tomada'].forEach((label, index) => {
     drawCell(doc, xTempo + index * timeW, y0 + 15, timeW, 8, label, { bold: true, size: 8.5, align: 'center', fill: grey });
   });
 

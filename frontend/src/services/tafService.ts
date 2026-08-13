@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { TreinamentoTAF } from '../types/taf';
+import type { TAFInput, TreinamentoTAF } from '../types/taf';
 
 const TABLE = 'treinamentos_taf';
 
@@ -21,6 +21,10 @@ function rowToItem(row: Record<string, unknown>): TreinamentoTAF {
     p9Nome: (row.p9_nome as string) || '', p9Funcao: (row.p9_funcao as string) || '', p9Idade: (row.p9_idade as number) || 0, p9Tempo: (row.p9_tempo as string) || '',
     p10Nome: (row.p10_nome as string) || '', p10Funcao: (row.p10_funcao as string) || '', p10Idade: (row.p10_idade as number) || 0, p10Tempo: (row.p10_tempo as string) || '',
     observacoes: (row.observacoes as string) || '', chefeEquipe: (row.chefe_equipe as string) || '',
+    status: (row.status as TreinamentoTAF['status']) || 'Rascunho',
+    aprovadoPor: (row.aprovado_por as string) || '',
+    aprovadoPorNome: (row.aprovado_por_nome as string) || '',
+    aprovadoEm: (row.aprovado_em as string) || '',
     createdAt: (row.created_at as string) || '', updatedAt: (row.updated_at as string) || '',
   };
 }
@@ -28,6 +32,7 @@ function rowToItem(row: Record<string, unknown>): TreinamentoTAF {
 const MAP = {
   equipe: 'equipe', numero: 'numero', ano: 'ano', data: 'data', hora: 'hora', turno: 'turno',
   tipoTaf: 'tipo_taf', observacoes: 'observacoes', chefeEquipe: 'chefe_equipe',
+  status: 'status', aprovadoPor: 'aprovado_por', aprovadoPorNome: 'aprovado_por_nome', aprovadoEm: 'aprovado_em',
 } as const;
 
 export async function listarTAFs(params?: { equipe?: string; ano?: string }): Promise<TreinamentoTAF[]> {
@@ -54,8 +59,12 @@ export async function obterProximoNumero(ano: string): Promise<number> {
   return (data && data.length > 0 ? data[0].numero + 1 : 1);
 }
 
-function escrever(data: Omit<TreinamentoTAF, 'id' | 'createdAt' | 'updatedAt'>): Record<string, unknown> {
+function escrever(data: TAFInput): Record<string, unknown> {
   const r: Record<string, unknown> = { equipe: data.equipe, numero: data.numero, ano: data.ano, data: data.data, hora: data.hora, turno: data.turno, tipo_taf: data.tipoTaf, observacoes: data.observacoes, chefe_equipe: data.chefeEquipe };
+  if (data.status !== undefined) r.status = data.status;
+  if (data.aprovadoPor !== undefined) r.aprovado_por = data.aprovadoPor;
+  if (data.aprovadoPorNome !== undefined) r.aprovado_por_nome = data.aprovadoPorNome;
+  if (data.aprovadoEm !== undefined) r.aprovado_em = data.aprovadoEm;
   for (let i = 1; i <= 10; i++) {
     const d = data as any;
     r[`p${i}_nome`] = d[`p${i}Nome`]; r[`p${i}_funcao`] = d[`p${i}Funcao`]; r[`p${i}_idade`] = d[`p${i}Idade`]; r[`p${i}_tempo`] = d[`p${i}Tempo`];
@@ -63,7 +72,7 @@ function escrever(data: Omit<TreinamentoTAF, 'id' | 'createdAt' | 'updatedAt'>):
   return r;
 }
 
-export async function criarTAF(data: Omit<TreinamentoTAF, 'id' | 'createdAt' | 'updatedAt'>): Promise<TreinamentoTAF> {
+export async function criarTAF(data: TAFInput): Promise<TreinamentoTAF> {
   const db = getDb();
   const now = new Date().toISOString();
   const { data: created, error } = await db.from(TABLE).insert({ ...escrever(data), created_at: now, updated_at: now }).select().single();

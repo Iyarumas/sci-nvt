@@ -54,6 +54,10 @@ function rowToTPEPR(row: Record<string, unknown>): TreinamentoTPEPR {
     participantes: normalizarParticipantesTPEPR(
       parseJSON<TPEPRParticipante[]>(row.participantes, []),
     ),
+    status: (row.status as TreinamentoTPEPR['status']) || 'Rascunho',
+    aprovadoPor: (row.aprovado_por as string) || '',
+    aprovadoPorNome: (row.aprovado_por_nome as string) || '',
+    aprovadoEm: (row.aprovado_em as string) || '',
   };
 }
 
@@ -68,6 +72,10 @@ function inputToRow(input: Partial<TPEPRInput>): Record<string, unknown> {
   if (input.turno !== undefined) row.turno = input.turno;
   if (input.observacoes !== undefined) row.observacoes = input.observacoes;
   if (input.chefeEquipe !== undefined) row.chefe_equipe = input.chefeEquipe;
+  if (input.status !== undefined) row.status = input.status;
+  if (input.aprovadoPor !== undefined) row.aprovado_por = input.aprovadoPor;
+  if (input.aprovadoPorNome !== undefined) row.aprovado_por_nome = input.aprovadoPorNome;
+  if (input.aprovadoEm !== undefined) row.aprovado_em = input.aprovadoEm;
   if (input.participantes !== undefined) {
     row.participantes = JSON.stringify(normalizarParticipantesTPEPR(input.participantes));
   }

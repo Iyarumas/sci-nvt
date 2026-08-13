@@ -1,3 +1,5 @@
+export type TreinamentoTAFStatus = 'Rascunho' | 'Aprovado';
+
 export interface TreinamentoTAF {
   id: string;
   equipe: string;
@@ -19,6 +21,15 @@ export interface TreinamentoTAF {
   p10Nome: string; p10Funcao: string; p10Idade: number; p10Tempo: string;
   observacoes: string;
   chefeEquipe: string;
+  status: TreinamentoTAFStatus;
+  aprovadoPor: string;
+  aprovadoPorNome: string;
+  aprovadoEm: string;
   createdAt: string;
   updatedAt: string;
 }
+
+type CamposControleTAF = 'id' | 'createdAt' | 'updatedAt' | 'status' | 'aprovadoPor' | 'aprovadoPorNome' | 'aprovadoEm';
+type CamposAprovacaoTAF = Pick<TreinamentoTAF, 'status' | 'aprovadoPor' | 'aprovadoPorNome' | 'aprovadoEm'>;
+
+export type TAFInput = Omit<TreinamentoTAF, CamposControleTAF> & Partial<CamposAprovacaoTAF>;

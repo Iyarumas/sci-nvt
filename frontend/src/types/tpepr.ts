@@ -2,6 +2,7 @@ import type { Cargo, Equipe } from './bombeiro';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../utils/tempo';
 
 export type TPEPRCargo = Extract<Cargo, 'BA-CE' | 'BA-LR' | 'BA-MC' | 'BA-2'>;
+export type TreinamentoTPEPRStatus = 'Rascunho' | 'Aprovado';
 
 export interface TPEPRParticipante {
   pessoaId: string;
@@ -28,9 +29,16 @@ export interface TreinamentoTPEPR {
   observacoes: string;
   chefeEquipe: string;
   participantes: TPEPRParticipante[];
+  status: TreinamentoTPEPRStatus;
+  aprovadoPor: string;
+  aprovadoPorNome: string;
+  aprovadoEm: string;
 }
 
-export type TPEPRInput = Omit<TreinamentoTPEPR, 'id' | 'createdAt' | 'updatedAt'>;
+type CamposControleTPEPR = 'id' | 'createdAt' | 'updatedAt' | 'status' | 'aprovadoPor' | 'aprovadoPorNome' | 'aprovadoEm';
+type CamposAprovacaoTPEPR = Pick<TreinamentoTPEPR, 'status' | 'aprovadoPor' | 'aprovadoPorNome' | 'aprovadoEm'>;
+
+export type TPEPRInput = Omit<TreinamentoTPEPR, CamposControleTPEPR> & Partial<CamposAprovacaoTPEPR>;
 
 export const TPEPR_EQUIPES: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 

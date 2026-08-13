@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Calculator,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -101,11 +102,13 @@ function TempoInput({
 }
 
 export function TPEPR() {
-  const { user, canManageGlobal, canManageEquipe, equipeEfetiva, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
+  const { user, contexto, canManageGlobal, canManageEquipe, equipeEfetiva, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
   const location = useLocation();
   const isRelatorioRoute = location.pathname.startsWith('/relatorios');
   const canCreate = canManageGlobal || !!equipeEfetiva;
+  const isAdminSistema = contexto.isAdministradorSistema;
   const currentUsername = user?.username || user?.name || '';
+  const currentName = user?.name || user?.username || '';
 
   const [registros, setRegistros] = useState<TreinamentoTPEPR[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
@@ -115,7 +118,7 @@ export function TPEPR() {
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TreinamentoTPEPR | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [erro, setErro] = useState('');
@@ -130,6 +133,7 @@ export function TPEPR() {
   const [fChefeEquipe, setFChefeEquipe] = useState('');
   const [fParticipantes, setFParticipantes] = useState<TPEPRParticipante[]>(criarParticipantesTPEPRVazios());
   const [expandidoId, setExpandidoId] = useState<string | null>(null);
+  const saving = savingAction !== null;
 
   const equipesFormulario = useMemo(() => {
     if (canManageGlobal) return [...TPEPR_EQUIPES];
@@ -184,7 +188,7 @@ export function TPEPR() {
 
   function nomeChefePorEquipe(pool: Bombeiro[]) {
     const chefe = pool.find(b => b.cargo === 'BA-CE');
-    return chefe?.nomeGuerra || chefe?.nomeCompleto || '';
+    return chefe?.nomeCompleto || chefe?.nomeGuerra || '';
   }
 
   function gerarParticipantesPorPool(pool: Bombeiro[]) {
@@ -236,7 +240,8 @@ export function TPEPR() {
         const pool = await montarPoolParticipantes(fEquipe, fData);
         if (!active) return;
         setOpcoesParticipantes(pool);
-        if (!editando) {
+        const devePreencher = !editando || fEquipe !== editando.equipe || fData !== editando.data;
+        if (devePreencher) {
           setFChefeEquipe(nomeChefePorEquipe(pool));
           setFParticipantes(gerarParticipantesPorPool(pool));
         }
@@ -267,6 +272,20 @@ export function TPEPR() {
     total: registros.length,
     participantes: registros.reduce((acc, item) => acc + item.participantes.filter(participantePreenchido).length, 0),
   }), [registros]);
+
+  function registroAprovado(registro?: Pick<TreinamentoTPEPR, 'status'> | null) {
+    return registro?.status === 'Aprovado';
+  }
+
+  function canAlterarRegistro(registro: TreinamentoTPEPR) {
+    return registroAprovado(registro) ? isAdminSistema : canManageEquipe(registro.equipe);
+  }
+
+  function mensagemBloqueioRegistro(registro: TreinamentoTPEPR) {
+    return registroAprovado(registro)
+      ? 'Este TP/EPR ja foi aprovado. Somente administradores e desenvolvedores podem alterar.'
+      : 'Voce so pode alterar TP/EPR da sua equipe efetiva.';
+  }
 
   function resetForm() {
     const equipePadrao = canManageGlobal ? '' : equipeEfetiva || '';
@@ -315,8 +334,8 @@ export function TPEPR() {
   }
 
   async function handleEditar(registro: TreinamentoTPEPR) {
-    if (!canManageEquipe(registro.equipe)) {
-      alert('Voce so pode editar TP/EPR da sua equipe efetiva.');
+    if (!canAlterarRegistro(registro)) {
+      alert(mensagemBloqueioRegistro(registro));
       return;
     }
 
@@ -381,11 +400,11 @@ export function TPEPR() {
     });
   }
 
-  async function handleSalvar() {
+  async function handleSalvar(aprovar = false) {
     const equipeAlvo = canManageGlobal ? fEquipe : equipeEfetiva || '';
     if (!equipeAlvo || !fData) return;
-    if (editando && !canManageEquipe(editando.equipe)) {
-      alert('Voce so pode editar TP/EPR da sua equipe efetiva.');
+    if (editando && !canAlterarRegistro(editando)) {
+      alert(mensagemBloqueioRegistro(editando));
       return;
     }
     if (!canManageEquipe(equipeAlvo)) {
@@ -393,7 +412,7 @@ export function TPEPR() {
       return;
     }
 
-    setSaving(true);
+    setSavingAction(aprovar ? 'approve' : 'draft');
     try {
       const ano = fAno || fData.slice(0, 4);
       const participantes = normalizarParticipantesTPEPR(fParticipantes).map((participante, index) => {
@@ -417,6 +436,12 @@ export function TPEPR() {
         chefeEquipe: fChefeEquipe,
         participantes,
       };
+      if (aprovar) {
+        payload.status = 'Aprovado';
+        payload.aprovadoPor = currentUsername;
+        payload.aprovadoPorNome = currentName;
+        payload.aprovadoEm = new Date().toISOString();
+      }
 
       if (editando) await atualizarTPEPR(editando.id, payload);
       else await criarTPEPR(payload);
@@ -427,14 +452,14 @@ export function TPEPR() {
     } catch (err) {
       alert('Erro ao salvar TP/EPR: ' + mensagemErro(err));
     } finally {
-      setSaving(false);
+      setSavingAction(null);
     }
   }
 
   async function handleExcluir(id: string) {
     const registro = registros.find(r => r.id === id);
-    if (registro && !canManageEquipe(registro.equipe)) {
-      alert('Voce so pode excluir TP/EPR da sua equipe efetiva.');
+    if (registro && !canAlterarRegistro(registro)) {
+      alert(mensagemBloqueioRegistro(registro));
       setDeleteConfirm(null);
       return;
     }
@@ -586,6 +611,8 @@ export function TPEPR() {
             {filtered.map(registro => {
               const participantes = ordenarParticipantesTPEPR(registro.participantes.filter(participantePreenchido));
               const expandido = expandidoId === registro.id;
+              const aprovado = registroAprovado(registro);
+              const podeAlterar = canAlterarRegistro(registro);
               return (
                 <div key={registro.id} className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -598,9 +625,14 @@ export function TPEPR() {
                         {registro.equipe.charAt(0)}
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">
-                          {String(registro.numero).padStart(3, '0')}/{registro.ano} - {registro.equipe} - TP/EPR
-                        </p>
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">
+                            {String(registro.numero).padStart(3, '0')}/{registro.ano} - {registro.equipe} - TP/EPR
+                          </p>
+                          <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${aprovado ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                            {aprovado ? 'Aprovado' : 'Rascunho'}
+                          </span>
+                        </div>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
                           {fmtData(registro.data)} {registro.hora && `as ${registro.hora}`} - {registro.turno || '-'} - Chefe: {registro.chefeEquipe || '-'}
                         </p>
@@ -616,7 +648,7 @@ export function TPEPR() {
                       >
                         <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando' : 'PDF'}
                       </button>
-                      {canManageEquipe(registro.equipe) && (
+                      {podeAlterar && (
                         <>
                         <button onClick={() => handleEditar(registro)} className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200" title="Editar">
                           <Pencil className="h-4 w-4" />
@@ -671,6 +703,11 @@ export function TPEPR() {
               <div>
                 <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{editando ? 'Editar' : 'Novo'} TP/EPR</h2>
                 <p className="text-xs text-graphite-500 dark:text-graphite-400">Participantes em ordem: BA-CE, BA-LR, BA-MC e BA-2.</p>
+                {editando && (
+                  <p className="mt-1 text-xs font-semibold text-graphite-500 dark:text-graphite-400">
+                    Status: {registroAprovado(editando) ? 'Aprovado' : 'Rascunho'}
+                  </p>
+                )}
               </div>
               <button onClick={() => setFormOpen(false)} className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 dark:hover:bg-surface-hover">
                 <X className="h-5 w-5" />
@@ -685,7 +722,8 @@ export function TPEPR() {
                     const equipe = e.target.value;
                     setFEquipe(equipe);
                     setFTurno(turnoAuto(equipe));
-                    if (!editando) setFChefeEquipe('');
+                    setFChefeEquipe('');
+                    setFParticipantes(criarParticipantesTPEPRVazios());
                   }} disabled={!canManageGlobal} className={inputCls}>
                     <option value="">Selecione</option>
                     {equipesFormulario.map(eq => <option key={eq} value={eq}>{eq}</option>)}
@@ -745,15 +783,24 @@ export function TPEPR() {
                 <textarea value={fObs} onChange={e => setFObs(e.target.value)} rows={3} className={`${inputCls} resize-none`} />
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark">
+              <div className="flex flex-wrap justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark">
                 <button onClick={() => setFormOpen(false)} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">Cancelar</button>
                 <button
-                  onClick={handleSalvar}
+                  onClick={() => handleSalvar(false)}
                   disabled={!fEquipe || !fData || saving}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
                 >
-                  <Save className="h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar'}
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) ? 'Salvar' : 'Salvar rascunho'}
                 </button>
+                {!registroAprovado(editando) && (
+                  <button
+                    onClick={() => handleSalvar(true)}
+                    disabled={!fEquipe || !fData || saving}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
+                  </button>
+                )}
               </div>
             </div>
           </div>

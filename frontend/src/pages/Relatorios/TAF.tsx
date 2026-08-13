@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Target,
   AlertTriangle, Users, Lock, Download, ChevronDown, ChevronUp,
+  CheckCircle2,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -12,7 +13,7 @@ import { listarAtivos } from '../../services/bombeiroService';
 import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { listarTAFs, criarTAF, atualizarTAF, excluirTAF, obterProximoNumero } from '../../services/tafService';
 import { baixarTAFPdf } from '../../services/tafPdfService';
-import type { TreinamentoTAF } from '../../types/taf';
+import type { TAFInput, TreinamentoTAF } from '../../types/taf';
 import type { Bombeiro } from '../../types/bombeiro';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
 
@@ -153,10 +154,13 @@ function SlotLinha({
 }
 
 export function TAF() {
-  const { user, canManageGlobal, canManageEquipe, equipeEfetiva, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
+  const { user, contexto, canManageGlobal, canManageEquipe, equipeEfetiva, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
   const location = useLocation();
   const isRelatorioRoute = location.pathname.startsWith('/relatorios');
   const canCreate = canManageGlobal || !!equipeEfetiva;
+  const isAdminSistema = contexto.isAdministradorSistema;
+  const currentUsername = user?.username || user?.name || '';
+  const currentName = user?.name || user?.username || '';
   const [registros, setRegistros] = useState<TreinamentoTAF[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [search, setSearch] = useState('');
@@ -164,7 +168,7 @@ export function TAF() {
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TreinamentoTAF | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [expandidoId, setExpandidoId] = useState<string | null>(null);
@@ -183,6 +187,7 @@ export function TAF() {
   );
   const [fObs, setFObs] = useState('');
   const [fChefeEquipe, setFChefeEquipe] = useState('');
+  const saving = savingAction !== null;
 
   const equipesFormulario = useMemo(() => {
     if (canManageGlobal) return [...EQUIPES];
@@ -208,6 +213,20 @@ export function TAF() {
   }, [registros, search, filtroEquipe]);
 
   const stats = useMemo(() => ({ total: registros.length }), [registros]);
+
+  function registroAprovado(registro?: Pick<TreinamentoTAF, 'status'> | null) {
+    return registro?.status === 'Aprovado';
+  }
+
+  function canAlterarRegistro(registro: TreinamentoTAF) {
+    return registroAprovado(registro) ? isAdminSistema : canManageEquipe(registro.equipe);
+  }
+
+  function mensagemBloqueioRegistro(registro: TreinamentoTAF) {
+    return registroAprovado(registro)
+      ? 'Este TAF ja foi aprovado. Somente administradores e desenvolvedores podem alterar.'
+      : 'Voce so pode alterar treinamentos da sua equipe efetiva.';
+  }
 
   function setP(idx: number, field: keyof TafPessoaForm, val: any) {
     setFPessoas(prev => { const n = [...prev]; n[idx] = { ...n[idx], [field]: val }; return n; });
@@ -262,10 +281,9 @@ export function TAF() {
         cargo: b.cargo,
         equipe: fEquipe,
       })));
-      if (!preencherMembros) return;
-
       const baCe = pool.find(b => b.cargo === 'BA-CE');
-      setFChefeEquipe(baCe ? baCe.nomeGuerra || baCe.nomeCompleto || '' : '');
+      if (preencherMembros) setFChefeEquipe(baCe ? baCe.nomeCompleto || baCe.nomeGuerra || '' : '');
+      if (!preencherMembros) return;
 
       const usado = new Set<string>();
       const buscar = (cargo: string) => {
@@ -307,7 +325,8 @@ export function TAF() {
 
   useEffect(() => {
     if (formOpen && fEquipe && fData) {
-      autoPreencherParticipantes(!editando);
+      const devePreencher = !editando || fEquipe !== editando.equipe || fData !== editando.data;
+      autoPreencherParticipantes(devePreencher);
     }
   }, [fEquipe, fData, formOpen, editando]);
 
@@ -325,8 +344,8 @@ export function TAF() {
   }
 
   function handleEditar(r: TreinamentoTAF) {
-    if (!canManageEquipe(r.equipe)) {
-      alert('Você só pode editar treinamentos da sua equipe efetiva.');
+    if (!canAlterarRegistro(r)) {
+      alert(mensagemBloqueioRegistro(r));
       return;
     }
     setEditando(r);
@@ -340,32 +359,38 @@ export function TAF() {
     setFormOpen(true);
   }
 
-  async function handleSalvar() {
+  async function handleSalvar(aprovar = false) {
     const equipeAlvo = canManageGlobal ? fEquipe : equipeEfetiva || '';
     if (!equipeAlvo || !fData || !fTipo) return;
-    if (editando && !canManageEquipe(editando.equipe)) {
-      alert('Você só pode editar treinamentos da sua equipe efetiva.');
+    if (editando && !canAlterarRegistro(editando)) {
+      alert(mensagemBloqueioRegistro(editando));
       return;
     }
     if (!canManageEquipe(equipeAlvo)) {
-      alert('Você só pode salvar treinamentos da sua equipe efetiva.');
+      alert('Voce so pode salvar treinamentos da sua equipe efetiva.');
       return;
     }
-    setSaving(true);
+    setSavingAction(aprovar ? 'approve' : 'draft');
     try {
-      const data: any = { equipe: equipeAlvo, numero: fNumero, ano: fAno, data: fData, hora: fHora, turno: turnoAuto(equipeAlvo), tipoTaf: fTipo, observacoes: fObs, chefeEquipe: fChefeEquipe || user?.name || '' };
+      const data = { equipe: equipeAlvo, numero: fNumero, ano: fAno, data: fData, hora: fHora, turno: turnoAuto(equipeAlvo), tipoTaf: fTipo, observacoes: fObs, chefeEquipe: fChefeEquipe || user?.name || '' } as TAFInput;
+      if (aprovar) {
+        data.status = 'Aprovado';
+        data.aprovadoPor = currentUsername;
+        data.aprovadoPorNome = currentName;
+        data.aprovadoEm = new Date().toISOString();
+      }
       for (let i = 0; i < 10; i++) {
-        data[`p${i+1}Nome`] = fPessoas[i].nome; data[`p${i+1}Funcao`] = fPessoas[i].funcao; data[`p${i+1}Idade`] = fPessoas[i].idade; data[`p${i+1}Tempo`] = mascararTempoCronometro(fPessoas[i].tempo);
+        (data as any)[`p${i+1}Nome`] = fPessoas[i].nome; (data as any)[`p${i+1}Funcao`] = fPessoas[i].funcao; (data as any)[`p${i+1}Idade`] = fPessoas[i].idade; (data as any)[`p${i+1}Tempo`] = mascararTempoCronometro(fPessoas[i].tempo);
       }
       if (editando) { await atualizarTAF(editando.id, data); } else { await criarTAF(data); }
       await carregar(); setFormOpen(false);
-    } catch (err) { alert('Erro: ' + (err instanceof Error ? err.message : 'Erro')); } finally { setSaving(false); }
+    } catch (err) { alert('Erro: ' + (err instanceof Error ? err.message : 'Erro')); } finally { setSavingAction(null); }
   }
 
   async function handleExcluir(id: string) {
     const registro = registros.find(r => r.id === id);
-    if (registro && !canManageEquipe(registro.equipe)) {
-      alert('Você só pode excluir treinamentos da sua equipe efetiva.');
+    if (registro && !canAlterarRegistro(registro)) {
+      alert(mensagemBloqueioRegistro(registro));
       setDeleteConfirm(null);
       return;
     }
@@ -451,6 +476,8 @@ export function TAF() {
             {filtered.map(r => {
               const participantes = pessoasDoRegistro(r, bombeiros).filter(pessoaPreenchida);
               const expandido = expandidoId === r.id;
+              const aprovado = registroAprovado(r);
+              const podeAlterar = canAlterarRegistro(r);
               return (
                 <div key={r.id} className="space-y-2">
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -461,7 +488,12 @@ export function TAF() {
                 >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-aviation-500 to-aviation-700 text-sm font-bold text-white">{r.equipe.charAt(0)}</div>
                   <div className="min-w-0">
-                    <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 truncate">{String(r.numero).padStart(3,'0')}/{r.ano} · {r.equipe} · {r.tipoTaf}</p>
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">{String(r.numero).padStart(3,'0')}/{r.ano} · {r.equipe} · {r.tipoTaf}</p>
+                      <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${aprovado ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                        {aprovado ? 'Aprovado' : 'Rascunho'}
+                      </span>
+                    </div>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
                   </div>
                 </button>
@@ -474,7 +506,7 @@ export function TAF() {
                   >
                     <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando' : 'PDF'}
                   </button>
-                  {canManageEquipe(r.equipe) && (
+                  {podeAlterar && (
                     <>
                     <button onClick={() => handleEditar(r)} className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover">
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -526,7 +558,14 @@ export function TAF() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 py-5">
           <div className="relative mx-4 w-full max-w-5xl rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-sm dark:bg-surface-elevated/95">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{editando ? 'Editar' : 'Novo'} TAF</h2>
+              <div>
+                <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{editando ? 'Editar' : 'Novo'} TAF</h2>
+                {editando && (
+                  <p className="mt-1 text-xs font-semibold text-graphite-500 dark:text-graphite-400">
+                    Status: {registroAprovado(editando) ? 'Aprovado' : 'Rascunho'}
+                  </p>
+                )}
+              </div>
               <button onClick={() => setFormOpen(false)} className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover"><X className="h-5 w-5" /></button>
             </div>
 
@@ -611,12 +650,18 @@ export function TAF() {
                 <p className="text-sm font-semibold text-graphite-900 dark:text-graphite-100">{fChefeEquipe || user?.name || '-'}</p>
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark">
+              <div className="flex flex-wrap justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark">
                 <button onClick={() => setFormOpen(false)} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">Cancelar</button>
-                <button onClick={handleSalvar} disabled={!fEquipe || !fData || !fTipo || saving}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
-                  <Save className="h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar'}
+                <button onClick={() => handleSalvar(false)} disabled={!fEquipe || !fData || !fTipo || saving}
+                  className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) ? 'Salvar' : 'Salvar rascunho'}
                 </button>
+                {!registroAprovado(editando) && (
+                  <button onClick={() => handleSalvar(true)} disabled={!fEquipe || !fData || !fTipo || saving}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
+                    <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -228,6 +228,10 @@ export function TAF() {
       : 'Voce so pode alterar treinamentos da sua equipe efetiva.';
   }
 
+  function canGerarPdf(registro: TreinamentoTAF) {
+    return isAdminSistema || registroAprovado(registro);
+  }
+
   function setP(idx: number, field: keyof TafPessoaForm, val: any) {
     setFPessoas(prev => { const n = [...prev]; n[idx] = { ...n[idx], [field]: val }; return n; });
   }
@@ -400,6 +404,11 @@ export function TAF() {
   }
 
   async function handleDownload(registro: TreinamentoTAF) {
+    if (!canGerarPdf(registro)) {
+      alert('Aprove este TAF antes de gerar o PDF. Administradores e desenvolvedores podem gerar PDF sem aprovar.');
+      return;
+    }
+
     try {
       setDownloadingId(registro.id);
       const registroComNomesCompletos = { ...registro } as TreinamentoTAF;
@@ -478,6 +487,7 @@ export function TAF() {
               const expandido = expandidoId === r.id;
               const aprovado = registroAprovado(r);
               const podeAlterar = canAlterarRegistro(r);
+              const podeGerarPdf = canGerarPdf(r);
               return (
                 <div key={r.id} className="space-y-2">
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -500,9 +510,9 @@ export function TAF() {
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => handleDownload(r)}
-                    disabled={downloadingId === r.id}
-                    className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                    title="Baixar PDF"
+                    disabled={downloadingId === r.id || !podeGerarPdf}
+                    className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                    title={podeGerarPdf ? 'Baixar PDF' : 'Aprove o TAF antes de gerar o PDF'}
                   >
                     <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando' : 'PDF'}
                   </button>

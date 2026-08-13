@@ -188,7 +188,17 @@ export function TPEPR() {
 
   function nomeChefePorEquipe(pool: Bombeiro[]) {
     const chefe = pool.find(b => b.cargo === 'BA-CE');
-    return chefe?.nomeCompleto || chefe?.nomeGuerra || '';
+    return chefe?.nomeGuerra || chefe?.nomeCompleto || '';
+  }
+
+  function normalizarChefeParaNomeGuerra(nome: string) {
+    const normalizado = nome.trim().toLocaleLowerCase('pt-BR');
+    if (!normalizado) return '';
+    const bombeiro = bombeiros.find(b =>
+      b.nomeGuerra.toLocaleLowerCase('pt-BR') === normalizado ||
+      b.nomeCompleto.toLocaleLowerCase('pt-BR') === normalizado
+    );
+    return bombeiro?.nomeGuerra || nome;
   }
 
   function gerarParticipantesPorPool(pool: Bombeiro[]) {
@@ -287,6 +297,10 @@ export function TPEPR() {
       : 'Voce so pode alterar TP/EPR da sua equipe efetiva.';
   }
 
+  function canGerarPdf(registro: TreinamentoTPEPR) {
+    return isAdminSistema || registroAprovado(registro);
+  }
+
   function resetForm() {
     const equipePadrao = canManageGlobal ? '' : equipeEfetiva || '';
     setEditando(null);
@@ -347,7 +361,7 @@ export function TPEPR() {
     setFHora(registro.hora);
     setFTurno(registro.turno);
     setFObs(registro.observacoes);
-    setFChefeEquipe(registro.chefeEquipe);
+    setFChefeEquipe(normalizarChefeParaNomeGuerra(registro.chefeEquipe));
     setFParticipantes(normalizarParticipantesTPEPR(registro.participantes));
     setFormOpen(true);
   }
@@ -475,6 +489,11 @@ export function TPEPR() {
   }
 
   async function handleDownload(registro: TreinamentoTPEPR) {
+    if (!canGerarPdf(registro)) {
+      alert('Aprove este TP/EPR antes de gerar o PDF. Administradores e desenvolvedores podem gerar PDF sem aprovar.');
+      return;
+    }
+
     try {
       setDownloadingId(registro.id);
       await baixarTPEPRPdf(registro);
@@ -613,6 +632,7 @@ export function TPEPR() {
               const expandido = expandidoId === registro.id;
               const aprovado = registroAprovado(registro);
               const podeAlterar = canAlterarRegistro(registro);
+              const podeGerarPdf = canGerarPdf(registro);
               return (
                 <div key={registro.id} className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -642,9 +662,9 @@ export function TPEPR() {
                     <div className="flex shrink-0 items-center gap-2">
                       <button
                         onClick={() => handleDownload(registro)}
-                        disabled={downloadingId === registro.id}
-                        className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                        title="Baixar PDF"
+                        disabled={downloadingId === registro.id || !podeGerarPdf}
+                        className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                        title={podeGerarPdf ? 'Baixar PDF' : 'Aprove o TP/EPR antes de gerar o PDF'}
                       >
                         <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando' : 'PDF'}
                       </button>

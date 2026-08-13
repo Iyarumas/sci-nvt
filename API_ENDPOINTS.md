@@ -2166,7 +2166,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Tipo:** `src/types/taf.ts` — `TreinamentoTAF`  
 **Migration:** `supabase/migrations/035_treinamentos_taf.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql`
 
-**Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`.
+**Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`. PDF só pode ser gerado com registro aprovado, exceto para `admin`/`desenvolvedor`.
 
 **Campos de aprovação:** `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`.
 
@@ -2181,7 +2181,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Tipo:** `src/types/tpepr.ts` — `TreinamentoTPEPR`
 **Migration:** `supabase/migrations/045_treinamentos_tpepr.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql`
 
-**Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`.
+**Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`. PDF só pode ser gerado com registro aprovado, exceto para `admin`/`desenvolvedor`.
 
 **Funções:** `listarTPEPRs`, `obterTPEPR`, `obterProximoNumeroTPEPR`, `criarTPEPR`, `atualizarTPEPR`, `excluirTPEPR` — todas ✅ OK
 

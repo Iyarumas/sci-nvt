@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Target,
-  AlertTriangle, Users, Lock,
+  AlertTriangle, Users, Lock, Download,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -11,6 +11,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarAtivos } from '../../services/bombeiroService';
 import { resolverEfetivo } from '../../services/vigenciaSubstituicaoService';
 import { listarTAFs, criarTAF, atualizarTAF, excluirTAF, obterProximoNumero } from '../../services/tafService';
+import { baixarTAFPdf } from '../../services/tafPdfService';
 import type { TreinamentoTAF } from '../../types/taf';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
 
@@ -27,6 +28,10 @@ const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 
 function fmt(d: string) { if (!d) return '-'; return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR'); }
+
+function mensagemErro(err: unknown) {
+  return err instanceof Error ? err.message : 'Erro inesperado';
+}
 
 type TafPessoaForm = { nome: string; funcao: string; idade: number; tempo: string };
 type TafSlot = typeof SLOTS[number];
@@ -99,6 +104,7 @@ export function TAF() {
   const [editando, setEditando] = useState<TreinamentoTAF | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const [fEquipe, setFEquipe] = useState('');
   const [fNumero, setFNumero] = useState(0);
@@ -273,6 +279,17 @@ export function TAF() {
     setDeleteConfirm(null);
   }
 
+  async function handleDownload(registro: TreinamentoTAF) {
+    try {
+      setDownloadingId(registro.id);
+      await baixarTAFPdf(registro);
+    } catch (err) {
+      alert('Erro ao gerar PDF do TAF: ' + mensagemErro(err));
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
   if (isRelatorioRoute && loadingContexto) {
     return <PageContainer><div className="flex justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-aviation-500 border-t-transparent" /></div></PageContainer>;
   }
@@ -340,14 +357,24 @@ export function TAF() {
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
                   </div>
                 </div>
-                {canManageEquipe(r.equipe) && (
-                  <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleDownload(r)}
+                    disabled={downloadingId === r.id}
+                    className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                    title="Baixar PDF"
+                  >
+                    <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando' : 'PDF'}
+                  </button>
+                  {canManageEquipe(r.equipe) && (
+                    <>
                     <button onClick={() => handleEditar(r)} className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover">
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     </button>
                     <button onClick={() => setDeleteConfirm(r.id)} className="rounded-xl p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>

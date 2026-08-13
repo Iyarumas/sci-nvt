@@ -15,6 +15,13 @@ function formatDate(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
+function formatFileDate(value: string): string {
+  if (!value) return 'sem-data';
+  const [year, month, day] = value.split('-');
+  if (!year || !month || !day) return value.replace(/\//g, '-');
+  return `${Number(day)}-${Number(month)}-${year}`;
+}
+
 function upper(value: string): string {
   return (value || '').toLocaleUpperCase('pt-BR');
 }
@@ -204,6 +211,6 @@ export async function gerarTPEPRPdf(registro: TreinamentoTPEPR): Promise<Blob> {
 
 export async function baixarTPEPRPdf(registro: TreinamentoTPEPR): Promise<void> {
   const blob = await gerarTPEPRPdf(registro);
-  const nome = `TP-EPR_${safeFilePart(String(registro.equipe))}_${registro.data || 'sem_data'}.pdf`;
+  const nome = `${formatFileDate(registro.data)} NVT TP EPR ${safeFilePart(upper(String(registro.equipe)))}.pdf`;
   downloadPdf(blob, nome);
 }

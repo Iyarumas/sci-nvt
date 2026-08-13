@@ -555,6 +555,21 @@ export function Trocas() {
     return result;
   }
 
+  function buildPdfData(data: Record<string, string>): Record<string, string> {
+    const dadosStr: Record<string, string> = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (k === 'deferido_indeferido' || k.startsWith('check_')) continue;
+      dadosStr[k] = String(v || '');
+    }
+
+    dadosStr.check_troca_sim = data.troca_emergencial === 'SIM' ? 'V' : '';
+    dadosStr.check_troca_nao = data.troca_emergencial === 'NAO' ? 'V' : '';
+    dadosStr.check_deferido = data.deferido_indeferido === 'DEFERIDO' ? 'V' : '';
+    dadosStr.check_indeferido = data.deferido_indeferido === 'INDEFERIDO' ? 'V' : '';
+
+    return dadosStr;
+  }
+
   async function handleConfirmGerarPdf() {
     setShowConfirmPdf(false);
     if (!canManageFormData(formData)) {
@@ -589,20 +604,7 @@ export function Trocas() {
       const blob = await getPdfBlob(pdfKey);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
-      const dadosStr: Record<string, string> = {};
-      for (const [k, v] of Object.entries(dadosAprovados)) {
-        if (k === 'deferido_indeferido' || k === 'check_deferido' || k === 'check_indeferido') continue;
-        dadosStr[k] = String(v || '');
-      }
-
-      if (formData.troca_emergencial === 'SIM') {
-        dadosStr.check_troca_sim = 'V';
-        dadosStr.check_troca_nao = '';
-      } else if (formData.troca_emergencial === 'NAO') {
-        dadosStr.check_troca_sim = '';
-        dadosStr.check_troca_nao = 'V';
-      }
-
+      const dadosStr = buildPdfData(dadosAprovados);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
 
       if (editingFillId) {
@@ -656,13 +658,7 @@ export function Trocas() {
       const blob = await getPdfBlob(pdfKey);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
-      const dadosStr: Record<string, string> = {};
-      for (const [k, v] of Object.entries(formData)) {
-        if (k === 'deferido_indeferido' || k === 'check_deferido' || k === 'check_indeferido') continue;
-        dadosStr[k] = String(v || '');
-      }
-      if (formData.troca_emergencial === 'SIM') { dadosStr.check_troca_sim = 'V'; dadosStr.check_troca_nao = ''; }
-      else if (formData.troca_emergencial === 'NAO') { dadosStr.check_troca_sim = ''; dadosStr.check_troca_nao = 'V'; }
+      const dadosStr = buildPdfData(formData);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
       const url = URL.createObjectURL(pdfBlob);
       setPreviewPdfUrl(url);
@@ -694,14 +690,8 @@ export function Trocas() {
       const blob = await getPdfBlob(templateDoc.template_pdf_url);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
-      const dadosStr: Record<string, string> = {};
       const data = fill.filled_data as Record<string, string>;
-      for (const [k, v] of Object.entries(data)) {
-        if (k === 'deferido_indeferido' || k === 'check_deferido' || k === 'check_indeferido') continue;
-        dadosStr[k] = String(v || '');
-      }
-      if (data.troca_emergencial === 'SIM') { dadosStr.check_troca_sim = 'V'; dadosStr.check_troca_nao = ''; }
-      else if (data.troca_emergencial === 'NAO') { dadosStr.check_troca_sim = ''; dadosStr.check_troca_nao = 'V'; }
+      const dadosStr = buildPdfData(data);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(templateDoc));
       const url = URL.createObjectURL(pdfBlob);
       window.open(url, '_blank');

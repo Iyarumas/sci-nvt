@@ -28,6 +28,20 @@ const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
 
 type AusenciaFerias = Pick<FeriasGozo, 'funcionarioId' | 'funcionarioNome' | 'equipe' | 'status' | 'dataInicio' | 'dataFim'>;
 
+function nomeKey(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function nomeBatePessoa(nome: string, pessoa: Pick<Bombeiro, 'nomeCompleto' | 'nomeGuerra'>): boolean {
+  const alvo = nomeKey(nome);
+  return nomeKey(pessoa.nomeCompleto) === alvo || nomeKey(pessoa.nomeGuerra) === alvo;
+}
+
 function formatDate(d: string) {
   if (!d) return '-';
   return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
@@ -247,14 +261,19 @@ function PTRBAForm({
     const map: Record<string, { substitutoNome: string; substitutoId: string; tipo: string }> = {};
     trocaFills.forEach((fl: any) => {
       const fd = fl.filled_data || {};
-      const dataSwap = fd.data_solicitada || (fl.created_at ? fl.created_at.split('T')[0] : '');
-      if (dataSwap !== form.data) return;
+      const dataSolicitada = String(fd.data_solicitada || '').slice(0, 10);
+      const dataFolgaSolicitado = String(fd.data_folga_solicitado || '').slice(0, 10);
+      const naDataSolicitada = dataSolicitada === form.data;
+      const naDataFolgaSolicitado = dataFolgaSolicitado === form.data;
+      if (!naDataSolicitada && !naDataFolgaSolicitado) return;
       const nomeSol = fd.nome_solicitante || '';
       const nomeSolic = fd.nome_solicitado || '';
-      const pessoaSol = bombeiros.find((b: any) => b.nomeCompleto === nomeSol || b.nomeGuerra === nomeSol);
-      const pessoaSolic = bombeiros.find((b: any) => b.nomeCompleto === nomeSolic || b.nomeGuerra === nomeSolic);
-      if (pessoaSol && pessoaSolic) {
+      const pessoaSol = bombeiros.find(b => nomeBatePessoa(nomeSol, b));
+      const pessoaSolic = bombeiros.find(b => nomeBatePessoa(nomeSolic, b));
+      if (pessoaSol && pessoaSolic && naDataSolicitada) {
         map[pessoaSol.id] = { substitutoNome: nomeSolic, substitutoId: pessoaSolic.id, tipo: 'troca' };
+      }
+      if (pessoaSol && pessoaSolic && naDataFolgaSolicitado) {
         map[pessoaSolic.id] = { substitutoNome: nomeSol, substitutoId: pessoaSol.id, tipo: 'troca' };
       }
     });

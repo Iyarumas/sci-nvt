@@ -55,10 +55,10 @@ const TROCA_PDF_POSITION_OVERRIDES = new Map<string, ReturnType<typeof pdfPositi
   ['cpf_solicitante', pdfPosition(158, 31.4, 36, 7, 10.5)],
   ['data_solicitada', pdfPosition(118, 40, 42, 7, 10.5)],
   ['funcao_solicitante', pdfPosition(114, 48.6, 44, 7, 11)],
-  ['motivo_troca', pdfPosition(18, 57.7, 172, 14.5, 10.5)],
-  ['nome_solicitado', pdfPosition(36, 83.2, 67, 7, 11)],
-  ['cpf_solicitado', pdfPosition(120, 83.2, 57, 7, 10.5)],
-  ['data_folga_solicitado', pdfPosition(156, 100.4, 28, 7, 10.5)],
+  ['motivo_troca', pdfPosition(10, 57.7, 180, 14.5, 10.5)],
+  ['nome_solicitado', pdfPosition(10, 82.5, 93, 7, 11)],
+  ['cpf_solicitado', pdfPosition(120, 82.5, 57, 7, 10.5)],
+  ['data_folga_solicitado', pdfPosition(151.2, 99.7, 36, 7, 10.5)],
   ['check_troca_sim', pdfPosition(49.1, 220.6, 4, 4, 16)],
   ['check_troca_nao', pdfPosition(72.8, 220.6, 4, 4, 16)],
   ['justificativa_emergencial', pdfPosition(12, 235, 182, 15, 10.5)],
@@ -615,6 +615,14 @@ export function Trocas() {
     for (const [k, v] of Object.entries(data)) {
       if (k === 'deferido_indeferido' || k.startsWith('check_')) continue;
       dadosStr[k] = String(v || '');
+    }
+
+    if (dadosStr.data_folga_solicitado) {
+      const dateValue = dadosStr.data_folga_solicitado;
+      const formattedDate = /^\d{4}-\d{2}-\d{2}$/.test(dateValue)
+        ? dateValue.split('-').reverse().join('/')
+        : dateValue;
+      dadosStr.data_folga_solicitado = `a ${formattedDate}`;
     }
 
     dadosStr.check_troca_sim = data.troca_emergencial === 'SIM' ? 'V' : '';

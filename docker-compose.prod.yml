@@ -19,6 +19,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        BUILD_COMMIT: ${DEPLOY_COMMIT:-local}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -48,6 +50,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
+        BUILD_COMMIT: ${DEPLOY_COMMIT:-local}
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     restart: unless-stopped
     environment:

@@ -75,14 +75,17 @@ jobs:
           git fetch --prune "$auth_repo_url" "$DEPLOY_BRANCH"
           git reset --hard FETCH_HEAD
           git clean -fd -e .env.production -e local-public-data.sql
+          export DEPLOY_COMMIT="$(git rev-parse HEAD)"
 
           if [ ! -f .env.production ]; then
             echo ".env.production is missing in $DEPLOY_PATH" >&2
             exit 1
           fi
 
-          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build postgres
+          echo "Deploying commit $DEPLOY_COMMIT"
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres
+          docker compose --env-file .env.production -f docker-compose.prod.yml build backend web
           docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backend npm run db:migrate
-          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build
           docker image prune -f
           REMOTE

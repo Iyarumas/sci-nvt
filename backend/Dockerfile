@@ -10,6 +10,8 @@ COPY frontend/package.json frontend/package.json
 RUN npm ci --workspace=backend --include-workspace-root
 
 COPY backend backend
+ARG BUILD_COMMIT=local
+ENV BUILD_COMMIT=${BUILD_COMMIT}
 RUN npm run build --workspace=backend
 
 FROM node:24-alpine AS runtime
@@ -32,4 +34,3 @@ WORKDIR /app/backend
 EXPOSE 3333
 
 CMD ["node", "dist/main.js"]
-

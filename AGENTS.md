@@ -30,6 +30,30 @@ Sempre que fizeres alterações que afetem a estrutura do projeto, deves atualiz
 - [ ] Mudei padrões de UI? → Atualizar exemplos de código
 - [ ] Mudei skills? → Atualizar lista de skills + combinações
 
+### Regra de Escopo e Seguranca Operacional
+
+Antes de qualquer implementacao, classificar explicitamente o pedido em uma destas areas:
+
+| Escopo | Quando usar | Pastas/arquivos comuns |
+|--------|-------------|------------------------|
+| `frontend` | Telas, componentes, rotas, estilos, validacoes de UI, services do React | `frontend/src/**`, `frontend/public/**`, `frontend/Dockerfile` |
+| `backend` | API NestJS, DTOs, controllers, services, migrations, consultas SQL, storage local | `backend/src/**`, `backend/database/**`, `backend/scripts/**`, `backend/Dockerfile` |
+| `infra/deploy` | Docker, PostgreSQL, Caddy, Oracle VM, GitHub Actions, variaveis de ambiente, dominio/HTTPS | `docker-compose*.yml`, `deploy/**`, `.github/workflows/**`, `.env*.example`, `DEPLOY_ORACLE.md` |
+| `ambos` | Mudancas que alteram contrato entre tela e API, modelo de dados usado pelo front, ou fluxo completo | `frontend/**` + `backend/**` + documentacao de API |
+
+Regras obrigatorias:
+- Se o escopo nao estiver claro e houver risco de afetar producao, banco, autenticacao, deploy ou dados, fazer uma pergunta curta antes de editar.
+- Em pedido apenas de `frontend`, nao alterar migrations, Docker, GitHub Actions, VM, Caddy ou banco sem necessidade comprovada.
+- Em pedido apenas de `backend`, nao alterar layout/UX do front sem necessidade comprovada de integracao.
+- Em pedido `infra/deploy`, tratar VM Oracle, Docker volumes, `.env.production`, dominio DuckDNS, HTTPS e workflow do GitHub Actions como area sensivel.
+- Nunca expor publicamente PostgreSQL (`5432`), pgAdmin (`5050`), backend direto (`3333`) ou Docker daemon (`2375/2376`).
+- O PostgreSQL de producao deve continuar interno no Docker; acesso externo ao sistema deve passar por Caddy em `80/443`.
+- Nao apagar volumes Docker, dumps, storage de PDFs, banco de producao ou arquivos em `/home/ubuntu/sci-nvt` sem autorizacao explicita e plano de backup.
+- Migrations devem ser progressivas, idempotentes quando possivel e sem perda de dados. Qualquer alteracao destrutiva precisa de backup e confirmacao do usuario.
+- Nunca commitar secrets, chaves SSH, senhas, tokens, dumps com dados sensiveis ou `.env.production`; usar apenas `.env.example`/`.env.production.example` com placeholders.
+- Antes de mudar contrato front/back, atualizar/consultar `API_ENDPOINTS.md` e validar chamadas afetadas.
+- Depois de alteracoes que possam afetar producao, validar build/typecheck/lint conforme o escopo e, quando aplicavel, confirmar API health e rota principal do front.
+
 ### Arquitetura de Dados
 ```
 Frontend components → frontend/src/services/*.ts → frontend/src/lib/supabase.ts (HTTP adapter) → backend NestJS → PostgreSQL
@@ -407,6 +431,9 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 ## Checklist Rápido
 
 ### Antes de qualquer alteração
+- [ ] Classifiquei o escopo: `frontend`, `backend`, `infra/deploy` ou `ambos`
+- [ ] Se houver impacto em VM, Docker, banco, migrations, GitHub Actions, dominio/HTTPS ou dados de producao, confirmei o risco antes de editar
+- [ ] Verifiquei que a mudanca nao abre portas internas (`5432`, `5050`, `3333`, `2375/2376`) nem expoe secrets
 - [ ] Li `API_ENDPOINTS.md` para entender o estado atual
 - [ ] Carreguei a skill adequada (preferir `rtk skill <nome>` quando disponível; se não existir, ler `.opencode/skills/<nome>/SKILL.md`)
 - [ ] Identifiquei os domínios afetados (types, services, pages)
@@ -426,6 +453,8 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 - [ ] Testei o fluxo completo (criar, listar, editar, excluir)
 
 ### Antes de commit/push
+- [ ] Se o push for para `main`, lembrei que isso dispara deploy automatico na VM Oracle
+- [ ] Para mudancas de risco (`infra/deploy`, migrations, auth, banco), validei backup/plano de rollback antes do push
 - [ ] `git status` — só os ficheiros esperados
 - [ ] `git diff` — sem secrets ou debug code
 - [ ] Mensagem de commit clara e concisa

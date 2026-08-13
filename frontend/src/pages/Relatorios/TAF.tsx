@@ -27,6 +27,49 @@ const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider te
 
 function fmt(d: string) { if (!d) return '-'; return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR'); }
 
+type TafPessoaForm = { nome: string; funcao: string; idade: number; tempo: string };
+type TafSlot = typeof SLOTS[number];
+
+function SlotLinha({
+  idx,
+  slot,
+  pessoa,
+  selectedIds,
+  onSelectPessoa,
+  onTempoChange,
+}: {
+  idx: number;
+  slot: TafSlot;
+  pessoa: TafPessoaForm;
+  selectedIds: Set<string>;
+  onSelectPessoa: (idx: number, nomeGuerra: string, funcao: string) => void;
+  onTempoChange: (idx: number, tempo: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-graphite-200/60 bg-white/70 px-3 py-2 dark:border-border-dark dark:bg-surface-card/70">
+      <span className="w-6 text-center text-xs font-bold text-graphite-400">{idx + 1}</span>
+      <div className="flex-1">
+        <SearchSelect
+          value={pessoa.nome}
+          onChange={v => onSelectPessoa(idx, v, slot.cargo)}
+          cargo={slot.cargo}
+          disabledIds={selectedIds}
+          placeholder="Selecione..."
+        />
+      </div>
+      <span className="w-14 text-center text-xs font-medium text-graphite-500">{slot.label}</span>
+      <span className="w-10 text-center text-xs text-graphite-400">{pessoa.idade || '-'}</span>
+      <input
+        type="text"
+        value={pessoa.tempo}
+        onChange={e => onTempoChange(idx, e.target.value)}
+        placeholder="MM:SS"
+        className="w-20 rounded-lg border border-graphite-300 bg-white px-2 py-1 text-center text-xs dark:border-border-dark dark:bg-surface-card"
+      />
+    </div>
+  );
+}
+
 export function TAF() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
   const location = useLocation();
@@ -50,7 +93,7 @@ export function TAF() {
   const [fTurno, setFTurno] = useState('');
   const [fTipo, setFTipo] = useState('');
 
-  const [fPessoas, setFPessoas] = useState<{ nome: string; funcao: string; idade: number; tempo: string }[]>(
+  const [fPessoas, setFPessoas] = useState<TafPessoaForm[]>(
     Array.from({ length: 10 }, () => ({ nome: '', funcao: '', idade: 0, tempo: '' }))
   );
   const [fObs, setFObs] = useState('');
@@ -85,9 +128,10 @@ export function TAF() {
     setFPessoas(prev => { const n = [...prev]; n[idx] = { ...n[idx], [field]: val }; return n; });
   }
 
-  function onSelectPessoa(idx: number, nomeGuerra: string) {
+  function onSelectPessoa(idx: number, nomeGuerra: string, funcao: string) {
     const b = bombeiros.find((bb: any) => bb.nomeGuerra === nomeGuerra);
     setP(idx, 'nome', nomeGuerra);
+    setP(idx, 'funcao', funcao);
     setP(idx, 'idade', b?.idade || 0);
   }
 
@@ -212,21 +256,6 @@ export function TAF() {
     await excluirTAF(id);
     await carregar();
     setDeleteConfirm(null);
-  }
-
-  function SlotLinha({ idx, slot }: { idx: number; slot: typeof SLOTS[number] }) {
-    const p = fPessoas[idx];
-    const selectedIds = new Set(fPessoas.filter((pp, ii) => pp.nome && ii !== idx).map(pp => { const b = bombeiros.find((bb: any) => bb.nomeGuerra === pp.nome); return b?.id || ''; }).filter(Boolean));
-    return (
-      <div className="flex items-center gap-2 rounded-xl border border-graphite-200/60 bg-white/70 px-3 py-2 dark:border-border-dark dark:bg-surface-card/70">
-        <span className="w-6 text-center text-xs font-bold text-graphite-400">{idx + 1}</span>
-        <div className="flex-1"><SearchSelect value={p.nome} onChange={v => onSelectPessoa(idx, v)} cargo={slot.cargo} disabledIds={selectedIds} placeholder="Selecione..." /></div>
-        <span className="w-14 text-center text-xs font-medium text-graphite-500">{slot.label}</span>
-        <span className="w-10 text-center text-xs text-graphite-400">{p.idade || '-'}</span>
-        <input type="text" value={p.tempo} onChange={e => setP(idx, 'tempo', e.target.value)} placeholder="MM:SS"
-          className="w-20 rounded-lg border border-graphite-300 bg-white px-2 py-1 text-xs text-center dark:border-border-dark dark:bg-surface-card" />
-      </div>
-    );
   }
 
   if (isRelatorioRoute && loadingContexto) {
@@ -366,7 +395,28 @@ export function TAF() {
                     <span className="w-10 text-center">Idade</span>
                     <span className="w-20 text-center">Tempo</span>
                   </div>
-                  {SLOTS.map(slot => <SlotLinha key={slot.i} idx={slot.i - 1} slot={slot} />)}
+                  {SLOTS.map(slot => {
+                    const idx = slot.i - 1;
+                    const selectedIds = new Set(fPessoas
+                      .filter((pp, ii) => pp.nome && ii !== idx)
+                      .map(pp => {
+                        const b = bombeiros.find((bb: any) => bb.nomeGuerra === pp.nome);
+                        return b?.id || '';
+                      })
+                      .filter(Boolean));
+
+                    return (
+                      <SlotLinha
+                        key={slot.i}
+                        idx={idx}
+                        slot={slot}
+                        pessoa={fPessoas[idx]}
+                        selectedIds={selectedIds}
+                        onSelectPessoa={onSelectPessoa}
+                        onTempoChange={(slotIdx, tempo) => setP(slotIdx, 'tempo', tempo)}
+                      />
+                    );
+                  })}
                 </div>
               </div>
 

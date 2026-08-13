@@ -68,7 +68,9 @@ function inputToRow(input: Partial<TPEPRInput>): Record<string, unknown> {
   if (input.turno !== undefined) row.turno = input.turno;
   if (input.observacoes !== undefined) row.observacoes = input.observacoes;
   if (input.chefeEquipe !== undefined) row.chefe_equipe = input.chefeEquipe;
-  if (input.participantes !== undefined) row.participantes = normalizarParticipantesTPEPR(input.participantes);
+  if (input.participantes !== undefined) {
+    row.participantes = JSON.stringify(normalizarParticipantesTPEPR(input.participantes));
+  }
   return row;
 }
 

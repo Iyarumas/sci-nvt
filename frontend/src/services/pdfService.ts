@@ -1,4 +1,149 @@
-import { PDFDocument, PDFTextField, PDFCheckBox, PDFDropdown, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, PDFTextField, PDFCheckBox, PDFDropdown, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+
+type TextAlign = 'left' | 'center' | 'right';
+
+interface PdfFieldPosition {
+  field_name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  font_size: number;
+  is_signature?: boolean;
+  field_type?: string;
+  page?: number;
+  text_align?: TextAlign;
+}
+
+function splitLongWord(font: PDFFont, word: string, size: number, maxWidth: number): string[] {
+  const chunks: string[] = [];
+  let current = '';
+  for (const char of word) {
+    const next = current + char;
+    if (current && font.widthOfTextAtSize(next, size) > maxWidth) {
+      chunks.push(current);
+      current = char;
+    } else {
+      current = next;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function wrapText(font: PDFFont, text: string, size: number, maxWidth: number): string[] {
+  const lines: string[] = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    const words = rawLine.trim().split(/\s+/).filter(Boolean);
+    let current = '';
+    for (const word of words) {
+      const wordParts = font.widthOfTextAtSize(word, size) > maxWidth
+        ? splitLongWord(font, word, size, maxWidth)
+        : [word];
+      for (const part of wordParts) {
+        const next = current ? `${current} ${part}` : part;
+        if (current && font.widthOfTextAtSize(next, size) > maxWidth) {
+          lines.push(current);
+          current = part;
+        } else {
+          current = next;
+        }
+      }
+    }
+    if (current) lines.push(current);
+  }
+  return lines.length > 0 ? lines : [''];
+}
+
+function truncateText(font: PDFFont, text: string, size: number, maxWidth: number): string {
+  let out = text;
+  while (out.length > 3 && font.widthOfTextAtSize(`${out.slice(0, -1)}...`, size) > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return out.length < text.length ? `${out}...` : out;
+}
+
+function drawTextFit(
+  page: PDFPage,
+  font: PDFFont,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  size: number,
+  align: TextAlign = 'left',
+) {
+  const padX = 2;
+  const maxWidth = Math.max(4, width - padX * 2);
+  const maxHeight = Math.max(size, height);
+  let fontSize = size;
+  let lineHeight = fontSize * 1.18;
+  let lines = wrapText(font, value, fontSize, maxWidth);
+
+  while (fontSize > 6 && lines.length * lineHeight > maxHeight) {
+    fontSize -= 0.5;
+    lineHeight = fontSize * 1.18;
+    lines = wrapText(font, value, fontSize, maxWidth);
+  }
+
+  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    lines[lines.length - 1] = truncateText(font, lines[lines.length - 1], fontSize, maxWidth);
+  }
+
+  lines.forEach((line, index) => {
+    const lineWidth = font.widthOfTextAtSize(line, fontSize);
+    const textX = align === 'center'
+      ? x + width / 2 - lineWidth / 2
+      : align === 'right'
+        ? x + width - padX - lineWidth
+        : x + padX;
+    page.drawText(line, {
+      x: textX,
+      y: y - index * lineHeight,
+      size: fontSize,
+      font,
+      color: rgb(0, 0, 0),
+    });
+  });
+}
+
+function drawCleanCheckbox(page: PDFPage, x: number, y: number, size: number, checked: boolean) {
+  const boxSize = Math.max(7, Math.min(9, size * 0.5));
+  const boxX = x + 1.4;
+  const boxY = y - 0.2;
+  const coverPad = 2.6;
+  page.drawRectangle({
+    x: boxX - coverPad,
+    y: boxY - coverPad,
+    width: boxSize + coverPad * 2,
+    height: boxSize + coverPad * 2,
+    color: rgb(1, 1, 1),
+  });
+  page.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxSize,
+    height: boxSize,
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.7,
+  });
+  if (!checked) return;
+  page.drawLine({
+    start: { x: boxX + boxSize * 0.22, y: boxY + boxSize * 0.48 },
+    end: { x: boxX + boxSize * 0.42, y: boxY + boxSize * 0.27 },
+    thickness: 1,
+    color: rgb(0, 0, 0),
+  });
+  page.drawLine({
+    start: { x: boxX + boxSize * 0.42, y: boxY + boxSize * 0.27 },
+    end: { x: boxX + boxSize * 0.8, y: boxY + boxSize * 0.72 },
+    thickness: 1,
+    color: rgb(0, 0, 0),
+  });
+}
 
 export async function lerCamposPdf(pdfBytes: ArrayBuffer): Promise<string[]> {
   const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -10,7 +155,7 @@ export async function lerCamposPdf(pdfBytes: ArrayBuffer): Promise<string[]> {
 export async function preencherPdf(
   pdfBytes: ArrayBuffer,
   dados: Record<string, string>,
-  fieldPositions?: { field_name: string; x: number; y: number; width: number; height: number; font_size: number; is_signature?: boolean; field_type?: string; page?: number }[],
+  fieldPositions?: PdfFieldPosition[],
 ): Promise<Blob> {
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const pages = pdfDoc.getPages();
@@ -43,7 +188,8 @@ export async function preencherPdf(
   if (fieldPositions && fieldPositions.length > 0) {
     for (const pos of fieldPositions) {
       let value = dados[pos.field_name];
-      if (!value || value.trim() === '') continue;
+      const isCheckField = pos.field_name.startsWith('check_');
+      if ((!value || value.trim() === '') && !isCheckField) continue;
       if (pos.is_signature) continue;
       // Campos checkbox/select não devem ser desenhados como texto:
       // a marcação visual fica nos campos correspondentes (check_*).
@@ -59,16 +205,14 @@ export async function preencherPdf(
       const fontSize = pos.font_size || 10;
       const VIEWPORT_SCALE = 1.5;
       const pdfX = pos.x / VIEWPORT_SCALE;
+      const pdfW = pos.width / VIEWPORT_SCALE;
+      const pdfH = pos.height / VIEWPORT_SCALE;
       const pdfY = pageHeight - (pos.y / VIEWPORT_SCALE) - fontSize - 2;
 
-      if (value === 'V' && pos.field_name.startsWith('check_')) {
-        const cs = fontSize * 0.5;
-        const cx = pdfX + 2;
-        const cy = pdfY + cs * 0.2;
-        page.drawLine({ start: { x: cx, y: cy + cs * 0.5 }, end: { x: cx + cs * 0.4, y: cy }, thickness: fontSize * 0.12, color: rgb(0, 0, 0) });
-        page.drawLine({ start: { x: cx + cs * 0.4, y: cy }, end: { x: cx + cs, y: cy + cs * 0.7 }, thickness: fontSize * 0.12, color: rgb(0, 0, 0) });
+      if (isCheckField) {
+        drawCleanCheckbox(page, pdfX, pdfY, fontSize, value === 'V');
       } else {
-        page.drawText(value, { x: pdfX + 2, y: pdfY, size: fontSize, font, color: rgb(0, 0, 0) });
+        drawTextFit(page, font, value, pdfX, pdfY, pdfW, pdfH, fontSize, pos.text_align);
       }
     }
   }

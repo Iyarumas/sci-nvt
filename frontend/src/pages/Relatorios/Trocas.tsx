@@ -38,7 +38,7 @@ const template = DOCUMENT_TEMPLATES[0];
 const TROCA_TEMPLATE_PDF_URL = '/templates/troca.pdf';
 const MM_TO_VIEWPORT = 2.8346 * 1.5;
 
-function pdfPosition(xMm: number, yMm: number, widthMm: number, heightMm: number, fontSize = 8) {
+function pdfPosition(xMm: number, yMm: number, widthMm: number, heightMm: number, fontSize = 8, textAlign?: 'left' | 'center' | 'right') {
   return {
     page: 1,
     x: xMm * MM_TO_VIEWPORT,
@@ -46,26 +46,27 @@ function pdfPosition(xMm: number, yMm: number, widthMm: number, heightMm: number
     width: widthMm * MM_TO_VIEWPORT,
     height: heightMm * MM_TO_VIEWPORT,
     font_size: fontSize,
+    text_align: textAlign,
   };
 }
 
 const TROCA_PDF_POSITION_OVERRIDES = new Map<string, ReturnType<typeof pdfPosition>>([
-  ['nome_solicitante', pdfPosition(17, 32.5, 104, 5, 8)],
-  ['cpf_solicitante', pdfPosition(158, 32.5, 36, 5, 8)],
-  ['data_solicitada', pdfPosition(118, 41.2, 42, 5, 8)],
-  ['funcao_solicitante', pdfPosition(113.5, 50, 45, 5, 8)],
-  ['motivo_troca', pdfPosition(19, 59.2, 172, 12, 7.5)],
-  ['nome_solicitado', pdfPosition(36, 84.6, 67, 5, 8)],
-  ['cpf_solicitado', pdfPosition(114, 84.6, 63, 5, 8)],
-  ['data_folga_solicitado', pdfPosition(154, 101.8, 30, 5, 8)],
-  ['check_troca_sim', pdfPosition(47.5, 221, 5, 5, 18)],
-  ['check_troca_nao', pdfPosition(71, 221, 5, 5, 18)],
-  ['justificativa_emergencial', pdfPosition(12, 236.7, 182, 12, 8)],
-  ['data_autentique_1', pdfPosition(41, 154.4, 30, 5, 8)],
-  ['data_autentique_2', pdfPosition(140, 154.4, 30, 5, 8)],
-  ['data_autentique_3', pdfPosition(76, 241.5, 30, 5, 8)],
-  ['check_deferido', pdfPosition(10.8, 250, 5, 5, 18)],
-  ['check_indeferido', pdfPosition(10.8, 256.1, 5, 5, 18)],
+  ['nome_solicitante', pdfPosition(18, 31.4, 101, 7, 11)],
+  ['cpf_solicitante', pdfPosition(158, 31.4, 36, 7, 10.5)],
+  ['data_solicitada', pdfPosition(118, 40, 42, 7, 10.5)],
+  ['funcao_solicitante', pdfPosition(114, 48.6, 44, 7, 11)],
+  ['motivo_troca', pdfPosition(18, 57.7, 172, 14.5, 10.5)],
+  ['nome_solicitado', pdfPosition(36, 83.2, 67, 7, 11)],
+  ['cpf_solicitado', pdfPosition(120, 83.2, 57, 7, 10.5)],
+  ['data_folga_solicitado', pdfPosition(156, 100.4, 28, 7, 10.5)],
+  ['check_troca_sim', pdfPosition(49.1, 220.6, 4, 4, 16)],
+  ['check_troca_nao', pdfPosition(72.8, 220.6, 4, 4, 16)],
+  ['justificativa_emergencial', pdfPosition(12, 235, 182, 15, 10.5)],
+  ['data_autentique_1', pdfPosition(42, 153.1, 30, 7, 10.5)],
+  ['data_autentique_2', pdfPosition(141, 153.1, 30, 7, 10.5)],
+  ['data_autentique_3', pdfPosition(76, 240, 30, 7, 10.5)],
+  ['check_deferido', pdfPosition(11.9, 250.6, 4, 4, 16)],
+  ['check_indeferido', pdfPosition(11.9, 256.7, 4, 4, 16)],
   ['assinatura_solicitante', pdfPosition(22, 147, 65, 5)],
   ['assinatura_solicitado', pdfPosition(117, 147, 65, 5)],
   ['assinatura_chefe_solicitante', pdfPosition(22, 188, 65, 5)],
@@ -96,6 +97,7 @@ function fieldPositionsFromDoc(doc: DocumentWithFields) {
       is_signature: field.is_signature,
       field_type: field.field_type,
       page: field.page,
+      text_align: fallback?.text_align,
     };
   });
 }

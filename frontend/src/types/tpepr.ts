@@ -1,4 +1,5 @@
 import type { Cargo, Equipe } from './bombeiro';
+import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../utils/tempo';
 
 export type TPEPRCargo = Extract<Cargo, 'BA-CE' | 'BA-LR' | 'BA-MC' | 'BA-2'>;
 
@@ -54,10 +55,10 @@ export function criarParticipantesTPEPRVazios(): TPEPRParticipante[] {
     nomeCompleto: '',
     nomeGuerra: '',
     funcao: slot.cargo,
-    primeiraTomada: '',
-    segundaTomada: '',
-    terceiraTomada: '',
-    quartaTomada: '',
+    primeiraTomada: TEMPO_CRONOMETRO_ZERO,
+    segundaTomada: TEMPO_CRONOMETRO_ZERO,
+    terceiraTomada: TEMPO_CRONOMETRO_ZERO,
+    quartaTomada: TEMPO_CRONOMETRO_ZERO,
   }));
 }
 
@@ -81,23 +82,25 @@ export function normalizarParticipantesTPEPR(participantes?: TPEPRParticipante[]
   const lista = Array.isArray(participantes) ? participantes : [];
   return base.map((slot, index) => {
     const item = lista[index];
-    const segundaTomada = item?.segundaTomada || '';
-    const terceiraTomada = item?.terceiraTomada || '';
+    const primeiraTomada = mascararTempoTPEPR(item?.primeiraTomada || '');
+    const segundaTomada = mascararTempoTPEPR(item?.segundaTomada || '');
+    const terceiraTomada = mascararTempoTPEPR(item?.terceiraTomada || '');
     return {
       ...slot,
       ...item,
       funcao: item?.funcao || slot.funcao,
+      primeiraTomada,
       segundaTomada,
       terceiraTomada,
-      quartaTomada: item?.quartaTomada || calcularQuartaTomada(segundaTomada, terceiraTomada),
+      quartaTomada: item?.quartaTomada
+        ? mascararTempoTPEPR(item.quartaTomada)
+        : calcularQuartaTomada(segundaTomada, terceiraTomada),
     };
   });
 }
 
 export function mascararTempoTPEPR(valor: string): string {
-  const digitos = valor.replace(/\D/g, '').slice(0, 4);
-  if (digitos.length <= 2) return digitos;
-  return `${digitos.slice(0, 2)}:${digitos.slice(2)}`;
+  return mascararTempoCronometro(valor);
 }
 
 export function parseTempoParaSegundos(valor: string): number | null {

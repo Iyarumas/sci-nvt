@@ -42,6 +42,7 @@ import {
   TPEPR_PARTICIPANTE_SLOTS,
 } from '../../types/tpepr';
 import type { TPEPRInput, TPEPRParticipante, TreinamentoTPEPR } from '../../types/tpepr';
+import { TEMPO_CRONOMETRO_ZERO } from '../../utils/tempo';
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
@@ -63,6 +64,13 @@ function participantePreenchido(p: TPEPRParticipante) {
   return !!(p.pessoaId || p.nomeCompleto || p.nomeGuerra);
 }
 
+function moverCursorParaFim(event: { currentTarget: HTMLInputElement }) {
+  const input = event.currentTarget;
+  requestAnimationFrame(() => {
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+}
+
 function TempoInput({
   label,
   value,
@@ -79,11 +87,12 @@ function TempoInput({
       <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">{label}</span>
       <input
         type="text"
-        value={value}
+        value={value || TEMPO_CRONOMETRO_ZERO}
         onChange={event => onChange?.(mascararTempoTPEPR(event.target.value))}
+        onFocus={moverCursorParaFim}
+        onClick={moverCursorParaFim}
         readOnly={readOnly}
         inputMode="numeric"
-        maxLength={5}
         placeholder="MM:SS"
         className={`${inputCls} text-center font-semibold ${readOnly ? 'bg-graphite-50 text-graphite-500 dark:bg-surface-hover' : ''}`}
       />
@@ -195,10 +204,10 @@ export function TPEPR() {
           nomeCompleto: '',
           nomeGuerra: '',
           funcao: slot.cargo,
-          primeiraTomada: '',
-          segundaTomada: '',
-          terceiraTomada: '',
-          quartaTomada: '',
+          primeiraTomada: TEMPO_CRONOMETRO_ZERO,
+          segundaTomada: TEMPO_CRONOMETRO_ZERO,
+          terceiraTomada: TEMPO_CRONOMETRO_ZERO,
+          quartaTomada: TEMPO_CRONOMETRO_ZERO,
         };
       }
       return {
@@ -206,10 +215,10 @@ export function TPEPR() {
         nomeCompleto: bombeiro.nomeCompleto,
         nomeGuerra: bombeiro.nomeGuerra,
         funcao: slot.cargo,
-        primeiraTomada: '',
-        segundaTomada: '',
-        terceiraTomada: '',
-        quartaTomada: '',
+        primeiraTomada: TEMPO_CRONOMETRO_ZERO,
+        segundaTomada: TEMPO_CRONOMETRO_ZERO,
+        terceiraTomada: TEMPO_CRONOMETRO_ZERO,
+        quartaTomada: TEMPO_CRONOMETRO_ZERO,
       };
     });
   }
@@ -359,10 +368,10 @@ export function TPEPR() {
         nomeCompleto: '',
         nomeGuerra: '',
         funcao: slot?.cargo || '',
-        primeiraTomada: '',
-        segundaTomada: '',
-        terceiraTomada: '',
-        quartaTomada: '',
+        primeiraTomada: TEMPO_CRONOMETRO_ZERO,
+        segundaTomada: TEMPO_CRONOMETRO_ZERO,
+        terceiraTomada: TEMPO_CRONOMETRO_ZERO,
+        quartaTomada: TEMPO_CRONOMETRO_ZERO,
       };
       return lista;
     });

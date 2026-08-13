@@ -12,6 +12,7 @@ import { listarAtivos } from '../../services/bombeiroService';
 import { resolverEfetivo } from '../../services/vigenciaSubstituicaoService';
 import { listarTAFs, criarTAF, atualizarTAF, excluirTAF, obterProximoNumero } from '../../services/tafService';
 import type { TreinamentoTAF } from '../../types/taf';
+import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const TIPO_TAF = ['TAF-1', 'TAF-2'];
@@ -29,6 +30,17 @@ function fmt(d: string) { if (!d) return '-'; return new Date(d + 'T12:00:00').t
 
 type TafPessoaForm = { nome: string; funcao: string; idade: number; tempo: string };
 type TafSlot = typeof SLOTS[number];
+
+function criarPessoasTAFVazias(): TafPessoaForm[] {
+  return Array.from({ length: 10 }, () => ({ nome: '', funcao: '', idade: 0, tempo: TEMPO_CRONOMETRO_ZERO }));
+}
+
+function moverCursorParaFim(event: { currentTarget: HTMLInputElement }) {
+  const input = event.currentTarget;
+  requestAnimationFrame(() => {
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+}
 
 function SlotLinha({
   idx,
@@ -61,8 +73,11 @@ function SlotLinha({
       <span className="w-10 text-center text-xs text-graphite-400">{pessoa.idade || '-'}</span>
       <input
         type="text"
-        value={pessoa.tempo}
-        onChange={e => onTempoChange(idx, e.target.value)}
+        value={pessoa.tempo || TEMPO_CRONOMETRO_ZERO}
+        onChange={e => onTempoChange(idx, mascararTempoCronometro(e.target.value))}
+        onFocus={moverCursorParaFim}
+        onClick={moverCursorParaFim}
+        inputMode="numeric"
         placeholder="MM:SS"
         className="w-20 rounded-lg border border-graphite-300 bg-white px-2 py-1 text-center text-xs dark:border-border-dark dark:bg-surface-card"
       />
@@ -94,7 +109,7 @@ export function TAF() {
   const [fTipo, setFTipo] = useState('');
 
   const [fPessoas, setFPessoas] = useState<TafPessoaForm[]>(
-    Array.from({ length: 10 }, () => ({ nome: '', funcao: '', idade: 0, tempo: '' }))
+    criarPessoasTAFVazias()
   );
   const [fObs, setFObs] = useState('');
   const [fChefeEquipe, setFChefeEquipe] = useState('');
@@ -138,7 +153,7 @@ export function TAF() {
   function resetForm() {
     const equipePadrao = canManageGlobal ? '' : equipeEfetiva || '';
     setFEquipe(equipePadrao); setFNumero(0); setFAno(''); setFData(''); setFHora(''); setFTurno(turnoAuto(equipePadrao)); setFTipo('');
-    setFPessoas(Array.from({ length: 10 }, () => ({ nome: '', funcao: '', idade: 0, tempo: '' })));
+    setFPessoas(criarPessoasTAFVazias());
     setFObs('');
     setFChefeEquipe('');
   }
@@ -218,7 +233,7 @@ export function TAF() {
     }
     setEditando(r);
     setFEquipe(r.equipe); setFNumero(r.numero); setFAno(r.ano); setFData(r.data); setFHora(r.hora); setFTurno(r.turno); setFTipo(r.tipoTaf);
-    setFPessoas(Array.from({ length: 10 }, (_, i) => ({ nome: (r as any)[`p${i+1}Nome`] || '', funcao: (r as any)[`p${i+1}Funcao`] || '', idade: (r as any)[`p${i+1}Idade`] || 0, tempo: (r as any)[`p${i+1}Tempo`] || '' })));
+    setFPessoas(Array.from({ length: 10 }, (_, i) => ({ nome: (r as any)[`p${i+1}Nome`] || '', funcao: (r as any)[`p${i+1}Funcao`] || '', idade: (r as any)[`p${i+1}Idade`] || 0, tempo: mascararTempoCronometro((r as any)[`p${i+1}Tempo`] || '') })));
     setFObs(r.observacoes);
     setFChefeEquipe(r.chefeEquipe || '');
     setFormOpen(true);
@@ -239,7 +254,7 @@ export function TAF() {
     try {
       const data: any = { equipe: equipeAlvo, numero: fNumero, ano: fAno, data: fData, hora: fHora, turno: turnoAuto(equipeAlvo), tipoTaf: fTipo, observacoes: fObs, chefeEquipe: fChefeEquipe || user?.name || '' };
       for (let i = 0; i < 10; i++) {
-        data[`p${i+1}Nome`] = fPessoas[i].nome; data[`p${i+1}Funcao`] = fPessoas[i].funcao; data[`p${i+1}Idade`] = fPessoas[i].idade; data[`p${i+1}Tempo`] = fPessoas[i].tempo;
+        data[`p${i+1}Nome`] = fPessoas[i].nome; data[`p${i+1}Funcao`] = fPessoas[i].funcao; data[`p${i+1}Idade`] = fPessoas[i].idade; data[`p${i+1}Tempo`] = mascararTempoCronometro(fPessoas[i].tempo);
       }
       if (editando) { await atualizarTAF(editando.id, data); } else { await criarTAF(data); }
       await carregar(); setFormOpen(false);

@@ -22,7 +22,7 @@ import { PageTitle } from '../../components/layout/PageTitle';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarAtivos } from '../../services/bombeiroService';
-import { resolverEfetivo } from '../../services/vigenciaSubstituicaoService';
+import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import {
   atualizarTPEPR,
   criarTPEPR,
@@ -172,15 +172,19 @@ export function TPEPR() {
   async function montarPoolParticipantes(equipe: string, data: string): Promise<Bombeiro[]> {
     if (!equipe || !data) return bombeiros.filter(b => b.equipe === equipe && !b.dataDesligamento);
 
-    const efetivo = await resolverEfetivo(equipe, data);
-    const linhas = [...efetivo.efetivos, ...efetivo.substitutosExternos]
-      .filter(item => !item.emFerias)
+    const efetivo = await resolverEfetivoOperacional(equipe, data);
+    const linhas = efetivo
       .map(item => ({
         ...item.bombeiro,
         cargo: item.cargoExercido as Cargo,
       }));
 
     return ordenarParticipantesTPEPR(linhas);
+  }
+
+  function nomeChefePorEquipe(pool: Bombeiro[]) {
+    const chefe = pool.find(b => b.cargo === 'BA-CE');
+    return chefe?.nomeGuerra || chefe?.nomeCompleto || '';
   }
 
   function gerarParticipantesPorPool(pool: Bombeiro[]) {
@@ -233,8 +237,7 @@ export function TPEPR() {
         if (!active) return;
         setOpcoesParticipantes(pool);
         if (!editando) {
-          const baCe = pool.find(b => b.cargo === 'BA-CE');
-          if (baCe) setFChefeEquipe(baCe.nomeGuerra || baCe.nomeCompleto);
+          setFChefeEquipe(nomeChefePorEquipe(pool));
           setFParticipantes(gerarParticipantesPorPool(pool));
         }
       } catch (err) {
@@ -275,7 +278,7 @@ export function TPEPR() {
     setFHora('');
     setFTurno(turnoAuto(equipePadrao));
     setFObs('');
-    setFChefeEquipe(user?.name || '');
+    setFChefeEquipe('');
     setFParticipantes(criarParticipantesTPEPRVazios());
     setOpcoesParticipantes([]);
   }
@@ -304,6 +307,7 @@ export function TPEPR() {
     try {
       const pool = await montarPoolParticipantes(fEquipe, fData);
       setOpcoesParticipantes(pool);
+      setFChefeEquipe(nomeChefePorEquipe(pool));
       setFParticipantes(gerarParticipantesPorPool(pool));
     } catch (err) {
       alert('Erro ao preencher participantes: ' + mensagemErro(err));
@@ -476,18 +480,21 @@ export function TPEPR() {
         </div>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.7fr)_repeat(4,minmax(88px,0.5fr))_auto]">
-          <SearchSelect
-            value={participante.nomeGuerra}
-            onChange={valor => selecionarPessoa(index, valor)}
-            cargo={slot.cargo}
-            options={opcoesParticipantes}
-            valueField="nomeGuerra"
-            showCargo
-            showEquipe
-            displayMode="operational"
-            disabledIds={selectedIds}
-            placeholder="Selecione o bombeiro"
-          />
+          <div className="min-w-0">
+            <label className={labelCls}>Bombeiro</label>
+            <SearchSelect
+              value={participante.nomeGuerra}
+              onChange={valor => selecionarPessoa(index, valor)}
+              cargo={slot.cargo}
+              options={opcoesParticipantes}
+              valueField="nomeGuerra"
+              showCargo
+              showEquipe
+              displayMode="operational"
+              disabledIds={selectedIds}
+              placeholder="Selecione o bombeiro"
+            />
+          </div>
           <TempoInput label="1a tomada" value={participante.primeiraTomada} onChange={valor => atualizarParticipante(index, 'primeiraTomada', valor)} />
           <TempoInput label="2a tomada" value={participante.segundaTomada} onChange={valor => atualizarParticipante(index, 'segundaTomada', valor)} />
           <TempoInput label="3a tomada" value={participante.terceiraTomada} onChange={valor => atualizarParticipante(index, 'terceiraTomada', valor)} />
@@ -495,7 +502,7 @@ export function TPEPR() {
           <button
             type="button"
             onClick={() => limparParticipante(index)}
-            className="self-end rounded-xl p-2 text-red-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+            className="mt-6 self-start rounded-xl p-2 text-red-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
             title="Limpar participante"
           >
             <Trash2 className="h-4 w-4" />
@@ -674,7 +681,12 @@ export function TPEPR() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
                 <div>
                   <label className={labelCls}>Equipe</label>
-                  <select value={fEquipe} onChange={e => { setFEquipe(e.target.value); setFTurno(turnoAuto(e.target.value)); }} disabled={!canManageGlobal} className={inputCls}>
+                  <select value={fEquipe} onChange={e => {
+                    const equipe = e.target.value;
+                    setFEquipe(equipe);
+                    setFTurno(turnoAuto(equipe));
+                    if (!editando) setFChefeEquipe('');
+                  }} disabled={!canManageGlobal} className={inputCls}>
                     <option value="">Selecione</option>
                     {equipesFormulario.map(eq => <option key={eq} value={eq}>{eq}</option>)}
                   </select>

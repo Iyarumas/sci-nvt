@@ -1,18 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Target,
-  AlertTriangle, Users, Lock, Download,
+  AlertTriangle, Users, Lock, Download, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
-import { SearchSelect } from '../../components/ui/SearchSelect';
+import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarAtivos } from '../../services/bombeiroService';
-import { resolverEfetivo } from '../../services/vigenciaSubstituicaoService';
+import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { listarTAFs, criarTAF, atualizarTAF, excluirTAF, obterProximoNumero } from '../../services/tafService';
 import { baixarTAFPdf } from '../../services/tafPdfService';
 import type { TreinamentoTAF } from '../../types/taf';
+import type { Bombeiro } from '../../types/bombeiro';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
@@ -33,11 +34,40 @@ function mensagemErro(err: unknown) {
   return err instanceof Error ? err.message : 'Erro inesperado';
 }
 
-type TafPessoaForm = { nome: string; funcao: string; idade: number; tempo: string };
+function encontrarBombeiroPorNome(bombeiros: Bombeiro[], nome: string) {
+  const normalizado = nome.trim().toLocaleLowerCase('pt-BR');
+  return bombeiros.find(b =>
+    b.nomeCompleto.toLocaleLowerCase('pt-BR') === normalizado ||
+    b.nomeGuerra.toLocaleLowerCase('pt-BR') === normalizado
+  );
+}
+
+type TafPessoaForm = { pessoaId: string; nome: string; nomeGuerra: string; funcao: string; idade: number; tempo: string };
 type TafSlot = typeof SLOTS[number];
 
 function criarPessoasTAFVazias(): TafPessoaForm[] {
-  return Array.from({ length: 10 }, () => ({ nome: '', funcao: '', idade: 0, tempo: TEMPO_CRONOMETRO_ZERO }));
+  return Array.from({ length: 10 }, () => ({ pessoaId: '', nome: '', nomeGuerra: '', funcao: '', idade: 0, tempo: TEMPO_CRONOMETRO_ZERO }));
+}
+
+function pessoasDoRegistro(registro: TreinamentoTAF, bombeiros: Bombeiro[]): TafPessoaForm[] {
+  return Array.from({ length: 10 }, (_, index) => {
+    const slot = index + 1;
+    const data = registro as unknown as Record<string, string | number>;
+    const nome = String(data[`p${slot}Nome`] || '');
+    const bombeiro = encontrarBombeiroPorNome(bombeiros, nome);
+    return {
+      pessoaId: bombeiro?.id || '',
+      nome: bombeiro?.nomeCompleto || nome,
+      nomeGuerra: bombeiro?.nomeGuerra || nome,
+      funcao: String(data[`p${slot}Funcao`] || ''),
+      idade: Number(data[`p${slot}Idade`] || bombeiro?.idade || 0),
+      tempo: String(data[`p${slot}Tempo`] || ''),
+    };
+  });
+}
+
+function pessoaPreenchida(pessoa: TafPessoaForm) {
+  return !!(pessoa.pessoaId || pessoa.nome || pessoa.nomeGuerra);
 }
 
 function moverCursorParaFim(event: { currentTarget: HTMLInputElement }) {
@@ -52,40 +82,72 @@ function SlotLinha({
   slot,
   pessoa,
   selectedIds,
+  options,
   onSelectPessoa,
   onTempoChange,
+  onClearPessoa,
 }: {
   idx: number;
   slot: TafSlot;
   pessoa: TafPessoaForm;
   selectedIds: Set<string>;
-  onSelectPessoa: (idx: number, nomeGuerra: string, funcao: string) => void;
+  options: AtivoItem[];
+  onSelectPessoa: (idx: number, nomeSelecionado: string, funcao: string) => void;
   onTempoChange: (idx: number, tempo: string) => void;
+  onClearPessoa: (idx: number) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-graphite-200/60 bg-white/70 px-3 py-2 dark:border-border-dark dark:bg-surface-card/70">
-      <span className="w-6 text-center text-xs font-bold text-graphite-400">{idx + 1}</span>
-      <div className="flex-1">
-        <SearchSelect
-          value={pessoa.nome}
-          onChange={v => onSelectPessoa(idx, v, slot.cargo)}
-          cargo={slot.cargo}
-          disabledIds={selectedIds}
-          placeholder="Selecione..."
-        />
+    <div className="rounded-xl border border-graphite-200/60 bg-white/80 p-3 dark:border-border-dark dark:bg-surface-card/80">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-aviation-50 text-xs font-black text-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">{idx + 1}</span>
+        <span className="rounded-lg border border-graphite-200 bg-graphite-50 px-2 py-1 text-xs font-bold text-graphite-700 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-200">{slot.label}</span>
+        {pessoa.nome && (
+          <span className="min-w-0 truncate text-xs text-graphite-500 dark:text-graphite-400">{pessoa.nome}</span>
+        )}
       </div>
-      <span className="w-14 text-center text-xs font-medium text-graphite-500">{slot.label}</span>
-      <span className="w-10 text-center text-xs text-graphite-400">{pessoa.idade || '-'}</span>
-      <input
-        type="text"
-        value={pessoa.tempo || TEMPO_CRONOMETRO_ZERO}
-        onChange={e => onTempoChange(idx, mascararTempoCronometro(e.target.value))}
-        onFocus={moverCursorParaFim}
-        onClick={moverCursorParaFim}
-        inputMode="numeric"
-        placeholder="MM:SS"
-        className="w-20 rounded-lg border border-graphite-300 bg-white px-2 py-1 text-center text-xs dark:border-border-dark dark:bg-surface-card"
-      />
+
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(72px,0.35fr)_minmax(96px,0.45fr)_auto]">
+        <div className="min-w-0">
+          <label className={labelCls}>Bombeiro</label>
+          <SearchSelect
+            value={pessoa.nomeGuerra || pessoa.nome}
+            onChange={v => onSelectPessoa(idx, v, slot.cargo)}
+            cargo={slot.cargo}
+            options={options}
+            valueField="nomeGuerra"
+            showCargo
+            showEquipe
+            displayMode="operational"
+            disabledIds={selectedIds}
+            placeholder="Selecione o bombeiro"
+          />
+        </div>
+        <div>
+          <label className={labelCls}>Idade</label>
+          <input value={pessoa.idade || ''} disabled className={`${inputCls} opacity-60`} />
+        </div>
+        <div>
+          <label className={labelCls}>Tempo</label>
+          <input
+            type="text"
+            value={pessoa.tempo || TEMPO_CRONOMETRO_ZERO}
+            onChange={e => onTempoChange(idx, mascararTempoCronometro(e.target.value))}
+            onFocus={moverCursorParaFim}
+            onClick={moverCursorParaFim}
+            inputMode="numeric"
+            placeholder="MM:SS"
+            className="w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-center text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => onClearPessoa(idx)}
+          className="mt-6 self-start rounded-xl p-2 text-red-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+          title="Limpar participante"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -96,7 +158,7 @@ export function TAF() {
   const isRelatorioRoute = location.pathname.startsWith('/relatorios');
   const canCreate = canManageGlobal || !!equipeEfetiva;
   const [registros, setRegistros] = useState<TreinamentoTAF[]>([]);
-  const [bombeiros, setBombeiros] = useState<any[]>([]);
+  const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
@@ -105,6 +167,8 @@ export function TAF() {
   const [saving, setSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [expandidoId, setExpandidoId] = useState<string | null>(null);
+  const [opcoesParticipantes, setOpcoesParticipantes] = useState<AtivoItem[]>([]);
 
   const [fEquipe, setFEquipe] = useState('');
   const [fNumero, setFNumero] = useState(0);
@@ -145,79 +209,107 @@ export function TAF() {
 
   const stats = useMemo(() => ({ total: registros.length }), [registros]);
 
-  function setP(idx: number, field: 'nome' | 'funcao' | 'idade' | 'tempo', val: any) {
+  function setP(idx: number, field: keyof TafPessoaForm, val: any) {
     setFPessoas(prev => { const n = [...prev]; n[idx] = { ...n[idx], [field]: val }; return n; });
   }
 
-  function onSelectPessoa(idx: number, nomeGuerra: string, funcao: string) {
-    const b = bombeiros.find((bb: any) => bb.nomeGuerra === nomeGuerra);
-    setP(idx, 'nome', nomeGuerra);
+  function onSelectPessoa(idx: number, nomeSelecionado: string, funcao: string) {
+    const opcao = opcoesParticipantes.find(item => item.nomeGuerra === nomeSelecionado || item.nomeCompleto === nomeSelecionado);
+    const b = (opcao ? bombeiros.find(item => item.id === opcao.id) : undefined) || encontrarBombeiroPorNome(bombeiros, nomeSelecionado);
+    setP(idx, 'pessoaId', b?.id || opcao?.id || '');
+    setP(idx, 'nome', b?.nomeCompleto || opcao?.nomeCompleto || nomeSelecionado);
+    setP(idx, 'nomeGuerra', b?.nomeGuerra || opcao?.nomeGuerra || nomeSelecionado);
     setP(idx, 'funcao', funcao);
     setP(idx, 'idade', b?.idade || 0);
+  }
+
+  function limparPessoa(idx: number) {
+    setFPessoas(prev => {
+      const next = [...prev];
+      next[idx] = { pessoaId: '', nome: '', nomeGuerra: '', funcao: '', idade: 0, tempo: TEMPO_CRONOMETRO_ZERO };
+      return next;
+    });
   }
 
   function resetForm() {
     const equipePadrao = canManageGlobal ? '' : equipeEfetiva || '';
     setFEquipe(equipePadrao); setFNumero(0); setFAno(''); setFData(''); setFHora(''); setFTurno(turnoAuto(equipePadrao)); setFTipo('');
     setFPessoas(criarPessoasTAFVazias());
+    setOpcoesParticipantes([]);
     setFObs('');
     setFChefeEquipe('');
   }
 
   function turnoAuto(equipe: string) { return equipe === 'Alfa' || equipe === 'Charlie' ? 'Diurno' : equipe === 'Bravo' || equipe === 'Delta' ? 'Noturno' : ''; }
 
-  async function autoPreencherParticipantes() {
+  async function autoPreencherParticipantes(preencherMembros = true) {
     if (!fEquipe || !fData) return;
     try {
-      const { efetivos, substitutosExternos } = await resolverEfetivo(fEquipe, fData);
-      const pool: any[] = [...efetivos, ...substitutosExternos]
-        .filter(item => !item.emFerias)
-        .map(item => ({ id: item.bombeiro.id, nomeGuerra: item.bombeiro.nomeGuerra, idade: item.bombeiro.idade, cargo: item.cargoExercido }));
+      const efetivo = await resolverEfetivoOperacional(fEquipe, fData);
+      const pool = efetivo
+        .map(item => ({
+          id: item.bombeiro.id,
+          nomeCompleto: item.bombeiro.nomeCompleto || item.bombeiro.nome || item.bombeiro.nomeGuerra,
+          nomeGuerra: item.bombeiro.nomeGuerra,
+          idade: item.bombeiro.idade,
+          cargo: item.cargoExercido,
+        }));
 
-      const baCe = pool.find((b: any) => b.cargo === 'BA-CE');
-      if (baCe) setFChefeEquipe(baCe.nomeGuerra || '');
+      setOpcoesParticipantes(pool.map(b => ({
+        id: b.id,
+        nomeGuerra: b.nomeGuerra,
+        nomeCompleto: b.nomeCompleto,
+        cargo: b.cargo,
+        equipe: fEquipe,
+      })));
+      if (!preencherMembros) return;
+
+      const baCe = pool.find(b => b.cargo === 'BA-CE');
+      setFChefeEquipe(baCe ? baCe.nomeGuerra || baCe.nomeCompleto || '' : '');
 
       const usado = new Set<string>();
       const buscar = (cargo: string) => {
-        const idx = pool.findIndex((b: any) => b.cargo === cargo && !usado.has(b.id));
+        const idx = pool.findIndex(b => b.cargo === cargo && !usado.has(b.id));
         if (idx === -1) return null;
         usado.add(pool[idx].id);
         return pool[idx];
       };
 
-      function setSlot(idx: number, b: any, cargo: string) {
-        setP(idx, 'nome', b?.nomeGuerra || '');
+      function setSlot(idx: number, b: typeof pool[number], cargo: string) {
+        setP(idx, 'pessoaId', b?.id || '');
+        setP(idx, 'nome', b?.nomeCompleto || b?.nomeGuerra || '');
+        setP(idx, 'nomeGuerra', b?.nomeGuerra || '');
         setP(idx, 'funcao', cargo);
         setP(idx, 'idade', b?.idade || 0);
       }
 
       // 1 BA-CE
       const ce = buscar('BA-CE');
-      if (ce) { setSlot(0, ce, 'BA-CE'); } else { const q = pool.find((b: any) => !usado.has(b.id)); if (q) { setSlot(0, q, 'BA-CE'); usado.add(q.id); } }
+      if (ce) { setSlot(0, ce, 'BA-CE'); } else { const q = pool.find(b => !usado.has(b.id)); if (q) { setSlot(0, q, 'BA-CE'); usado.add(q.id); } }
 
       // 2 BA-LR
       const lr = buscar('BA-LR');
-      if (lr) { setSlot(1, lr, 'BA-LR'); } else { const q = pool.find((b: any) => !usado.has(b.id)); if (q) { setSlot(1, q, 'BA-LR'); usado.add(q.id); } }
+      if (lr) { setSlot(1, lr, 'BA-LR'); } else { const q = pool.find(b => !usado.has(b.id)); if (q) { setSlot(1, q, 'BA-LR'); usado.add(q.id); } }
 
       // 3 BA-MC
       for (let i = 0; i < 3; i++) {
         const mc = buscar('BA-MC');
-        if (mc) { setSlot(2 + i, mc, 'BA-MC'); } else { const q = pool.find((b: any) => !usado.has(b.id)); if (q) { setSlot(2 + i, q, 'BA-MC'); usado.add(q.id); } }
+        if (mc) { setSlot(2 + i, mc, 'BA-MC'); } else { const q = pool.find(b => !usado.has(b.id)); if (q) { setSlot(2 + i, q, 'BA-MC'); usado.add(q.id); } }
       }
 
       // 5 BA-2
       for (let i = 0; i < 5; i++) {
         const b2 = buscar('BA-2');
-        if (b2) { setSlot(5 + i, b2, 'BA-2'); } else { const q = pool.find((b: any) => !usado.has(b.id)); if (q) { setSlot(5 + i, q, 'BA-2'); usado.add(q.id); } }
+        if (b2) { setSlot(5 + i, b2, 'BA-2'); } else { const q = pool.find(b => !usado.has(b.id)); if (q) { setSlot(5 + i, q, 'BA-2'); usado.add(q.id); } }
       }
     } catch { /* silencioso */ }
   }
 
   useEffect(() => {
-    if (formOpen && fEquipe && fData && !editando) {
-      autoPreencherParticipantes();
+    if (formOpen && fEquipe && fData) {
+      autoPreencherParticipantes(!editando);
     }
-  }, [fEquipe, fData, formOpen]);
+  }, [fEquipe, fData, formOpen, editando]);
 
   async function handleNovo() {
     if (!canCreate) {
@@ -239,7 +331,10 @@ export function TAF() {
     }
     setEditando(r);
     setFEquipe(r.equipe); setFNumero(r.numero); setFAno(r.ano); setFData(r.data); setFHora(r.hora); setFTurno(r.turno); setFTipo(r.tipoTaf);
-    setFPessoas(Array.from({ length: 10 }, (_, i) => ({ nome: (r as any)[`p${i+1}Nome`] || '', funcao: (r as any)[`p${i+1}Funcao`] || '', idade: (r as any)[`p${i+1}Idade`] || 0, tempo: mascararTempoCronometro((r as any)[`p${i+1}Tempo`] || '') })));
+    setFPessoas(pessoasDoRegistro(r, bombeiros).map(pessoa => ({
+      ...pessoa,
+      tempo: mascararTempoCronometro(pessoa.tempo),
+    })));
     setFObs(r.observacoes);
     setFChefeEquipe(r.chefeEquipe || '');
     setFormOpen(true);
@@ -282,7 +377,12 @@ export function TAF() {
   async function handleDownload(registro: TreinamentoTAF) {
     try {
       setDownloadingId(registro.id);
-      await baixarTAFPdf(registro);
+      const registroComNomesCompletos = { ...registro } as TreinamentoTAF;
+      pessoasDoRegistro(registro, bombeiros).forEach((pessoa, index) => {
+        (registroComNomesCompletos as any)[`p${index + 1}Nome`] = pessoa.nome;
+        (registroComNomesCompletos as any)[`p${index + 1}Idade`] = pessoa.idade;
+      });
+      await baixarTAFPdf(registroComNomesCompletos);
     } catch (err) {
       alert('Erro ao gerar PDF do TAF: ' + mensagemErro(err));
     } finally {
@@ -348,15 +448,23 @@ export function TAF() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filtered.map(r => (
-              <div key={r.id} className="flex items-center justify-between gap-3 rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
-                <div className="flex items-center gap-3 min-w-0">
+            {filtered.map(r => {
+              const participantes = pessoasDoRegistro(r, bombeiros).filter(pessoaPreenchida);
+              const expandido = expandidoId === r.id;
+              return (
+                <div key={r.id} className="space-y-2">
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+                <button
+                  type="button"
+                  onClick={() => setExpandidoId(expandido ? null : r.id)}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-aviation-500 to-aviation-700 text-sm font-bold text-white">{r.equipe.charAt(0)}</div>
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 truncate">{String(r.numero).padStart(3,'0')}/{r.ano} · {r.equipe} · {r.tipoTaf}</p>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
                   </div>
-                </div>
+                </button>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => handleDownload(r)}
@@ -374,9 +482,41 @@ export function TAF() {
                     <button onClick={() => setDeleteConfirm(r.id)} className="rounded-xl p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="h-4 w-4" /></button>
                     </>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setExpandidoId(expandido ? null : r.id)}
+                    className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
+                    title={expandido ? 'Fechar detalhes' : 'Abrir detalhes'}
+                  >
+                    {expandido ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
                 </div>
               </div>
-            ))}
+
+              {expandido && (
+                <div className="rounded-2xl border border-graphite-200/60 bg-white/80 p-3 dark:border-border-dark dark:bg-surface-card">
+                  {participantes.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-graphite-200 bg-graphite-50 px-3 py-2 text-xs text-graphite-500 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-400">
+                      Sem participantes preenchidos.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {participantes.map((pessoa, index) => (
+                        <div key={`${r.id}-${index}`} className="grid grid-cols-1 items-center gap-2 rounded-xl border border-graphite-200/60 bg-graphite-50/70 px-3 py-2 text-xs dark:border-border-dark dark:bg-surface-hover/70 md:grid-cols-[36px_90px_minmax(0,1fr)_70px_80px]">
+                          <span className="font-black text-aviation-700 dark:text-aviation-300">{index + 1}</span>
+                          <span className="font-bold text-graphite-700 dark:text-graphite-200">{pessoa.funcao || '-'}</span>
+                          <span className="min-w-0 truncate font-semibold text-graphite-900 dark:text-graphite-100">{pessoa.nome || '-'}</span>
+                          <span className="text-graphite-500 dark:text-graphite-400">Idade: {pessoa.idade || '-'}</span>
+                          <span className="font-semibold text-aviation-700 dark:text-aviation-300">{pessoa.tempo || '-'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -384,14 +524,14 @@ export function TAF() {
       {/* Modal */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 py-5">
-          <div className="relative w-full max-w-3xl mx-4 rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-sm dark:bg-surface-elevated/95">
+          <div className="relative mx-4 w-full max-w-5xl rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-sm dark:bg-surface-elevated/95">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{editando ? 'Editar' : 'Novo'} TAF</h2>
               <button onClick={() => setFormOpen(false)} className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover"><X className="h-5 w-5" /></button>
             </div>
 
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-6">
                 <div>
                   <label className={labelCls}>Equipe</label>
                   <select value={fEquipe} onChange={e => { setFEquipe(e.target.value); setFTurno(turnoAuto(e.target.value)); }} disabled={!canManageGlobal} className={inputCls}>
@@ -418,10 +558,10 @@ export function TAF() {
                   <label className={labelCls}>Hora</label>
                   <input type="time" value={fHora} onChange={e => setFHora(e.target.value)} className={inputCls} />
                 </div>
-              </div>
-              <div>
-                <label className={labelCls}>Turno</label>
-                <input value={fTurno} disabled className={`${inputCls} opacity-60`} />
+                <div>
+                  <label className={labelCls}>Turno</label>
+                  <input value={fTurno} disabled className={`${inputCls} opacity-60`} />
+                </div>
               </div>
 
               {/* Participantes */}
@@ -429,8 +569,8 @@ export function TAF() {
                 <p className="text-sm font-bold text-graphite-700 dark:text-graphite-300 mb-3 flex items-center gap-2">
                   <Users className="h-4 w-4 text-aviation-500" /> Participantes
                 </p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 px-3 text-[10px] font-bold uppercase tracking-wider text-graphite-400">
+                <div className="space-y-3">
+                  <div className="hidden">
                     <span className="w-6 text-center">#</span>
                     <span className="flex-1">Nome Completo</span>
                     <span className="w-14 text-center">Função</span>
@@ -440,11 +580,8 @@ export function TAF() {
                   {SLOTS.map(slot => {
                     const idx = slot.i - 1;
                     const selectedIds = new Set(fPessoas
-                      .filter((pp, ii) => pp.nome && ii !== idx)
-                      .map(pp => {
-                        const b = bombeiros.find((bb: any) => bb.nomeGuerra === pp.nome);
-                        return b?.id || '';
-                      })
+                      .filter((pp, ii) => pp.pessoaId && ii !== idx)
+                      .map(pp => pp.pessoaId)
                       .filter(Boolean));
 
                     return (
@@ -454,8 +591,10 @@ export function TAF() {
                         slot={slot}
                         pessoa={fPessoas[idx]}
                         selectedIds={selectedIds}
+                        options={opcoesParticipantes}
                         onSelectPessoa={onSelectPessoa}
                         onTempoChange={(slotIdx, tempo) => setP(slotIdx, 'tempo', tempo)}
+                        onClearPessoa={limparPessoa}
                       />
                     );
                   })}

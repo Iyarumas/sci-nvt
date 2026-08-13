@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { downloadPdf } from './pdfService';
+import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 import type { TreinamentoTAF } from '../types/taf';
 
 const PAGE_W = 297;
@@ -119,20 +120,6 @@ function drawCell(doc: jsPDF, x: number, y: number, w: number, h: number, text =
   drawTextInCell(doc, x, y, w, h, text, opts);
 }
 
-function drawLogo(doc: jsPDF, x: number, y: number) {
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(5.5);
-  doc.setTextColor(145, 145, 145);
-  doc.text('Group', x + 7, y + 6);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(205, 31, 47);
-  doc.text('med', x + 6.5, y + 15.4);
-  doc.setTextColor(64, 168, 92);
-  doc.text('+', x + 24, y + 15.4);
-  doc.setTextColor(0, 0, 0);
-}
-
 function participantes(registro: TreinamentoTAF): TafParticipantePdf[] {
   return Array.from({ length: 10 }, (_, index) => {
     const slot = index + 1;
@@ -146,16 +133,16 @@ function participantes(registro: TreinamentoTAF): TafParticipantePdf[] {
   });
 }
 
-function drawHeader(doc: jsPDF, registro: TreinamentoTAF) {
+function drawHeader(doc: jsPDF, registro: TreinamentoTAF, logoDataUrl: string | null) {
   const y = 6;
-  const logoW = 24;
+  const logoW = 32;
   const x0 = M + logoW;
   const headerW = CONTENT_W - logoW;
   const titleW = 145;
   const labelW = 28;
   const valueW = headerW - titleW - labelW;
 
-  drawLogo(doc, M, y + 1);
+  drawMedGroupLogo(doc, logoDataUrl, M, y, logoW, 22);
   drawCell(doc, x0, y, titleW, 22, AIRPORTO_PADRAO, { bold: true, size: 15.5, align: 'center', minSize: 11 });
   drawCell(doc, x0 + titleW, y, labelW, 11, 'DATA', { bold: true, size: 11, align: 'center' });
   drawCell(doc, x0 + titleW + labelW, y, valueW, 11, formatDate(registro.data), { size: 8.5, align: 'center' });
@@ -214,7 +201,7 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTAF) {
   for (let i = 0; i < 11; i += 1) {
     const y = y0 + headerH + i * rowH;
     const pessoa = pessoas[i];
-    const temPessoa = !!(pessoa?.nome || pessoa?.funcao || pessoa?.idade || pessoa?.tempo);
+    const temPessoa = !!pessoa?.nome;
     drawCell(doc, xs.nome, y, cols.nome, rowH, pessoa?.nome ? upper(pessoa.nome) : '', { size: 7.5, minSize: 6, valign: 'middle' });
     drawCell(doc, xs.funcao, y, cols.funcao, rowH, pessoa?.funcao || '', { bold: true, size: 7.6, align: 'center' });
     drawCell(doc, xs.idade, y, cols.idade, rowH, pessoa?.idade ? String(pessoa.idade) : '', { size: 7.6, align: 'center' });
@@ -261,6 +248,7 @@ export function nomeArquivoTAFPdf(registro: TreinamentoTAF): string {
 }
 
 export async function gerarTAFPdf(registro: TreinamentoTAF): Promise<Blob> {
+  const logoDataUrl = await carregarMedGroupLogo();
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
     title: `TAF - ${registro.equipe} - ${formatDate(registro.data)}`,
@@ -270,7 +258,7 @@ export async function gerarTAFPdf(registro: TreinamentoTAF): Promise<Blob> {
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
 
-  drawHeader(doc, registro);
+  drawHeader(doc, registro, logoDataUrl);
   const table = drawTabela(doc, registro);
   drawObservacoes(doc, table.y, registro, table.cols.nome);
   drawAssinaturas(doc);

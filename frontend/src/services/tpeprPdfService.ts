@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { downloadPdf } from './pdfService';
+import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 import type { TreinamentoTPEPR } from '../types/tpepr';
 import { ordenarParticipantesTPEPR } from '../types/tpepr';
 
@@ -75,23 +76,18 @@ function drawTextFit(doc: jsPDF, text: string, x: number, y: number, maxW: numbe
   doc.text(out, x, y, { align: opts?.align || 'left' });
 }
 
-function drawLogo(doc: jsPDF, x: number, y: number, w: number, h: number) {
-  drawCell(doc, x, y, w, h);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
-  doc.setTextColor(255, 65, 24);
-  doc.text('med+', x + w / 2, y + 12, { align: 'center' });
-  doc.setFontSize(8);
-  doc.text('Group', x + w / 2 + 13, y + 17.5, { align: 'center' });
+function drawLogo(doc: jsPDF, logoDataUrl: string | null, x: number, y: number, w: number, h: number) {
+  doc.setLineWidth(0.25);
+  drawMedGroupLogo(doc, logoDataUrl, x, y, w, h, true);
   doc.setTextColor(0, 0, 0);
 }
 
-function drawHeader(doc: jsPDF, registro: TreinamentoTPEPR) {
+function drawHeader(doc: jsPDF, registro: TreinamentoTPEPR, logoDataUrl: string | null) {
   const logoW = 51;
   const codeW = 33;
   const topH = 24;
   const titleW = CONTENT_W - logoW - codeW;
-  drawLogo(doc, M, 12, logoW, topH);
+  drawLogo(doc, logoDataUrl, M, 12, logoW, topH);
   drawCell(doc, M + logoW, 12, titleW, topH, 'RELATORIO AFERICAO TP-EPR', { bold: true, size: 16, align: 'center' });
   drawCell(doc, M + logoW + titleW, 12, codeW, 12, 'Codigo:\nMMS.BR.BA.FOR.018', { bold: true, size: 7, align: 'center' });
   drawCell(doc, M + logoW + titleW, 24, codeW, 12, 'Revisao:\n00', { bold: true, size: 7, align: 'center' });
@@ -193,6 +189,7 @@ function drawAssinaturas(doc: jsPDF, y: number) {
 }
 
 export async function gerarTPEPRPdf(registro: TreinamentoTPEPR): Promise<Blob> {
+  const logoDataUrl = await carregarMedGroupLogo();
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
     title: `TP-EPR - ${registro.equipe} - ${formatDate(registro.data)}`,
@@ -201,7 +198,7 @@ export async function gerarTPEPRPdf(registro: TreinamentoTPEPR): Promise<Blob> {
   });
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
-  drawHeader(doc, registro);
+  drawHeader(doc, registro, logoDataUrl);
   const tableEnd = drawTabela(doc, registro);
   drawAssinaturas(doc, tableEnd);
   doc.setLineWidth(0.25);

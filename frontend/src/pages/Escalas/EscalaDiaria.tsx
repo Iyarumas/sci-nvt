@@ -11,17 +11,19 @@ import { listarEscalas, criarEscala, atualizarEscala, excluirEscala } from '../.
 import { listarAtivos } from '../../services/bombeiroService';
 import { equipesNoDia, horarioPlantaoPorEquipe } from '../../utils/equipes';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
-import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
+import { listarTrocasServicoAssinadas } from '../../services/efetivoOperacionalService';
 import { listarFeriasGozo, listarEscalas as listarEscalasFerias, listarItensEscala } from '../../services/feriasService';
 import { listarCompletas } from '../../services/escalaMensalService';
 import { gerarRadioPlantao } from '../../services/escalaMensalGenerator';
 import { FUNCOES_BDS_PTR } from '../../types/escala';
 import type { EscalaDiaria } from '../../types/escala';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
+import type { DocumentFill } from '../../types/document';
 import type { FeriasGozo } from '../../types/ferias';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
+import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
 import { RegraNegocioError } from '../../utils/regrasOperacionais';
 
@@ -108,7 +110,7 @@ function dataNoPeriodo(data: string, dataInicio: string, dataFim: string): boole
   return dataLocal(dataInicio) <= dia && dataLocal(dataFim) >= dia;
 }
 
-function montarEfetivoDiario(params: {
+function _montarEfetivoDiario(params: {
   bombeiros: Bombeiro[];
   feriasGozo: FeriasGozo[];
   vigencias: VigenciaSubstituicao[];
@@ -269,7 +271,7 @@ function montarEfetivoDiario(params: {
   });
 }
 
-function montarOpcoesEfetivoDiario(efetivo: EfetivoDiarioEntry[], equipe: string): AtivoItem[] {
+function _montarOpcoesEfetivoDiario(efetivo: EfetivoDiarioEntry[], equipe: string): AtivoItem[] {
   return efetivo.map(entry => ({
     id: entry.bombeiro.id,
     nomeGuerra: entry.bombeiro.nomeGuerra,
@@ -345,7 +347,7 @@ function EscalaDiariaForm({
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [substituicoes, setSubstituicoes] = useState<SubstituicaoTemporaria[]>([]);
-  const [trocaFills, setTrocaFills] = useState<any[]>([]);
+  const [trocaFills, setTrocaFills] = useState<DocumentFill[]>([]);
   const [autoFilling, setAutoFilling] = useState(false);
 
   useEffect(() => {
@@ -367,14 +369,7 @@ function EscalaDiariaForm({
   }, []);
 
   useEffect(() => {
-    listarDocumentos()
-      .then(async (docs: any[]) => {
-        const trocaDoc = docs.find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
-        if (!trocaDoc) return;
-        const fills = await listarPreenchimentos({ documentId: trocaDoc.id, status: 'signed' });
-        setTrocaFills(fills);
-      })
-      .catch(() => {});
+    listarTrocasServicoAssinadas().then(setTrocaFills).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -470,7 +465,7 @@ function EscalaDiariaForm({
     }
   }, [form.equipe, form.dataPlantao, allBombeiros]);
 
-  const efetivoDiario = useMemo(() => montarEfetivoDiario({
+  const efetivoDiario = useMemo(() => montarEfetivoOperacional({
     bombeiros: allBombeiros,
     feriasGozo,
     vigencias,
@@ -480,7 +475,7 @@ function EscalaDiariaForm({
   }), [allBombeiros, feriasGozo, vigencias, trocaFills, form.equipe, form.dataPlantao]);
 
   const efetivoOptions = useMemo(
-    () => montarOpcoesEfetivoDiario(efetivoDiario, form.equipe),
+    () => montarOpcoesEfetivoOperacional(efetivoDiario, form.equipe),
     [efetivoDiario, form.equipe],
   );
 
@@ -494,7 +489,7 @@ function EscalaDiariaForm({
   function updateEquipe(equipe: string) {
     if (!canManageGlobal) return;
     const auto = autoPreencher(equipe);
-    const membros = montarEfetivoDiario({
+    const membros = montarEfetivoOperacional({
       bombeiros: allBombeiros,
       feriasGozo,
       vigencias,

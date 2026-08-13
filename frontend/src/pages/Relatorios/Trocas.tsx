@@ -619,6 +619,9 @@ export function Trocas() {
 
     dadosStr.check_troca_sim = data.troca_emergencial === 'SIM' ? 'V' : '';
     dadosStr.check_troca_nao = data.troca_emergencial === 'NAO' ? 'V' : '';
+    dadosStr.justificativa_emergencial = data.troca_emergencial === 'SIM'
+      ? String(data.justificativa_emergencial || '')
+      : '';
     dadosStr.check_deferido = 'V';
     dadosStr.check_indeferido = '';
 

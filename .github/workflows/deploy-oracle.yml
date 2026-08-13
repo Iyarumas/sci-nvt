@@ -86,6 +86,6 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres
           docker compose --env-file .env.production -f docker-compose.prod.yml build backend web
           docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backend npm run db:migrate
-          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build
+          docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build --force-recreate backend web
           docker image prune -f
           REMOTE

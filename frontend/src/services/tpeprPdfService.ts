@@ -6,7 +6,7 @@ import { ordenarParticipantesTPEPR } from '../types/tpepr';
 const PAGE_W = 297;
 const M = 12;
 const CONTENT_W = PAGE_W - M * 2;
-const AIRPORTO_PADRAO = 'AEROPORTO INTERNACIONAL JOAO SIMOES LOPES NETO (SBPK) PELOTAS - RS';
+const AIRPORTO_PADRAO = 'AEROPORTO INTERNACIONAL MINISTRO VICTOR KONDER (SBNF) NAVEGANTES - SC';
 
 function formatDate(value: string): string {
   if (!value) return '';

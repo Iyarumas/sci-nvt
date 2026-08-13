@@ -25,7 +25,7 @@ export function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!username || !password) {
-      setError('Preencha todos os campossssssss.');
+      setError('Preencha todos os campos.');
       return;
     }
     setError('');

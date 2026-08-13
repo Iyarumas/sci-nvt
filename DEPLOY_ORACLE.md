@@ -240,3 +240,25 @@ push na main
 ```
 
 O workflow preserva o arquivo `.env.production` existente na VM.
+
+### Corrigir erro `Load key ... error in libcrypto`
+
+Esse erro indica que a chave privada chegou invalida ao runner do GitHub Actions, geralmente por copia sem quebras de linha ou por uso acidental do arquivo `.pub`.
+
+Forma recomendada: usar um secret Base64.
+
+No PowerShell do Windows, gere o valor e copie para a area de transferencia:
+
+```powershell
+$key = Get-Content -Raw "C:\Users\Guilherme Cardias\Desktop\Projetos\sci-nvt\backend\storage\ssh-key-2026-08-12.key"
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($key)) | Set-Clipboard
+```
+
+Depois crie ou atualize o secret no GitHub:
+
+```text
+Name: ORACLE_SSH_KEY_B64
+Value: cole o conteudo que foi para a area de transferencia
+```
+
+Se usar `ORACLE_SSH_KEY_B64`, ele tem prioridade sobre `ORACLE_SSH_KEY`.

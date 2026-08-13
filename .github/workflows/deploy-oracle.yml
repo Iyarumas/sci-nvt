@@ -26,10 +26,30 @@ jobs:
 
     steps:
       - name: Configure SSH
+        env:
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_SSH_KEY_B64: ${{ secrets.ORACLE_SSH_KEY_B64 }}
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.ORACLE_SSH_KEY }}" > ~/.ssh/oracle_key
+
+          if [ -n "${ORACLE_SSH_KEY_B64:-}" ]; then
+            printf '%s' "$ORACLE_SSH_KEY_B64" | tr -d '\r\n ' | base64 --decode > ~/.ssh/oracle_key
+          elif [ -n "${ORACLE_SSH_KEY:-}" ]; then
+            printf '%s\n' "$ORACLE_SSH_KEY" | sed 's/\r$//' > ~/.ssh/oracle_key
+          else
+            echo "Missing SSH key secret. Create ORACLE_SSH_KEY_B64 or ORACLE_SSH_KEY in GitHub Actions secrets." >&2
+            exit 1
+          fi
+
           chmod 600 ~/.ssh/oracle_key
+
+          if ! ssh-keygen -y -f ~/.ssh/oracle_key >/dev/null; then
+            echo "Invalid SSH private key secret." >&2
+            echo "Recommended fix: create ORACLE_SSH_KEY_B64 with the Base64 content of the private .key file." >&2
+            exit 1
+          fi
+
           ssh-keyscan -H "$ORACLE_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy on Oracle VM

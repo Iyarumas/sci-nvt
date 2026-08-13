@@ -35,6 +35,44 @@ const MONTH_NAMES = [
 const MAX_TROCAS_PER_MONTH = 3;
 
 const template = DOCUMENT_TEMPLATES[0];
+const TROCA_TEMPLATE_PDF_URL = '/templates/troca.pdf';
+const MM_TO_VIEWPORT = 2.8346 * 1.5;
+
+function pdfPosition(xMm: number, yMm: number, widthMm: number, heightMm: number, fontSize = 8) {
+  return {
+    page: 1,
+    x: xMm * MM_TO_VIEWPORT,
+    y: yMm * MM_TO_VIEWPORT,
+    width: widthMm * MM_TO_VIEWPORT,
+    height: heightMm * MM_TO_VIEWPORT,
+    font_size: fontSize,
+  };
+}
+
+const TROCA_PDF_POSITION_OVERRIDES = new Map<string, ReturnType<typeof pdfPosition>>([
+  ['nome_solicitante', pdfPosition(78, 68, 100, 5)],
+  ['cpf_solicitante', pdfPosition(178, 68, 40, 5)],
+  ['funcao_solicitante', pdfPosition(225, 68, 55, 5)],
+  ['data_solicitada', pdfPosition(290, 68, 35, 5)],
+  ['nome_solicitado', pdfPosition(78, 93, 100, 5)],
+  ['cpf_solicitado', pdfPosition(178, 93, 40, 5)],
+  ['funcao_solicitado', pdfPosition(225, 93, 55, 5)],
+  ['data_folga_solicitado', pdfPosition(290, 93, 35, 5)],
+  ['justificativa_emergencial', pdfPosition(20, 108, 295, 10)],
+  ['motivo_troca', pdfPosition(20, 140, 295, 25)],
+  ['check_troca_sim', pdfPosition(148, 155, 5, 5, 18)],
+  ['check_troca_nao', pdfPosition(180, 155, 5, 5, 18)],
+  ['check_deferido', pdfPosition(228, 155, 5, 5, 18)],
+  ['check_indeferido', pdfPosition(270, 155, 5, 5, 18)],
+  ['data_autentique_1', pdfPosition(25, 252, 40, 5)],
+  ['data_autentique_2', pdfPosition(105, 252, 40, 5)],
+  ['data_autentique_3', pdfPosition(185, 252, 40, 5)],
+  ['assinatura_solicitante', pdfPosition(25, 242, 65, 5)],
+  ['assinatura_solicitado', pdfPosition(105, 242, 65, 5)],
+  ['assinatura_chefe_solicitante', pdfPosition(25, 262, 65, 5)],
+  ['assinatura_chefe_solicitado', pdfPosition(105, 262, 65, 5)],
+  ['assinatura_gerente', pdfPosition(185, 262, 65, 5)],
+]);
 
 const CHECK_FIELD_OVERRIDES = new Map<string, { font_size: number; width: number; height: number }>(
   template.fields
@@ -44,45 +82,75 @@ const CHECK_FIELD_OVERRIDES = new Map<string, { font_size: number; width: number
 
 function fieldPositionsFromDoc(doc: DocumentWithFields) {
   return doc.document_fields.map(f => {
+    const fallback = TROCA_PDF_POSITION_OVERRIDES.get(f.field_name);
+    const field = fallback && (!Number.isFinite(f.x) || !Number.isFinite(f.y) || (f.x === 0 && f.y === 0))
+      ? { ...f, ...fallback }
+      : f;
     const override = CHECK_FIELD_OVERRIDES.get(f.field_name);
     return {
-      field_name: f.field_name,
-      x: f.x,
-      y: f.y,
-      width: override?.width ?? f.width,
-      height: override?.height ?? f.height,
-      font_size: override?.font_size ?? f.font_size,
-      is_signature: f.is_signature,
-      field_type: f.field_type,
-      page: f.page,
+      field_name: field.field_name,
+      x: field.x,
+      y: field.y,
+      width: override?.width ?? field.width,
+      height: override?.height ?? field.height,
+      font_size: override?.font_size ?? field.font_size,
+      is_signature: field.is_signature,
+      field_type: field.field_type,
+      page: field.page,
     };
   });
 }
 
 function templateFieldsToDocFields(fields: TemplateFieldDef[]): DocumentField[] {
   return fields.map((tf, i) => ({
+    ...fieldInputFromTemplate('', tf, i),
     id: `tpl_${i}`,
-    document_id: '',
+    created_at: new Date().toISOString(),
+  }));
+}
+
+function fieldInputFromTemplate(documentId: string, tf: TemplateFieldDef, orderIndex: number): Omit<DocumentField, 'id' | 'created_at'> {
+  const fallback = TROCA_PDF_POSITION_OVERRIDES.get(tf.field_name);
+  return {
+    document_id: documentId,
     field_name: tf.field_name,
     field_label: tf.field_label,
     field_type: tf.field_type,
     required: tf.required,
     placeholder: tf.placeholder,
     options: tf.options,
-    order_index: i,
-    page: 1,
-    x: 0,
-    y: 0,
-    width: tf.width,
-    height: tf.height,
-    font_size: tf.font_size,
+    order_index: orderIndex,
+    page: fallback?.page ?? 1,
+    x: fallback?.x ?? 0,
+    y: fallback?.y ?? 0,
+    width: fallback?.width ?? tf.width,
+    height: fallback?.height ?? tf.height,
+    font_size: fallback?.font_size ?? tf.font_size,
     data_source: tf.data_source,
     is_signature: tf.is_signature,
     signer_role: tf.signer_role,
     read_only: tf.read_only,
     conditional_on: tf.conditional_on,
-    created_at: new Date().toISOString(),
-  }));
+  };
+}
+
+function normalizeTrocaDocument(doc: DocumentWithFields | null): DocumentWithFields | null {
+  if (!doc) return null;
+  return {
+    ...doc,
+    template_pdf_url: doc.template_pdf_url || TROCA_TEMPLATE_PDF_URL,
+    source_module: doc.source_module || 'trocas',
+    document_fields: doc.document_fields.length > 0
+      ? doc.document_fields
+      : templateFieldsToDocFields(template.fields),
+  };
+}
+
+async function getTrocaPdfBlob(doc: DocumentWithFields): Promise<Blob | null> {
+  const primaryPath = doc.template_pdf_url || TROCA_TEMPLATE_PDF_URL;
+  const primaryBlob = await getPdfBlob(primaryPath);
+  if (primaryBlob || primaryPath === TROCA_TEMPLATE_PDF_URL) return primaryBlob;
+  return getPdfBlob(TROCA_TEMPLATE_PDF_URL);
 }
 
 const DRAFT_TTL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -280,10 +348,10 @@ export function Trocas() {
       ]);
       setBombeirosList(bombeiros);
       setApocsList(apocs);
-      const trocaDoc = docs.find(d => findTemplate(d.name) !== null);
+      const trocaDoc = docs.find(d => d.source_module === 'trocas') || docs.find(d => findTemplate(d.name) !== null);
       if (trocaDoc) {
         const full = await buscarDocumento(trocaDoc.id);
-        setTemplateDoc(full);
+        setTemplateDoc(normalizeTrocaDocument(full));
         const docFills = await listarPreenchimentos(trocaDoc.id);
         setFills(docFills);
       }
@@ -301,34 +369,20 @@ export function Trocas() {
         name: 'FORMULARIO DE TROCA DE SERVICOS (PERMUTA)',
         description: 'Formulario de Troca de Servicos - Permuta',
         category: 'administrativo',
-        template_pdf_url: null,
+        template_pdf_url: TROCA_TEMPLATE_PDF_URL,
         active: true,
         template_pdf_pages: 0, template_pdf_width: 0, template_pdf_height: 0,
-        source_module: null,
+        source_module: 'trocas',
         created_by: null,
       });
-      await criarCamposEmLote(doc.id, template.fields.map((tf, i) => ({
-        document_id: doc.id,
-        field_name: tf.field_name,
-        field_label: tf.field_label,
-        field_type: tf.field_type,
-        required: tf.required,
-        placeholder: tf.placeholder,
-        options: tf.options,
-        order_index: i,
-        page: 1,
-        x: 0, y: 0,
-        width: tf.width, height: tf.height, font_size: tf.font_size,
-        data_source: tf.data_source, is_signature: tf.is_signature,
-        signer_role: tf.signer_role, read_only: tf.read_only,
-        conditional_on: tf.conditional_on,
-      })));
+      await criarCamposEmLote(doc.id, template.fields.map((tf, i) => fieldInputFromTemplate(doc.id, tf, i)));
       for (const ts of template.signers) {
         await criarSignatario({ document_id: doc.id, signer_name: ts.signer_name, signer_role: ts.signer_role, order_index: ts.order_index, required: true });
       }
       const full = await buscarDocumento(doc.id);
-      setTemplateDoc(full);
-      return full;
+      const normalized = normalizeTrocaDocument(full);
+      setTemplateDoc(normalized);
+      return normalized;
     } catch {
       setShowNotifPopup({ msg: 'Erro ao criar documento. Contate o administrador.', type: 'error' });
       return null;
@@ -599,9 +653,7 @@ export function Trocas() {
       };
       const formDataToSave = prepareFormDataWithAuth(dadosAprovados);
 
-      const pdfKey = doc.template_pdf_url;
-      if (!pdfKey) { setShowNotifPopup({ msg: 'PDF template nao vinculado. Contate o administrador.', type: 'error' }); return; }
-      const blob = await getPdfBlob(pdfKey);
+      const blob = await getTrocaPdfBlob(doc);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
       const dadosStr = buildPdfData(dadosAprovados);
@@ -653,9 +705,7 @@ export function Trocas() {
     try {
       const doc = await ensureDocumentExists();
       if (!doc) return;
-      const pdfKey = doc.template_pdf_url;
-      if (!pdfKey) { setShowNotifPopup({ msg: 'PDF template nao vinculado.', type: 'error' }); return; }
-      const blob = await getPdfBlob(pdfKey);
+      const blob = await getTrocaPdfBlob(doc);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
       const dadosStr = buildPdfData(formData);
@@ -685,9 +735,9 @@ export function Trocas() {
   }
 
   async function handleVisualizarPdf(fill: DocumentFill) {
-    if (!templateDoc?.template_pdf_url) return;
+    if (!templateDoc) return;
     try {
-      const blob = await getPdfBlob(templateDoc.template_pdf_url);
+      const blob = await getTrocaPdfBlob(templateDoc);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
       const data = fill.filled_data as Record<string, string>;
@@ -980,13 +1030,6 @@ export function Trocas() {
               Documento sera criado automaticamente ao salvar.
             </div>
           )}
-          {templateDoc && !templateDoc.template_pdf_url && (
-            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-sm text-amber-700 dark:border-amber-600 dark:bg-amber-900/30 dark:text-amber-200">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              PDF template nao vinculado. Geracao de PDF disponivel apos configuracao do admin.
-            </div>
-          )}
-
           {fNomeSol && (
             <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800">
               <h4 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-200">Solicitante</h4>
@@ -1603,7 +1646,7 @@ export function Trocas() {
                         <Edit className="h-4 w-4" />
                       </button>
                     )}
-                    {templateDoc?.template_pdf_url && (
+                    {templateDoc && (
                       <button onClick={() => handleVisualizarPdf(fill)} title="Visualizar PDF" className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-aviation-600 dark:hover:bg-graphite-700 dark:hover:text-aviation-400">
                         <Eye className="h-4 w-4" />
                       </button>

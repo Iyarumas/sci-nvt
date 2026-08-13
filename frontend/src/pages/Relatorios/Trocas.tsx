@@ -50,28 +50,27 @@ function pdfPosition(xMm: number, yMm: number, widthMm: number, heightMm: number
 }
 
 const TROCA_PDF_POSITION_OVERRIDES = new Map<string, ReturnType<typeof pdfPosition>>([
-  ['nome_solicitante', pdfPosition(78, 68, 100, 5)],
-  ['cpf_solicitante', pdfPosition(178, 68, 40, 5)],
-  ['funcao_solicitante', pdfPosition(225, 68, 55, 5)],
-  ['data_solicitada', pdfPosition(290, 68, 35, 5)],
-  ['nome_solicitado', pdfPosition(78, 93, 100, 5)],
-  ['cpf_solicitado', pdfPosition(178, 93, 40, 5)],
-  ['funcao_solicitado', pdfPosition(225, 93, 55, 5)],
-  ['data_folga_solicitado', pdfPosition(290, 93, 35, 5)],
-  ['justificativa_emergencial', pdfPosition(20, 108, 295, 10)],
-  ['motivo_troca', pdfPosition(20, 140, 295, 25)],
-  ['check_troca_sim', pdfPosition(148, 155, 5, 5, 18)],
-  ['check_troca_nao', pdfPosition(180, 155, 5, 5, 18)],
-  ['check_deferido', pdfPosition(228, 155, 5, 5, 18)],
-  ['check_indeferido', pdfPosition(270, 155, 5, 5, 18)],
-  ['data_autentique_1', pdfPosition(25, 252, 40, 5)],
-  ['data_autentique_2', pdfPosition(105, 252, 40, 5)],
-  ['data_autentique_3', pdfPosition(185, 252, 40, 5)],
-  ['assinatura_solicitante', pdfPosition(25, 242, 65, 5)],
-  ['assinatura_solicitado', pdfPosition(105, 242, 65, 5)],
-  ['assinatura_chefe_solicitante', pdfPosition(25, 262, 65, 5)],
-  ['assinatura_chefe_solicitado', pdfPosition(105, 262, 65, 5)],
-  ['assinatura_gerente', pdfPosition(185, 262, 65, 5)],
+  ['nome_solicitante', pdfPosition(17, 32.5, 104, 5, 8)],
+  ['cpf_solicitante', pdfPosition(158, 32.5, 36, 5, 8)],
+  ['data_solicitada', pdfPosition(118, 41.2, 42, 5, 8)],
+  ['funcao_solicitante', pdfPosition(113.5, 50, 45, 5, 8)],
+  ['motivo_troca', pdfPosition(19, 59.2, 172, 12, 7.5)],
+  ['nome_solicitado', pdfPosition(36, 84.6, 67, 5, 8)],
+  ['cpf_solicitado', pdfPosition(114, 84.6, 63, 5, 8)],
+  ['data_folga_solicitado', pdfPosition(154, 101.8, 30, 5, 8)],
+  ['check_troca_sim', pdfPosition(47.5, 221, 5, 5, 18)],
+  ['check_troca_nao', pdfPosition(71, 221, 5, 5, 18)],
+  ['justificativa_emergencial', pdfPosition(12, 236.7, 182, 12, 8)],
+  ['data_autentique_1', pdfPosition(41, 154.4, 30, 5, 8)],
+  ['data_autentique_2', pdfPosition(140, 154.4, 30, 5, 8)],
+  ['data_autentique_3', pdfPosition(76, 241.5, 30, 5, 8)],
+  ['check_deferido', pdfPosition(10.8, 250, 5, 5, 18)],
+  ['check_indeferido', pdfPosition(10.8, 256.1, 5, 5, 18)],
+  ['assinatura_solicitante', pdfPosition(22, 147, 65, 5)],
+  ['assinatura_solicitado', pdfPosition(117, 147, 65, 5)],
+  ['assinatura_chefe_solicitante', pdfPosition(22, 188, 65, 5)],
+  ['assinatura_chefe_solicitado', pdfPosition(117, 188, 65, 5)],
+  ['assinatura_gerente', pdfPosition(72, 280, 65, 5)],
 ]);
 
 const CHECK_FIELD_OVERRIDES = new Map<string, { font_size: number; width: number; height: number }>(
@@ -83,7 +82,7 @@ const CHECK_FIELD_OVERRIDES = new Map<string, { font_size: number; width: number
 function fieldPositionsFromDoc(doc: DocumentWithFields) {
   return doc.document_fields.map(f => {
     const fallback = TROCA_PDF_POSITION_OVERRIDES.get(f.field_name);
-    const field = fallback && (!Number.isFinite(f.x) || !Number.isFinite(f.y) || (f.x === 0 && f.y === 0))
+    const field = fallback
       ? { ...f, ...fallback }
       : f;
     const override = CHECK_FIELD_OVERRIDES.get(f.field_name);
@@ -618,8 +617,8 @@ export function Trocas() {
 
     dadosStr.check_troca_sim = data.troca_emergencial === 'SIM' ? 'V' : '';
     dadosStr.check_troca_nao = data.troca_emergencial === 'NAO' ? 'V' : '';
-    dadosStr.check_deferido = data.deferido_indeferido === 'DEFERIDO' ? 'V' : '';
-    dadosStr.check_indeferido = data.deferido_indeferido === 'INDEFERIDO' ? 'V' : '';
+    dadosStr.check_deferido = 'V';
+    dadosStr.check_indeferido = '';
 
     return dadosStr;
   }

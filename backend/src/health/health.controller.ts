@@ -7,6 +7,7 @@ export class HealthController {
     return {
       ok: true,
       service: 'sescinc-api',
+      commit: process.env.BUILD_COMMIT || 'local',
       timestamp: new Date().toISOString(),
     };
   }

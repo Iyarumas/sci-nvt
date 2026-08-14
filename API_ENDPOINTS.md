@@ -18,7 +18,7 @@ Base URL local: `http://localhost:3333/api`
 
 | Endpoint | Metodo | Descricao |
 |---|---|---|
-| `/health` | GET | Health check da API |
+| `/health` | GET | Health check da API; retorna o commit do build em `commit` |
 | `/data/:table/query` | POST | Consulta tabelas permitidas com `select`, filtros, ordenacao, `limit`, `count` e `head` |
 | `/data/:table/insert` | POST | Insere objeto ou lista de objetos em tabela permitida |
 | `/data/:table/update` | POST | Atualiza registros com filtros obrigatorios |

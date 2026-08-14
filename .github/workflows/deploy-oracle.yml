@@ -14,9 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ORACLE_HOST: 137.131.207.151
-  ORACLE_USER: ubuntu
-  DEPLOY_PATH: /home/ubuntu/sci-nvt
+  ORACLE_HOST: ${{ vars.ORACLE_HOST || '137.131.207.151' }}
+  ORACLE_USER: ${{ vars.ORACLE_USER || 'ubuntu' }}
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/sci-nvt' }}
   DEPLOY_BRANCH: main
 
 jobs:
@@ -55,10 +55,11 @@ jobs:
       - name: Deploy on Oracle VM
         env:
           GITHUB_TOKEN_VALUE: ${{ github.token }}
+          EXPECTED_SHA: ${{ github.sha }}
           REPO_URL: https://github.com/${{ github.repository }}.git
         run: |
           ssh -i ~/.ssh/oracle_key "$ORACLE_USER@$ORACLE_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' REPO_URL='$REPO_URL' DEPLOY_BRANCH='$DEPLOY_BRANCH' GITHUB_TOKEN_VALUE='$GITHUB_TOKEN_VALUE' bash -s" <<'REMOTE'
+            "DEPLOY_PATH='$DEPLOY_PATH' REPO_URL='$REPO_URL' DEPLOY_BRANCH='$DEPLOY_BRANCH' EXPECTED_SHA='$EXPECTED_SHA' GITHUB_TOKEN_VALUE='$GITHUB_TOKEN_VALUE' bash -s" <<'REMOTE'
           set -euo pipefail
 
           mkdir -p "$DEPLOY_PATH"
@@ -68,14 +69,22 @@ jobs:
             git init
           fi
 
+          git config --global --add safe.directory "$DEPLOY_PATH" >/dev/null 2>&1 || true
           git remote remove origin >/dev/null 2>&1 || true
           git remote add origin "$REPO_URL"
 
           auth_repo_url="$(printf '%s' "$REPO_URL" | sed "s#https://github.com/#https://x-access-token:${GITHUB_TOKEN_VALUE}@github.com/#")"
-          git fetch --prune "$auth_repo_url" "$DEPLOY_BRANCH"
-          git reset --hard FETCH_HEAD
+          git fetch --prune --force "$auth_repo_url" "+refs/heads/$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+          git reset --hard "refs/remotes/origin/$DEPLOY_BRANCH"
+          git checkout -B "$DEPLOY_BRANCH" "refs/remotes/origin/$DEPLOY_BRANCH"
+          git branch --set-upstream-to="origin/$DEPLOY_BRANCH" "$DEPLOY_BRANCH" >/dev/null 2>&1 || true
           git clean -fd -e .env.production -e local-public-data.sql
           export DEPLOY_COMMIT="$(git rev-parse HEAD)"
+
+          if [ "$DEPLOY_COMMIT" != "$EXPECTED_SHA" ]; then
+            echo "VM checkout mismatch. Expected $EXPECTED_SHA, got $DEPLOY_COMMIT." >&2
+            exit 1
+          fi
 
           if [ ! -f .env.production ]; then
             echo ".env.production is missing in $DEPLOY_PATH" >&2
@@ -87,5 +96,32 @@ jobs:
           docker compose --env-file .env.production -f docker-compose.prod.yml build backend web
           docker compose --env-file .env.production -f docker-compose.prod.yml run --rm backend npm run db:migrate
           docker compose --env-file .env.production -f docker-compose.prod.yml up -d --no-build --force-recreate backend web
+
+          backend_health=""
+          for attempt in $(seq 1 30); do
+            backend_health="$(docker compose --env-file .env.production -f docker-compose.prod.yml exec -T backend wget -qO- http://127.0.0.1:3333/api/health 2>/dev/null || true)"
+            if printf '%s' "$backend_health" | grep -q "$DEPLOY_COMMIT"; then
+              echo "Backend health OK for commit $DEPLOY_COMMIT"
+              break
+            fi
+            sleep 5
+          done
+
+          if ! printf '%s' "$backend_health" | grep -q "$DEPLOY_COMMIT"; then
+            echo "Backend did not report deployed commit $DEPLOY_COMMIT." >&2
+            echo "Last /api/health response: ${backend_health:-<empty>}" >&2
+            docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=120 backend web >&2
+            exit 1
+          fi
+
+          web_build_info="$(docker compose --env-file .env.production -f docker-compose.prod.yml exec -T web cat /srv/build-info.json 2>/dev/null || true)"
+          if ! printf '%s' "$web_build_info" | grep -q "$DEPLOY_COMMIT"; then
+            echo "Web container did not contain build-info for commit $DEPLOY_COMMIT." >&2
+            echo "Last /srv/build-info.json: ${web_build_info:-<empty>}" >&2
+            docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=120 web >&2
+            exit 1
+          fi
+
           docker image prune -f
+          echo "Deploy finished successfully for commit $DEPLOY_COMMIT"
           REMOTE

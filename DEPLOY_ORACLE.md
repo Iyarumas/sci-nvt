@@ -232,14 +232,16 @@ Fluxo do deploy automático:
 push na main
 → GitHub Actions conecta na VM por SSH
 → inicializa/atualiza o repositório em /home/ubuntu/sci-nvt
-→ roda git fetch/reset para a versão enviada
+→ busca origin/main, faz checkout explícito da branch main e compara o SHA com o push
 → sobe o PostgreSQL
 → executa migrations
 → rebuilda backend e front-end
 → reinicia a stack Docker
+→ valida que o backend e o container web estão no mesmo commit do push
 ```
 
 O workflow preserva o arquivo `.env.production` existente na VM.
+Se a VM não ficar exatamente no commit enviado pelo GitHub, o deploy falha em vez de parecer concluído.
 
 ### Corrigir erro `Load key ... error in libcrypto`
 
@@ -262,3 +264,15 @@ Value: cole o conteudo que foi para a area de transferencia
 ```
 
 Se usar `ORACLE_SSH_KEY_B64`, ele tem prioridade sobre `ORACLE_SSH_KEY`.
+
+### Variáveis opcionais do GitHub Actions
+
+Além da chave SSH, o workflow aceita variáveis em `Settings` → `Secrets and variables` → `Actions` → `Variables`:
+
+```text
+ORACLE_HOST=IP_PUBLICO_ATUAL_DA_VM
+ORACLE_USER=ubuntu
+DEPLOY_PATH=/home/ubuntu/sci-nvt
+```
+
+Se a Oracle trocar o IP público da instância, atualize `ORACLE_HOST` no GitHub. Sem essa variável, o workflow usa o IP configurado no arquivo.

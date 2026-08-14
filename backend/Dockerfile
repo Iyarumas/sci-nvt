@@ -18,6 +18,9 @@ FROM node:24-alpine AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production
+ARG BUILD_COMMIT=local
+ENV BUILD_COMMIT=${BUILD_COMMIT}
+LABEL org.opencontainers.image.revision=${BUILD_COMMIT}
 
 COPY package.json package-lock.json ./
 COPY backend/package.json backend/package.json

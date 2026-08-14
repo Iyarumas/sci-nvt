@@ -231,7 +231,8 @@ Fluxo do deploy automático:
 ```text
 push na main
 → GitHub Actions conecta na VM por SSH
-→ inicializa/atualiza o repositório em /home/ubuntu/sci-nvt
+→ copia `deploy/deploy-production.sh` para a VM
+→ o script inicializa/atualiza o repositório em /home/ubuntu/sci-nvt
 → busca origin/main, faz checkout explícito da branch main e compara o SHA com o push
 → sobe o PostgreSQL
 → executa migrations
@@ -242,6 +243,7 @@ push na main
 
 O workflow preserva o arquivo `.env.production` existente na VM.
 Se a VM não ficar exatamente no commit enviado pelo GitHub, o deploy falha em vez de parecer concluído.
+O script real de deploy fica em `deploy/deploy-production.sh` para facilitar teste manual e reduzir a chance de o YAML marcar sucesso sem recriar containers.
 
 ### Corrigir erro `Load key ... error in libcrypto`
 

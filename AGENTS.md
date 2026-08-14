@@ -296,6 +296,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   └── package.json
 ├── deploy/                 # Configuração e scripts de deploy em VPS/Oracle
 │   ├── Caddyfile           # Front estático + reverse proxy para /api
+│   ├── deploy-production.sh # Script executado pelo GitHub Actions para sincronizar main, buildar e validar produção
 │   └── restore-data.sh     # Restore de dump SQL no PostgreSQL de produção
 ├── .github/
 │   └── workflows/

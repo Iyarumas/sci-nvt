@@ -4,6 +4,7 @@ import { listarEPIs } from './epiService';
 import { listarCertificacoes } from './certificacaoService';
 import { listarCertificacoesCursos } from './certificacaoCursoService';
 import { listarSubstituicoesTemporarias } from './substituicaoTemporariaService';
+import { dataLocalISO, formatarDataBR } from '../utils/datas';
 
 export interface Notificacao {
   id: string;
@@ -45,7 +46,7 @@ async function calcularAlertasFerias(bombeiros: import('../types/bombeiro').Bomb
     const admissao = new Date(b.dataAdmissao);
     const vencimento = new Date(admissao);
     vencimento.setFullYear(vencimento.getFullYear() + 2);
-    const dias = diasRestantes(vencimento.toISOString().slice(0, 10));
+    const dias = diasRestantes(dataLocalISO(vencimento));
 
     if (dias <= 90 && dias > 0) {
       let tipo: Notificacao['tipo'] = 'info';
@@ -54,7 +55,7 @@ async function calcularAlertasFerias(bombeiros: import('../types/bombeiro').Bomb
 
       alertas.push({
         titulo: 'Férias a vencer',
-        descricao: `${b.nomeCompleto} — férias vencem em ${dias} dias (${new Date(vencimento).toLocaleDateString('pt-BR')})`,
+        descricao: `${b.nomeCompleto} — férias vencem em ${dias} dias (${formatarDataBR(vencimento)})`,
         tipo,
         equipe: b.equipe,
         origem: 'ferias',
@@ -108,7 +109,7 @@ async function calcularAlertasCertificacao(bombeiros: import('../types/bombeiro'
 
       alertas.push({
         titulo: 'Certificação NR a vencer',
-        descricao: `${cert.funcionarioNome} — ${cert.nrNumero} vence em ${dias} dias (${new Date(cert.dataValidade + 'T00:00:00').toLocaleDateString('pt-BR')})`,
+        descricao: `${cert.funcionarioNome} — ${cert.nrNumero} vence em ${dias} dias (${formatarDataBR(cert.dataValidade)})`,
         tipo,
         equipe,
         origem: 'certificacao',
@@ -154,7 +155,7 @@ async function calcularAlertasCertificacaoCurso(bombeiros: import('../types/bomb
 
       alertas.push({
         titulo: 'Certificado de Curso a vencer',
-        descricao: `${cert.funcionarioNome} — ${cert.cursoNome} vence em ${dias} dias (${new Date(cert.dataValidade + 'T00:00:00').toLocaleDateString('pt-BR')})`,
+        descricao: `${cert.funcionarioNome} — ${cert.cursoNome} vence em ${dias} dias (${formatarDataBR(cert.dataValidade)})`,
         tipo,
         equipe,
         origem: 'certificacao_curso',
@@ -172,7 +173,7 @@ async function calcularAlertasCNH(bombeiros: import('../types/bombeiro').Bombeir
     if (dias <= 0) {
       alertas.push({
         titulo: 'CNH Vencida',
-        descricao: `${b.nomeCompleto} — CNH venceu em ${new Date(b.cnhValidade + 'T00:00:00').toLocaleDateString('pt-BR')}. Não pode exercer BA-MC.`,
+        descricao: `${b.nomeCompleto} — CNH venceu em ${formatarDataBR(b.cnhValidade)}. Não pode exercer BA-MC.`,
         tipo: 'erro',
         equipe: b.equipe,
         origem: 'certificacao',
@@ -183,7 +184,7 @@ async function calcularAlertasCNH(bombeiros: import('../types/bombeiro').Bombeir
       else if (dias <= 120) tipo = 'alerta';
       alertas.push({
         titulo: 'CNH próxima do vencimento',
-        descricao: `${b.nomeCompleto} — CNH vence em ${dias} dias (${new Date(b.cnhValidade + 'T00:00:00').toLocaleDateString('pt-BR')})`,
+        descricao: `${b.nomeCompleto} — CNH vence em ${dias} dias (${formatarDataBR(b.cnhValidade)})`,
         tipo,
         equipe: b.equipe,
         origem: 'certificacao',
@@ -201,7 +202,7 @@ async function calcularAlertasCVE(bombeiros: import('../types/bombeiro').Bombeir
     if (dias <= 0) {
       alertas.push({
         titulo: 'CVE Vencido',
-        descricao: `${b.nomeCompleto} — CVE venceu em ${new Date(b.cveValidade + 'T00:00:00').toLocaleDateString('pt-BR')}. Não pode exercer BA-MC.`,
+        descricao: `${b.nomeCompleto} — CVE venceu em ${formatarDataBR(b.cveValidade)}. Não pode exercer BA-MC.`,
         tipo: 'erro',
         equipe: b.equipe,
         origem: 'certificacao_curso',
@@ -212,7 +213,7 @@ async function calcularAlertasCVE(bombeiros: import('../types/bombeiro').Bombeir
       else if (dias <= 180) tipo = 'alerta';
       alertas.push({
         titulo: 'CVE próximo do vencimento',
-        descricao: `${b.nomeCompleto} — CVE vence em ${dias} dias (${new Date(b.cveValidade + 'T00:00:00').toLocaleDateString('pt-BR')})`,
+        descricao: `${b.nomeCompleto} — CVE vence em ${dias} dias (${formatarDataBR(b.cveValidade)})`,
         tipo,
         equipe: b.equipe,
         origem: 'certificacao_curso',

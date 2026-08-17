@@ -22,6 +22,7 @@ import type {
   UnidadeAgenteExtintor,
 } from '../../types/agenteExtintor';
 import { canGerenciarCadastroModulo, resolverContextoOperacional } from '../../utils/permissoes';
+import { formatarDataBR } from '../../utils/datas';
 
 const INPUT_CLASS = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const LABEL_CLASS = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
@@ -39,8 +40,7 @@ const EMPTY: Omit<AgenteExtintor, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'
 };
 
 function formatDate(value: string): string {
-  if (!value) return '-';
-  return new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR');
+  return formatarDataBR(value);
 }
 
 export function AgentesExtintores() {

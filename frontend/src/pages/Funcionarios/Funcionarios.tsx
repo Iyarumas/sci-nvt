@@ -27,6 +27,7 @@ import {
   resolverContextoOperacional,
 } from '../../utils/permissoes';
 import { capitalizarNome } from '../../utils/capitalize';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 type Tab = 'todos' | 'bombeiros' | 'apoc' | 'substituicoes';
 type SituacaoBombeiro = 'Ativo' | 'Afastado' | 'Desligado';
@@ -41,12 +42,7 @@ function labelCargo(valor: string) {
 }
 
 function formatDate(d: string) {
-  if (!d) return '-';
-  return new Date(d).toLocaleDateString('pt-BR');
-}
-
-function todayISO() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  return formatarDataBR(d);
 }
 
 function SituacaoBadge({ situacao }: { situacao: SituacaoBombeiro }) {
@@ -278,7 +274,7 @@ export function Funcionarios() {
   const filteredApocs = tab === 'bombeiros' ? [] : apocs;
   const totalRegistros = filteredBombeiros.length + filteredApocs.length;
   const afastamentosAtivos = useMemo(() => {
-    const hoje = todayISO();
+    const hoje = hojeLocalISO();
     return new Set(substituicoes
       .filter(s => s.tipo === 'Afastamento' && s.status === 'Aprovada' && s.dataInicio <= hoje && s.dataFim >= hoje)
       .map(s => s.funcionarioId));

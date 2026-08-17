@@ -13,10 +13,10 @@ import { EQUIPES, ASSUNTOS } from '../../types/ptrb';
 import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
 import type { PTRBACompleto } from '../../types/ptrbaCompleto';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+import { formatarDataBR, formatarDataHoraBR } from '../../utils/datas';
 
 function formatDate(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 const fmt = formatDate;
@@ -221,7 +221,7 @@ function gerarHTMLImpressao(titulo: string, colunas: string[], linhas: string[][
     </head>
     <body>
       <h1>${titulo}</h1>
-      <p class="filtros">Gerado em ${new Date().toLocaleString('pt-BR')}</p>
+      <p class="filtros">Gerado em ${formatarDataHoraBR(new Date())}</p>
       <table><thead><tr>${colsHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>
       <div class="legenda">
         <p><strong>Legenda — Assuntos Ministrados:</strong></p>
@@ -289,7 +289,7 @@ function imprimirHTMLEfetivo(titulo: string, allAssuntos: string[], equipes: { e
   html += '  .legenda td:first-child { width: 22px; }\n';
   html += '</style></head><body>\n';
   html += '  <h1>' + titulo + '</h1>\n';
-  html += '  <p class="filtros">Gerado em ' + new Date().toLocaleString('pt-BR') + ' \u00b7 Total de pessoas: ' + equipes.reduce(function(s, e) { return s + e.pessoas.length; }, 0) + '</p>\n';
+  html += '  <p class="filtros">Gerado em ' + formatarDataHoraBR(new Date()) + ' \u00b7 Total de pessoas: ' + equipes.reduce(function(s, e) { return s + e.pessoas.length; }, 0) + '</p>\n';
   for (let i = 0; i < chunks.length; i++) {
     html += '  <div class="chunk">\n';
     for (const eq of chunks[i]) {
@@ -738,7 +738,7 @@ export function PTRBA() {
 
   function gerarHTMLRelatorioCompleto(opts: { modo: 'geral' | 'individual' | 'por-equipe' | 'equipe'; legenda: boolean; pessoa: string; equipe: string }): string {
     const titulo = 'Relatório PTR-BA — Instrução e Tempo em Segurança do Trabalho';
-    const filtros = `Período: ${filtroPeriodoLabel}${filtroEquipe ? ' · Equipe: ' + filtroEquipe : ''}${filtroAssunto ? ' · Assunto: ' + filtroAssunto : ''} · Gerado em ${new Date().toLocaleString('pt-BR')}`;
+    const filtros = `Período: ${filtroPeriodoLabel}${filtroEquipe ? ' · Equipe: ' + filtroEquipe : ''}${filtroAssunto ? ' · Assunto: ' + filtroAssunto : ''} · Gerado em ${formatarDataHoraBR(new Date())}`;
 
     const thAssunto = (a: string) => '<th title="' + a + '">' + abreviarLabel(a) + '</th>';
 
@@ -892,7 +892,7 @@ ${opts.legenda ? `<div class="legenda">
 <p><strong>Legenda — Assuntos Ministrados:</strong></p>
 <table style="table-layout:auto;">${legenda}</table>
 </div>` : ''}
-<p class="footer">Relatório PTR-BA - Seção de Instrução · ${new Date().toLocaleString('pt-BR')}</p>
+<p class="footer">Relatório PTR-BA - Seção de Instrução · ${formatarDataHoraBR(new Date())}</p>
 </body></html>`;
   }
 
@@ -907,7 +907,7 @@ ${opts.legenda ? `<div class="legenda">
 
   const filtroPeriodoLabel = filterMode === 'mes-ano'
     ? `${filtroMes ? MESES[Number(filtroMes)] : ''} ${filtroAno || ''}`.trim() || 'Todo período'
-    : `${dataInicio || '...'} a ${dataFinal || '...'}`;
+    : `${dataInicio ? formatarDataBR(dataInicio) : '...'} a ${dataFinal ? formatarDataBR(dataFinal) : '...'}`;
   const filtrosAtivos = (filterMode === 'mes-ano' && (filtroMes || filtroAno)) || (filterMode === 'periodo' && (dataInicio || dataFinal))
     ? ` · ${filtroPeriodoLabel}`
     : '';

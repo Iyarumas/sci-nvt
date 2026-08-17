@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import { toPng } from 'html-to-image';
+import { formatarDataBR } from '../utils/datas';
 
 function cb(checked: boolean) {
   const fill = checked ? '✓' : '';
@@ -71,7 +72,7 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
   const dataFim = e('dataFim');
   const chefeEquipe = e('chefeEquipe').toUpperCase();
   const comunic = e('comunicacao').toUpperCase();
-  const dataAss = e('dataAssinatura', new Date().toLocaleDateString('pt-BR'));
+  const dataAss = e('dataAssinatura', formatarDataBR(new Date()));
   const cidade = e('cidade', 'NAVEGANTES');
   const uf = e('uf', 'SC');
   const extTexto = e('extTexto');
@@ -83,8 +84,9 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
   const equipTemAlteracao = !!dados.equipTemAlteracao;
   const edifTemAlteracao = !!dados.edifTemAlteracao;
 
-  const dataObj = dataAss.split('/').length === 3
-    ? { dia: dataAss.split('/')[0], mes: dataAss.split('/')[1], ano: dataAss.split('/')[2] }
+  const dataPartes = dataAss.replace(/\//g, '-').split('-');
+  const dataObj = dataPartes.length === 3
+    ? { dia: dataPartes[0], mes: dataPartes[1], ano: dataPartes[2] }
     : { dia: new Date().getDate().toString().padStart(2, '0'), mes: (new Date().getMonth() + 1).toString(), ano: new Date().getFullYear().toString() };
 
   const nomeMes = (m: string) => {
@@ -167,7 +169,7 @@ ${substituicoesAtivas.map(s => `
   const frotaCombinada = frota.map(f => `${f.combIni || '—'}→${f.combFim || '—'}`).join(', ') || '';
 
   return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>${dataInicio ? dataInicio.split('-').reverse().join('-') : ''} NVT LRO ${equipeNome}</title>
+<html><head><meta charset="UTF-8"><title>${formatarDataBR(dataInicio, '')} NVT LRO ${equipeNome}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   @page { size: A4; margin: 15mm 10mm; }
@@ -224,7 +226,7 @@ ${substituicoesAtivas.map(s => `
     <tr><td class="b c" style="font-size:10px; padding:5px 5px;" colspan="5">REGISTRO DE OCORRÊNCIA RELATIVO AO SERVIÇO DE CHEFE DE EQUIPE AO SESCINC</td></tr>
     <tr><td class="b" style="font-size:10px; width:25%; background:#d4d4d4; padding:5px 5px;" colspan="5">IDENTIFICAÇÃO DO AEROPORTO:</td></tr>
     <tr><td class="b" style="font-size:10px; padding:5px 5px;" colspan="5">SBNF - AEROPORTO INTERNACIONAL MINISTRO VICTOR KONDER</td></tr>
-    <tr><td class="b" style="font-size:10px; width:7%; padding:5px 5px;">PLANTÃO:</td><td class="b" style="font-size:10px; width:5%; background:#d4d4d4; padding:5px 5px;">Data início:</td><td style="font-size:10px; width:10%; padding:5px 5px;">${dataInicio}</td><td class="b" style="font-size:10px; width:5%; background:#d4d4d4; padding:5px 5px;">Data do fim:</td><td style="font-size:10px; width:10%; padding:5px 5px;">${dataFim}</td></tr>
+    <tr><td class="b" style="font-size:10px; width:7%; padding:5px 5px;">PLANTÃO:</td><td class="b" style="font-size:10px; width:5%; background:#d4d4d4; padding:5px 5px;">Data início:</td><td style="font-size:10px; width:10%; padding:5px 5px;">${formatarDataBR(dataInicio)}</td><td class="b" style="font-size:10px; width:5%; background:#d4d4d4; padding:5px 5px;">Data do fim:</td><td style="font-size:10px; width:10%; padding:5px 5px;">${formatarDataBR(dataFim)}</td></tr>
   </table>
 
   <!-- I. EQUIPE -->

@@ -5,10 +5,10 @@ import { PageTitle } from '../../components/layout/PageTitle';
 import { listarLROs } from '../../services/lroService';
 import type { LRO } from '../../types/lro';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+import { formatarDataBR } from '../../utils/datas';
 
 function fmt(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 export function LRO() {

@@ -7,6 +7,7 @@ import { atualizarConferencia, excluirConferencia, listarConferencias } from '..
 import type { Conferencia } from '../../types/conferencia';
 import type { Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
+import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 
 const EQUIPES_SOLICITACAO = EQUIPE_OPTIONS.filter(eq => eq !== 'Ferista' && eq !== 'Embaixador');
 
@@ -20,8 +21,8 @@ export function Solicitacoes() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
 
   const [modo, setModo] = useState<'lista' | 'form'>('lista');
-  const [data, setData] = useState(new Date().toISOString().split('T')[0]);
-  const [dataTurno, setDataTurno] = useState(new Date().toISOString().split('T')[0]);
+  const [data, setData] = useState(hojeLocalISO());
+  const [dataTurno, setDataTurno] = useState(hojeLocalISO());
   const [hora, setHora] = useState(new Date().toTimeString().split(':').slice(0, 2).join(':'));
   const [equipe, setEquipe] = useState<Equipe | ''>('');
   const [tipoSolicitacao, setTipoSolicitacao] = useState('');
@@ -60,7 +61,7 @@ export function Solicitacoes() {
 
     if (filterMode === 'mes-ano') {
       if (filtroAno) lista = lista.filter(r => r.dataConferencia?.startsWith(filtroAno));
-      if (filtroMes) lista = lista.filter(r => (new Date(r.dataConferencia).getMonth() + 1).toString() === filtroMes);
+      if (filtroMes) lista = lista.filter(r => (parseDataLocalISO(r.dataConferencia).getMonth() + 1).toString() === filtroMes);
     } else {
       if (dataInicio) lista = lista.filter(r => r.dataConferencia >= dataInicio);
       if (dataFinal) lista = lista.filter(r => r.dataConferencia <= dataFinal + 'T23:59:59');
@@ -129,9 +130,9 @@ export function Solicitacoes() {
     setTipoSolicitacao(r.itemNome || '');
     setDescricao(r.observacoes || '');
     const d = r.dataConferencia ? new Date(r.dataConferencia) : new Date();
-    setData(d.toISOString().split('T')[0]);
+    setData(dataLocalISO(d));
     setHora(d.toTimeString().slice(0, 5));
-    setDataTurno(r.dataProximaInspecao || d.toISOString().split('T')[0]);
+    setDataTurno(r.dataProximaInspecao || dataLocalISO(d));
     setEquipe(r.equipe || equipeEfetiva || '');
     setModo('form');
   }
@@ -303,8 +304,8 @@ export function Solicitacoes() {
                         {r.itemNome || 'Solicitação'} — Equipe {r.equipe}
                       </p>
                       <p className="text-xs text-graphite-500">
-                        {r.dataConferencia ? new Date(r.dataConferencia).toLocaleDateString('pt-BR') + ' às ' + new Date(r.dataConferencia).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}
-                        {r.dataProximaInspecao && <> {' · '}Turno {new Date(r.dataProximaInspecao + 'T12:00:00').toLocaleDateString('pt-BR')}</>}
+                        {r.dataConferencia ? formatarDataBR(r.dataConferencia) + ' às ' + new Date(r.dataConferencia).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                        {r.dataProximaInspecao && <> {' · '}Turno {formatarDataBR(r.dataProximaInspecao)}</>}
                         {' · '}<span className="font-medium text-graphite-700 dark:text-graphite-300">{r.createdBy || '-'}</span>
                       </p>
                     </div>
@@ -315,7 +316,7 @@ export function Solicitacoes() {
                       <p className="whitespace-pre-wrap text-sm text-graphite-700 dark:text-graphite-300">{r.observacoes || 'Sem descrição'}</p>
                       <div className="mt-3 flex flex-wrap gap-3 text-xs text-graphite-500">
                         <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">Registrado por: {r.createdBy}</span>
-                        {r.dataConferencia && <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">{new Date(r.dataConferencia).toLocaleString('pt-BR')}</span>}
+                        {r.dataConferencia && <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">{formatarDataHoraBR(r.dataConferencia)}</span>}
                       </div>
                       {podeGerenciar(r) && (
                         <div className="mt-4 flex items-center gap-2">

@@ -24,6 +24,7 @@ import { listarAPOCs } from '../../services/apocService';
 import type { Bombeiro } from '../../types/bombeiro';
 import { CARGO_OPTIONS, EQUIPE_OPTIONS } from '../../types/bombeiro';
 import type { APOC } from '../../types/apoc';
+import { formatarDataBR, formatarDataHoraBR, hojeLocalISO } from '../../utils/datas';
 type SubView = 'list' | 'form';
 type ViewMode = 'list' | 'report';
 
@@ -58,7 +59,7 @@ const TROCA_PDF_POSITION_OVERRIDES = new Map<string, ReturnType<typeof pdfPositi
   ['motivo_troca', pdfPosition(10, 57.7, 180, 14.5, 10.5)],
   ['nome_solicitado', pdfPosition(10, 82.5, 93, 7, 11)],
   ['cpf_solicitado', pdfPosition(120, 82.5, 57, 7, 10.5)],
-  ['data_folga_solicitado', pdfPosition(151.2, 99.7, 36, 7, 10.5)],
+  ['data_folga_solicitado', pdfPosition(152.5, 99.45, 36, 7, 10.5)],
   ['check_troca_sim', pdfPosition(49.1, 220.6, 4, 4, 16)],
   ['check_troca_nao', pdfPosition(72.8, 220.6, 4, 4, 16)],
   ['justificativa_emergencial', pdfPosition(12, 235, 182, 15, 10.5)],
@@ -80,8 +81,12 @@ const CHECK_FIELD_OVERRIDES = new Map<string, { font_size: number; width: number
     .map(f => [f.field_name, { font_size: f.font_size, width: f.width, height: f.height }])
 );
 
+type TrocaPdfExtraPosition = ReturnType<typeof pdfPosition> & { field_name: string };
+
+const TROCA_PDF_EXTRA_POSITIONS: TrocaPdfExtraPosition[] = [];
+
 function fieldPositionsFromDoc(doc: DocumentWithFields) {
-  return doc.document_fields.map(f => {
+  const fields = doc.document_fields.map(f => {
     const fallback = TROCA_PDF_POSITION_OVERRIDES.get(f.field_name);
     const field = fallback
       ? { ...f, ...fallback }
@@ -100,6 +105,7 @@ function fieldPositionsFromDoc(doc: DocumentWithFields) {
       text_align: fallback?.text_align,
     };
   });
+  return [...fields, ...TROCA_PDF_EXTRA_POSITIONS];
 }
 
 function templateFieldsToDocFields(fields: TemplateFieldDef[]): DocumentField[] {
@@ -605,7 +611,7 @@ export function Trocas() {
       const autorNome = user?.pessoa?.nomeGuerra || user?.name || '';
       const autorCargo = user?.pessoa?.funcao || '';
       result.autorizado_por = autorCargo ? `${autorCargo} ${autorNome}` : autorNome;
-      result.data_autorizacao = new Date().toISOString().split('T')[0];
+      result.data_autorizacao = hojeLocalISO();
     }
     return result;
   }
@@ -619,9 +625,7 @@ export function Trocas() {
 
     if (dadosStr.data_folga_solicitado) {
       const dateValue = dadosStr.data_folga_solicitado;
-      const formattedDate = /^\d{4}-\d{2}-\d{2}$/.test(dateValue)
-        ? dateValue.split('-').reverse().join('/')
-        : dateValue;
+      const formattedDate = formatarDataBR(dateValue, dateValue);
       dadosStr.data_folga_solicitado = `a ${formattedDate}`;
     }
 
@@ -661,7 +665,7 @@ export function Trocas() {
         ...formData,
         deferido_indeferido: 'DEFERIDO',
         autorizado_por: autorCargo ? `${autorCargo} ${autorNome}` : autorNome,
-        data_autorizacao: new Date().toISOString().split('T')[0],
+        data_autorizacao: hojeLocalISO(),
       };
       const formDataToSave = prepareFormDataWithAuth(dadosAprovados);
 
@@ -1485,8 +1489,8 @@ export function Trocas() {
                           <tr key={fill.id} className={`border-b border-graphite-100 dark:border-border-dark ${idx === arr.length - 1 ? 'border-b-0' : ''}`}>
                             <td className="px-4 py-3 text-graphite-900 dark:text-graphite-100">{da.nome_solicitante || '-'}</td>
                             <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{da.nome_solicitado || '-'}</td>
-                            <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{da.data_solicitada ? new Date(da.data_solicitada + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
-                            <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{da.data_folga_solicitado ? new Date(da.data_folga_solicitado + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+                            <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_solicitada)}</td>
+                            <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_folga_solicitado)}</td>
                             <td className="px-4 py-3 text-center">
                               <div className="flex items-center justify-center gap-1">
                               <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -1537,8 +1541,8 @@ export function Trocas() {
                             <tr key={fill.id} className={`border-b border-green-100 dark:border-green-800/20 ${idx === arr.length - 1 ? 'border-b-0' : ''}`}>
                               <td className="px-4 py-3 text-green-900 dark:text-green-100">{da.nome_solicitante || '-'}</td>
                               <td className="px-4 py-3 text-green-800 dark:text-green-300">{da.nome_solicitado || '-'}</td>
-                              <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{da.data_solicitada ? new Date(da.data_solicitada + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
-                              <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{da.data_folga_solicitado ? new Date(da.data_folga_solicitado + 'T12:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+                              <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{formatarDataBR(da.data_solicitada)}</td>
+                              <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{formatarDataBR(da.data_folga_solicitado)}</td>
                               <td className="px-4 py-3 text-center">
                                 <span className="inline-flex items-center gap-1 rounded-full bg-green-200 px-2 py-0.5 text-[10px] font-bold text-green-800 dark:bg-green-800/40 dark:text-green-300">
                                   <CheckCircle className="h-3 w-3" /> Aprovada
@@ -1630,7 +1634,7 @@ export function Trocas() {
                       <div className="text-xs text-graphite-500 dark:text-graphite-400 mt-0.5">
                         Criado por: {data.criado_por || fill.filled_by || 'Desconhecido'}
                         {' '}&bull;{' '}
-                        {new Date(fill.created_at).toLocaleDateString('pt-BR')}
+                        {formatarDataBR(fill.created_at)}
                         {!pessoaSol?.cargo && data.funcao_solicitante && <span className="ml-2 text-graphite-400">({getCargoLabel(data.funcao_solicitante)})</span>}
                       </div>
                     </div>
@@ -1733,9 +1737,9 @@ export function Trocas() {
                       </div>
                       <div className="rounded-lg border border-graphite-100 bg-graphite-50/50 p-3 dark:border-graphite-600 dark:bg-graphite-700/30">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Datas</span>
-                        {data.data_solicitada && <p className="mt-1 text-graphite-900 dark:text-graphite-100">Folga do Solicitante: {new Date(data.data_solicitada + 'T12:00:00').toLocaleDateString('pt-BR')}</p>}
-                        {data.data_folga_solicitado && <p className="text-graphite-900 dark:text-graphite-100">Folga do Solicitado: {new Date(data.data_folga_solicitado + 'T12:00:00').toLocaleDateString('pt-BR')}</p>}
-                        <p className="mt-1 text-xs text-graphite-500">Documento criado por {data.criado_por || fill.filled_by || 'Desconhecido'} em {new Date(fill.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                        {data.data_solicitada && <p className="mt-1 text-graphite-900 dark:text-graphite-100">Folga do Solicitante: {formatarDataBR(data.data_solicitada)}</p>}
+                        {data.data_folga_solicitado && <p className="text-graphite-900 dark:text-graphite-100">Folga do Solicitado: {formatarDataBR(data.data_folga_solicitado)}</p>}
+                        <p className="mt-1 text-xs text-graphite-500">Documento criado por {data.criado_por || fill.filled_by || 'Desconhecido'} em {formatarDataHoraBR(fill.created_at)}</p>
                       </div>
                       <div className="rounded-lg border border-graphite-100 bg-graphite-50/50 p-3 dark:border-graphite-600 dark:bg-graphite-700/30">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Status</span>
@@ -1761,7 +1765,7 @@ export function Trocas() {
                               <CheckCircle className="h-4 w-4" /> AUTORIZADO PELO EMBAIXADOR
                             </div>
                             <p className="text-[10px] text-green-600 dark:text-green-400">
-                              {data.data_autorizacao ? new Date(data.data_autorizacao + 'T12:00:00').toLocaleDateString('pt-BR') : new Date(fill.created_at).toLocaleDateString('pt-BR')}
+                              {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
                               {data.autorizado_por ? ` · ${data.autorizado_por}` : ''}
                             </p>
                           </div>

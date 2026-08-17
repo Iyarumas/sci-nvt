@@ -11,6 +11,7 @@ import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import type { ItemChecklist, StatusItemChecklist } from '../../types/conferencia';
 import { CHECKLIST_EXTINTOR, CHECKLIST_HIDRANTE, STATUS_ITEM_CHECKLIST_OPTIONS } from '../../types/conferencia';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
+import { dataLocalISO, formatarDataBR } from '../../utils/datas';
 
 type Step = 'buscar' | 'checklist' | 'sucesso';
 type TipoBusca = 'extintor' | 'hidrante';
@@ -23,7 +24,7 @@ const CARGO_ABBREV: Record<string, string> = {
 function calcularDataProxima(dataAtual: Date, meses: number): string {
   const d = new Date(dataAtual);
   d.setMonth(d.getMonth() + meses);
-  return d.toISOString().split('T')[0];
+  return dataLocalISO(d);
 }
 
 export function InspecaoCheck() {
@@ -177,7 +178,7 @@ export function InspecaoCheck() {
             <div className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 shadow-sm dark:bg-surface-card">
               <CalendarDays className="h-4 w-4 text-aviation-600" />
               <span className="text-sm text-graphite-700 dark:text-graphite-300">
-                Próxima inspeção: <strong>{dataProxima.split('-').reverse().join('/')}</strong>
+                Próxima inspeção: <strong>{formatarDataBR(dataProxima)}</strong>
               </span>
             </div>
           )}

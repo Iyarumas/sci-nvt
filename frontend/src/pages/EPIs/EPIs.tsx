@@ -28,6 +28,7 @@ import {
   podeVerDadosPessoaisBase,
   resolverContextoOperacional,
 } from '../../utils/permissoes';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 type Tab = 'funcionarios' | 'epis';
 
@@ -182,7 +183,7 @@ export function EPIs() {
   }, [estoque]);
 
   async function handlePagarEpiDireto(itemEstoque: EPIEstoque, bombeiro: Bombeiro) {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeLocalISO();
     const nomeLogado = user?.pessoa?.nomeGuerra || user?.name || username;
     const dataValidadeFinal = itemEstoque.dataValidade || calcularDataValidade(itemEstoque.dataFabricacao, itemEstoque.tempoValidadeMeses);
     await criarEPI({
@@ -442,10 +443,10 @@ export function EPIs() {
                             </span>
                           </td>
                           <td className="px-4 py-3 font-mono text-xs text-graphite-700 dark:text-graphite-300">
-                            {e.dataFabricacao ? new Date(e.dataFabricacao + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                            {formatarDataBR(e.dataFabricacao, '—')}
                           </td>
                           <td className="px-4 py-3 font-mono text-xs text-graphite-700 dark:text-graphite-300">
-                            {e.dataValidadeFinal ? new Date(e.dataValidadeFinal + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                            {formatarDataBR(e.dataValidadeFinal, '—')}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
@@ -517,7 +518,7 @@ export function EPIs() {
                           <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{e.colaborador}</td>
                           <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{e.entreguePor}</td>
                           <td className="px-4 py-3 font-mono text-xs text-graphite-700 dark:text-graphite-300">
-                            {e.dataPagamento ? new Date(e.dataPagamento + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                            {formatarDataBR(e.dataPagamento, '—')}
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1.5">
@@ -787,7 +788,7 @@ function FichaFuncionario({
                           {epi.dataPagamento && (
                             <div>
                               <span className="text-graphite-400">Recebido em:</span>
-                              <span className="ml-1 font-medium text-graphite-700 dark:text-graphite-300">{new Date(epi.dataPagamento + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                              <span className="ml-1 font-medium text-graphite-700 dark:text-graphite-300">{formatarDataBR(epi.dataPagamento, '—')}</span>
                             </div>
                           )}
                           {epi.entreguePor && (
@@ -799,7 +800,7 @@ function FichaFuncionario({
                           <div>
                             <span className="text-graphite-400">Validade:</span>
                             <span className={`ml-1 font-medium ${validadeLabel.cor}`}>
-                              {epi.dataValidade ? new Date(epi.dataValidade + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                              {formatarDataBR(epi.dataValidade, '—')}
                             </span>
                           </div>
                           {epi.numeroSerie && (
@@ -857,7 +858,7 @@ function FormEstoque({
   onSave: (data: Omit<EPIEstoque, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void;
   onCancel: () => void;
 }) {
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   const [form, setForm] = useState(item ? {
     nome: item.nome, descricao: item.descricao, ca: item.ca, fornecedor: item.fornecedor,
     quantidade: item.quantidade, dataFabricacao: item.dataFabricacao, tempoValidadeMeses: item.tempoValidadeMeses,

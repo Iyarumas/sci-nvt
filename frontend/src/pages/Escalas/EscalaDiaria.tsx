@@ -10,6 +10,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarEscalas, criarEscala, atualizarEscala, excluirEscala } from '../../services/escalaService';
 import { listarAtivos } from '../../services/bombeiroService';
 import { equipesNoDia, horarioPlantaoPorEquipe } from '../../utils/equipes';
+import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO, parseDataLocalISO } from '../../utils/datas';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
@@ -47,7 +48,7 @@ function emptyEscala(): Omit<EscalaDiaria, 'id' | 'createdAt' | 'updatedAt' | 'c
   return {
     equipe: 'Alfa',
     chefeEquipe: '',
-    dataPlantao: new Date().toISOString().split('T')[0],
+    dataPlantao: hojeLocalISO(),
     horarioInicio: horario.horarioInicio,
     horarioTermino: horario.horarioTermino,
     turno: horario.turno,
@@ -75,8 +76,7 @@ function montarEscalaInicial(equipePadrao?: string | null): Omit<EscalaDiaria, '
 }
 
 function formatDate(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function motivoVigenciaLabel(motivo: VigenciaSubstituicao['motivo']): string {
@@ -100,14 +100,8 @@ interface EfetivoDiarioEntry {
   };
 }
 
-function dataLocal(data: string): Date {
-  return new Date(`${data}T12:00:00`);
-}
-
 function dataNoPeriodo(data: string, dataInicio: string, dataFim: string): boolean {
-  if (!data || !dataInicio || !dataFim) return false;
-  const dia = dataLocal(data);
-  return dataLocal(dataInicio) <= dia && dataLocal(dataFim) >= dia;
+  return estaNoPeriodoISO(data, dataInicio, dataFim);
 }
 
 function _montarEfetivoDiario(params: {
@@ -153,7 +147,7 @@ function _montarEfetivoDiario(params: {
   // - data_folga_solicitado: dia de folga do solicitado → solicitante substitui o solicitado
   const trocasNoDia = (trocaFills || []).filter(fl => {
     const fd = fl?.filled_data || {};
-    return (fd?.data_solicitada === dataPlantao || fd?.data_folga_solicitado === dataPlantao) && fd?.nome_solicitante && fd?.nome_solicitado;
+    return (mesmoDiaISO(fd?.data_solicitada, dataPlantao) || mesmoDiaISO(fd?.data_folga_solicitado, dataPlantao)) && fd?.nome_solicitante && fd?.nome_solicitado;
   });
   const trocaExcluidos = new Set<string>();
   const trocaIncluidos: { bombeiro: Bombeiro; cargo: string; substituindo: EfetivoDiarioEntry['substituindo'] }[] = [];
@@ -162,8 +156,8 @@ function _montarEfetivoDiario(params: {
     const sol = porNome.get(String(fd.nome_solicitante || '').toLowerCase());
     const solic = porNome.get(String(fd.nome_solicitado || '').toLowerCase());
     if (!sol || !solic) continue;
-    const solDia = fd?.data_solicitada === dataPlantao;
-    const solicDia = fd?.data_folga_solicitado === dataPlantao;
+    const solDia = mesmoDiaISO(fd?.data_solicitada, dataPlantao);
+    const solicDia = mesmoDiaISO(fd?.data_folga_solicitado, dataPlantao);
     if (solDia && sol.equipe === equipe) {
       trocaExcluidos.add(sol.id);
       trocaExcluidos.add(solic.id);
@@ -376,7 +370,7 @@ function EscalaDiariaForm({
     if (!form.dataPlantao) return;
     const data = form.dataPlantao;
     const aprovadas = substituicoes.filter(s =>
-      s.status === 'Aprovada' && data >= s.dataInicio && data <= s.dataFim
+      s.status === 'Aprovada' && estaNoPeriodoISO(data, s.dataInicio, s.dataFim)
     );
 
     const trocasSubstituicao = aprovadas.map(s => ({
@@ -389,12 +383,12 @@ function EscalaDiariaForm({
     const trocasDocumento = trocaFills
       .filter(fl => {
         const fd = (fl.filled_data as any) || {};
-        return (fd.data_solicitada === data || fd.data_folga_solicitado === data) && fd.nome_solicitante && fd.nome_solicitado;
+        return (mesmoDiaISO(fd.data_solicitada, data) || mesmoDiaISO(fd.data_folga_solicitado, data)) && fd.nome_solicitante && fd.nome_solicitado;
       })
       .flatMap(fl => {
         const fd = (fl.filled_data as Record<string, string>) || {};
         const items: { funcaoSaindo: string; nomeSaindo: string; funcaoEntrando: string; nomeEntrando: string }[] = [];
-        if (fd.data_solicitada === data) {
+        if (mesmoDiaISO(fd.data_solicitada, data)) {
           items.push({
             funcaoSaindo: fd.funcao_solicitante || '',
             nomeSaindo: fd.nome_solicitante || '',
@@ -402,7 +396,7 @@ function EscalaDiariaForm({
             nomeEntrando: fd.nome_solicitado || '',
           });
         }
-        if (fd.data_folga_solicitado === data) {
+        if (mesmoDiaISO(fd.data_folga_solicitado, data)) {
           items.push({
             funcaoSaindo: fd.funcao_solicitado || '',
             nomeSaindo: fd.nome_solicitado || '',
@@ -450,7 +444,7 @@ function EscalaDiariaForm({
   useEffect(() => {
     if (!form.dataPlantao) return;
     if (!canManageGlobal) return;
-    const data = new Date(form.dataPlantao + 'T12:00:00');
+    const data = parseDataLocalISO(form.dataPlantao);
     const equipes = equipesNoDia(data);
     if (!equipes.some(eq => eq === form.equipe)) {
       setForm(f => ({ ...f, equipe: equipes[0] }));
@@ -555,14 +549,12 @@ function EscalaDiariaForm({
         }
       }
 
-      const dateObj = new Date(form.dataPlantao + 'T00:00:00');
+      const dateObj = parseDataLocalISO(form.dataPlantao);
 
       function isEmGozo(bId: string) {
         return gozos.find((g: any) => {
           if (g.funcionarioId !== bId || g.status === 'Gozadas') return false;
-          const gInicio = new Date(g.dataInicio + 'T00:00:00');
-          const gFim = new Date(g.dataFim + 'T00:00:00');
-          return gInicio <= dateObj && gFim >= dateObj;
+          return dataNoPeriodo(form.dataPlantao, g.dataInicio, g.dataFim);
         });
       }
 
@@ -576,8 +568,8 @@ function EscalaDiariaForm({
             const fd = fl?.filled_data || {};
             const solNome = String(fd?.nome_solicitante || '').toLowerCase();
             const solicNome = String(fd?.nome_solicitado || '').toLowerCase();
-            if (fd?.data_solicitada === form.dataPlantao && (solNome === pNome || solNome === pGuerra)) return true;
-            if (fd?.data_folga_solicitado === form.dataPlantao && (solicNome === pNome || solicNome === pGuerra)) return true;
+            if (mesmoDiaISO(fd?.data_solicitada, form.dataPlantao) && (solNome === pNome || solNome === pGuerra)) return true;
+            if (mesmoDiaISO(fd?.data_folga_solicitado, form.dataPlantao) && (solicNome === pNome || solicNome === pGuerra)) return true;
             return false;
           });
           if (troca) {
@@ -675,8 +667,8 @@ function EscalaDiariaForm({
       const trocaIncluidosNoDia: { bombeiro: any; cargo: string }[] = [];
       for (const fl of trocaFills) {
         const fd = fl?.filled_data || {};
-        const solDia = fd?.data_solicitada === form.dataPlantao;
-        const solicDia = fd?.data_folga_solicitado === form.dataPlantao;
+        const solDia = mesmoDiaISO(fd?.data_solicitada, form.dataPlantao);
+        const solicDia = mesmoDiaISO(fd?.data_folga_solicitado, form.dataPlantao);
         if ((!solDia && !solicDia) || !fd?.nome_solicitante || !fd?.nome_solicitado) continue;
         const sol = all.find((bb: any) => bb.nomeCompleto === fd.nome_solicitante || bb.nomeGuerra === fd.nome_solicitante);
         const solic = all.find((bb: any) => bb.nomeCompleto === fd.nome_solicitado || bb.nomeGuerra === fd.nome_solicitado);
@@ -721,7 +713,7 @@ function EscalaDiariaForm({
 
       // ── 3. Aplicar trocas temporárias ──
       const trocasAtivas = substituicoes.filter(s =>
-        s.status === 'Aprovada' && form.dataPlantao >= s.dataInicio && form.dataPlantao <= s.dataFim
+        s.status === 'Aprovada' && estaNoPeriodoISO(form.dataPlantao, s.dataInicio, s.dataFim)
       );
       // Aplicar swaps nos nomes dos slots
       for (const t of trocasAtivas) {
@@ -1310,7 +1302,7 @@ export function EscalaDiariaView() {
     if (filtroEquipe) lista = lista.filter(e => e.equipe === filtroEquipe);
     if (filterMode === 'mes-ano') {
       if (filtroAno) lista = lista.filter(e => e.dataPlantao?.startsWith(filtroAno));
-      if (filtroMes) lista = lista.filter(e => (new Date(e.dataPlantao).getMonth() + 1).toString() === filtroMes);
+      if (filtroMes) lista = lista.filter(e => (parseDataLocalISO(e.dataPlantao).getMonth() + 1).toString() === filtroMes);
     } else {
       if (dataInicio) lista = lista.filter(e => e.dataPlantao >= dataInicio);
       if (dataFinal) lista = lista.filter(e => e.dataPlantao <= dataFinal);
@@ -1371,7 +1363,7 @@ export function EscalaDiariaView() {
       createdAt: '',
       updatedAt: '',
       createdBy: '',
-      dataPlantao: new Date().toISOString().split('T')[0],
+      dataPlantao: hojeLocalISO(),
     });
     setMode('form');
   }

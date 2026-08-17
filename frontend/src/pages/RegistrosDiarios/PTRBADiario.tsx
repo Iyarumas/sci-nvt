@@ -22,6 +22,7 @@ import type { APOC } from '../../types/apoc';
 import type { PTRB, PTRBParticipante } from '../../types/ptrb';
 import { EQUIPES, SITUACOES, ASSUNTOS } from '../../types/ptrb';
 import { horarioPlantaoPorEquipe } from '../../utils/equipes';
+import { estaNoPeriodoISO, formatarDataArquivo, formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
 import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
@@ -43,8 +44,7 @@ function nomeBatePessoa(nome: string, pessoa: Pick<Bombeiro, 'nomeCompleto' | 'n
 }
 
 function formatDate(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function calcDuracao(inicio: string, termino: string): string {
@@ -73,7 +73,7 @@ function calcHorasFromDuracao(duracao: string): number {
 function emptyPTRB(): Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
   const horario = horarioPlantaoPorEquipe('Alfa');
   return {
-    data: new Date().toISOString().split('T')[0],
+    data: hojeLocalISO(),
     horaInicio: horario.horarioInicio,
     horaTermino: horario.horarioTermino,
     duracao: '12:00',
@@ -238,10 +238,14 @@ function PTRBAForm({
   }, [bombeiros, form.equipe]);
 
   const emFerias = useMemo(() => {
-    const ferias: AusenciaFerias[] = feriasGozo.filter(f => f.equipe === form.equipe && f.status === 'Em Gozo');
+    const ferias: AusenciaFerias[] = feriasGozo.filter(f =>
+      f.equipe === form.equipe &&
+      f.status !== 'Gozadas' &&
+      estaNoPeriodoISO(form.data, f.dataInicio, f.dataFim)
+    );
     // Incluir também pessoas que estão a ser cobertas por vigências (férias programadas)
     const vigiados = vigencias.reduce<AusenciaFerias[]>((acc, v) => {
-      if (!(v.equipe === form.equipe && v.ativa && v.dataInicio <= form.data && v.dataFim >= form.data)) return acc;
+      if (!(v.equipe === form.equipe && v.ativa && estaNoPeriodoISO(form.data, v.dataInicio, v.dataFim))) return acc;
       const b = bombeiros.find(bb => bb.id === v.funcionarioOriginalId);
       if (!b) return acc;
       acc.push({
@@ -261,10 +265,8 @@ function PTRBAForm({
     const map: Record<string, { substitutoNome: string; substitutoId: string; tipo: string }> = {};
     trocaFills.forEach((fl: any) => {
       const fd = fl.filled_data || {};
-      const dataSolicitada = String(fd.data_solicitada || '').slice(0, 10);
-      const dataFolgaSolicitado = String(fd.data_folga_solicitado || '').slice(0, 10);
-      const naDataSolicitada = dataSolicitada === form.data;
-      const naDataFolgaSolicitado = dataFolgaSolicitado === form.data;
+      const naDataSolicitada = mesmoDiaISO(fd.data_solicitada, form.data);
+      const naDataFolgaSolicitado = mesmoDiaISO(fd.data_folga_solicitado, form.data);
       if (!naDataSolicitada && !naDataFolgaSolicitado) return;
       const nomeSol = fd.nome_solicitante || '';
       const nomeSolic = fd.nome_solicitado || '';
@@ -279,8 +281,7 @@ function PTRBAForm({
     });
     substituicoesTemporarias.forEach(s => {
       if (s.status !== 'Aprovada') return;
-      const dataSubst = s.dataInicio || '';
-      if (dataSubst !== form.data) return;
+      if (!estaNoPeriodoISO(form.data, s.dataInicio, s.dataFim || s.dataInicio)) return;
       if (s.funcionarioId && s.substitutoNome) {
         map[s.funcionarioId] = { substitutoNome: s.substitutoNome, substitutoId: s.substitutoId, tipo: 'substituicao' };
       }
@@ -291,7 +292,7 @@ function PTRBAForm({
     // Vigências de substituição (férias em cascata)
     vigencias.forEach(v => {
       if (!v.ativa) return;
-      if (v.dataInicio > form.data || v.dataFim < form.data) return;
+      if (!estaNoPeriodoISO(form.data, v.dataInicio, v.dataFim)) return;
       if (v.funcionarioOriginalId && v.substitutoNome) {
         if (!map[v.funcionarioOriginalId]) {
           map[v.funcionarioOriginalId] = {
@@ -642,7 +643,7 @@ function ViewMode({ ptrb, onBack }: { ptrb: PTRB; onBack: () => void }) {
         <div className="flex items-center gap-2">
           <button onClick={() => {
             if (ptrb.data) {
-              document.title = `${ptrb.data.split('-').reverse().join('-')} NVT PTRBA ${String(ptrb.equipe).toLocaleUpperCase('pt-BR')}`;
+              document.title = `${formatarDataArquivo(ptrb.data)} NVT PTRBA ${String(ptrb.equipe).toLocaleUpperCase('pt-BR')}`;
             }
             window.print();
           }}
@@ -877,7 +878,7 @@ export function PTRBADiario() {
       createdAt: '',
       updatedAt: '',
       createdBy: '',
-      data: new Date().toISOString().split('T')[0],
+      data: hojeLocalISO(),
       observacoes: '',
       instrutor: '',
       assuntoMinistrado: '',

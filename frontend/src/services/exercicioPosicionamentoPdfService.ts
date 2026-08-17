@@ -1,10 +1,12 @@
 import jsPDF from 'jspdf';
 import { downloadPdf } from './pdfService';
+import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 import type { ExercicioPosicionamento } from '../types/exercicioPosicionamento';
 
 const PAGE_W = 210;
 const M = 4;
 const CONTENT_W = PAGE_W - M * 2;
+const SIGNATURE_H = 30;
 const AIRPORTO_PADRAO = 'AEROPORTO INTERNACIONAL MINISTRO VICTOR KONDER SBNF/NVT';
 
 type Align = 'left' | 'center' | 'right';
@@ -17,6 +19,7 @@ interface CellOptions {
   fill?: [number, number, number];
   minSize?: number;
   uppercase?: boolean;
+  lineHeightFactor?: number;
 }
 
 function formatDate(value: string): string {
@@ -30,7 +33,7 @@ function formatFileDate(value: string): string {
   if (!value) return 'sem-data';
   const [year, month, day] = value.split('-');
   if (!year || !month || !day) return value.replace(/\//g, '-');
-  return `${Number(day)}-${Number(month)}-${year}`;
+  return `${day}-${month}-${year}`;
 }
 
 function safeFilePart(value: string): string {
@@ -58,6 +61,16 @@ function withEllipsis(doc: jsPDF, text: string, maxWidth: number): string {
   return out.length < text.length ? `${out}...` : out;
 }
 
+function fitFontSize(doc: jsPDF, text: string, maxWidth: number, startSize: number, minSize: number): number {
+  let size = startSize;
+  doc.setFontSize(size);
+  while (size > minSize && doc.getTextWidth(text) > maxWidth) {
+    size -= 0.2;
+    doc.setFontSize(size);
+  }
+  return size;
+}
+
 function drawTextInCell(doc: jsPDF, x: number, y: number, w: number, h: number, text = '', opts: CellOptions = {}) {
   const value = opts.uppercase ? upper(text) : text;
   if (!value) return;
@@ -71,7 +84,7 @@ function drawTextInCell(doc: jsPDF, x: number, y: number, w: number, h: number, 
   let lines = toLines(doc, value, w - padX * 2);
 
   while (size > minSize) {
-    const lineHeight = size * 0.36;
+    const lineHeight = size * (opts.lineHeightFactor || 0.36);
     const maxLines = Math.max(1, Math.floor((h - padY * 2) / lineHeight));
     if (lines.length <= maxLines) break;
     size -= 0.4;
@@ -79,7 +92,7 @@ function drawTextInCell(doc: jsPDF, x: number, y: number, w: number, h: number, 
     lines = toLines(doc, value, w - padX * 2);
   }
 
-  const lineHeight = size * 0.36;
+  const lineHeight = size * (opts.lineHeightFactor || 0.36);
   const maxLines = Math.max(1, Math.floor((h - padY * 2) / lineHeight));
   if (lines.length > maxLines) {
     lines = lines.slice(0, maxLines);
@@ -109,27 +122,33 @@ function drawCell(doc: jsPDF, x: number, y: number, w: number, h: number, text =
   drawTextInCell(doc, x, y, w, h, text, opts);
 }
 
-function drawLogo(doc: jsPDF, x: number, y: number, w: number, h: number) {
+function drawEquipagemCell(doc: jsPDF, x: number, y: number, w: number, h: number, nomes: string[]) {
   drawCell(doc, x, y, w, h);
+  const linhas = nomes.filter(Boolean).map(upper);
+  if (!linhas.length) return;
+
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(150, 150, 150);
-  doc.text('Group', x + 2, y + 6.2);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(205, 31, 47);
-  doc.text('med', x + 2.2, y + 14.2);
-  doc.setTextColor(64, 168, 92);
-  doc.text('+', x + 19, y + 14.2);
+  linhas.forEach((nome, index) => {
+    const size = fitFontSize(doc, nome, w - 2.8, 8.8, 6.8);
+    const text = doc.getTextWidth(nome) > w - 2.8 ? withEllipsis(doc, nome, w - 2.8) : nome;
+    const textY = y + ((index + 1) * h) / (linhas.length + 1) + size * 0.13;
+    doc.setFontSize(size);
+    doc.text(text, x + w / 2, textY, { align: 'center' });
+  });
+}
+
+function drawLogo(doc: jsPDF, logoDataUrl: string | null, x: number, y: number, w: number, h: number) {
+  drawCell(doc, x, y, w, h);
+  drawMedGroupLogo(doc, logoDataUrl, x, y, w, h, false);
   doc.setTextColor(0, 0, 0);
 }
 
-function drawHeader(doc: jsPDF, registro: ExercicioPosicionamento) {
+function drawHeader(doc: jsPDF, registro: ExercicioPosicionamento, logoDataUrl: string | null) {
   const y = 3;
   const logoW = 25;
   const codeW = 31;
   const titleW = CONTENT_W - logoW - codeW;
-  drawLogo(doc, M, y, logoW, 19);
+  drawLogo(doc, logoDataUrl, M, y, logoW, 19);
   drawCell(doc, M + logoW, y, titleW, 19, 'FORMULÁRIO PARA AFERIÇÃO DE POSICIONAMENTO PARA INTERVENÇÃO', {
     bold: true,
     size: 10.5,
@@ -163,7 +182,7 @@ function drawVehicleRow(doc: jsPDF, y: number, label: string, motorista: string,
   drawCell(doc, xs[0], y, cols[0], h, label, { bold: true, size: 8.2, align: 'center' });
   drawCell(doc, xs[1], y, cols[1], h, motorista, { size: 8, align: 'center', uppercase: true });
   drawCell(doc, xs[2], y, cols[2], h);
-  drawCell(doc, xs[3], y, cols[3], h, equipagem.filter(Boolean).map(upper).join('\n'), { size: 7.6, align: 'center' });
+  drawEquipagemCell(doc, xs[3], y, cols[3], h, equipagem);
   drawCell(doc, xs[4], y, cols[4], h);
   drawCell(doc, xs[5], y, cols[5], h, tempo || '', { size: 8.4, align: 'center' });
 }
@@ -248,23 +267,34 @@ function drawChecklist(doc: jsPDF, registro: ExercicioPosicionamento) {
   return y0 + 6 + rows.length * rowH;
 }
 
-function drawSignatureArea(doc: jsPDF, y: number) {
-  const h = 24;
-  drawCell(doc, M, y, CONTENT_W, h);
-  const lineY = y + 13.4;
-  const lineW = 58;
-  const leftX = M + 23;
-  const rightX = M + CONTENT_W - 23 - lineW;
+function drawSignatureBlock(doc: jsPDF, x: number, lineY: number, lineW: number, name: string, role: string) {
+  const centerX = x + lineW / 2;
+  doc.setFont('helvetica', 'bold');
+  const nomeCompleto = upper(name);
+  if (nomeCompleto) {
+    const nameSize = fitFontSize(doc, nomeCompleto, lineW - 2, 8.8, 6.8);
+    doc.setFontSize(nameSize);
+    doc.text(nomeCompleto, centerX, lineY + 5.2, { align: 'center' });
+  }
+  doc.setFontSize(8.2);
+  doc.text(role, centerX, lineY + 11, { align: 'center' });
+}
+
+function drawSignatureArea(doc: jsPDF, y: number, registro: ExercicioPosicionamento) {
+  drawCell(doc, M, y, CONTENT_W, SIGNATURE_H);
+  const lineY = y + 12.6;
+  const lineW = 82;
+  const leftX = M + 13;
+  const rightX = M + CONTENT_W - 13 - lineW;
   doc.setLineWidth(0.18);
   doc.line(leftX, lineY, leftX + lineW, lineY);
   doc.line(rightX, lineY, rightX + lineW, lineY);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('BA-CE', leftX + lineW / 2, lineY + 6.4, { align: 'center' });
-  doc.text('GS', rightX + lineW / 2, lineY + 6.4, { align: 'center' });
+  drawSignatureBlock(doc, leftX, lineY, lineW, registro.chefeEquipe, 'BA-CE');
+  drawSignatureBlock(doc, rightX, lineY, lineW, registro.gerente || registro.aprovadoPorNome || registro.aprovadoPor, 'GS');
 }
 
 export async function gerarExercicioPosicionamentoPdf(registro: ExercicioPosicionamento): Promise<Blob> {
+  const logoDataUrl = await carregarMedGroupLogo();
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
     title: `Exercício de Posicionamento - ${registro.equipe} - ${formatDate(registro.data)}`,
@@ -274,12 +304,12 @@ export async function gerarExercicioPosicionamentoPdf(registro: ExercicioPosicio
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
 
-  drawHeader(doc, registro);
+  drawHeader(doc, registro, logoDataUrl);
   drawMainTable(doc, registro);
   const checklistEnd = drawChecklist(doc, registro);
-  drawSignatureArea(doc, checklistEnd);
+  drawSignatureArea(doc, checklistEnd, registro);
   doc.setLineWidth(0.22);
-  doc.rect(M, 3, CONTENT_W, checklistEnd + 24 - 3);
+  doc.rect(M, 3, CONTENT_W, checklistEnd + SIGNATURE_H - 3);
 
   return doc.output('blob');
 }

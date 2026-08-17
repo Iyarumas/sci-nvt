@@ -10,7 +10,9 @@ const filesToCompile = [
   'src/types/bombeiro.ts',
   'src/types/escala.ts',
   'src/types/ferias.ts',
+  'src/types/tpepr.ts',
   'src/types/substituicaoTemporaria.ts',
+  'src/utils/tempo.ts',
   'src/utils/equipes.ts',
   'src/utils/regrasOperacionais.ts',
   'src/utils/validacaoCursos.ts',
@@ -40,6 +42,7 @@ const requireFromTest = createRequire(import.meta.url);
 const regras = requireFromTest(path.join(outRoot, 'src/utils/regrasOperacionais.js'));
 const cursos = requireFromTest(path.join(outRoot, 'src/utils/validacaoCursos.js'));
 const equipesUtils = requireFromTest(path.join(outRoot, 'src/utils/equipes.js'));
+const tpepr = requireFromTest(path.join(outRoot, 'src/types/tpepr.js'));
 
 const {
   validarFeriasGozo,
@@ -52,6 +55,10 @@ const {
   dataSaidaPlantao,
   equipesNoDia,
 } = equipesUtils;
+const {
+  calcularQuartaTomada,
+  normalizarParticipantesTPEPR,
+} = tpepr;
 
 const base = {
   matricula: '',
@@ -154,6 +161,21 @@ assert.deepEqual(horarioPlantaoPorEquipe('Delta'), {
 });
 assert.equal(dataSaidaPlantao('Alfa', '2026-07-21'), '2026-07-21');
 assert.equal(dataSaidaPlantao('Bravo', '2026-07-21'), '2026-07-22');
+assert.equal(calcularQuartaTomada('02:00', '03:42'), '01:00');
+assert.equal(calcularQuartaTomada('02:00', '03:00'), '00:35');
+assert.equal(
+  normalizarParticipantesTPEPR([{
+    pessoaId: 'p1',
+    nomeCompleto: 'Participante',
+    nomeGuerra: 'P1',
+    funcao: 'BA-CE',
+    primeiraTomada: '01:00',
+    segundaTomada: '02:00',
+    terceiraTomada: '03:42',
+    quartaTomada: '09:59',
+  }])[0].quartaTomada,
+  '01:00',
+);
 
 assert.match(
   validarFeriasGozo({ gozo: gozo(ce), funcionario: ce, bombeiros }).join('\n'),

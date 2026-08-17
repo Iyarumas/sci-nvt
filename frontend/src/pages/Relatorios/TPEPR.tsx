@@ -33,6 +33,7 @@ import {
 } from '../../services/tpeprService';
 import { baixarTPEPRPdf } from '../../services/tpeprPdfService';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import {
   calcularQuartaTomada,
   criarParticipantesTPEPRVazios,
@@ -49,8 +50,7 @@ const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 
 function fmtData(data: string) {
-  if (!data) return '-';
-  return new Date(data + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(data);
 }
 
 function turnoAuto(equipe: string) {
@@ -323,7 +323,7 @@ export function TPEPR() {
     }
 
     resetForm();
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeLocalISO();
     const ano = new Date().getFullYear().toString();
     const equipePadrao = canManageGlobal ? '' : equipeEfetiva || '';
     setFAno(ano);
@@ -774,7 +774,7 @@ export function TPEPR() {
               <div className="rounded-xl border border-aviation-200 bg-aviation-50 px-4 py-3 text-sm text-aviation-800 dark:border-aviation-800 dark:bg-aviation-900/20 dark:text-aviation-200">
                 <div className="flex items-start gap-2">
                   <Calculator className="mt-0.5 h-4 w-4 shrink-0" />
-                  <p>O tempo da 4a tomada e calculado automaticamente: (3a tomada - 2a tomada) + 20%.</p>
+                  <p>O tempo da 4a tomada e calculado automaticamente: (3a tomada - 2a tomada) / 1,7.</p>
                 </div>
               </div>
 

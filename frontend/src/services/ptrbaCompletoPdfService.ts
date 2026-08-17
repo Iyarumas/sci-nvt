@@ -1,10 +1,18 @@
 import jsPDF from 'jspdf';
 import type { PTRBACompleto, PTRBACompletoEvidencia, PTRBACompletoParticipante } from '../types/ptrbaCompleto';
-import { normalizarEvidenciasPTRBACompleto, PTRBA_COMPLETO_EQUIPES } from '../types/ptrbaCompleto';
+import {
+  normalizarEvidenciasPTRBACompleto,
+  PTRBA_COMPLETO_EQUIPES,
+  PTRBA_COMPLETO_EVIDENCIA_PARES,
+} from '../types/ptrbaCompleto';
 import { downloadPdf } from './pdfService';
 
 const PAGE_H = 297;
 const M = 10;
+const CONTENT_W = 196;
+const SIGNATURE_Y = 288.5;
+const EVIDENCE_BOTTOM_Y = 276.5;
+const PARTICIPANTES_FIXOS_EQUIPE = 10;
 
 function formatDate(value: string): string {
   if (!value) return '';
@@ -113,7 +121,7 @@ function drawEquipeLinha(doc: jsPDF, registro: PTRBACompleto) {
   drawCell(doc, M + 155, 29, 41, 6, formatDate(registro.data), { bold: true, size: 8, align: 'center' });
 }
 
-function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[]) {
+function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[]): number {
   const y0 = 36.5;
   const rowH = 6.7;
   const widths = [15, 18, 68, 19, 76];
@@ -122,10 +130,15 @@ function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[
   const headers = ['ORD', 'Função', 'NOME COMPLETO', "Situação dos\nBA's", 'ASSINATURA DO BA'];
   headers.forEach((header, i) => drawCell(doc, xs[i], y0, widths[i], 7, header, { bold: true, size: 7, align: 'center' }));
 
-  const preenchidos = participantes.filter(p => p.nomeCompleto);
-  for (let i = 0; i < preenchidos.length; i += 1) {
+  const participantesEquipe = participantes.slice(0, PARTICIPANTES_FIXOS_EQUIPE);
+  const participantesExtras = participantes
+    .slice(PARTICIPANTES_FIXOS_EQUIPE)
+    .filter(p => p.nomeCompleto.trim());
+  const linhas = [...participantesEquipe, ...participantesExtras];
+
+  for (let i = 0; i < linhas.length; i += 1) {
     const y = y0 + 7 + i * rowH;
-    const p = preenchidos[i] || { funcao: '', nomeCompleto: '', situacao: '' };
+    const p = linhas[i] || { funcao: '', nomeCompleto: '', situacao: '' };
     drawCell(doc, xs[0], y, widths[0], rowH, String(i + 1), { size: 7, align: 'center' });
     drawCell(doc, xs[1], y, widths[1], rowH, p.funcao || '', { size: 7, align: 'center' });
     drawCell(doc, xs[2], y, widths[2], rowH);
@@ -133,11 +146,14 @@ function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[
     drawCell(doc, xs[3], y, widths[3], rowH, p.situacao || '', { size: 7, align: 'center' });
     drawCell(doc, xs[4], y, widths[4], rowH);
   }
+
+  return y0 + 7 + linhas.length * rowH;
 }
 
-function drawObservacoes(doc: jsPDF, registro: PTRBACompleto) {
-  const y = 144;
-  drawCell(doc, M, y, 196, 8, 'OBSERVAÇÕES:', { bold: true, size: 8, valign: 'top' });
+function drawObservacoes(doc: jsPDF, registro: PTRBACompleto, y: number): number {
+  const obsH = registro.observacoes ? 9 : 6;
+  const legendH = 11.5;
+  drawCell(doc, M, y, CONTENT_W, obsH, 'OBSERVAÇÕES:', { bold: true, size: 8, valign: 'top' });
   if (registro.observacoes) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
@@ -147,12 +163,14 @@ function drawObservacoes(doc: jsPDF, registro: PTRBACompleto) {
   drawCell(
     doc,
     M,
-    y + 8,
-    196,
-    8,
-    'LEGENDAS: P - Presente / A - Ausente / EO - Empenho Ocorrência / OC - Operador Comunicação / INSTR.1 - Instrutor PTR 1 / INSTR.2 - Instrutor PTR 2 / INSTR.1-2 - Instrutor PTR 1 e 2.',
-    { bold: true, size: 6.4, valign: 'middle' },
+    y + obsH,
+    CONTENT_W,
+    legendH,
+    'LEGENDAS: P - Presente / A - Ausente / EO - Empenho Ocorrência / OC - Operador Comunicação / INSTR.1 - Instrutor PTR 1 / INSTR.2 - Instrutor PTR 2 / INSTR.3 - Instrutor PTR 3 / INSTR.1-2 - Instrutor PTR 1 e 2 / INSTR.2-3 - Instrutor PTR 2 e 3 / INSTR.1-3 - Instrutor PTR 1 e 3.',
+    { bold: true, size: 5.4, valign: 'middle' },
   );
+
+  return y + obsH + legendH;
 }
 
 function imageFormat(dataUrl: string): 'PNG' | 'JPEG' {
@@ -201,18 +219,18 @@ function drawEvidenceCell(doc: jsPDF, ev: PTRBACompletoEvidencia, x: number, y: 
   });
 }
 
-function drawEvidencias(doc: jsPDF, evidencias: PTRBACompletoEvidencia[]) {
-  const titleY = 160;
-  drawCell(doc, M, titleY, 196, 5, 'ASSUNTOS MINISTRADOS E EVIDÊNCIAS', { bold: true, size: 8, align: 'center' });
+function drawEvidencias(doc: jsPDF, evidencias: PTRBACompletoEvidencia[], titleY: number) {
+  drawCell(doc, M, titleY, CONTENT_W, 5, 'ASSUNTOS MINISTRADOS E EVIDÊNCIAS', { bold: true, size: 8, align: 'center' });
   const xLeft = M;
   const xRight = M + 98;
   const cellW = 98;
   const labelH = 4;
-  const cellH = 34;
+  const availableForPhotos = EVIDENCE_BOTTOM_Y - (titleY + 5) - (PTRBA_COMPLETO_EVIDENCIA_PARES.length * labelH);
+  const cellH = Math.max(30, Math.min(58, availableForPhotos / PTRBA_COMPLETO_EVIDENCIA_PARES.length));
   // 3 instruções, cada uma com 2 evidências juntas
   for (let n = 0; n < 3; n += 1) {
     const labelY = titleY + 5 + n * (labelH + cellH);
-    drawCell(doc, M, labelY, 196, labelH, `INSTRUÇÃO ${n + 1}`, { bold: true, size: 7, align: 'center', fill: [230, 230, 230] });
+    drawCell(doc, M, labelY, CONTENT_W, labelH, `INSTRUÇÃO ${n + 1}`, { bold: true, size: 7, align: 'center', fill: [230, 230, 230] });
     const y = labelY + labelH;
     const i = n * 2;
     drawEvidenceCell(doc, evidencias[i], xLeft, y, cellW, cellH);
@@ -221,7 +239,7 @@ function drawEvidencias(doc: jsPDF, evidencias: PTRBACompletoEvidencia[]) {
 }
 
 function drawAssinatura(doc: jsPDF) {
-  const y = 288.5;
+  const y = SIGNATURE_Y;
   doc.setLineWidth(0.2);
   doc.line(58, y, 152, y);
   doc.setFont('helvetica', 'normal');
@@ -239,12 +257,13 @@ export async function gerarPTRBACompletoPdf(registro: PTRBACompleto): Promise<Bl
   });
   drawHeader(doc);
   drawEquipeLinha(doc, registro);
-  drawParticipantes(doc, registro.participantes);
-  drawObservacoes(doc, registro);
-  drawEvidencias(doc, normalizarEvidenciasPTRBACompleto(registro.evidencias));
+  const participantesBottom = drawParticipantes(doc, registro.participantes);
+  const observacoesY = Math.min(participantesBottom + 1.5, 144);
+  const evidenciasY = drawObservacoes(doc, registro, observacoesY) + 2;
+  drawEvidencias(doc, normalizarEvidenciasPTRBACompleto(registro.evidencias), evidenciasY);
   drawAssinatura(doc);
   doc.setLineWidth(0.25);
-  doc.rect(M, 7, 196, PAGE_H - 9);
+  doc.rect(M, 7, CONTENT_W, PAGE_H - 9);
   return doc.output('blob');
 }
 

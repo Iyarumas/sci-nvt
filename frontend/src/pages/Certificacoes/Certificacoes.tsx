@@ -28,6 +28,7 @@ import {
   podeVerDadosPessoaisBase,
   resolverContextoOperacional,
 } from '../../utils/permissoes';
+import { dataLocalISO, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 const NR_COLORS: Record<string, string> = {
   'NR-1': 'from-slate-500 to-slate-600',
@@ -48,7 +49,7 @@ const NR_COLORS: Record<string, string> = {
 function getDefaultValidade(): string {
   const d = new Date();
   d.setFullYear(d.getFullYear() + 1);
-  return d.toISOString().split('T')[0];
+  return dataLocalISO(d);
 }
 
 function getStatusValidade(dataValidade: string): { label: string; color: string } {
@@ -161,7 +162,7 @@ function NRFormInline({ funcionarioId, funcionarioNome, onSave, onCancel }: {
   onSave: (data: Omit<CertificacaoNR, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onCancel: () => void;
 }) {
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   const [form, setForm] = useState({
     nrNumero: '', nrNome: '', dataEmissao: hoje,
     dataValidade: getDefaultValidade(), empresa: 'Grupo MedMais',
@@ -226,7 +227,7 @@ function CursoFormInline({ funcionarioId, funcionarioNome, onSave, onCancel }: {
   onSave: (data: Omit<CertificacaoCurso, 'id' | 'createdAt' | 'updatedAt'>) => void;
   onCancel: () => void;
 }) {
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   const [form, setForm] = useState({
     cursoTipo: '', cursoNome: '', dataEmissao: hoje,
     dataValidade: getDefaultValidade(), semValidade: false,
@@ -525,7 +526,7 @@ function FuncionarioCard({
                           ) : status ? (
                             <>
                               <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${status.color}`}>{status.label}</span>
-                              <span className="text-[9px] text-graphite-400">{new Date(cert.dataValidade + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                              <span className="text-[9px] text-graphite-400">{formatarDataBR(cert.dataValidade)}</span>
                             </>
                           ) : null}
                         </div>
@@ -572,7 +573,7 @@ function FuncionarioCard({
                           ) : status ? (
                             <>
                               <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${status.color}`}>{status.label}</span>
-                              <span className="text-[9px] text-graphite-400">{new Date(cert.dataValidade + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                              <span className="text-[9px] text-graphite-400">{formatarDataBR(cert.dataValidade)}</span>
                             </>
                           ) : null}
                         </div>
@@ -616,7 +617,7 @@ function FuncionarioCard({
                         <p className="truncate text-[10px] text-graphite-500 dark:text-graphite-400">{cert.nrNome}</p>
                         <div className="mt-1 flex items-center gap-2">
                           <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${status.color}`}>{status.label}</span>
-                          <span className="text-[9px] text-graphite-400">{new Date(cert.dataValidade + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                          <span className="text-[9px] text-graphite-400">{formatarDataBR(cert.dataValidade)}</span>
                         </div>
                       </div>
                       {cert.arquivo && <Eye className="h-3.5 w-3.5 shrink-0 text-graphite-300 transition-colors group-hover:text-aviation-500" />}

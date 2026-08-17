@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Printer, ClipboardList, ArrowLeft } from 'lucide-react';
 import { listarOrdensServico } from '../../services/ordemServicoService';
 import type { OrdemServico } from '../../types/ordemServico';
+import { formatarDataBR } from '../../utils/datas';
+import { parseOrdemServicoImagens } from '../../utils/ordemServicoImagens';
 
 const PRIORIDADE_CORES: Record<string, string> = {
   'Baixa': 'bg-sky-100 text-sky-700',
@@ -18,16 +20,14 @@ const STATUS_CORES: Record<string, string> = {
 };
 
 function fmt(d: string) {
-  if (!d) return '-';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d + 'T12:00:00') : new Date(d);
-  if (isNaN(date.getTime())) return d;
-  return date.toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 export function OrdemServicoPublica() {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
   const [selecionada, setSelecionada] = useState<OrdemServico | null>(null);
+  const imagensSelecionada = selecionada ? parseOrdemServicoImagens(selecionada.imagem) : [];
 
   useEffect(() => {
     let active = true;
@@ -131,10 +131,14 @@ export function OrdemServicoPublica() {
               <div className="rounded-lg border border-graphite-300 bg-graphite-50 p-4 text-sm whitespace-pre-wrap dark:border-border-dark dark:bg-surface-hover dark:text-graphite-100">{selecionada.descricao}</div>
             </div>
 
-            {selecionada.imagem && (
+            {imagensSelecionada.length > 0 && (
               <div className="mt-4">
-                <h2 className="mb-1 text-xs font-bold uppercase text-graphite-500 dark:text-graphite-400">Imagem do Problema</h2>
-                <img src={selecionada.imagem} alt="Imagem da OS" className="max-h-72 w-full rounded-lg border border-graphite-300 object-contain dark:border-border-dark" />
+                <h2 className="mb-1 text-xs font-bold uppercase text-graphite-500 dark:text-graphite-400">Imagens do Problema</h2>
+                <div className={imagensSelecionada.length === 1 ? '' : 'grid grid-cols-2 gap-3'}>
+                  {imagensSelecionada.map((imagem, index) => (
+                    <img key={`${imagem.slice(0, 32)}-${index}`} src={imagem} alt={`Imagem da OS ${index + 1}`} className="max-h-72 w-full rounded-lg border border-graphite-300 object-contain dark:border-border-dark" />
+                  ))}
+                </div>
               </div>
             )}
 

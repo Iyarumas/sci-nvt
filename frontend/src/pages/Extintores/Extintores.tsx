@@ -8,6 +8,7 @@ import type { Extintor, TipoExtintor, SeloInmetro, StatusExtintor } from '../../
 import { TIPO_EXTINTOR_OPTIONS, CAPACIDADE_OPTIONS, STATUS_EXTINTOR_OPTIONS, INTERVALO_CONFERENCIA_OPTIONS } from '../../types/extintor';
 import { useDebounce } from '../../hooks/useDebounce';
 import { canGerenciarCadastroModulo, resolverContextoOperacional } from '../../utils/permissoes';
+import { formatarDataBR } from '../../utils/datas';
 
 const INPUT_CLASS = "w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark";
 const LABEL_CLASS = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
@@ -184,7 +185,7 @@ export function Extintores() {
                   <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{e.numeroSerie || '-'}</td>
                   <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{TIPO_EXTINTOR_OPTIONS.find(t => t.value === e.tipo)?.label || e.tipo}</td>
                   <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{e.capacidade || '-'}</td>
-                  <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{e.dataFabricacao ? new Date(e.dataFabricacao).toLocaleDateString('pt-BR') : '-'}</td>
+                  <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{formatarDataBR(e.dataFabricacao)}</td>
                   <td className="px-4 py-3">
                     {e.seloInmetro === 'Sim' ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/20 dark:text-green-400">

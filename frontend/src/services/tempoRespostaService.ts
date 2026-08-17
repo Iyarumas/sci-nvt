@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { TreinamentoTempoResposta } from '../types/tempoResposta';
+import type { TreinamentoTempoResposta, TreinamentoTempoRespostaInput } from '../types/tempoResposta';
 
 const TABLE = 'treinamentos_tempo_resposta';
 
@@ -57,6 +57,10 @@ function rowToItem(row: Record<string, unknown>): TreinamentoTempoResposta {
     feedbackSci: (row.feedback_sci as string) || '',
     chefeEquipe: (row.chefe_equipe as string) || '',
     gerente: (row.gerente as string) || '',
+    status: (row.status as TreinamentoTempoResposta['status']) || 'Rascunho',
+    aprovadoPor: (row.aprovado_por as string) || '',
+    aprovadoPorNome: (row.aprovado_por_nome as string) || '',
+    aprovadoEm: (row.aprovado_em as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
   };
@@ -95,7 +99,7 @@ export async function obterProximoNumero(ano: string): Promise<number> {
 }
 
 export async function criarTreino(
-  data: Omit<TreinamentoTempoResposta, 'id' | 'createdAt' | 'updatedAt'>,
+  data: TreinamentoTempoRespostaInput,
 ): Promise<TreinamentoTempoResposta> {
   const db = getDb();
   const now = new Date().toISOString();
@@ -140,6 +144,10 @@ export async function criarTreino(
     feedback_sci: data.feedbackSci,
     chefe_equipe: data.chefeEquipe,
     gerente: data.gerente,
+    status: data.status || 'Rascunho',
+    aprovado_por: data.aprovadoPor || '',
+    aprovado_por_nome: data.aprovadoPorNome || '',
+    aprovado_em: data.aprovadoEm || '',
     created_at: now,
     updated_at: now,
   };
@@ -150,7 +158,7 @@ export async function criarTreino(
 
 export async function atualizarTreino(
   id: string,
-  data: Partial<TreinamentoTempoResposta>,
+  data: Partial<TreinamentoTempoRespostaInput>,
 ): Promise<TreinamentoTempoResposta | null> {
   const db = getDb();
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -194,6 +202,10 @@ export async function atualizarTreino(
   if (data.feedbackSci !== undefined) row.feedback_sci = data.feedbackSci;
   if (data.chefeEquipe !== undefined) row.chefe_equipe = data.chefeEquipe;
   if (data.gerente !== undefined) row.gerente = data.gerente;
+  if (data.status !== undefined) row.status = data.status;
+  if (data.aprovadoPor !== undefined) row.aprovado_por = data.aprovadoPor;
+  if (data.aprovadoPorNome !== undefined) row.aprovado_por_nome = data.aprovadoPorNome;
+  if (data.aprovadoEm !== undefined) row.aprovado_em = data.aprovadoEm;
   const { data: updated, error } = await db.from(TABLE).update(row).eq('id', id).select().single();
   if (error) handleSupabaseError(error);
   return updated ? rowToItem(updated) : null;

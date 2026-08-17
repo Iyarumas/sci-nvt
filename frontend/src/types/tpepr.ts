@@ -93,6 +93,7 @@ export function normalizarParticipantesTPEPR(participantes?: TPEPRParticipante[]
     const primeiraTomada = mascararTempoTPEPR(item?.primeiraTomada || '');
     const segundaTomada = mascararTempoTPEPR(item?.segundaTomada || '');
     const terceiraTomada = mascararTempoTPEPR(item?.terceiraTomada || '');
+    const quartaCalculada = calcularQuartaTomada(segundaTomada, terceiraTomada);
     return {
       ...slot,
       ...item,
@@ -100,9 +101,9 @@ export function normalizarParticipantesTPEPR(participantes?: TPEPRParticipante[]
       primeiraTomada,
       segundaTomada,
       terceiraTomada,
-      quartaTomada: item?.quartaTomada
+      quartaTomada: quartaCalculada || (item?.quartaTomada
         ? mascararTempoTPEPR(item.quartaTomada)
-        : calcularQuartaTomada(segundaTomada, terceiraTomada),
+        : TEMPO_CRONOMETRO_ZERO),
     };
   });
 }
@@ -186,5 +187,5 @@ export function calcularQuartaTomada(segundaTomada: string, terceiraTomada: stri
   if (diferenca < 0) return '';
 
   const comCentesimos = /[.,]/.test(segundaTomada) || /[.,]/.test(terceiraTomada);
-  return formatarSegundosTempo(diferenca * 1.2, comCentesimos);
+  return formatarSegundosTempo(diferenca / 1.7, comCentesimos);
 }

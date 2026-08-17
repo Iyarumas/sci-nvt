@@ -8,11 +8,23 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorrencia } from '../../services/ocorrenciaService';
 import { STATUS_OCORRENCIA, EQUIPES } from '../../types/ocorrencia';
 import type { Ocorrencia } from '../../types/ocorrencia';
+import { hojeLocalISO } from '../../utils/datas';
+
+const MENSAGEM_OCORRENCIA_LRO_FINALIZADO = 'Esta ocorrência já foi incluída em um LRO finalizado e não pode ser alterada.';
+const MENSAGEM_EXCLUIR_OCORRENCIA_LRO_FINALIZADO = 'Esta ocorrência já foi incluída em um LRO finalizado e não pode ser excluída.';
+
+function ocorrenciaBloqueadaPorLRO(ocorrencia?: Pick<Ocorrencia, 'status'> | null): boolean {
+  return ocorrencia?.status === 'Fechada';
+}
+
+function ocorrenciaPertenceAoLRO(ocorrencia: Pick<Ocorrencia, 'numero'>): boolean {
+  return !ocorrencia.numero?.trim();
+}
 
 
 
 function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   return {
     tipoDocumento: 'BONA',
     numero: '',
@@ -234,11 +246,14 @@ export function LROOcorrencias() {
   const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
   const inputClass = 'rounded-xl border border-graphite-300/70 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 
-  async function carregar() { setOcorrencias(await listarOcorrencias()); }
+  async function carregar() {
+    const registros = await listarOcorrencias();
+    setOcorrencias(registros.filter(ocorrenciaPertenceAoLRO));
+  }
   useEffect(() => { carregar(); }, []);
 
   const filtradas = useMemo(() => {
-    let list = ocorrencias;
+    let list = ocorrencias.filter(ocorrenciaPertenceAoLRO);
     if (filtroEquipe) {
       list = list.filter(o => o.equipe === filtroEquipe);
     }
@@ -258,6 +273,10 @@ export function LROOcorrencias() {
   }, [ocorrencias, filtroEquipe, filtroStatus, filtroAno, filtroMes]);
 
   async function handleSave(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) {
+    if (editando?.id && ocorrenciaBloqueadaPorLRO(editando)) {
+      alert(MENSAGEM_OCORRENCIA_LRO_FINALIZADO);
+      return;
+    }
     const equipeAlvo = canManageGlobal ? data.equipe : equipeEfetiva || data.equipe;
     if (!canManageEquipe(equipeAlvo)) {
       alert('Você só pode salvar ocorrências da sua equipe efetiva.');
@@ -267,7 +286,7 @@ export function LROOcorrencias() {
       alert('Você só pode editar ocorrências da sua equipe efetiva.');
       return;
     }
-    const payload = { ...data, equipe: equipeAlvo as string };
+    const payload = { ...data, equipe: equipeAlvo as string, numero: '' };
     if (editando && editando.id) {
       await atualizarOcorrencia(editando.id, payload);
     } else {
@@ -285,9 +304,31 @@ export function LROOcorrencias() {
       setConfirmDelete(null);
       return;
     }
+    if (ocorrenciaBloqueadaPorLRO(alvo)) {
+      alert(MENSAGEM_EXCLUIR_OCORRENCIA_LRO_FINALIZADO);
+      setConfirmDelete(null);
+      return;
+    }
     await excluirOcorrencia(id);
     setConfirmDelete(null);
     carregar();
+  }
+
+  function handleEdit(ocorrencia: Ocorrencia) {
+    if (ocorrenciaBloqueadaPorLRO(ocorrencia)) {
+      alert(MENSAGEM_OCORRENCIA_LRO_FINALIZADO);
+      return;
+    }
+    setEditando(ocorrencia);
+    setMode('form');
+  }
+
+  function handleConfirmDelete(ocorrencia: Ocorrencia) {
+    if (ocorrenciaBloqueadaPorLRO(ocorrencia)) {
+      alert(MENSAGEM_EXCLUIR_OCORRENCIA_LRO_FINALIZADO);
+      return;
+    }
+    setConfirmDelete(ocorrencia.id);
   }
 
   if (mode === 'form') {
@@ -355,10 +396,10 @@ export function LROOcorrencias() {
       ) : (
         <div className="space-y-3">
           {filtradas.map(o => (
-            <OcorrenciaCard key={o.id} o={o} canEdit={canManageEquipe(o.equipe)}
+            <OcorrenciaCard key={o.id} o={o} canEdit={canManageEquipe(o.equipe) && !ocorrenciaBloqueadaPorLRO(o)}
               onView={() => { setVisualizando(o); setMode('view'); }}
-              onEdit={() => { setEditando(o); setMode('form'); }}
-              onDelete={() => setConfirmDelete(o.id)}
+              onEdit={() => handleEdit(o)}
+              onDelete={() => handleConfirmDelete(o)}
             />
           ))}
         </div>

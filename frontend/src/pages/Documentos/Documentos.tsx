@@ -30,6 +30,7 @@ import { listarBombeiros } from '../../services/bombeiroService';
 import { listarAPOCs } from '../../services/apocService';
 import { findTemplate } from '../../data/documentTemplates';
 import { podeVerCadastroCompletoBase, resolverContextoOperacional } from '../../utils/permissoes';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 type View = 'list' | 'admin' | 'manage' | 'fill' | 'grid';
 
@@ -708,7 +709,7 @@ export function Documentos() {
       const dadosStr: Record<string, string> = {};
       for (const [k, v] of Object.entries(formData)) dadosStr[k] = String(v || '');
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr);
-      const nome = `${selectedDoc.name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const nome = `${selectedDoc.name.replace(/\s+/g, '_')}_${hojeLocalISO()}.pdf`;
       downloadPdf(pdfBlob, nome);
     } catch {
       setNotifPopup({ msg: 'Erro inesperado ao gerar PDF. Contate o administrador.', type: 'error' });
@@ -730,7 +731,7 @@ export function Documentos() {
       for (const [k, v] of Object.entries(formData)) dadosStr[k] = String(v || '');
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr);
 
-      const nomeArquivo = `${selectedDoc.name.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}`;
+      const nomeArquivo = `${selectedDoc.name.replace(/\s+/g, '_')}_${hojeLocalISO()}`;
       const signers: AutentiqueSigner[] = [];
       for (const signer of selectedDoc.document_signers) {
         const email = getEmailByNome(signer.signer_name);
@@ -1515,7 +1516,7 @@ export function Documentos() {
                 {fills.map(fill => (
                   <div key={fill.id} className="rounded-lg border border-graphite-100 p-3 dark:border-graphite-700">
                     <button onClick={() => setExpandedFill(expandedFill === fill.id ? null : fill.id)} className="flex w-full items-center justify-between">
-                      <span className="text-sm text-graphite-900 dark:text-graphite-100">{new Date(fill.created_at).toLocaleDateString('pt-BR')}</span>
+                      <span className="text-sm text-graphite-900 dark:text-graphite-100">{formatarDataBR(fill.created_at)}</span>
                       <div className="flex items-center gap-2">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${fill.status === 'draft' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'}`}>
                           {fill.status === 'draft' ? 'Rascunho' : 'Pendente'}

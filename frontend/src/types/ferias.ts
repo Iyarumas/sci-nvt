@@ -10,6 +10,13 @@ export const ABBR_CARGO: Record<Cargo, string> = {
   'OC': 'OC',
 };
 
+function dataLocalISO(data: Date): string {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, '0');
+  const dia = String(data.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+
 // ---------------------------------------------------------------------------
 // NOVOS INTERFACES (v2) - Períodos Aquisitivos e Escalas
 // ---------------------------------------------------------------------------
@@ -241,9 +248,9 @@ export function calcularPeriodosAquisitivos(dataAdmissao: string): PeriodoAquisi
 
     periodos.push({
       numero,
-      dataInicio: dataInicio.toISOString().split('T')[0],
-      dataFim: dataFim.toISOString().split('T')[0],
-      dataVencimento: dataVencimento.toISOString().split('T')[0],
+      dataInicio: dataLocalISO(dataInicio),
+      dataFim: dataLocalISO(dataFim),
+      dataVencimento: dataLocalISO(dataVencimento),
       status,
       diasDireito: 30,
       diasGozados: 0,

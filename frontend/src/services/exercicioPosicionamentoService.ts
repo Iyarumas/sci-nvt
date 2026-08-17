@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { ExercicioPosicionamento } from '../types/exercicioPosicionamento';
+import type { ExercicioPosicionamento, ExercicioPosicionamentoInput } from '../types/exercicioPosicionamento';
 
 const TABLE = 'exercicios_posicionamento';
 
@@ -52,6 +52,11 @@ function rowToExercicio(row: Record<string, unknown>): ExercicioPosicionamento {
     visibilidadeSuperficie: (row.visibilidade_superficie as string) || '',
     feedbackCoe: (row.feedback_coe as string) || '',
     chefeEquipe: (row.chefe_equipe as string) || '',
+    gerente: (row.gerente as string) || '',
+    status: (row.status as ExercicioPosicionamento['status']) || 'Rascunho',
+    aprovadoPor: (row.aprovado_por as string) || '',
+    aprovadoPorNome: (row.aprovado_por_nome as string) || '',
+    aprovadoEm: (row.aprovado_em as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
   };
@@ -90,7 +95,7 @@ export async function obterProximoNumero(ano: string): Promise<number> {
 }
 
 export async function criarExercicio(
-  data: Omit<ExercicioPosicionamento, 'id' | 'createdAt' | 'updatedAt'>,
+  data: ExercicioPosicionamentoInput,
 ): Promise<ExercicioPosicionamento> {
   const db = getDb();
   const now = new Date().toISOString();
@@ -132,6 +137,11 @@ export async function criarExercicio(
       visibilidade_superficie: data.visibilidadeSuperficie,
       feedback_coe: data.feedbackCoe,
       chefe_equipe: data.chefeEquipe,
+      gerente: data.gerente,
+      status: data.status || 'Rascunho',
+      aprovado_por: data.aprovadoPor || '',
+      aprovado_por_nome: data.aprovadoPorNome || '',
+      aprovado_em: data.aprovadoEm || '',
       created_at: now,
       updated_at: now,
     })
@@ -143,7 +153,7 @@ export async function criarExercicio(
 
 export async function atualizarExercicio(
   id: string,
-  data: Partial<ExercicioPosicionamento>,
+  data: Partial<ExercicioPosicionamentoInput>,
 ): Promise<ExercicioPosicionamento | null> {
   const db = getDb();
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -182,6 +192,11 @@ export async function atualizarExercicio(
   if (data.visibilidadeSuperficie !== undefined) row.visibilidade_superficie = data.visibilidadeSuperficie;
   if (data.feedbackCoe !== undefined) row.feedback_coe = data.feedbackCoe;
   if (data.chefeEquipe !== undefined) row.chefe_equipe = data.chefeEquipe;
+  if (data.gerente !== undefined) row.gerente = data.gerente;
+  if (data.status !== undefined) row.status = data.status;
+  if (data.aprovadoPor !== undefined) row.aprovado_por = data.aprovadoPor;
+  if (data.aprovadoPorNome !== undefined) row.aprovado_por_nome = data.aprovadoPorNome;
+  if (data.aprovadoEm !== undefined) row.aprovado_em = data.aprovadoEm;
   const { data: updated, error } = await db.from(TABLE).update(row).eq('id', id).select().single();
   if (error) handleSupabaseError(error);
   return updated ? rowToExercicio(updated) : null;

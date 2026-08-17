@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { Bombeiro, Cargo } from '../types/bombeiro';
+import { estaNoPeriodoISO, normalizarDataISO } from '../utils/datas';
 import { listarAtivos } from './bombeiroService';
 import { criarVagaPendente } from './vagaPendenteService';
 
@@ -73,12 +74,12 @@ export async function listarVigencias(params?: {
 }): Promise<VigenciaSubstituicao[]> {
   const db = getDb();
   let query = db.from(TABLE).select('*');
+  const dataInicio = normalizarDataISO(params?.dataInicio);
+  const dataFim = normalizarDataISO(params?.dataFim);
 
   if (params?.equipe) query = query.eq('equipe', params.equipe);
-  if (params?.dataInicio) query = query.gte('data_fim', params.dataInicio);
-  if (params?.dataFim) query = query.lte('data_inicio', params.dataFim);
-  // Nunca retornar vigências cujo período já expirou
-  query = query.gte('data_fim', new Date().toISOString().split('T')[0]);
+  if (dataInicio) query = query.gte('data_fim', dataInicio);
+  if (dataFim) query = query.lte('data_inicio', dataFim);
   if (params?.ativa !== undefined) query = query.eq('ativa', params.ativa);
   if (params?.substitutoId) query = query.eq('substituto_id', params.substitutoId);
   if (params?.feriasId) query = query.eq('ferias_id', params.feriasId);
@@ -324,8 +325,7 @@ export async function resolverEfetivo(
 
   // Filtrar vigências do período
   const vigenciasPeriodo = vigencias.filter(v =>
-    new Date(v.dataInicio) <= new Date(data) &&
-    new Date(v.dataFim) >= new Date(data)
+    estaNoPeriodoISO(data, v.dataInicio, v.dataFim)
   );
   const vigenciasDaEquipe = vigenciasPeriodo.filter(v => equipeDaVaga(v) === equipe);
   const vigenciasReais = vigenciasDaEquipe.filter(v => v.substitutoId && v.substitutoId !== v.funcionarioOriginalId);

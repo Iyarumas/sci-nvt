@@ -1,11 +1,11 @@
 # API Endpoints — SESCINC Manager
 
 > **Data:** 2026-07-31
-> **Total de serviços:** 43 ficheiros em `src/services/`
+> **Total de serviços:** 44 ficheiros em `src/services/`
 > **Comunicação com Supabase:** 33 ficheiros
-> **Total de funções:** ~196
+> **Total de funções:** ~198
 > **Serviços externos:** 1 (Autentique GraphQL)  
-> **Cálculo puro:** 7 (escalaMensalGenerator, lroGenerator, pdfService, htmlPdfService, reaPdfService, ptrbaCompletoPdfService, tpeprPdfService)
+> **Cálculo puro:** 8 (escalaMensalGenerator, lroGenerator, pdfService, htmlPdfService, reaPdfService, ptrbaCompletoPdfService, tpeprPdfService, tempoRespostaPdfService)
 > **Dead code (localStorage):** 10 ficheiros RTK store + notificacaoService (parcial)
 
 ---
@@ -70,6 +70,7 @@ Base URL local: `http://localhost:3333/api`
 | 26 | vagaPendenteService | `vagas_pendentes` | 4 | ✅ |
 | 27 | exercicioPosicionamentoService | `exercicios_posicionamento` | 6 | ✅ |
 | 28 | tempoRespostaService | `treinamentos_tempo_resposta` | 6 | ✅ |
+| 28.1 | tempoRespostaPdfService | — | 2 | ✅ |
 | 29 | tafService | `treinamentos_taf` | 6 | ✅ |
 | 30 | tpeprService | `treinamentos_tpepr` | 6 | ✅ |
 | 30.1 | tpeprPdfService | — | 2 | ✅ |
@@ -788,7 +789,7 @@ GET com filtro `ativa=true`. ✅ OK
   "identificacaoAeroporto": "string",
   "observacoes": "string",
   "chefeEquipe": "string",
-  "participantes": [{ "funcao": "string", "nomeCompleto": "string", "situacao": "P | A | EO | OC | INSTR. 1 | INSTR. 2 | INSTR. 1-2" }],
+  "participantes": [{ "funcao": "string", "nomeCompleto": "string", "situacao": "P | A | EO | OC | INSTR. 1 | INSTR. 2 | INSTR. 3 | INSTR. 1-2 | INSTR. 2-3 | INSTR. 1-3" }],
   "evidencias": [{ "horaInicio": "string", "horaTermino": "string", "assunto": "string", "imagem": "string (base64/url)", "descricao": "string" }]
 }]
 ```
@@ -919,12 +920,35 @@ GET com filtro `ativa=true`. ✅ OK
   "envolvidos": "string",
   "acoesTomadas": "string",
   "status": "Aberta | ...",
-  "fotos": ["string"]
+  "fotos": ["string (compatibilidade; BONA não usa fotos na tela/documento)"],
+  "bonaDados": {
+    "aeroporto": "string",
+    "areaEvento": "string",
+    "tipoOcorrencia": "string",
+    "bombeiros": [{ "nome": "string", "funcao": "string" }],
+    "vitimasFatais": "string",
+    "vitimasFeridas": "string",
+    "acionamento": "string (HH:mm)",
+    "saida": "string (HH:mm)",
+    "chegadaLocal": "string (HH:mm)",
+    "terminoOcorrencia": "string (HH:mm)",
+    "retornoSci": "string (HH:mm)",
+    "tempoGastoAtendimento": "string (HH:mm)",
+    "descricaoOcorrencia": "string",
+    "descricaoAtuacaoEquipe": "string",
+    "veiculosUtilizados": "string",
+    "agentesLge": "string",
+    "agentesPq": "string",
+    "outrosRecursosUtilizados": "string"
+  }
 }
 ```
 
 **Nota de compatibilidade:** registros antigos com `tipo_documento = "RAE"` são normalizados para `REA` no service.
-**Uso no LRO:** BONA com `numero` iniciado por `BONA` alimenta IX. Ocorrências Não Aeronáuticas com `data - hora - descrição`. Registros criados em LRO/Ocorrências usam `numero` vazio, `titulo` como tipo, `local` como data do turno e alimentam XII. Outras Ocorrências com `data - hora - equipe - tipo - descrição`.
+**Fluxo BONA:** registros BONA ficam com `status = "Aberta"` após salvar e viram `status = "Fechada"` somente quando aprovados nos detalhes do documento; após aprovado, a tela bloqueia alteração do conteúdo, mantém a visualização do documento e libera a impressão somente para BONA finalizado. Apenas administrador do sistema pode excluir BONA aprovado e editar seu número para reaproveitar uma sequência.
+**Numeração BONA:** a UI inicia a sequência nova em `BONA-064/{ano}` porque os números 1 a 63 foram emitidos em sistema anterior; quando houver BONA maior no ano corrente, usa o maior número cadastrado + 1. No PDF MMS.BR.BA.FOR.003 aparece somente o número curto da ocorrência.
+**Campos BONA:** `bona_dados` guarda os campos específicos do formulário oficial MMS.BR.BA.FOR.003. O service mantém compatibilidade preenchendo `local` com `areaEvento`, `titulo` com `tipoOcorrencia`, `categoria` com a categoria correspondente quando existir (senão `Outros`), `envolvidos` a partir da tabela de bombeiros, `acoes_tomadas` com `descricaoAtuacaoEquipe` e `descricao` com `descricaoOcorrencia`. A tela do BONA não exibe upload de fotos e preenche os bombeiros com o efetivo operacional da equipe/data, considerando trocas, férias e substituições.
+**Uso no LRO:** BONA com `numero` iniciado por `BONA` fica listado em BONA/REA e alimenta IX. Ocorrências Não Aeronáuticas com `data - hora - descrição`; não aparece na tela LRO/Ocorrências. Registros criados em LRO/Ocorrências usam `numero` vazio, `titulo` como tipo, `local` como data do turno e alimentam XII. Outras Ocorrências com `data - hora - equipe - tipo - descrição`. Ao marcar um LRO como `finalizado`, as ocorrências operacionais incluídas no texto final do LRO são atualizadas para `status = "Fechada"` e ficam bloqueadas para edição/exclusão na tela LRO/Ocorrências. Ao excluir um LRO finalizado/assinado/arquivado, as ocorrências vinculadas a ele voltam para `status = "Aberta"`, exceto quando ainda estão vinculadas a outro LRO finalizado/assinado/arquivado.
 
 **`listarOcorrencias` — Query Params adicionais:** `numeroPrefixo?: string` — filtra por `numero like 'prefixo%'` (ex: `'BONA'` traz só BONAs, excluindo registros do LRO/Ocorrências que usam `numero` vazio). **REST equivalência:** `GET /rest/v1/ocorrencias_operacionais?select=*&numero=like.BONA%25&order=data.desc`
 
@@ -1988,7 +2012,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Ficheiro:** `src/services/exercicioPosicionamentoService.ts`  
 **Tipo:** `src/types/exercicioPosicionamento.ts` — `ExercicioPosicionamento`
 
-**Migration:** `supabase/migrations/033_exercicios_posicionamento.sql`
+**Migration:** `supabase/migrations/033_exercicios_posicionamento.sql` + `backend/database/migrations/055_aprovacao_posicionamento_tempo_resposta.sql` + `backend/database/migrations/056_exercicio_posicionamento_gerente.sql`
 
 ---
 
@@ -2040,6 +2064,11 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
   "visibilidadeSuperficie": "...",
   "feedbackCoe": "...",
   "chefeEquipe": "Chefe",
+  "gerente": "GS",
+  "status": "Rascunho",
+  "aprovadoPor": "",
+  "aprovadoPorNome": "",
+  "aprovadoEm": "",
   "createdAt": "2026-07-21T14:30:00.000Z",
   "updatedAt": "2026-07-21T14:30:00.000Z"
 }]
@@ -2072,7 +2101,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 
 **Método HTTP:** POST  
 **REST equivalência:** `POST /rest/v1/exercicios_posicionamento`  
-**Request Body:** `Omit<ExercicioPosicionamento, 'id' \| 'createdAt' \| 'updatedAt'>`  
+**Request Body:** `ExercicioPosicionamentoInput`
 **Response:** `ExercicioPosicionamento` (created)  
 **Estado:** ✅ OK  
 
@@ -2082,7 +2111,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 
 **Método HTTP:** PATCH  
 **REST equivalência:** `PATCH /rest/v1/exercicios_posicionamento?id=eq.{id}`  
-**Request Body:** `Partial<ExercicioPosicionamento>`  
+**Request Body:** `Partial<ExercicioPosicionamentoInput>`
 **Response:** `ExercicioPosicionamento \| null` (updated)  
 **Estado:** ✅ OK  
 
@@ -2096,7 +2125,9 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Response:** `boolean`  
 **Estado:** ✅ OK  
 
-**Mapping snake_case ↔ camelCase:** ✅ Completo (todos os 35 campos)
+**Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `gerente`, `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
+
+**PDF:** `exercicioPosicionamentoPdfService.ts` gera client-side o formulário MMS.BR.BA.FOR.006 para visualização e impressão após aprovação.
 
 ---
 
@@ -2106,7 +2137,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Ficheiro:** `src/services/tempoRespostaService.ts`  
 **Tipo:** `src/types/tempoResposta.ts` — `TreinamentoTempoResposta`
 
-**Migration:** `supabase/migrations/034_treinamentos_tempo_resposta.sql`
+**Migration:** `supabase/migrations/034_treinamentos_tempo_resposta.sql` + `backend/database/migrations/055_aprovacao_posicionamento_tempo_resposta.sql`
 
 ---
 
@@ -2139,6 +2170,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 ### criarTreino
 
 **Método HTTP:** POST  
+**Request Body:** `TreinamentoTempoRespostaInput`
 **Estado:** ✅ OK  
 
 ---
@@ -2146,6 +2178,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 ### atualizarTreino
 
 **Método HTTP:** PATCH  
+**Request Body:** `Partial<TreinamentoTempoRespostaInput>`
 **Estado:** ✅ OK  
 
 ---
@@ -2155,7 +2188,9 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Método HTTP:** DELETE  
 **Estado:** ✅ OK  
 
-**Mapping snake_case ↔ camelCase:** ✅ Completo (todos os campos)
+**Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
+
+**PDF:** `tempoRespostaPdfService.ts` gera client-side o formulário MMS.BR.BA.FOR.005 para visualização e impressão após aprovação.
 
 ---
 

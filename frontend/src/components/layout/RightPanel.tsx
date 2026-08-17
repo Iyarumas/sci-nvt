@@ -15,6 +15,7 @@ import {
 } from '../../services/notificacaoService';
 import type { Notificacao } from '../../services/notificacaoService';
 import type { Equipe } from '../../types/bombeiro';
+import { formatarDataBR } from '../../utils/datas';
 
 const USERS_KEY = 'sescinc-users';
 
@@ -241,7 +242,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
     const d = new Date(iso);
     const hoje = new Date();
     if (d.toDateString() === hoje.toDateString()) return 'Hoje';
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return formatarDataBR(iso);
   }
 
   const mensagensAtuais = chatSubTab === 'geral' ? gerais : privadas;

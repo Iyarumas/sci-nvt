@@ -7,6 +7,7 @@ import { listarViaturas } from '../../services/viaturaService';
 import { listarPanes, criarPane, atualizarPane, excluirPane } from '../../services/viaturaPaneService';
 import type { Viatura, ViaturaPane, StatusViatura } from '../../types/viatura';
 import { STATUS_VIATURA_OPTIONS } from '../../types/viatura';
+import { formatarDataBR, formatarDataHoraBR } from '../../utils/datas';
 
 function statusColor(s: StatusViatura) {
   return STATUS_VIATURA_OPTIONS.find(o => o.value === s)?.color || '';
@@ -16,13 +17,11 @@ const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-
 const labelCls = 'mb-1 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 
 function fmtData(d: string) {
-  if (!d) return '-';
-  return new Date(d + (d.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function fmtDataHora(d: string) {
-  if (!d) return '-';
-  return new Date(d + (d.includes('T') ? '' : 'T12:00:00')).toLocaleString('pt-BR');
+  return formatarDataHoraBR(d);
 }
 
 export function ViaturasCCI() {

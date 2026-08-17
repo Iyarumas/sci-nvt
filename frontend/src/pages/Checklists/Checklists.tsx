@@ -5,6 +5,7 @@ import {
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 interface ChecklistItem {
   id: string;
@@ -36,8 +37,7 @@ function salvar(lista: Checklist[]) {
 }
 
 function fmt(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 placeholder-graphite-400 outline-none transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400';
@@ -62,7 +62,7 @@ function ChecklistForm({ onSave, onCancel, editando }: {
   editando: Checklist | null;
 }) {
   const [titulo, setTitulo] = useState(editando?.titulo || '');
-  const [data, setData] = useState(editando?.data || new Date().toISOString().split('T')[0]);
+  const [data, setData] = useState(editando?.data || hojeLocalISO());
   const [equipe, setEquipe] = useState(editando?.equipe || '');
   const [responsavel, setResponsavel] = useState(editando?.responsavel || '');
   const [itens, setItens] = useState<{ nome: string; concluido: boolean; observacao: string }[]>(

@@ -1,6 +1,20 @@
 const DATA_REFERENCIA = new Date('2026-07-21T12:00:00');
 const UM_DIA_MS = 24 * 60 * 60 * 1000;
 
+function dataLocalISO(data: Date): string {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, '0');
+  const dia = String(data.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
+}
+
+function somarDiasISO(dataEntrada: string, dias: number): string {
+  const [ano, mes, dia] = dataEntrada.split('-').map(Number);
+  const data = new Date(ano, mes - 1, dia, 12, 0, 0, 0);
+  data.setDate(data.getDate() + dias);
+  return dataLocalISO(data);
+}
+
 export interface HorarioPlantao {
   horarioInicio: '07:00' | '19:00';
   horarioTermino: '19:00' | '07:00';
@@ -43,7 +57,6 @@ export function turnoPorEquipe(equipe: string): 'Diurno' | 'Noturno' | 'Ferista'
 
 export function dataSaidaPlantao(equipe: string, dataEntrada: string): string {
   if (!dataEntrada) return '';
-  const d = new Date(`${dataEntrada}T12:00:00`);
-  if (horarioPlantaoPorEquipe(equipe).turno === 'Noturno') d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+  if (horarioPlantaoPorEquipe(equipe).turno === 'Noturno') return somarDiasISO(dataEntrada, 1);
+  return dataEntrada;
 }

@@ -18,54 +18,77 @@ interface PageDimensions {
 
 export function PdfPreview({ pdfData, fields }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [pageDims, setPageDims] = useState<PageDimensions | null>(null);
   const [rendering, setRendering] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const loadingTask = pdfjsLib.getDocument({ data: pdfData.slice(0) });
-      const pdfDoc = await loadingTask.promise;
-      setPdf(pdfDoc);
-      setTotalPages(pdfDoc.numPages);
-      setCurrentPage(1);
+      try {
+        setPdf(null);
+        setPageDims(null);
+        setTotalPages(0);
+        setCurrentPage(1);
+        setError('');
+        const loadingTask = pdfjsLib.getDocument({ data: pdfData.slice(0) });
+        const pdfDoc = await loadingTask.promise;
+        if (cancelled) return;
+        setPdf(pdfDoc);
+        setTotalPages(pdfDoc.numPages);
+      } catch {
+        if (!cancelled) setError('Não foi possível carregar o PDF.');
+      }
     })();
+
+    return () => { cancelled = true; };
   }, [pdfData]);
 
   useEffect(() => {
     if (!pdf) return;
+    let cancelled = false;
     (async () => {
-      setRendering(true);
-      const page = await pdf.getPage(currentPage);
-      const viewport = page.getViewport({ scale: 1.5 });
+      try {
+        setRendering(true);
+        const page = await pdf.getPage(currentPage);
+        const viewport = page.getViewport({ scale: 1.5 });
 
-      const canvas = document.getElementById('pdf-preview-canvas') as HTMLCanvasElement;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d')!;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
 
-      await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+        await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+        if (cancelled) return;
 
-      const container = containerRef.current;
-      if (container) {
-        const containerWidth = container.clientWidth - 32;
-        const scale = containerWidth / viewport.width;
+        const container = containerRef.current;
+        const containerWidth = Math.max(320, (container?.clientWidth || viewport.width) - 32);
+        const scale = Math.min(1, containerWidth / viewport.width);
         setPageDims({ width: viewport.width, height: viewport.height, scale });
+      } catch {
+        if (!cancelled) setError('Não foi possível renderizar o PDF.');
+      } finally {
+        if (!cancelled) setRendering(false);
       }
-      setRendering(false);
     })();
+
+    return () => { cancelled = true; };
   }, [pdf, currentPage]);
 
-  if (!pageDims) {
-    return <div className="flex items-center justify-center py-12 text-graphite-400">Carregando PDF...</div>;
+  if (error) {
+    return <div className="flex items-center justify-center py-12 text-sm text-alert-red">{error}</div>;
   }
 
-  const displayWidth = pageDims.width * pageDims.scale;
-  const displayHeight = pageDims.height * pageDims.scale;
-  const pageFields = fields.filter(f => f.page === currentPage && (f.x !== 0 || f.y !== 0));
+  const displayWidth = pageDims ? pageDims.width * pageDims.scale : 360;
+  const displayHeight = pageDims ? pageDims.height * pageDims.scale : 510;
+  const pageScale = pageDims?.scale ?? 1;
+  const pageFields = pageDims ? fields.filter(f => f.page === currentPage && (f.x !== 0 || f.y !== 0)) : [];
 
   return (
     <div className="flex gap-4">
@@ -76,8 +99,9 @@ export function PdfPreview({ pdfData, fields }: Props) {
             style={{ width: displayWidth, height: displayHeight }}
           >
             <canvas
+              ref={canvasRef}
               id="pdf-preview-canvas"
-              className="block shadow-lg"
+              className={`block bg-white shadow-lg ${pageDims ? '' : 'opacity-0'}`}
               style={{ width: displayWidth, height: displayHeight }}
             />
 
@@ -90,11 +114,11 @@ export function PdfPreview({ pdfData, fields }: Props) {
                     : 'border-red-400 bg-red-50/40'
                 }`}
                 style={{
-                  left: field.x * pageDims.scale,
-                  top: field.y * pageDims.scale,
-                  width: field.width * pageDims.scale,
-                  height: field.height * pageDims.scale,
-                  fontSize: field.font_size * pageDims.scale,
+                  left: field.x * pageScale,
+                  top: field.y * pageScale,
+                  width: field.width * pageScale,
+                  height: field.height * pageScale,
+                  fontSize: field.font_size * pageScale,
                 }}
               >
                 <div className="pointer-events-none flex h-full w-full items-center justify-center overflow-hidden px-1">
@@ -105,9 +129,9 @@ export function PdfPreview({ pdfData, fields }: Props) {
               </div>
             ))}
 
-            {rendering && (
+            {(!pageDims || rendering) && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/70">
-                <span className="text-sm text-graphite-500">Renderizando...</span>
+                <span className="text-sm text-graphite-500">{pageDims ? 'Renderizando...' : 'Carregando PDF...'}</span>
               </div>
             )}
           </div>

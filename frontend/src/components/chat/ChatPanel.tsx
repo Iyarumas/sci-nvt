@@ -6,6 +6,7 @@ import { listarBombeiros } from '../../services/bombeiroService';
 import {
   mensagensGerais, conversaCom, enviarMensagem, marcarLida, contarNaoLidas,
 } from '../../services/chatService';
+import { formatarDataBR } from '../../utils/datas';
 
 
 type Tab = 'geral' | 'privado';
@@ -102,7 +103,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
     const d = new Date(iso);
     const hoje = new Date();
     if (d.toDateString() === hoje.toDateString()) return 'Hoje';
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return formatarDataBR(iso);
   }
 
   const mensagensAtuais = tab === 'geral' ? gerais : privadas;

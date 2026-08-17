@@ -30,6 +30,15 @@ import {
 } from '../../services/feriasService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { EloCadeiaInput, VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
+import {
+  dataLocalISO,
+  estaNoPeriodoISO,
+  formatarDataBR,
+  hojeLocalISO,
+  parseDataLocalISO,
+  periodosSobrepostosISO,
+  somarDiasISO,
+} from '../../utils/datas';
 
 // -- Constants -------------------------------------------------------------------
 
@@ -102,8 +111,8 @@ interface ContextoPermissaoFerias {
 
 function calcDias(inicio: string, fim: string): number {
   if (!inicio || !fim) return 0;
-  const d1 = new Date(inicio);
-  const d2 = new Date(fim);
+  const d1 = parseDataLocalISO(inicio);
+  const d2 = parseDataLocalISO(fim);
   return Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 }
 
@@ -112,8 +121,7 @@ function labelCargo(cargo?: Cargo | ''): string {
 }
 
 function fmt(dateStr: string): string {
-  if (!dateStr) return '';
-  return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(dateStr, '');
 }
 
 function getAnos(): number[] {
@@ -198,7 +206,7 @@ async function resolverContextoPermissaoFerias(user: AuthUserPermissao): Promise
 
   if (!bombeiro) return permissaoBase;
 
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   const vigencias = await listarVigencias({
     ativa: true,
     substitutoId: bombeiro.id,
@@ -207,8 +215,7 @@ async function resolverContextoPermissaoFerias(user: AuthUserPermissao): Promise
   });
   const vigenciaAtual = vigencias.find(v =>
     v.substitutoId !== v.funcionarioOriginalId &&
-    v.dataInicio <= hoje &&
-    hoje <= v.dataFim
+    estaNoPeriodoISO(hoje, v.dataInicio, v.dataFim)
   );
   const cargoEfetivo = vigenciaAtual?.cargoExercido || bombeiro.cargo;
   const equipeEfetiva = equipeValida(vigenciaAtual?.equipe) || bombeiro.equipe;
@@ -259,7 +266,7 @@ function calcularStats(bombeiros: Bombeiro[], feriasGozo: FeriasGozo[]): Dashboa
         if (gozo.status === 'Em Gozo') emGozoSet.add(b.id);
         else if (gozo.status === 'Programadas') planejadasSet.add(b.id);
         else if (gozo.status === 'Gozadas') {
-          const gozoYear = new Date(gozo.dataInicio + 'T00:00:00').getFullYear();
+          const gozoYear = parseDataLocalISO(gozo.dataInicio).getFullYear();
           if (gozoYear === anoAtual) gozadasSet.add(b.id);
         }
       } else {
@@ -513,9 +520,7 @@ function PeriodoCard({
 
   function autoFim(ini: string) {
     if (!ini) return;
-    const d = new Date(ini);
-    d.setDate(d.getDate() + 29);
-    setDFim(d.toISOString().split('T')[0]);
+    setDFim(somarDiasISO(ini, 29));
   }
 
   async function handleSave() {
@@ -686,7 +691,7 @@ function TabBombeiros() {
         dataInicio,
         dataFim,
         dias,
-        status: dataFim < new Date().toISOString().split('T')[0] ? 'Gozadas' : 'Programadas',
+        status: dataFim < hojeLocalISO() ? 'Gozadas' : 'Programadas',
         substitutoId: '',
         substitutoNome: '',
         funcaoSubstituicao: '',
@@ -1744,7 +1749,7 @@ function TabEscalaAnual({ canManage, equipeUsuario }: { canManage: boolean; equi
       funcao: member?.cargo || 'BA-2',
       dias: formDias,
       dataInicio: formDataInicio,
-      dataFim: dataFim.toISOString().split('T')[0],
+      dataFim: dataLocalISO(dataFim),
       substitutoId: formSubId,
       substitutoNome: sub?.nomeCompleto || '',
       funcaoSubstituicao: sub ? (member?.cargo || 'BA-2') : '',
@@ -2157,7 +2162,7 @@ function TabEscalaAnual({ canManage, equipeUsuario }: { canManage: boolean; equi
 
                       {formDataInicio && formDias > 0 && (
                         <div className="rounded-lg bg-graphite-50 p-2 text-xs text-graphite-600 dark:bg-surface-card dark:text-graphite-400">
-                           Período: {fmt(formDataInicio)} até {fmt(new Date(new Date(formDataInicio).getTime() + (formDias - 1) * 86400000).toISOString().split('T')[0])}
+                           Período: {fmt(formDataInicio)} até {fmt(somarDiasISO(formDataInicio, formDias - 1))}
                         </div>
                       )}
 
@@ -2681,7 +2686,7 @@ function TabEscalaFeristas() {
         equipe: 'Ferista',
         periodoNumero: periodo.numero,
         dataInicio, dataFim, dias,
-        status: dataFim < new Date().toISOString().split('T')[0] ? 'Gozadas' : 'Programadas',
+        status: dataFim < hojeLocalISO() ? 'Gozadas' : 'Programadas',
         substitutoId: '', substitutoNome: '', funcaoSubstituicao: '',
         observacoes: 'Férias Ferista',
         modificadoPor: user.username,
@@ -2812,9 +2817,9 @@ function TabQuadroEfetivos() {
   }
 
   function sobrepoeMes(dataInicio: string, dataFim: string, mes: number, anoRef: number): boolean {
-    const mesInicio = new Date(anoRef, mes - 1, 1);
-    const mesFim = new Date(anoRef, mes, 0);
-    return new Date(dataInicio + 'T00:00:00') <= mesFim && new Date(dataFim + 'T00:00:00') >= mesInicio;
+    const mesInicio = monthStart(anoRef, mes);
+    const mesFim = dataLocalISO(new Date(anoRef, mes, 0));
+    return periodosSobrepostosISO(dataInicio, dataFim, mesInicio, mesFim);
   }
 
   function isVigenciaRealNoMes(v: VigenciaSubstituicao, mes: number, anoRef: number): boolean {
@@ -2855,7 +2860,7 @@ function TabQuadroEfetivos() {
 
       // Vigencias do mês selecionado
       const mesInicio = `${ano}-${String(mesSelecionado).padStart(2, '0')}-01`;
-      const mesFim = new Date(ano, mesSelecionado, 0).toISOString().split('T')[0];
+      const mesFim = dataLocalISO(new Date(ano, mesSelecionado, 0));
       const v = await listarVigencias({ ativa: true, dataInicio: mesInicio, dataFim: mesFim });
       if (cancelled) return;
       setVigencias(v);
@@ -2865,14 +2870,12 @@ function TabQuadroEfetivos() {
   }, [ano, mesSelecionado]);
 
   function isEmGozo(b: Bombeiro, mes: number, anoRef: number): FeriasGozo | null {
-    const mesInicio = new Date(anoRef, mes - 1, 1);
-    const mesFim = new Date(anoRef, mes, 0);
+    const mesInicio = monthStart(anoRef, mes);
+    const mesFim = dataLocalISO(new Date(anoRef, mes, 0));
     for (const g of feriasGozo) {
       if (g.funcionarioId !== b.id) continue;
       if (g.status === 'Gozadas') continue; // férias já gozadas não contam
-      const gInicio = new Date(g.dataInicio + 'T00:00:00');
-      const gFim = new Date(g.dataFim + 'T00:00:00');
-      if (gInicio <= mesFim && gFim >= mesInicio) return g;
+      if (periodosSobrepostosISO(g.dataInicio, g.dataFim, mesInicio, mesFim)) return g;
     }
     return null;
   }
@@ -2884,7 +2887,7 @@ function TabQuadroEfetivos() {
   }
 
   function getSubstituindo(b: Bombeiro, mes: number): { funcionario: Bombeiro; cargo: Cargo } | null {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeLocalISO();
     const item = allItems.find(i =>
       i.substitutoId === b.id && i.funcionarioId !== b.id && i.mes === mes && !i.rejeitado && i.feriasGozoId
     );
@@ -2892,13 +2895,12 @@ function TabQuadroEfetivos() {
       const func = bombeiros.find(bb => bb.id === item.funcionarioId);
       if (func) return { funcionario: func, cargo: (item.funcaoSubstituicao || func.cargo) as Cargo };
     }
-    const mesInicio = new Date(ano, mes - 1, 1);
-    const mesFim = new Date(ano, mes, 0);
+    const mesInicio = monthStart(ano, mes);
+    const mesFim = dataLocalISO(new Date(ano, mes, 0));
     const gozo = feriasGozo.find(g =>
       g.substitutoId === b.id && g.funcionarioId !== b.id && g.status !== 'Gozadas' &&
       g.dataFim >= hoje &&
-      new Date(g.dataInicio + 'T00:00:00') <= mesFim &&
-      new Date(g.dataFim + 'T00:00:00') >= mesInicio
+      periodosSobrepostosISO(g.dataInicio, g.dataFim, mesInicio, mesFim)
     );
     if (gozo) {
       const func = bombeiros.find(bb => bb.id === gozo.funcionarioId);
@@ -2964,8 +2966,8 @@ function TabQuadroEfetivos() {
           const emGozo = membros.filter(m => isEmGozo(m, mesSelecionado, ano) && !temSubstituto(m, mesSelecionado));
           const disponiveis = membros.filter(m => !isEmGozo(m, mesSelecionado, ano) || temSubstituto(m, mesSelecionado));
 
-          const mesInicio = new Date(ano, mesSelecionado - 1, 1);
-          const mesFim = new Date(ano, mesSelecionado, 0);
+          const mesInicio = monthStart(ano, mesSelecionado);
+          const mesFim = dataLocalISO(new Date(ano, mesSelecionado, 0));
           const substitutosDaEquipe: { pessoa: Bombeiro; substituindo: Bombeiro; cargo: Cargo }[] = [];
 
           // Verifica se a pessoa tem alguém a substituí-la (via vigência, escala aprovada ou ferista)
@@ -2982,15 +2984,13 @@ function TabQuadroEfetivos() {
             }
           }
 
-          const hoje = new Date().toISOString().split('T')[0];
+          const hoje = hojeLocalISO();
           for (const gozo of feriasGozo) {
             if (gozo.status === 'Gozadas') continue;
             if (gozo.dataFim < hoje) continue; // férias já terminadas
             const func = bombeiros.find(b => b.id === gozo.funcionarioId);
             if (!func || func.equipe !== eq) continue;
-            const gInicio = new Date(gozo.dataInicio + 'T00:00:00');
-            const gFim = new Date(gozo.dataFim + 'T00:00:00');
-            if (!(gInicio <= mesFim && gFim >= mesInicio)) continue;
+            if (!periodosSobrepostosISO(gozo.dataInicio, gozo.dataFim, mesInicio, mesFim)) continue;
             if (gozo.substitutoId) {
               const sub = bombeiros.find(b => b.id === gozo.substitutoId);
               if (sub && sub.equipe !== eq) addSub(sub, func, (gozo.funcaoSubstituicao || func.cargo) as Cargo);
@@ -3011,9 +3011,7 @@ function TabQuadroEfetivos() {
             } else {
               ferN = rest.trim();
             }
-            const gInicio = new Date(gozo.dataInicio + 'T00:00:00');
-            const gFim = new Date(gozo.dataFim + 'T00:00:00');
-            if (!(gInicio <= mesFim && gFim >= mesInicio)) continue;
+            if (!periodosSobrepostosISO(gozo.dataInicio, gozo.dataFim, mesInicio, mesFim)) continue;
             const fer = bombeiros.find(b => b.nomeCompleto === ferN || b.nomeGuerra === ferN);
             if (!fer) continue;
             if (cobreN) {
@@ -3420,11 +3418,7 @@ function ModalCadastroFeriasManual({ onClose, onSuccess }: { onClose: () => void
       const onVacation = feriasGozo.some(g => {
         if (g.funcionarioId !== p.id) return false;
         if (g.status === 'Gozadas') return false;
-        const gIni = new Date(g.dataInicio + 'T00:00:00');
-        const gFim = new Date(g.dataFim + 'T00:00:00');
-        const selIni = new Date(dataInicio + 'T00:00:00');
-        const selFim = new Date(dataFim + 'T00:00:00');
-        return gIni <= selFim && gFim >= selIni;
+        return periodosSobrepostosISO(g.dataInicio, g.dataFim, dataInicio, dataFim);
       });
       return !onVacation;
     });
@@ -3447,11 +3441,7 @@ function ModalCadastroFeriasManual({ onClose, onSuccess }: { onClose: () => void
       const onVacation = feriasGozo.some(g => {
         if (g.funcionarioId !== p.id) return false;
         if (g.status === 'Gozadas') return false;
-        const gIni = new Date(g.dataInicio + 'T00:00:00');
-        const gFim = new Date(g.dataFim + 'T00:00:00');
-        const selIni = new Date(dataInicio + 'T00:00:00');
-        const selFim = new Date(dataFim + 'T00:00:00');
-        return gIni <= selFim && gFim >= selIni;
+        return periodosSobrepostosISO(g.dataInicio, g.dataFim, dataInicio, dataFim);
       });
       return !onVacation;
     });
@@ -3515,9 +3505,7 @@ function ModalCadastroFeriasManual({ onClose, onSuccess }: { onClose: () => void
     setDataInicio(value);
     setChainElos([]);
     if (value) {
-      const d = new Date(value + 'T12:00:00');
-      d.setDate(d.getDate() + 29);
-      setDataFim(d.toISOString().split('T')[0]);
+      setDataFim(somarDiasISO(value, 29));
       setDias(30);
     } else {
       setDataFim('');
@@ -3559,7 +3547,7 @@ function ModalCadastroFeriasManual({ onClose, onSuccess }: { onClose: () => void
         dataInicio,
         dataFim,
         dias,
-        status: dataFim < new Date().toISOString().split('T')[0] ? 'Gozadas' : 'Programadas',
+        status: dataFim < hojeLocalISO() ? 'Gozadas' : 'Programadas',
         substitutoId: substitutoId || '',
         substitutoNome: sub?.nomeCompleto || '',
         funcaoSubstituicao: sub ? (selectedBombeiro.cargo || '') : '',

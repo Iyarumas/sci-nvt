@@ -9,6 +9,7 @@ import { PageTitle } from '../../components/layout/PageTitle';
 import { listarBombeiros } from '../../services/bombeiroService';
 import type { Bombeiro } from '../../types/bombeiro';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 interface Treinamento {
   id: string;
@@ -44,8 +45,7 @@ function salvar(lista: Treinamento[]) {
 }
 
 function fmt(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 placeholder-graphite-400 outline-none transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400';
@@ -62,7 +62,7 @@ export function Treinamentos({ tipoPadrao }: { tipoPadrao?: string }) {
   const [editando, setEditando] = useState<Treinamento | null>(null);
 
   const [formTipo, setFormTipo] = useState<string>(tipoPadrao || 'posicionamento');
-  const [formData, setFormData] = useState(new Date().toISOString().split('T')[0]);
+  const [formData, setFormData] = useState(hojeLocalISO());
   const [formTitulo, setFormTitulo] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
   const [formCarga, setFormCarga] = useState(1);
@@ -92,7 +92,7 @@ export function Treinamentos({ tipoPadrao }: { tipoPadrao?: string }) {
 
   function resetForm() {
     setFormTipo('posicionamento');
-    setFormData(new Date().toISOString().split('T')[0]);
+    setFormData(hojeLocalISO());
     setFormTitulo('');
     setFormDescricao('');
     setFormCarga(1);

@@ -1,27 +1,45 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   AlertTriangle, Plus, Save, Eye, Pencil, Trash2, ChevronDown, ChevronUp, FileText,
-  Send, CheckCircle, RotateCcw,
+  CheckCircle, Printer, X,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PdfPreview } from '../../components/documentos/PdfPreview';
+import { SearchSelect } from '../../components/ui/SearchSelect';
+import type { AtivoItem } from '../../components/ui/SearchSelect';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { turnoAutoPorEquipe } from '../../types/bombeiro';
 import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorrencia } from '../../services/ocorrenciaService';
 import { atualizarRea, criarRea, excluirRea, listarReas, obterRea } from '../../services/reaService';
 import { gerarReaPdf } from '../../services/reaPdfService';
+import { gerarBonaPdf } from '../../services/bonaPdfService';
+import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { downloadPdf } from '../../services/pdfService';
-import { CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO } from '../../types/ocorrencia';
-import type { Ocorrencia, TipoDocumento } from '../../types/ocorrencia';
+import { BONA_FUNCOES, CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO, criarBonaDadosVazios, normalizarFuncaoBona } from '../../types/ocorrencia';
+import type { BonaBombeiro, BonaDados, Ocorrencia, TipoDocumento } from '../../types/ocorrencia';
 import type { ReaDados, ReaRegistro, ReaStatus } from '../../types/rea';
 import { ReaModal } from './ReaModal';
 import { ReaCard } from './ReaCard';
+import { hojeLocalISO } from '../../utils/datas';
+import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
+
+const BONA_ULTIMO_NUMERO_LEGADO = 63;
+
+function numeroSequencial(registro: Pick<Ocorrencia, 'numero'>, prefixo: string, ano: number): number {
+  const regex = new RegExp(`^${prefixo}-(\\d+)(?:\\/${ano})?$`, 'i');
+  const match = String(registro.numero || '').trim().match(regex);
+  return match ? Number(match[1]) : 0;
+}
 
 function gerarNumero(tipo: TipoDocumento, existentes: Ocorrencia[]): string {
   const prefixo = tipo === 'BONA' ? 'BONA' : 'REA';
   const ano = new Date().getFullYear();
-  const doMesmoTipo = existentes.filter(o => o.tipoDocumento === tipo && o.numero.startsWith(prefixo));
-  const sequencia = doMesmoTipo.length + 1;
+  const maiorExistente = existentes
+    .filter(o => o.tipoDocumento === tipo && o.numero.startsWith(prefixo))
+    .reduce((maior, item) => Math.max(maior, numeroSequencial(item, prefixo, ano)), 0);
+  const base = tipo === 'BONA' ? BONA_ULTIMO_NUMERO_LEGADO : 0;
+  const sequencia = Math.max(base, maiorExistente) + 1;
   return `${prefixo}-${String(sequencia).padStart(3, '0')}/${ano}`;
 }
 
@@ -39,7 +57,7 @@ function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 
   return {
     tipoDocumento: 'BONA',
     numero: '',
-    data: new Date().toISOString().split('T')[0],
+    data: hojeLocalISO(),
     hora: '',
     equipe: '',
     turno: '',
@@ -51,7 +69,187 @@ function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 
     acoesTomadas: '',
     status: 'Aberta',
     fotos: [],
+    bonaDados: criarBonaDadosVazios(),
   };
+}
+
+type OcorrenciaFormData = Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>;
+
+function bombeirosFromTexto(raw: string): BonaBombeiro[] {
+  return raw
+    .split(/\r?\n|;|,/)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => {
+      const [nome, ...funcao] = item.split(/\s+-\s+|\s+–\s+|\s+\|\s+/);
+      return { nome: nome.trim(), funcao: funcao.join(' - ').trim() };
+    })
+    .filter(item => item.nome || item.funcao);
+}
+
+function bonaDadosFromOcorrencia(ocorrencia: Partial<Ocorrencia>): BonaDados {
+  const dados = criarBonaDadosVazios(ocorrencia.bonaDados || {});
+  const bombeiros = dados.bombeiros.length > 0 ? dados.bombeiros : bombeirosFromTexto(ocorrencia.envolvidos || '');
+  return criarBonaDadosVazios({
+    ...dados,
+    areaEvento: dados.areaEvento || ocorrencia.local || '',
+    tipoOcorrencia: dados.tipoOcorrencia || ocorrencia.titulo || ocorrencia.categoria || '',
+    bombeiros,
+    acionamento: dados.acionamento || ocorrencia.hora || '',
+    descricaoOcorrencia: dados.descricaoOcorrencia || ocorrencia.descricao || '',
+    descricaoAtuacaoEquipe: dados.descricaoAtuacaoEquipe || ocorrencia.acoesTomadas || '',
+  });
+}
+
+function bombeirosParaTexto(bombeiros: BonaBombeiro[]): string {
+  return bombeiros
+    .filter(item => item.nome || item.funcao)
+    .map(item => item.funcao ? `${item.nome} - ${item.funcao}` : item.nome)
+    .join('\n');
+}
+
+function calcularTempoAtendimento(inicio: string, fim: string): string {
+  if (!/^\d{2}:\d{2}$/.test(inicio) || !/^\d{2}:\d{2}$/.test(fim)) return '';
+  const [hi, mi] = inicio.split(':').map(Number);
+  const [hf, mf] = fim.split(':').map(Number);
+  const start = hi * 60 + mi;
+  let end = hf * 60 + mf;
+  if (end < start) end += 24 * 60;
+  const diff = end - start;
+  return `${String(Math.floor(diff / 60)).padStart(2, '0')}:${String(diff % 60).padStart(2, '0')}`;
+}
+
+function categoriaSistema(tipoOcorrencia: string): Ocorrencia['categoria'] {
+  return CATEGORIAS_OCORRENCIA.includes(tipoOcorrencia as Ocorrencia['categoria'])
+    ? tipoOcorrencia as Ocorrencia['categoria']
+    : 'Outros';
+}
+
+function bonaBombeiroFromOpcao(opcao: AtivoItem): BonaBombeiro {
+  return {
+    nome: opcao.nomeCompleto || opcao.nomeGuerra,
+    funcao: normalizarFuncaoBona(opcao.cargo || ''),
+  };
+}
+
+function opcoesParaBombeiros(opcoes: AtivoItem[]): BonaBombeiro[] {
+  return opcoes.map(bonaBombeiroFromOpcao);
+}
+
+function nomePessoaKey(value: string): string {
+  return value.trim().toLocaleLowerCase('pt-BR');
+}
+
+function completarNomesBombeiros(bombeiros: BonaBombeiro[], opcoes: AtivoItem[]): BonaBombeiro[] {
+  const porNome = new Map<string, AtivoItem>();
+  opcoes.forEach(opcao => {
+    if (opcao.nomeGuerra) porNome.set(nomePessoaKey(opcao.nomeGuerra), opcao);
+    if (opcao.nomeCompleto) porNome.set(nomePessoaKey(opcao.nomeCompleto), opcao);
+  });
+
+  return bombeiros.map(bombeiro => {
+    const opcao = porNome.get(nomePessoaKey(bombeiro.nome));
+    if (!opcao) return bombeiro;
+    return {
+      nome: opcao.nomeCompleto || bombeiro.nome,
+      funcao: bombeiro.funcao || normalizarFuncaoBona(opcao.cargo || ''),
+    };
+  });
+}
+
+function opcoesFuncaoBona(funcaoAtual: string): string[] {
+  const funcao = normalizarFuncaoBona(funcaoAtual);
+  if (!funcao || BONA_FUNCOES.includes(funcao as typeof BONA_FUNCOES[number])) {
+    return [...BONA_FUNCOES];
+  }
+  return [funcao, ...BONA_FUNCOES];
+}
+
+function prepararBonaParaSalvar(data: OcorrenciaFormData): OcorrenciaFormData {
+  const dados = bonaDadosFromOcorrencia(data);
+  const tempoCalculado = calcularTempoAtendimento(dados.acionamento, dados.retornoSci);
+  const bonaDados = criarBonaDadosVazios({
+    ...dados,
+    tempoGastoAtendimento: dados.tempoGastoAtendimento || tempoCalculado,
+  });
+  return {
+    ...data,
+    hora: data.hora || bonaDados.acionamento,
+    local: bonaDados.areaEvento,
+    titulo: bonaDados.tipoOcorrencia || TIPO_DOCUMENTO.BONA,
+    categoria: categoriaSistema(bonaDados.tipoOcorrencia),
+    descricao: bonaDados.descricaoOcorrencia,
+    envolvidos: bombeirosParaTexto(bonaDados.bombeiros),
+    acoesTomadas: bonaDados.descricaoAtuacaoEquipe,
+    bonaDados,
+  };
+}
+
+function formDataFromOcorrencia(ocorrencia: Ocorrencia): OcorrenciaFormData {
+  const bonaDados = bonaDadosFromOcorrencia(ocorrencia);
+  return {
+    tipoDocumento: ocorrencia.tipoDocumento,
+    numero: ocorrencia.numero,
+    data: ocorrencia.data,
+    hora: ocorrencia.hora,
+    equipe: ocorrencia.equipe,
+    turno: ocorrencia.turno,
+    categoria: ocorrencia.categoria,
+    titulo: ocorrencia.titulo,
+    descricao: ocorrencia.descricao,
+    local: ocorrencia.local,
+    envolvidos: ocorrencia.envolvidos,
+    acoesTomadas: ocorrencia.acoesTomadas,
+    status: ocorrencia.status,
+    fotos: [],
+    bonaDados,
+  };
+}
+
+async function prepararBonaParaDocumento(ocorrencia: Ocorrencia): Promise<Ocorrencia> {
+  const dados = bonaDadosFromOcorrencia(ocorrencia);
+  if (!ocorrencia.equipe || !ocorrencia.data || dados.bombeiros.length === 0) return ocorrencia;
+
+  try {
+    const efetivo = await resolverEfetivoOperacional(ocorrencia.equipe, ocorrencia.data);
+    const opcoes = montarOpcoesEfetivoOperacional(efetivo, ocorrencia.equipe);
+    const bombeiros = completarNomesBombeiros(dados.bombeiros, opcoes);
+    const bonaDados = criarBonaDadosVazios({ ...dados, bombeiros });
+    return {
+      ...ocorrencia,
+      envolvidos: bombeirosParaTexto(bombeiros),
+      bonaDados,
+    };
+  } catch {
+    return ocorrencia;
+  }
+}
+
+async function imprimirPdfBlob(blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob);
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.src = url;
+  document.body.appendChild(iframe);
+
+  await new Promise<void>((resolve) => {
+    iframe.onload = () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      resolve();
+    };
+    setTimeout(resolve, 2500);
+  });
+
+  setTimeout(() => {
+    iframe.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 /* ───────── Formulário ───────── */
@@ -60,63 +258,176 @@ function OcorrenciaForm({
   ocorrencia,
   userEquipe,
   todas,
-  savedId,
-  role,
   canManageGlobal,
+  isAdminSistema,
   onSave,
-  onSaveDraft,
-  onEncaminhar,
-  onAceitar,
-  onSolicitarRetrabalho,
-  onConcluir,
   onSelectRea,
   onCancel,
 }: {
   ocorrencia?: Ocorrencia;
   userEquipe: string;
   todas: Ocorrencia[];
-  savedId: string | null;
-  role: string;
   canManageGlobal: boolean;
-  onSave: (data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void;
-  onSaveDraft: (data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void;
-  onEncaminhar?: () => void;
-  onAceitar?: () => void;
-  onSolicitarRetrabalho?: () => void;
-  onConcluir?: () => void;
+  isAdminSistema: boolean;
+  onSave: (data: OcorrenciaFormData) => void;
   onSelectRea?: () => void;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState(ocorrencia ? {
-    tipoDocumento: ocorrencia.tipoDocumento,
-    numero: ocorrencia.numero,
-    data: ocorrencia.data, hora: ocorrencia.hora, equipe: ocorrencia.equipe,
-    turno: ocorrencia.turno, categoria: ocorrencia.categoria, titulo: ocorrencia.titulo,
-    descricao: ocorrencia.descricao, local: ocorrencia.local, envolvidos: ocorrencia.envolvidos,
-    acoesTomadas: ocorrencia.acoesTomadas, status: ocorrencia.status, fotos: ocorrencia.fotos,
-  } : { ...emptyOcorrencia(), equipe: userEquipe, numero: gerarNumero('BONA', todas) });
-
-  const [successMsg, setSuccessMsg] = useState('');
-  function clearSuccess() { setSuccessMsg(''); }
-
-  useEffect(() => {
-    if (successMsg) {
-      const t = setTimeout(clearSuccess, 3000);
-      return () => clearTimeout(t);
-    }
-  }, [successMsg]);
+  const [form, setForm] = useState<OcorrenciaFormData>(ocorrencia
+    ? formDataFromOcorrencia(ocorrencia)
+    : { ...emptyOcorrencia(), equipe: userEquipe, turno: turnoAutoPorEquipe(userEquipe as any), numero: gerarNumero('BONA', todas) });
+  const [opcoesBombeiros, setOpcoesBombeiros] = useState<AtivoItem[]>([]);
+  const [loadingEfetivo, setLoadingEfetivo] = useState(false);
 
   const input = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all duration-200 focus:border-aviation-500 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:placeholder:text-graphite-500 dark:scheme-dark';
   const select = input;
   const inputReadOnly = input + ' cursor-not-allowed bg-graphite-50 dark:bg-surface-hover';
   const label = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+  const bonaDados = bonaDadosFromOcorrencia(form);
+  const tempoCalculado = calcularTempoAtendimento(bonaDados.acionamento, bonaDados.retornoSci);
+  const camposBloqueados = form.status === 'Fechada';
+
+  useEffect(() => {
+    let active = true;
+    if (!form.equipe || !form.data) {
+      setOpcoesBombeiros([]);
+      return () => { active = false; };
+    }
+
+    setLoadingEfetivo(true);
+    resolverEfetivoOperacional(form.equipe, form.data)
+      .then(efetivo => {
+        if (!active) return;
+        const opcoes = montarOpcoesEfetivoOperacional(efetivo, form.equipe);
+        setOpcoesBombeiros(opcoes);
+        setForm(f => {
+          const dados = bonaDadosFromOcorrencia(f);
+          if (camposBloqueados || opcoes.length === 0) return f;
+          if (dados.bombeiros.length > 0) {
+            const bombeiros = completarNomesBombeiros(dados.bombeiros, opcoes);
+            const mudou = bombeiros.some((bombeiro, index) =>
+              bombeiro.nome !== dados.bombeiros[index]?.nome ||
+              bombeiro.funcao !== dados.bombeiros[index]?.funcao
+            );
+            if (!mudou) return f;
+            return {
+              ...f,
+              bonaDados: criarBonaDadosVazios({
+                ...dados,
+                bombeiros,
+              }),
+            };
+          }
+          return {
+            ...f,
+            turno: f.turno || turnoAutoPorEquipe(f.equipe as any),
+            bonaDados: criarBonaDadosVazios({
+              ...dados,
+              bombeiros: opcoesParaBombeiros(opcoes),
+            }),
+          };
+        });
+      })
+      .catch(() => {
+        if (active) setOpcoesBombeiros([]);
+      })
+      .finally(() => {
+        if (active) setLoadingEfetivo(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [form.equipe, form.data, camposBloqueados]);
+
+  function setBonaDados(updates: Partial<BonaDados>) {
+    if (camposBloqueados) return;
+    setForm(f => ({ ...f, bonaDados: criarBonaDadosVazios({ ...bonaDadosFromOcorrencia(f), ...updates }) }));
+  }
+
+  function setBonaCampo<K extends keyof BonaDados>(campo: K, value: BonaDados[K]) {
+    setBonaDados({ [campo]: value } as Partial<BonaDados>);
+  }
+
+  function handleHora(value: string) {
+    if (camposBloqueados) return;
+    setForm(f => {
+      const dados = bonaDadosFromOcorrencia(f);
+      return {
+        ...f,
+        hora: value,
+        bonaDados: criarBonaDadosVazios({
+          ...dados,
+          acionamento: dados.acionamento || value,
+        }),
+      };
+    });
+  }
+
+  function handleBombeiro(index: number, campo: keyof BonaBombeiro, value: string) {
+    if (camposBloqueados) return;
+    setForm(f => {
+      const dados = bonaDadosFromOcorrencia(f);
+      const bombeiros = [...dados.bombeiros];
+      while (bombeiros.length <= index) bombeiros.push({ nome: '', funcao: '' });
+      bombeiros[index] = {
+        ...bombeiros[index],
+        [campo]: campo === 'funcao' ? normalizarFuncaoBona(value) : value,
+      };
+      return { ...f, bonaDados: criarBonaDadosVazios({ ...dados, bombeiros }) };
+    });
+  }
+
+  function handleBombeiroNome(index: number, value: string) {
+    if (camposBloqueados) return;
+    const selecionado = opcoesBombeiros.find(opcao => opcao.nomeGuerra === value || opcao.nomeCompleto === value);
+    setForm(f => {
+      const dados = bonaDadosFromOcorrencia(f);
+      const bombeiros = [...dados.bombeiros];
+      while (bombeiros.length <= index) bombeiros.push({ nome: '', funcao: '' });
+      bombeiros[index] = {
+        nome: selecionado?.nomeCompleto || value,
+        funcao: selecionado ? normalizarFuncaoBona(selecionado.cargo || '') : bombeiros[index].funcao,
+      };
+      return { ...f, bonaDados: criarBonaDadosVazios({ ...dados, bombeiros }) };
+    });
+  }
+
+  function addBombeiro() {
+    if (camposBloqueados) return;
+    setBonaCampo('bombeiros', [...bonaDados.bombeiros, { nome: '', funcao: '' }]);
+  }
+
+  function removeBombeiro(index: number) {
+    if (camposBloqueados) return;
+    setBonaCampo('bombeiros', bonaDados.bombeiros.filter((_, i) => i !== index));
+  }
+
+  function limparBombeirosParaRecarregar(f: OcorrenciaFormData, updates: Partial<OcorrenciaFormData>): OcorrenciaFormData {
+    const dados = bonaDadosFromOcorrencia(f);
+    return {
+      ...f,
+      ...updates,
+      bonaDados: criarBonaDadosVazios({
+        ...dados,
+        bombeiros: [],
+      }),
+    };
+  }
+
+  function handleData(value: string) {
+    if (camposBloqueados) return;
+    setForm(f => limparBombeirosParaRecarregar(f, { data: value }));
+  }
 
   function handleEquipe(equipe: string) {
+    if (camposBloqueados) return;
     const turno = turnoAutoPorEquipe(equipe as any);
-    setForm(f => ({ ...f, equipe, turno }));
+    setForm(f => limparBombeirosParaRecarregar(f, { equipe, turno }));
   }
 
   function handleTipo(tipo: TipoDocumento) {
+    if (camposBloqueados) return;
     if (tipo === 'REA' && onSelectRea) {
       onSelectRea();
       return;
@@ -126,15 +437,8 @@ function OcorrenciaForm({
       tipoDocumento: tipo,
       titulo: TIPO_DOCUMENTO[tipo],
       numero: gerarNumero(tipo, todas),
+      bonaDados: tipo === 'BONA' ? bonaDadosFromOcorrencia(f) : f.bonaDados,
     }));
-  }
-
-  function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setForm(f => ({ ...f, fotos: [...f.fotos, reader.result as string] }));
-    reader.readAsDataURL(file);
   }
 
   const tipoBadge = form.tipoDocumento === 'BONA'
@@ -148,9 +452,36 @@ function OcorrenciaForm({
     'Fechada': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   };
 
-  const isGestor = role === 'gestor' || role === 'gerente' || role === 'admin';
-  const isChefe = role === 'chefe' || role === 'admin';
   const status = form.status;
+  const salvarDesabilitado = camposBloqueados
+    ? !isAdminSistema || !form.numero.trim()
+    : !form.data || !form.hora || !form.equipe || !bonaDados.areaEvento.trim() || !bonaDados.tipoOcorrencia.trim() || !bonaDados.descricaoOcorrencia.trim();
+
+  function disabledIdsBombeiros(indexAtual: number): Set<string> {
+    const ids = bonaDados.bombeiros
+      .map((bombeiro, index) => {
+        if (index === indexAtual) return null;
+        return opcoesBombeiros.find(opcao => opcao.nomeGuerra === bombeiro.nome || opcao.nomeCompleto === bombeiro.nome)?.id || null;
+      })
+      .filter((id): id is string => !!id);
+    return new Set(ids);
+  }
+
+  function opcoesDaLinhaBombeiro(bombeiro: BonaBombeiro, index: number): AtivoItem[] {
+    if (!bombeiro.nome) return opcoesBombeiros;
+    const existe = opcoesBombeiros.some(opcao => opcao.nomeGuerra === bombeiro.nome || opcao.nomeCompleto === bombeiro.nome);
+    if (existe) return opcoesBombeiros;
+    return [
+      {
+        id: `manual-${index}-${bombeiro.nome}`,
+        nomeGuerra: bombeiro.nome,
+        nomeCompleto: bombeiro.nome,
+        cargo: bombeiro.funcao,
+        equipe: form.equipe,
+      },
+      ...opcoesBombeiros,
+    ];
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8 sm:pt-16">
@@ -175,12 +506,12 @@ function OcorrenciaForm({
             <label className={label}>Tipo de Documento *</label>
             <div className="mt-2 grid grid-cols-2 gap-3">
               {(['BONA', 'REA'] as TipoDocumento[]).map(tipo => (
-                <button key={tipo} type="button" onClick={() => handleTipo(tipo)}
+                <button key={tipo} type="button" onClick={() => handleTipo(tipo)} disabled={camposBloqueados}
                   className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
                     form.tipoDocumento === tipo
                       ? 'border-aviation-500 bg-aviation-50 dark:border-aviation-400 dark:bg-aviation-900/20'
                       : 'border-graphite-200 bg-white hover:border-graphite-300 dark:border-border-dark dark:bg-surface-card dark:hover:border-graphite-600'
-                  }`}>
+                  } disabled:cursor-not-allowed disabled:opacity-60`}>
                   <FileText className={`h-5 w-5 shrink-0 ${form.tipoDocumento === tipo ? 'text-aviation-600 dark:text-aviation-400' : 'text-graphite-400'}`} />
                   <div>
                     <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{tipo}</p>
@@ -191,134 +522,177 @@ function OcorrenciaForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={label}>Número</label>
-              <input value={form.numero} readOnly className={inputReadOnly} />
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+              <div className="sm:col-span-2 lg:col-span-2">
+                <label className={label}>Nº Ocorrência</label>
+                <input
+                  value={form.numero}
+                  onChange={e => setForm(f => ({ ...f, numero: e.target.value }))}
+                  readOnly={!isAdminSistema}
+                  className={isAdminSistema ? input : inputReadOnly}
+                />
+              </div>
+              <div>
+                <label className={label}>Data *</label>
+                <input type="date" value={form.data} onChange={e => handleData(e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Hora *</label>
+                <input type="time" value={form.hora} onChange={e => handleHora(e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Equipe *</label>
+                <select value={form.equipe} onChange={e => handleEquipe(e.target.value)} className={camposBloqueados ? inputReadOnly : select} disabled={!canManageGlobal || camposBloqueados}>
+                  <option value="">Selecione</option>
+                  {EQUIPES.filter(eq => canManageGlobal || eq === userEquipe).map(eq => <option key={eq} value={eq}>{eq}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={label}>Turno</label>
+                <input value={form.turno} readOnly className={inputReadOnly} />
+              </div>
             </div>
-            <div>
-              <label className={label}>Data *</label>
-              <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className={input} />
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={label}>Área do evento (Mapa de Grade) *</label>
+                <input value={bonaDados.areaEvento} onChange={e => setBonaCampo('areaEvento', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Tipo de Ocorrência *</label>
+                <input value={bonaDados.tipoOcorrencia} onChange={e => setBonaCampo('tipoOcorrencia', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Vítimas Fatais</label>
+                <input type="number" min="0" value={bonaDados.vitimasFatais} onChange={e => setBonaCampo('vitimasFatais', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Vítimas Feridas</label>
+                <input type="number" min="0" value={bonaDados.vitimasFeridas} onChange={e => setBonaCampo('vitimasFeridas', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
             </div>
-            <div>
-              <label className={label}>Hora *</label>
-              <input type="time" value={form.hora} onChange={e => setForm(f => ({ ...f, hora: e.target.value }))} className={input} />
-            </div>
-            <div>
-              <label className={label}>Equipe *</label>
-              <select value={form.equipe} onChange={e => handleEquipe(e.target.value)} className={select} disabled={!canManageGlobal}>
-                <option value="">Selecione</option>
-                {EQUIPES.filter(eq => canManageGlobal || eq === userEquipe).map(eq => <option key={eq} value={eq}>{eq}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={label}>Turno</label>
-              <input value={form.turno} readOnly className={inputReadOnly} />
-            </div>
-            <div>
-              <label className={label}>Categoria *</label>
-              <select value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value as Ocorrencia['categoria'] }))} className={select}>
-                {CATEGORIAS_OCORRENCIA.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <label className={label}>Título</label>
-              <input value={form.titulo} readOnly className={inputReadOnly + ' font-semibold'} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className={label}>Local</label>
-              <input value={form.local} onChange={e => setForm(f => ({ ...f, local: e.target.value }))} className={input} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className={label}>Descrição sucinta da ocorrência</label>
-              <textarea value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} rows={3} className={input + ' resize-none'} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className={label}>Envolvidos</label>
-              <input value={form.envolvidos} onChange={e => setForm(f => ({ ...f, envolvidos: e.target.value }))} className={input} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className={label}>Ações Tomadas</label>
-              <textarea value={form.acoesTomadas} onChange={e => setForm(f => ({ ...f, acoesTomadas: e.target.value }))} rows={3} className={input + ' resize-none'} />
-            </div>
-            <div className="sm:col-span-2">
-              <label className={label}>Fotos</label>
-              <div className="flex flex-wrap gap-2">
-                {form.fotos.map((foto, i) => (
-                  <div key={i} className="relative h-16 w-16">
-                    <img src={foto} className="h-full w-full rounded-lg object-cover" />
-                    <button onClick={() => setForm(f => ({ ...f, fotos: f.fotos.filter((_, j) => j !== i) }))}
-                      className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">✕</button>
+
+            <div className="rounded-xl border border-graphite-200 p-4 dark:border-border-dark">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-graphite-800 dark:text-graphite-100">Bombeiros envolvidos</p>
+                  <p className="mt-0.5 text-xs text-graphite-500 dark:text-graphite-400">
+                    {loadingEfetivo ? 'Carregando efetivo do dia...' : opcoesBombeiros.length ? `${opcoesBombeiros.length} pessoa(s) em serviço nessa equipe/data.` : 'Selecione equipe e data para carregar o efetivo.'}
+                  </p>
+                </div>
+                <button type="button" onClick={addBombeiro} disabled={camposBloqueados}
+                  className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-aviation-900/30 dark:text-aviation-300">
+                  <Plus className="h-3.5 w-3.5" /> Adicionar
+                </button>
+              </div>
+              <div className="space-y-2">
+                {(bonaDados.bombeiros.length ? bonaDados.bombeiros : [{ nome: '', funcao: '' }]).map((bombeiro, index) => (
+                  <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <div>
+                      <label className={label}>Bombeiro</label>
+                      {camposBloqueados ? (
+                        <input value={bombeiro.nome} readOnly className={inputReadOnly} />
+                      ) : (
+                        <SearchSelect
+                          value={bombeiro.nome}
+                          onChange={value => handleBombeiroNome(index, value)}
+                          options={opcoesDaLinhaBombeiro(bombeiro, index)}
+                          valueField="nomeCompleto"
+                          disabledIds={disabledIdsBombeiros(index)}
+                          disabledTooltip="Pessoa já adicionada no BONA"
+                          showCargo
+                          displayMode="operational"
+                          placeholder={opcoesBombeiros.length ? 'Selecione do efetivo do dia' : 'Selecione equipe e data'}
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <label className={label}>Função</label>
+                      <select value={bombeiro.funcao} onChange={e => handleBombeiro(index, 'funcao', e.target.value)} className={camposBloqueados ? inputReadOnly : select} disabled={camposBloqueados}>
+                        <option value="">Selecione</option>
+                        {opcoesFuncaoBona(bombeiro.funcao).map(funcao => <option key={funcao} value={funcao}>{funcao}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button type="button" onClick={() => removeBombeiro(index)} disabled={camposBloqueados || bonaDados.bombeiros.length <= 1}
+                        className="mb-0.5 rounded-lg bg-red-50 p-2 text-alert-red transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-red-900/20 dark:text-red-400">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
-                <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-graphite-300 text-graphite-400 transition-colors hover:border-aviation-400 hover:text-aviation-500 dark:border-border-dark dark:bg-surface-card/30 dark:hover:border-aviation-500">
-                  <Plus className="h-5 w-5" />
-                  <input type="file" accept="image/*" className="hidden" onChange={handleImage} />
-                </label>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <label className={label}>Acionamento</label>
+                <input type="time" value={bonaDados.acionamento} onChange={e => setBonaCampo('acionamento', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Hora de Saída</label>
+                <input type="time" value={bonaDados.saida} onChange={e => setBonaCampo('saida', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Chegada no Local</label>
+                <input type="time" value={bonaDados.chegadaLocal} onChange={e => setBonaCampo('chegadaLocal', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Término da Ocorrência</label>
+                <input type="time" value={bonaDados.terminoOcorrencia} onChange={e => setBonaCampo('terminoOcorrencia', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Retorno à SCI</label>
+                <input type="time" value={bonaDados.retornoSci} onChange={e => setBonaCampo('retornoSci', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>Tempo Gasto</label>
+                <input value={bonaDados.tempoGastoAtendimento || tempoCalculado} onChange={e => setBonaCampo('tempoGastoAtendimento', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} placeholder="00:00" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className={label}>Descrição Sucinta da Ocorrência / Acionamento *</label>
+                <textarea value={bonaDados.descricaoOcorrencia} onChange={e => setBonaCampo('descricaoOcorrencia', e.target.value)} rows={4} disabled={camposBloqueados} className={(camposBloqueados ? inputReadOnly : input) + ' resize-y'} />
+              </div>
+              <div>
+                <label className={label}>Descrição Sucinta da Atuação da Equipe do SESCINC</label>
+                <textarea value={bonaDados.descricaoAtuacaoEquipe} onChange={e => setBonaCampo('descricaoAtuacaoEquipe', e.target.value)} rows={5} disabled={camposBloqueados} className={(camposBloqueados ? inputReadOnly : input) + ' resize-y'} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+              <div className="sm:col-span-2">
+                <label className={label}>Veículos Utilizados</label>
+                <textarea value={bonaDados.veiculosUtilizados} onChange={e => setBonaCampo('veiculosUtilizados', e.target.value)} rows={2} disabled={camposBloqueados} className={(camposBloqueados ? inputReadOnly : input) + ' resize-y'} />
+              </div>
+              <div>
+                <label className={label}>LGE</label>
+                <input type="number" min="0" value={bonaDados.agentesLge} onChange={e => setBonaCampo('agentesLge', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div>
+                <label className={label}>PQ</label>
+                <input type="number" min="0" value={bonaDados.agentesPq} onChange={e => setBonaCampo('agentesPq', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+              </div>
+              <div className="sm:col-span-4">
+                <label className={label}>Outros Recursos Utilizados</label>
+                <textarea value={bonaDados.outrosRecursosUtilizados} onChange={e => setBonaCampo('outrosRecursosUtilizados', e.target.value)} rows={3} disabled={camposBloqueados} className={(camposBloqueados ? inputReadOnly : input) + ' resize-y'} />
               </div>
             </div>
           </div>
         </div>
-
-        {successMsg && (
-          <div className="mx-6 mt-4 rounded-xl border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-medium text-green-700 dark:border-green-700 dark:bg-green-900/30 dark:text-green-400">
-            {successMsg}
-          </div>
-        )}
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-graphite-200 px-6 py-4 dark:border-border-dark">
           <button onClick={onCancel} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
             Cancelar
           </button>
 
-          {isChefe && status === 'Aberta' && !savedId && (
-            <button onClick={() => { clearSuccess(); onSaveDraft(form); }} disabled={!form.data || !form.equipe}
-              className="flex items-center gap-2 rounded-xl border-2 border-orange-400 bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-600 hover:to-orange-700 hover:shadow-xl hover:shadow-orange-500/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
-              <Save className="h-4 w-4" /> Salvar e Continuar
-            </button>
-          )}
-
-          {isChefe && status === 'Aberta' && (
-            <button onClick={() => onSave(form)} disabled={!form.data || !form.equipe}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-50 disabled:cursor-not-allowed">
-              <Save className="h-4 w-4" /> Salvar
-            </button>
-          )}
-
-          {isChefe && status === 'Aberta' && onEncaminhar && (
-            <button onClick={onEncaminhar} disabled={!form.data || !form.equipe}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition-all hover:from-orange-600 hover:to-orange-700 hover:shadow-xl hover:shadow-orange-500/30 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed">
-              <Send className="h-4 w-4" /> Encaminhar ao Gestor
-            </button>
-          )}
-
-          {isGestor && status === 'Encaminhada' && onAceitar && (
-            <button onClick={onAceitar}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:from-blue-600 hover:to-blue-700 hover:shadow-xl hover:shadow-blue-500/30 active:scale-[0.98]">
-              <CheckCircle className="h-4 w-4" /> Aceitar (Em Andamento)
-            </button>
-          )}
-
-          {isGestor && status === 'Em Andamento' && onSolicitarRetrabalho && (
-            <button onClick={onSolicitarRetrabalho}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-yellow-500 to-yellow-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-yellow-500/25 transition-all hover:from-yellow-600 hover:to-yellow-700 hover:shadow-xl hover:shadow-yellow-500/30 active:scale-[0.98]">
-              <RotateCcw className="h-4 w-4" /> Solicitar Retrabalho
-            </button>
-          )}
-
-          {isGestor && status === 'Em Andamento' && onConcluir && (
-            <button onClick={onConcluir}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-500 to-green-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-green-500/25 transition-all hover:from-green-600 hover:to-green-700 hover:shadow-xl hover:shadow-green-500/30 active:scale-[0.98]">
-              <CheckCircle className="h-4 w-4" /> Concluir (Fechada)
-            </button>
-          )}
-
-          {isGestor && (status === 'Em Andamento' || status === 'Encaminhada') && (
-            <button onClick={() => onSave(form)}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
-              <Save className="h-4 w-4" /> Salvar Alterações
-            </button>
-          )}
+          <button onClick={() => onSave(prepararBonaParaSalvar({ ...form, status: status === 'Fechada' ? 'Fechada' : 'Aberta', fotos: [] }))} disabled={salvarDesabilitado}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-50 disabled:cursor-not-allowed">
+            <Save className="h-4 w-4" /> {camposBloqueados ? 'Salvar número' : 'Salvar'}
+          </button>
         </div>
       </div>
     </div>
@@ -330,6 +704,7 @@ function OcorrenciaForm({
 function OcorrenciaView({ ocorrencia, onBack }: { ocorrencia: Ocorrencia; onBack: () => void }) {
   const label = 'text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
   const value = 'text-sm text-graphite-900 dark:text-graphite-100';
+  const bonaDados = bonaDadosFromOcorrencia(ocorrencia);
 
   const statusColor: Record<string, string> = {
     'Aberta': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -358,28 +733,47 @@ function OcorrenciaView({ ocorrencia, onBack }: { ocorrencia: Ocorrencia; onBack
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div><p className={label}>Equipe</p><p className={value}>{ocorrencia.equipe}</p></div>
         <div><p className={label}>Turno</p><p className={value}>{ocorrencia.turno || '—'}</p></div>
-        <div><p className={label}>Categoria</p><p className={value}>{ocorrencia.categoria}</p></div>
-        <div><p className={label}>Local</p><p className={value}>{ocorrencia.local || '—'}</p></div>
+        <div><p className={label}>Tipo</p><p className={value}>{bonaDados.tipoOcorrencia || '—'}</p></div>
+        <div><p className={label}>Área</p><p className={value}>{bonaDados.areaEvento || '—'}</p></div>
+        <div><p className={label}>Vítimas fatais</p><p className={value}>{bonaDados.vitimasFatais || '0'}</p></div>
+        <div><p className={label}>Vítimas feridas</p><p className={value}>{bonaDados.vitimasFeridas || '0'}</p></div>
+        <div><p className={label}>Tempo gasto</p><p className={value}>{bonaDados.tempoGastoAtendimento || calcularTempoAtendimento(bonaDados.acionamento, bonaDados.retornoSci) || '—'}</p></div>
       </div>
 
-      {ocorrencia.descricao && (
-        <div className="mt-4"><p className={label}>Descrição</p><p className={value + ' mt-1 whitespace-pre-wrap'}>{ocorrencia.descricao}</p></div>
-      )}
-      {ocorrencia.envolvidos && (
-        <div className="mt-3"><p className={label}>Envolvidos</p><p className={value + ' mt-1'}>{ocorrencia.envolvidos}</p></div>
-      )}
-      {ocorrencia.acoesTomadas && (
-        <div className="mt-3"><p className={label}>Ações Tomadas</p><p className={value + ' mt-1 whitespace-pre-wrap'}>{ocorrencia.acoesTomadas}</p></div>
-      )}
-
-      {ocorrencia.fotos.length > 0 && (
+      {bonaDados.bombeiros.length > 0 && (
         <div className="mt-4">
-          <p className={label}>Fotos</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {ocorrencia.fotos.map((f, i) => (
-              <img key={i} src={f} className="h-20 w-20 rounded-xl object-cover" />
+          <p className={label}>Bombeiros envolvidos</p>
+          <div className="mt-2 overflow-hidden rounded-xl border border-graphite-200 dark:border-border-dark">
+            {bonaDados.bombeiros.map((bombeiro, index) => (
+              <div key={index} className="grid grid-cols-1 gap-1 border-b border-graphite-200 px-3 py-2 text-sm last:border-b-0 dark:border-border-dark sm:grid-cols-2">
+                <span className="font-medium text-graphite-900 dark:text-graphite-100">{bombeiro.nome || '—'}</span>
+                <span className="text-graphite-600 dark:text-graphite-300">{bombeiro.funcao || '—'}</span>
+              </div>
             ))}
           </div>
+        </div>
+      )}
+
+      <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+        <div><p className={label}>Acionamento</p><p className={value}>{bonaDados.acionamento || '—'}</p></div>
+        <div><p className={label}>Saída</p><p className={value}>{bonaDados.saida || '—'}</p></div>
+        <div><p className={label}>Chegada</p><p className={value}>{bonaDados.chegadaLocal || '—'}</p></div>
+        <div><p className={label}>Término</p><p className={value}>{bonaDados.terminoOcorrencia || '—'}</p></div>
+        <div><p className={label}>Retorno SCI</p><p className={value}>{bonaDados.retornoSci || '—'}</p></div>
+      </div>
+
+      {bonaDados.descricaoOcorrencia && (
+        <div className="mt-4"><p className={label}>Descrição Sucinta da Ocorrência / Acionamento</p><p className={value + ' mt-1 whitespace-pre-wrap'}>{bonaDados.descricaoOcorrencia}</p></div>
+      )}
+      {bonaDados.descricaoAtuacaoEquipe && (
+        <div className="mt-3"><p className={label}>Descrição Sucinta da Atuação da Equipe do SESCINC</p><p className={value + ' mt-1 whitespace-pre-wrap'}>{bonaDados.descricaoAtuacaoEquipe}</p></div>
+      )}
+      {(bonaDados.veiculosUtilizados || bonaDados.outrosRecursosUtilizados || bonaDados.agentesLge || bonaDados.agentesPq) && (
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <div className="sm:col-span-2"><p className={label}>Veículos Utilizados</p><p className={value + ' whitespace-pre-wrap'}>{bonaDados.veiculosUtilizados || '—'}</p></div>
+          <div><p className={label}>LGE</p><p className={value}>{bonaDados.agentesLge || '0'}</p></div>
+          <div><p className={label}>PQ</p><p className={value}>{bonaDados.agentesPq || '0'}</p></div>
+          <div className="sm:col-span-4"><p className={label}>Outros Recursos Utilizados</p><p className={value + ' whitespace-pre-wrap'}>{bonaDados.outrosRecursosUtilizados || '—'}</p></div>
         </div>
       )}
 
@@ -393,10 +787,30 @@ function OcorrenciaView({ ocorrencia, onBack }: { ocorrencia: Ocorrencia; onBack
 /* ───────── Card ───────── */
 
 function OcorrenciaCard({
-  o, canManage, onView, onEdit, onDelete,
+  o,
+  canManage,
+  canEditApprovedNumber,
+  canDeleteApproved,
+  processingPdf,
+  approving,
+  onView,
+  onPreviewDocument,
+  onPrintDocument,
+  onApprove,
+  onEdit,
+  onDelete,
 }: {
   o: Ocorrencia; canManage: boolean;
-  onView: () => void; onEdit: () => void; onDelete: () => void;
+  canEditApprovedNumber: boolean;
+  canDeleteApproved: boolean;
+  processingPdf: boolean;
+  approving: boolean;
+  onView: () => void;
+  onPreviewDocument: () => void;
+  onPrintDocument: () => void;
+  onApprove: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const statusColor: Record<string, string> = {
@@ -409,8 +823,11 @@ function OcorrenciaCard({
     ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
     : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400';
 
-  const canEdit = o.status === 'Aberta' && canManage;
-  const canDelete = o.status === 'Aberta' && canManage;
+  const bonaDados = bonaDadosFromOcorrencia(o);
+  const isFechada = o.status === 'Fechada';
+  const canEdit = isFechada ? canEditApprovedNumber : canManage;
+  const canDelete = isFechada ? canDeleteApproved : canManage;
+  const canApprove = !isFechada && canManage;
 
   return (
     <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -421,7 +838,7 @@ function OcorrenciaCard({
             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${tipoBadge}`}>{o.tipoDocumento}</span>
             <span className="shrink-0 text-xs font-semibold text-graphite-500 dark:text-graphite-400">{o.numero}</span>
             <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ${statusColor[o.status] || ''}`}>{o.status}</span>
-            <span className="shrink-0 rounded-full bg-aviation-50 px-2.5 py-0.5 text-[10px] font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{o.categoria}</span>
+            <span className="min-w-0 truncate rounded-full bg-aviation-50 px-2.5 py-0.5 text-[10px] font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{bonaDados.tipoOcorrencia || o.categoria}</span>
           </div>
           <div className="mt-1 flex items-center gap-3 text-xs text-graphite-500 dark:text-graphite-400">
             <span>{o.data}</span>
@@ -430,27 +847,38 @@ function OcorrenciaCard({
             {o.local && <span>· {o.local}</span>}
           </div>
         </div>
-        {expanded ? <ChevronUp className="ml-2 h-4 w-4 shrink-0 text-graphite-400" /> : <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-graphite-400" />}
+        <span className="ml-3 flex shrink-0 items-center gap-1 rounded-lg bg-graphite-100 px-2.5 py-1 text-xs font-medium text-graphite-600 dark:bg-surface-hover dark:text-graphite-300">
+          Detalhes
+          {expanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
+        </span>
       </button>
 
       {expanded && (
         <div className="border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
-          <p className="mb-2 text-sm font-semibold text-graphite-700 dark:text-graphite-300">{TIPO_DOCUMENTO[o.tipoDocumento]}</p>
-          {o.descricao && <p className="mb-2 text-sm text-graphite-700 dark:text-graphite-300 whitespace-pre-wrap">{o.descricao}</p>}
-          {o.envolvidos && <p className="mb-1 text-xs text-graphite-500 dark:text-graphite-400"><strong>Envolvidos:</strong> {o.envolvidos}</p>}
-          {o.acoesTomadas && <p className="mb-2 text-xs text-graphite-500 dark:text-graphite-400 whitespace-pre-wrap"><strong>Ações:</strong> {o.acoesTomadas}</p>}
-          {o.fotos.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {o.fotos.map((f, i) => <img key={i} src={f} className="h-14 w-14 rounded-lg object-cover" />)}
-            </div>
-          )}
-          <div className="mt-4 flex items-center gap-2">
-            <button onClick={onView} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
-              <Eye className="h-3.5 w-3.5" /> Ver
+          <p className="mb-2 text-sm font-semibold text-graphite-700 dark:text-graphite-300">{bonaDados.tipoOcorrencia || TIPO_DOCUMENTO[o.tipoDocumento]}</p>
+          {bonaDados.descricaoOcorrencia && <p className="mb-2 text-sm text-graphite-700 dark:text-graphite-300 whitespace-pre-wrap">{bonaDados.descricaoOcorrencia}</p>}
+          {bonaDados.bombeiros.length > 0 && <p className="mb-1 text-xs text-graphite-500 dark:text-graphite-400"><strong>Bombeiros:</strong> {bonaDados.bombeiros.map(b => b.nome).filter(Boolean).join(', ')}</p>}
+          {bonaDados.descricaoAtuacaoEquipe && <p className="mb-2 text-xs text-graphite-500 dark:text-graphite-400 whitespace-pre-wrap"><strong>Atuação:</strong> {bonaDados.descricaoAtuacaoEquipe}</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button onClick={onPreviewDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
+              <Eye className="h-3.5 w-3.5" /> {processingPdf ? 'Gerando...' : 'Ver documento'}
             </button>
+            {isFechada && (
+              <button onClick={onPrintDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
+                <Printer className="h-3.5 w-3.5" /> Imprimir
+              </button>
+            )}
+            <button onClick={onView} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
+              <FileText className="h-3.5 w-3.5" /> Dados
+            </button>
+            {canApprove && (
+              <button onClick={onApprove} disabled={approving} className="flex items-center gap-1 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30">
+                <CheckCircle className="h-3.5 w-3.5" /> {approving ? 'Aprovando...' : 'Aprovar'}
+              </button>
+            )}
             {canEdit && (
               <button onClick={onEdit} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
-                <Pencil className="h-3.5 w-3.5" /> Editar
+                <Pencil className="h-3.5 w-3.5" /> {isFechada ? 'Editar número' : 'Editar'}
               </button>
             )}
             {canDelete && (
@@ -468,10 +896,10 @@ function OcorrenciaCard({
 /* ───────── Página principal ───────── */
 
 export function Ocorrencias() {
-  const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
+  const { user, contexto, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
   const username = user?.username || '';
-  const role = canManageGlobal ? 'admin' : 'chefe';
   const canCreate = canManageGlobal || !!equipeEfetiva;
+  const isAdminSistema = contexto.isAdministradorSistema;
 
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [reas, setReas] = useState<ReaRegistro[]>([]);
@@ -482,6 +910,10 @@ export function Ocorrencias() {
   const [showReaModal, setShowReaModal] = useState(false);
   const [savingRea, setSavingRea] = useState(false);
   const [downloadingReaId, setDownloadingReaId] = useState<string | null>(null);
+  const [processingBonaPdfId, setProcessingBonaPdfId] = useState<string | null>(null);
+  const [approvingBonaId, setApprovingBonaId] = useState<string | null>(null);
+  const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
+  const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [savedId, setSavedId] = useState<string | null>(null);
   const [visualizando, setVisualizando] = useState<Ocorrencia | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -552,51 +984,71 @@ export function Ocorrencias() {
     ].sort((a, b) => b.data.localeCompare(a.data));
   }, [filtradas, reasFiltrados]);
 
-  async function handleSave(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>, stayInForm = false) {
+  async function handleSave(data: OcorrenciaFormData) {
     const equipeAlvo = canManageGlobal ? data.equipe : equipeEfetiva || data.equipe;
     if (!canManageEquipe(equipeAlvo)) {
       alert('Você só pode salvar BONA da sua equipe efetiva.');
       return;
     }
     const alvo = savedId ? ocorrencias.find(o => o.id === savedId) || editando : editando;
+    if (alvo?.status === 'Fechada') {
+      if (!isAdminSistema) {
+        alert('BONA aprovado não pode mais ser alterado.');
+        return;
+      }
+      const numero = data.numero.trim();
+      if (!numero) {
+        alert('Informe o número do BONA.');
+        return;
+      }
+      const updated = await atualizarOcorrencia(alvo.id, { numero, status: 'Fechada' });
+      if (updated) {
+        setOcorrencias(prev => prev.map(o => o.id === updated.id ? updated : o));
+      } else {
+        await carregar();
+      }
+      setEditando(null);
+      setSavedId(null);
+      setSuccessMsg('Número do BONA atualizado.');
+      setMode('list');
+      return;
+    }
     if (alvo && !canManageEquipe(alvo.equipe)) {
       alert('Você só pode editar BONA da sua equipe efetiva.');
       return;
     }
-    const payload = { ...data, equipe: equipeAlvo as string };
+    const normalizedData = prepararBonaParaSalvar(data);
+    const payload: OcorrenciaFormData = {
+      ...normalizedData,
+      equipe: equipeAlvo as string,
+      status: normalizedData.status === 'Fechada' ? 'Fechada' : 'Aberta',
+      fotos: [],
+    };
     let saved: Ocorrencia | null;
     if (savedId) {
       saved = await atualizarOcorrencia(savedId, payload);
     } else {
       saved = await criarOcorrencia({ ...payload, createdBy: username });
-      if (saved) setSavedId(saved.id);
     }
-    carregar();
-    if (saved && stayInForm) {
-      setEditando(saved);
-    } else if (saved) {
-      setEditando(null);
-      setSavedId(null);
-      setVisualizando(saved);
-      setMode('view');
-    } else {
-      setMode('list');
-    }
-  }
-
-  async function handleStatusChange(id: string, newStatus: Ocorrencia['status']) {
-    const alvo = ocorrencias.find(o => o.id === id);
-    if (!alvo || !canManageEquipe(alvo.equipe)) {
-      alert('Você só pode alterar status de BONA da sua equipe efetiva.');
-      return;
-    }
-    await atualizarOcorrencia(id, { status: newStatus });
-    carregar();
+    await carregar();
+    setEditando(null);
+    setSavedId(null);
+    setSuccessMsg(saved ? 'BONA salvo com sucesso. Abra os detalhes para visualizar ou aprovar.' : '');
+    setMode('list');
   }
 
   async function handleDelete(id: string) {
     const alvo = ocorrencias.find(o => o.id === id);
-    if (!alvo || !canManageEquipe(alvo.equipe)) {
+    if (!alvo) {
+      setConfirmDelete(null);
+      return;
+    }
+    if (alvo.status === 'Fechada' && !isAdminSistema) {
+      alert('Somente administrador pode excluir BONA aprovado.');
+      setConfirmDelete(null);
+      return;
+    }
+    if (!isAdminSistema && !canManageEquipe(alvo.equipe)) {
       alert('Você só pode excluir BONA da sua equipe efetiva.');
       setConfirmDelete(null);
       return;
@@ -665,6 +1117,71 @@ export function Ocorrencias() {
     }
   }
 
+  function closeBonaPreview() {
+    setPreviewPdfData(null);
+    setPreviewPdfTitle('');
+  }
+
+  async function handlePreviewBona(ocorrencia: Ocorrencia) {
+    setProcessingBonaPdfId(ocorrencia.id);
+    try {
+      closeBonaPreview();
+      const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
+      const pdf = await gerarBonaPdf(registroDocumento);
+      setPreviewPdfData(await pdf.arrayBuffer());
+      setPreviewPdfTitle(`${ocorrencia.numero || 'BONA'} - ${TIPO_DOCUMENTO.BONA}`);
+    } finally {
+      setProcessingBonaPdfId(null);
+    }
+  }
+
+  async function handlePrintBona(ocorrencia: Ocorrencia) {
+    if (ocorrencia.status !== 'Fechada') {
+      alert('Só é possível imprimir o BONA depois de aprovado.');
+      return;
+    }
+    setProcessingBonaPdfId(ocorrencia.id);
+    try {
+      const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
+      const pdf = await gerarBonaPdf(registroDocumento);
+      await imprimirPdfBlob(pdf);
+    } finally {
+      setProcessingBonaPdfId(null);
+    }
+  }
+
+  async function handleApproveBona(ocorrencia: Ocorrencia) {
+    if (!canManageEquipe(ocorrencia.equipe)) {
+      alert('Você só pode aprovar BONA da sua equipe efetiva.');
+      return;
+    }
+    if (ocorrencia.status === 'Fechada') return;
+
+    setApprovingBonaId(ocorrencia.id);
+    try {
+      const updated = await atualizarOcorrencia(ocorrencia.id, { status: 'Fechada' });
+      if (updated) {
+        setOcorrencias(prev => prev.map(o => o.id === updated.id ? updated : o));
+        if (visualizando?.id === updated.id) setVisualizando(updated);
+      } else {
+        await carregar();
+      }
+      setSuccessMsg('BONA aprovado e finalizado.');
+    } finally {
+      setApprovingBonaId(null);
+    }
+  }
+
+  function handleEditBona(ocorrencia: Ocorrencia) {
+    if (ocorrencia.status === 'Fechada' && !isAdminSistema) {
+      alert('BONA aprovado não pode mais ser alterado.');
+      return;
+    }
+    setEditando(ocorrencia);
+    setSavedId(ocorrencia.id);
+    setMode('form');
+  }
+
   function openBonaForm() {
     if (!canCreate) {
       alert('Seu usuário não possui equipe efetiva para criar BONA.');
@@ -699,27 +1216,9 @@ export function Ocorrencias() {
           ocorrencia={editando || undefined}
           userEquipe={equipeEfetiva || ''}
           todas={ocorrencias}
-          savedId={savedId}
-          role={role}
           canManageGlobal={canManageGlobal}
-          onSave={(d) => handleSave(d, false)}
-          onSaveDraft={(d) => { handleSave(d, true); setSuccessMsg('Documento salvo com sucesso! Preencha os campos restantes e clique em "Salvar" para finalizar.'); }}
-          onEncaminhar={() => {
-            handleSave({ ...editando!, status: 'Encaminhada' } as any, false);
-            setSuccessMsg('Documento encaminhado ao Gestor Aeroportuário.');
-          }}
-          onAceitar={() => {
-            if (savedId || editando?.id) handleStatusChange(savedId || editando!.id, 'Em Andamento');
-            setEditando(null); setSavedId(null); setMode('list');
-          }}
-          onSolicitarRetrabalho={() => {
-            if (savedId || editando?.id) handleStatusChange(savedId || editando!.id, 'Aberta');
-            setEditando(null); setSavedId(null); setMode('list');
-          }}
-          onConcluir={() => {
-            if (savedId || editando?.id) handleStatusChange(savedId || editando!.id, 'Fechada');
-            setEditando(null); setSavedId(null); setMode('list');
-          }}
+          isAdminSistema={isAdminSistema}
+          onSave={handleSave}
           onSelectRea={() => openReaForm(null)}
           onCancel={() => { setMode('list'); setEditando(null); setSavedId(null); }} />
       </PageContainer>
@@ -738,6 +1237,12 @@ export function Ocorrencias() {
   return (
     <PageContainer>
       <PageTitle icon={AlertTriangle} title="BONA/REA" />
+
+      {successMsg && (
+        <div className="mb-4 rounded-xl border border-green-300 bg-green-50 px-4 py-2.5 text-sm font-medium text-green-700 dark:border-green-700 dark:bg-green-900/30 dark:text-green-400">
+          {successMsg}
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -797,8 +1302,15 @@ export function Ocorrencias() {
         <div className="space-y-3">
           {documentosFiltrados.map(doc => doc.tipo === 'ocorrencia' ? (
             <OcorrenciaCard key={`ocorrencia-${doc.item.id}`} o={doc.item} canManage={canManageEquipe(doc.item.equipe)}
+              canEditApprovedNumber={isAdminSistema}
+              canDeleteApproved={isAdminSistema}
+              processingPdf={processingBonaPdfId === doc.item.id}
+              approving={approvingBonaId === doc.item.id}
               onView={() => { setVisualizando(doc.item); setMode('view'); }}
-              onEdit={() => { setEditando(doc.item); setSavedId(doc.item.id); setMode('form'); }}
+              onPreviewDocument={() => handlePreviewBona(doc.item)}
+              onPrintDocument={() => handlePrintBona(doc.item)}
+              onApprove={() => handleApproveBona(doc.item)}
+              onEdit={() => handleEditBona(doc.item)}
               onDelete={() => setConfirmDelete(doc.item.id)}
             />
           ) : (
@@ -854,6 +1366,29 @@ export function Ocorrencias() {
           onSave={handleSaveRea}
           onCancel={() => { setShowReaModal(false); setEditandoRea(null); }}
         />
+      )}
+
+      {previewPdfData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl shadow-black/10 dark:bg-surface-elevated">
+            <div className="flex items-center justify-between gap-3 border-b border-graphite-200/70 px-5 py-4 dark:border-border-dark">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-bold text-graphite-900 dark:text-graphite-100">{previewPdfTitle || 'BONA'}</h3>
+                <p className="text-xs text-graphite-500 dark:text-graphite-400">Visualizacao do documento</p>
+              </div>
+              <button
+                onClick={closeBonaPreview}
+                className="shrink-0 rounded-lg p-1.5 text-graphite-500 transition-colors hover:bg-graphite-100 hover:text-graphite-800 dark:text-graphite-300 dark:hover:bg-surface-hover"
+                title="Fechar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-graphite-100/60 p-4 dark:bg-surface-card/40">
+              <PdfPreview pdfData={previewPdfData} fields={[]} />
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmDelete && (

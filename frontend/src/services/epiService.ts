@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { EPI } from '../types/epi';
+import { hojeLocalISO } from '../utils/datas';
 
 function getDb() {
   if (!supabase) throw new Error('Supabase não configurado. Verifique as credenciais no arquivo .env');
@@ -131,27 +132,27 @@ export async function excluirEPI(id: string): Promise<void> {
 export async function pagarEPI(id: string): Promise<EPI | null> {
   return atualizarEPI(id, {
     status: 'pago',
-    dataPagamento: new Date().toISOString().split('T')[0],
+    dataPagamento: hojeLocalISO(),
   });
 }
 
 export async function enviarAutentiqueEPI(id: string): Promise<EPI | null> {
   return atualizarEPI(id, {
     status: 'enviado_autentique',
-    dataEnvioAutentique: new Date().toISOString().split('T')[0],
+    dataEnvioAutentique: hojeLocalISO(),
   });
 }
 
 export async function assinarEPI(id: string): Promise<EPI | null> {
   return atualizarEPI(id, {
     status: 'assinado',
-    dataAssinatura: new Date().toISOString().split('T')[0],
+    dataAssinatura: hojeLocalISO(),
   });
 }
 
 export async function devolverEPI(id: string): Promise<EPI | null> {
   return atualizarEPI(id, {
     status: 'devolvido',
-    dataDevolucao: new Date().toISOString().split('T')[0],
+    dataDevolucao: hojeLocalISO(),
   });
 }

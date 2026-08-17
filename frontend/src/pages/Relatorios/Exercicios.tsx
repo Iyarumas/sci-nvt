@@ -4,6 +4,7 @@ import { Activity, Target, Award, Search, ChevronDown, ChevronUp, Timer, Lock } 
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+import { formatarDataBR } from '../../utils/datas';
 
 interface Treinamento {
   id: string; tipo: string; data: string; titulo: string;
@@ -18,8 +19,7 @@ function carregar(): Treinamento[] {
 }
 
 function fmt(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 export function Exercicios() {

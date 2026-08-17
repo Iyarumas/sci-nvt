@@ -1,3 +1,5 @@
+export type TreinamentoTempoRespostaStatus = 'Rascunho' | 'Aprovado';
+
 export interface TreinamentoTempoResposta {
   id: string;
   equipe: string;
@@ -40,6 +42,27 @@ export interface TreinamentoTempoResposta {
   feedbackSci: string;
   chefeEquipe: string;
   gerente: string;
+  status: TreinamentoTempoRespostaStatus;
+  aprovadoPor: string;
+  aprovadoPorNome: string;
+  aprovadoEm: string;
   createdAt: string;
   updatedAt: string;
 }
+
+type CamposControleTempoResposta =
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'status'
+  | 'aprovadoPor'
+  | 'aprovadoPorNome'
+  | 'aprovadoEm';
+type CamposAprovacaoTempoResposta = Pick<
+  TreinamentoTempoResposta,
+  'status' | 'aprovadoPor' | 'aprovadoPorNome' | 'aprovadoEm'
+>;
+
+export type TreinamentoTempoRespostaInput =
+  Omit<TreinamentoTempoResposta, CamposControleTempoResposta> &
+  Partial<CamposAprovacaoTempoResposta>;

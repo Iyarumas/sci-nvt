@@ -7,6 +7,7 @@ import { atualizarConferencia, criarConferencia, excluirConferencia, listarConfe
 import type { Conferencia } from '../../types/conferencia';
 import type { Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
+import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 
 const EQUIPES_INSPECAO = EQUIPE_OPTIONS.filter(eq => eq !== 'Ferista' && eq !== 'Embaixador');
 
@@ -21,8 +22,8 @@ export function Inspecoes() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
 
   const [modo, setModo] = useState<'lista' | 'form'>('lista');
-  const [data, setData] = useState(new Date().toISOString().split('T')[0]);
-  const [dataTurno, setDataTurno] = useState(new Date().toISOString().split('T')[0]);
+  const [data, setData] = useState(hojeLocalISO());
+  const [dataTurno, setDataTurno] = useState(hojeLocalISO());
   const [hora, setHora] = useState(new Date().toTimeString().split(':').slice(0, 2).join(':'));
   const [equipe, setEquipe] = useState<Equipe | ''>('');
   const [tipoInspecao, setTipoInspecao] = useState('');
@@ -62,7 +63,7 @@ export function Inspecoes() {
     if (filterMode === 'mes-ano') {
       if (filtroMes) {
         lista = lista.filter(r => {
-          const d = new Date(r.dataConferencia);
+          const d = parseDataLocalISO(r.dataConferencia);
           return (d.getMonth() + 1).toString() === filtroMes;
         });
       }
@@ -136,9 +137,9 @@ export function Inspecoes() {
     setTipoInspecao(r.itemNome || '');
     setDescricao(r.observacoes || '');
     const d = r.dataConferencia ? new Date(r.dataConferencia) : new Date();
-    setData(d.toISOString().split('T')[0]);
+    setData(dataLocalISO(d));
     setHora(d.toTimeString().slice(0, 5));
-    setDataTurno(r.dataProximaInspecao || d.toISOString().split('T')[0]);
+    setDataTurno(r.dataProximaInspecao || dataLocalISO(d));
     setEquipe(r.equipe || equipeEfetiva || '');
     setModo('form');
   }
@@ -310,8 +311,8 @@ export function Inspecoes() {
                         {r.itemNome || 'Inspeção Operacional'} — Equipe {r.equipe}
                       </p>
                       <p className="text-xs text-graphite-500">
-                        {r.dataConferencia ? new Date(r.dataConferencia).toLocaleDateString('pt-BR') + ' às ' + new Date(r.dataConferencia).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}
-                        {r.dataProximaInspecao && <> {' · '}Turno {new Date(r.dataProximaInspecao + 'T12:00:00').toLocaleDateString('pt-BR')}</>}
+                        {r.dataConferencia ? formatarDataBR(r.dataConferencia) + ' às ' + new Date(r.dataConferencia).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                        {r.dataProximaInspecao && <> {' · '}Turno {formatarDataBR(r.dataProximaInspecao)}</>}
                         {' · '}<span className="font-medium text-graphite-700 dark:text-graphite-300">{r.createdBy || r.inspetorNomeGuerra || '—'}</span>
                       </p>
                     </div>
@@ -322,7 +323,7 @@ export function Inspecoes() {
                       <p className="whitespace-pre-wrap text-sm text-graphite-700 dark:text-graphite-300">{r.observacoes || 'Sem descrição'}</p>
                       <div className="mt-3 flex flex-wrap gap-3 text-xs text-graphite-500">
                         <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">Registrado por: {r.createdBy}</span>
-                        {r.dataConferencia && <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">{new Date(r.dataConferencia).toLocaleString('pt-BR')}</span>}
+                        {r.dataConferencia && <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">{formatarDataHoraBR(r.dataConferencia)}</span>}
                       </div>
                       {podeGerenciar(r) && (
                         <div className="mt-4 flex items-center gap-2">

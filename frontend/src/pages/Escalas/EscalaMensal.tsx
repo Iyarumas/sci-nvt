@@ -8,6 +8,7 @@ import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
 import { AlertModal } from '../../components/ui/AlertModal';
 import { listarAtivos } from '../../services/bombeiroService';
 import { equipesNoDia } from '../../utils/equipes';
+import { dataLocalISO, formatarDataBR, periodosSobrepostosISO } from '../../utils/datas';
 import { listarFeriasGozo, listarItensEscala } from '../../services/feriasService';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
@@ -945,16 +946,14 @@ export function EscalaMensal() {
         }
       }
 
-      const mesInicio = new Date(ano, mes - 1, 1);
-      const mesFim = new Date(ano, mes, 0);
+      const mesInicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
+      const mesFim = dataLocalISO(new Date(ano, mes, 0));
 
       // ── isEmGozo (exato como o Quadro) ──
       function isEmGozo(bId: string) {
         return gozos.find((g: any) => {
           if (g.funcionarioId !== bId || g.status === 'Gozadas') return false;
-          const gInicio = new Date(g.dataInicio + 'T00:00:00');
-          const gFim = new Date(g.dataFim + 'T00:00:00');
-          return gInicio <= mesFim && gFim >= mesInicio;
+          return periodosSobrepostosISO(g.dataInicio, g.dataFim, mesInicio, mesFim);
         });
       }
 
@@ -977,8 +976,7 @@ export function EscalaMensal() {
         // 2. Gozo direto
         const gozo = gozos.find((g: any) =>
           g.substitutoId === bId && g.status !== 'Gozadas' &&
-          new Date(g.dataInicio + 'T00:00:00') <= mesFim &&
-          new Date(g.dataFim + 'T00:00:00') >= mesInicio
+          periodosSobrepostosISO(g.dataInicio, g.dataFim, mesInicio, mesFim)
         );
         if (gozo) {
           const func = all.find((bb: any) => bb.id === gozo.funcionarioId);
@@ -987,8 +985,7 @@ export function EscalaMensal() {
         // 3. Vigência (cascata)
         const vigV = vigs.find((v: any) =>
           v.substitutoId === bId && v.ativa &&
-          new Date(v.dataInicio + 'T00:00:00') <= mesFim &&
-          new Date(v.dataFim + 'T00:00:00') >= mesInicio
+          periodosSobrepostosISO(v.dataInicio, v.dataFim, mesInicio, mesFim)
         );
         if (vigV) {
           const func = all.find((bb: any) => bb.id === vigV.funcionarioOriginalId);
@@ -1261,15 +1258,13 @@ export function EscalaMensal() {
                     const cargoReq = slot.funcao === 'chefe' ? 'BA-CE' as const : slot.funcao === 'lider' ? 'BA-LR' as const : slot.funcao === 'ba-mc' ? 'BA-MC' as const : undefined;
                     const veiculoBA = slot.veiculo === 'crs' ? 'crs' as const : 'cci' as const;
                     const aviso = b && cargoReq ? validarCursoParaFuncao(b, cargoReq, slot.funcao === 'ba-mc' ? veiculoBA : undefined) : null;
-                    const _mesIni = new Date(ano, mes - 1, 1);
-                    const _mesFim = new Date(ano, mes, 0);
+                    const _mesIni = `${ano}-${String(mes).padStart(2, '0')}-01`;
+                    const _mesFim = dataLocalISO(new Date(ano, mes, 0));
                     const _emGozoIds = new Set(
                       feriasGozo
                         .filter(g => {
                           if (!g.funcionarioId || g.status === 'Gozadas') return false;
-                          const gInicio = new Date(g.dataInicio + 'T00:00:00');
-                          const gFim = new Date(g.dataFim + 'T00:00:00');
-                          return gInicio <= _mesFim && gFim >= _mesIni;
+                          return periodosSobrepostosISO(g.dataInicio, g.dataFim, _mesIni, _mesFim);
                         })
                         .map(g => g.funcionarioId)
                     );
@@ -1543,7 +1538,7 @@ export function EscalaMensal() {
                   {completaAtual.paradas.map(p => (
                     <tr key={p.dia} className="border-b border-graphite-200 print:border-graphite-300 dark:border-border-dark">
                       <td className="bg-white px-0.5 py-0 font-semibold print:font-bold text-graphite-600 print:text-graphite-800 dark:bg-surface-card whitespace-nowrap">{p.dia}</td>
-                      <td className="bg-white px-0.5 py-0 text-graphite-500 print:font-bold print:text-graphite-700 dark:bg-surface-card whitespace-nowrap">{new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                      <td className="bg-white px-0.5 py-0 text-graphite-500 print:font-bold print:text-graphite-700 dark:bg-surface-card whitespace-nowrap">{formatarDataBR(p.data)}</td>
                       {p.radio.map((r, i) => (
                         <td key={i} className="px-0.5 py-0 font-semibold print:font-bold text-graphite-800 print:text-graphite-900 dark:text-graphite-200 whitespace-nowrap">{r.pessoaNomeGuerra}</td>
                       ))}

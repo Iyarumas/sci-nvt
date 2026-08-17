@@ -23,10 +23,10 @@ import type { ReaRegistro } from '../../types/rea';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import type { CertificacaoNR } from '../../types/certificacao';
 import type { CertificacaoCurso } from '../../types/certificacaoCurso';
+import { formatarDataBR } from '../../utils/datas';
 
 function fmt(d?: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function StatusBadge({ status, map }: { status: string; map: Record<string, string> }) {

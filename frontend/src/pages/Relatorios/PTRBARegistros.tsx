@@ -9,13 +9,13 @@ import type { PTRB } from '../../types/ptrb';
 import type { PTRBACompleto, PTRBACompletoEvidencia } from '../../types/ptrbaCompleto';
 import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
 import { EQUIPES } from '../../types/ptrb';
+import { formatarDataBR, formatarDataHoraBR } from '../../utils/datas';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 function formatDate(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function calcHoras(inicio: string, termino: string): number {
@@ -245,7 +245,7 @@ export function PTRBARegistros() {
         <div id="print-area" className="rounded-2xl border border-graphite-200/60 bg-white/80 shadow-sm dark:border-border-dark dark:bg-surface-card">
           <div className="hidden print:block border-b border-graphite-200 px-6 py-4 dark:border-border-dark">
             <p className="text-lg font-bold">Relatório PTR-BA — Documentos por Ordem de Data</p>
-            <p className="text-sm text-graphite-500">Período: {periodoLabel} · {filtradas.length} documento(s) · Total {horasStr(totalHoras)} · Gerado em {new Date().toLocaleString('pt-BR')}</p>
+            <p className="text-sm text-graphite-500">Período: {periodoLabel} · {filtradas.length} documento(s) · Total {horasStr(totalHoras)} · Gerado em {formatarDataHoraBR(new Date())}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

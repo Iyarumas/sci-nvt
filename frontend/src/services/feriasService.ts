@@ -10,6 +10,7 @@ import {
   validarItemEscalaFerias,
   type EloCadeiaValidacao,
 } from '../utils/regrasOperacionais';
+import { hojeLocalISO } from '../utils/datas';
 
 const TABLE_GOZO = 'ferias';
 const TABLE_ESCALA = 'ferias_escala';
@@ -241,7 +242,7 @@ async function validarItemParaSalvar(
 
 function gozoComStatusCorrigido(g: FeriasGozo): FeriasGozo {
   if (!g.dataFim) return g;
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   if (g.dataFim < hoje && g.status !== 'Gozadas') {
     return { ...g, status: 'Gozadas' };
   }
@@ -750,4 +751,3 @@ export async function alertasFerias(
 
   return alertas.sort((a, b) => a.diasParaVencer - b.diasParaVencer);
 }
-

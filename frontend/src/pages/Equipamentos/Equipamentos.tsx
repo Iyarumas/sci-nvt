@@ -21,6 +21,7 @@ import type { APOC } from '../../types/apoc';
 import { CARGO_OPTIONS } from '../../types/bombeiro';
 import { FUNCAO_APOC_OPTIONS } from '../../types/apoc';
 import { canGerenciarCadastroModulo, resolverContextoOperacional } from '../../utils/permissoes';
+import { formatarDataBR } from '../../utils/datas';
 
 const INPUT_CLASS = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100';
 const LABEL_CLASS = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
@@ -334,7 +335,7 @@ export function Equipamentos() {
                             })()}
                           </span>
                         )}
-                        {v.dataValidade && <span>📅 Validade: {new Date(v.dataValidade + 'T00:00:00').toLocaleDateString('pt-BR')}</span>}
+                        {v.dataValidade && <span>📅 Validade: {formatarDataBR(v.dataValidade)}</span>}
                       </div>
                     </div>
                   </div>

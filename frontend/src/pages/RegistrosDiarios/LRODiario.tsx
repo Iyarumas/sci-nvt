@@ -15,10 +15,10 @@ import type { Viatura } from '../../types/viatura';
 import { EQUIPES, EPR_OPTIONS, CRS_SITUACOES, FUNCOES_CARGO } from '../../types/lro';
 import type { LRO, VeiculoState, VeiculoRTState, CRSState } from '../../types/lro';
 import { dataSaidaPlantao, horarioPlantaoPorEquipe } from '../../utils/equipes';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 function formatDate(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function emptyVeiculo(): VeiculoState {
@@ -35,7 +35,7 @@ function emptyCRS(): CRSState {
 
 function emptyLRO(): Omit<LRO, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
   const horario = horarioPlantaoPorEquipe('Alfa');
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   return {
     equipe: 'Alfa', turno: horario.turno,
     dataEntrada: hoje,

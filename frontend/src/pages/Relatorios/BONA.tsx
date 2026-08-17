@@ -8,20 +8,14 @@ import { CATEGORIAS_OCORRENCIA } from '../../types/ocorrencia';
 import type { Ocorrencia } from '../../types/ocorrencia';
 import type { ReaRegistro } from '../../types/rea';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+import { formatarDataBR } from '../../utils/datas';
 
 function fmt(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function fmtReaDate(d: string) {
-  if (!d) return '-';
-  const m = d.match(/^\d{4}-\d{2}-\d{2}/);
-  if (m) {
-    const [year, month, day] = m[0].split('-');
-    return `${day}/${month}/${year}`;
-  }
-  return d;
+  return formatarDataBR(d);
 }
 
 type Item = { tipo: 'BONA' | 'REA'; id: string; numero: string; data: string; hora: string; status: string; equipe: string; };

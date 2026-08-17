@@ -8,7 +8,9 @@ import {
   Plus,
   Save,
   Trash2,
+  X,
 } from 'lucide-react';
+import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
@@ -16,7 +18,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
 import { listarAPOCs } from '../../services/apocService';
 import { listarBombeiros } from '../../services/bombeiroService';
-import { baixarPTRBACompletoPdf } from '../../services/ptrbaCompletoPdfService';
+import { baixarPTRBACompletoPdf, gerarPTRBACompletoPdf } from '../../services/ptrbaCompletoPdfService';
 import {
   atualizarPTRBACompleto,
   criarPTRBACompleto,
@@ -25,6 +27,7 @@ import {
 } from '../../services/ptrbaCompletoService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
+import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
 import type { APOC } from '../../types/apoc';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import { ASSUNTOS } from '../../types/ptrb';
@@ -76,8 +79,7 @@ function salvarUltimoAeroporto(valor: string) {
 }
 
 function formatDate(value: string): string {
-  if (!value) return '-';
-  return new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR');
+  return formatarDataBR(value);
 }
 
 function evidenciaResumo(ev: PTRBACompletoEvidencia): string {
@@ -100,7 +102,7 @@ function evidenciasEmPares(evidencias: PTRBACompletoEvidencia[]) {
 function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
   const equipe = PTRBA_COMPLETO_EQUIPES.includes(equipePadrao as Equipe) ? equipePadrao as Equipe : 'Alfa';
   return {
-    data: new Date().toISOString().split('T')[0],
+    data: hojeLocalISO(),
     equipe,
     identificacaoAeroporto: getUltimoAeroporto(),
     observacoes: '',
@@ -183,7 +185,7 @@ function PTRBACompletoForm({
     const vigenciasDoDia = vigencias.filter(v =>
       v.ativa &&
       v.equipe === form.equipe &&
-      (!form.data || (v.dataInicio <= form.data && v.dataFim >= form.data))
+      (!form.data || estaNoPeriodoISO(form.data, v.dataInicio, v.dataFim))
     );
     const substituidos = new Set(vigenciasDoDia.map(v => v.funcionarioOriginalId).filter(Boolean));
 
@@ -197,7 +199,7 @@ function PTRBACompletoForm({
     });
     const trocasNoDia = (trocaFills || []).filter(fl => {
       const fd = fl?.filled_data || {};
-      return (fd?.data_solicitada === form.data || fd?.data_folga_solicitado === form.data) && fd?.nome_solicitante && fd?.nome_solicitado;
+      return (mesmoDiaISO(fd?.data_solicitada, form.data) || mesmoDiaISO(fd?.data_folga_solicitado, form.data)) && fd?.nome_solicitante && fd?.nome_solicitado;
     });
     const trocaExcluidos = new Set<string>();
     const trocaIncluidos: AtivoItem[] = [];
@@ -206,8 +208,8 @@ function PTRBACompletoForm({
       const sol = porNome.get(String(fd.nome_solicitante || '').toLowerCase());
       const solic = porNome.get(String(fd.nome_solicitado || '').toLowerCase());
       if (!sol || !solic) return;
-      const solDia = fd?.data_solicitada === form.data;
-      const solicDia = fd?.data_folga_solicitado === form.data;
+      const solDia = mesmoDiaISO(fd?.data_solicitada, form.data);
+      const solicDia = mesmoDiaISO(fd?.data_folga_solicitado, form.data);
       if (solDia && sol.equipe === form.equipe) {
         trocaExcluidos.add(sol.id);
         trocaExcluidos.add(solic.id);
@@ -552,7 +554,7 @@ function PTRBACompletoCard({
           )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <button onClick={onView} className="rounded-xl border border-graphite-300/60 bg-white/80 p-2 text-graphite-600 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300" title="Visualizar">
+          <button onClick={onView} className="rounded-xl border border-graphite-300/60 bg-white/80 p-2 text-graphite-600 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300" title="Ver detalhes">
             <Eye className="h-4 w-4" />
           </button>
           <button onClick={onDownload} disabled={downloading} className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-sm font-medium text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300" title="Download PDF">
@@ -574,10 +576,12 @@ function PTRBACompletoCard({
   );
 }
 
-function ViewMode({ registro, onBack, onDownload, downloading }: {
+function ViewMode({ registro, onBack, onPreviewPdf, onDownload, previewing, downloading }: {
   registro: PTRBACompleto;
   onBack: () => void;
+  onPreviewPdf: () => void;
   onDownload: () => void;
+  previewing: boolean;
   downloading: boolean;
 }) {
   const gruposEvidencias = evidenciasEmPares(registro.evidencias);
@@ -586,6 +590,9 @@ function ViewMode({ registro, onBack, onDownload, downloading }: {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <PageTitle icon={FileText} title={`PTR-BA Completo - ${registro.equipe} - ${formatDate(registro.data)}`} />
         <div className="flex items-center gap-2">
+          <button onClick={onPreviewPdf} disabled={previewing} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2 text-sm font-medium text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+            <FileText className="h-4 w-4" /> {previewing ? 'Abrindo documento' : 'Ver documento'}
+          </button>
           <button onClick={onDownload} disabled={downloading} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 disabled:opacity-60">
             <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : 'Download PDF'}
           </button>
@@ -666,6 +673,37 @@ function ViewMode({ registro, onBack, onDownload, downloading }: {
   );
 }
 
+function PTRBACompletoPdfPreviewModal({
+  title,
+  pdfData,
+  onClose,
+}: {
+  title: string;
+  pdfData: ArrayBuffer | null;
+  onClose: () => void;
+}) {
+  if (!pdfData) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex h-[92vh] w-full max-w-5xl flex-col rounded-2xl bg-white shadow-xl shadow-black/10 dark:bg-surface-elevated">
+        <div className="flex items-center justify-between gap-3 border-b border-graphite-200/70 px-5 py-4 dark:border-border-dark">
+          <div className="min-w-0">
+            <p className="truncate text-base font-bold text-graphite-900 dark:text-graphite-100">{title}</p>
+            <p className="text-xs text-graphite-500 dark:text-graphite-400">Visualização do PDF</p>
+          </div>
+          <button onClick={onClose} className="rounded-xl border border-graphite-300/60 bg-white/80 p-2 text-graphite-600 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300" title="Fechar">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-graphite-100/60 p-4 dark:bg-surface-card/40">
+          <PdfPreview pdfData={pdfData} fields={[]} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PTRBACompletoPage() {
   const { user, contexto, canManageGlobal, equipeEfetiva } = useContextoOperacional();
   const username = user?.username || '';
@@ -683,6 +721,9 @@ export function PTRBACompletoPage() {
   const [visualizando, setVisualizando] = useState<PTRBACompleto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
+  const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [filtroMes, setFiltroMes] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
@@ -795,6 +836,24 @@ export function PTRBACompletoPage() {
     }
   }
 
+  async function handlePreviewPdf(registro: PTRBACompleto) {
+    try {
+      setPreviewingId(registro.id);
+      const blob = await gerarPTRBACompletoPdf(registro);
+      setPreviewPdfData(await blob.arrayBuffer());
+      setPreviewPdfTitle(`PTR-BA Completo - ${registro.equipe} - ${formatDate(registro.data)}`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao visualizar PDF.');
+    } finally {
+      setPreviewingId(null);
+    }
+  }
+
+  function closePreviewPdf() {
+    setPreviewPdfData(null);
+    setPreviewPdfTitle('');
+  }
+
   if (mode === 'form') {
     return (
       <PageContainer>
@@ -821,9 +880,12 @@ export function PTRBACompletoPage() {
         <ViewMode
           registro={visualizando}
           onBack={() => setMode('list')}
+          onPreviewPdf={() => handlePreviewPdf(visualizando)}
           onDownload={() => handleDownload(visualizando)}
+          previewing={previewingId === visualizando.id}
           downloading={downloadingId === visualizando.id}
         />
+        <PTRBACompletoPdfPreviewModal title={previewPdfTitle} pdfData={previewPdfData} onClose={closePreviewPdf} />
       </PageContainer>
     );
   }

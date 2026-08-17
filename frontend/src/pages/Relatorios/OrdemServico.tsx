@@ -1,14 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  ClipboardList, Plus, Search, Trash2, Save, Eye, Printer, CheckCircle2, Link2,
-  AlertCircle, X,
+  ClipboardList, Plus, Search, Trash2, Save, Printer, CheckCircle2, Link2,
+  X, ImagePlus,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { isAdministradorSistema } from '../../utils/permissoes';
-import { listarBombeiros } from '../../services/bombeiroService';
-import type { Bombeiro } from '../../types/bombeiro';
+import { formatarDataBR, formatarDataHoraBR, hojeLocalISO } from '../../utils/datas';
 import {
   listarOrdensServico,
   criarOrdemServico,
@@ -16,6 +15,7 @@ import {
   excluirOrdemServico,
 } from '../../services/ordemServicoService';
 import type { OrdemServico } from '../../types/ordemServico';
+import { parseOrdemServicoImagens, serializeOrdemServicoImagens } from '../../utils/ordemServicoImagens';
 
 const PRIORIDADE_CORES: Record<string, string> = {
   'Baixa': 'bg-sky-100 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400',
@@ -32,10 +32,7 @@ const STATUS_CORES: Record<string, string> = {
 };
 
 function fmt(d: string) {
-  if (!d) return '-';
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(d + 'T12:00:00') : new Date(d);
-  if (isNaN(date.getTime())) return d;
-  return date.toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
@@ -51,7 +48,6 @@ export function OrdemServico() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
   const isAdminOnly = isAdministradorSistema(user);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
-  const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [search, setSearch] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
   const [filtroPrioridade, setFiltroPrioridade] = useState('');
@@ -77,27 +73,24 @@ export function OrdemServico() {
 
   // Form fields
   const [formNumero, setFormNumero] = useState('');
-  const [formData, setFormData] = useState(new Date().toISOString().split('T')[0]);
+  const [formData, setFormData] = useState(hojeLocalISO());
   const [formSolicitante, setFormSolicitante] = useState('');
   const [formSolicitanteNome, setFormSolicitanteNome] = useState('');
   const [formSolicitanteCargo, setFormSolicitanteCargo] = useState('');
   const [formEquipe, setFormEquipe] = useState('');
   const [formLocal, setFormLocal] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
-  const [formImagem, setFormImagem] = useState('');
+  const [formImagens, setFormImagens] = useState<string[]>([]);
   const [formPrioridade, setFormPrioridade] = useState('Média');
   const [formStatus, setFormStatus] = useState('Aberta');
   const [formConclusao, setFormConclusao] = useState('');
   const [formObservacoes, setFormObservacoes] = useState('');
   const [searchSol, setSearchSol] = useState('');
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    listarBombeiros().then(setBombeiros).catch(() => {});
     listarOrdensServico()
       .then(setOrdens)
-      .catch(err => alert(err instanceof Error ? err.message : 'Erro ao carregar ordens de serviço.'))
-      .finally(() => setLoading(false));
+      .catch(err => alert(err instanceof Error ? err.message : 'Erro ao carregar ordens de serviço.'));
   }, []);
 
   async function recarregar() {
@@ -129,12 +122,6 @@ export function OrdemServico() {
     return lista.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [ordens, search, filtroStatus, filtroPrioridade, filtroMes, filtroAno]);
 
-  const solicitantesFiltrados = useMemo(() => {
-    if (!searchSol) return [];
-    const t = searchSol.toLowerCase();
-    return bombeiros.filter(b => b.nomeCompleto.toLowerCase().includes(t) || b.nomeGuerra.toLowerCase().includes(t)).slice(0, 8);
-  }, [bombeiros, searchSol]);
-
   function proximoNumero(): string {
     const ano = new Date().getFullYear();
     const doAno = ordens.filter(o => {
@@ -151,14 +138,14 @@ export function OrdemServico() {
 
   function resetForm() {
     setFormNumero(proximoNumero());
-    setFormData(new Date().toISOString().split('T')[0]);
+    setFormData(hojeLocalISO());
     setFormSolicitante('');
     setFormSolicitanteNome('');
     setFormSolicitanteCargo('');
     setFormEquipe(canManageGlobal ? '' : equipeEfetiva || '');
     setFormLocal('');
     setFormDescricao('');
-    setFormImagem('');
+    setFormImagens([]);
     setFormPrioridade('Média');
     setFormStatus('Aberta');
     setFormConclusao('');
@@ -202,7 +189,7 @@ export function OrdemServico() {
     setFormEquipe(os.equipe);
     setFormLocal(os.local || '');
     setFormDescricao(os.descricao);
-    setFormImagem(os.imagem || '');
+    setFormImagens(parseOrdemServicoImagens(os.imagem));
     setFormPrioridade(os.prioridade);
     setFormStatus(os.status);
     setFormConclusao(os.dataConclusao);
@@ -227,13 +214,13 @@ export function OrdemServico() {
         await atualizarOrdemServico(editando.id, {
           numero: formNumero, dataEmissao: formData, dataConclusao: formConclusao,
           solicitanteId: formSolicitante, solicitanteNome: formSolicitanteNome, solicitanteCargo: formSolicitanteCargo, equipe: equipeAlvo, local: formLocal,
-          descricao: formDescricao, imagem: formImagem, prioridade: formPrioridade as any, status: formStatus as any, observacoes: formObservacoes,
+          descricao: formDescricao, imagem: serializeOrdemServicoImagens(formImagens), prioridade: formPrioridade as any, status: formStatus as any, observacoes: formObservacoes,
         });
       } else {
         await criarOrdemServico({
           numero: formNumero, dataEmissao: formData, dataConclusao: formConclusao,
           solicitanteId: formSolicitante, solicitanteNome: formSolicitanteNome, solicitanteCargo: formSolicitanteCargo, equipe: equipeAlvo, local: formLocal,
-          descricao: formDescricao, imagem: formImagem, prioridade: formPrioridade as any, status: 'Aberta',
+          descricao: formDescricao, imagem: serializeOrdemServicoImagens(formImagens), prioridade: formPrioridade as any, status: 'Aberta',
           motivoManutencao: '', manutencaoPor: '', manutencaoPorCargo: '', manutencaoEmpresa: '', manutencaoEmpresaPessoa: '',
           dataManutencao: '', motivoCancelamento: '', canceladoPor: '', canceladoPorCargo: '', dataCancelamento: '',
           finalizadoPor: '', finalizadoPorCargo: '', empresaFinalizacao: '', finalizacaoEmpresaPessoa: '', finalizacaoDescricao: '',
@@ -250,8 +237,15 @@ export function OrdemServico() {
   function handleImagem(file: File | null) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setFormImagem(String(reader.result || ''));
+    reader.onload = () => {
+      const imagem = String(reader.result || '');
+      if (imagem) setFormImagens(prev => [...prev, imagem]);
+    };
     reader.readAsDataURL(file);
+  }
+
+  function removerImagem(index: number) {
+    setFormImagens(prev => prev.filter((_, i) => i !== index));
   }
 
   async function handleDelete(id: string) {
@@ -334,6 +328,7 @@ export function OrdemServico() {
     concluidas: ordens.filter(o => o.status === 'Concluída').length,
     urgentes: ordens.filter(o => o.prioridade === 'Urgente').length,
   }), [ordens]);
+  const imagensVisualizando = useMemo(() => visualizando ? parseOrdemServicoImagens(visualizando.imagem) : [], [visualizando]);
 
   return (
     <PageContainer>
@@ -534,24 +529,25 @@ export function OrdemServico() {
               </div>
 
               <div>
-                <label className={labelCls}>Imagem do Problema</label>
-                <div className="flex items-start gap-4">
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-graphite-300 bg-graphite-50/60 px-6 py-6 text-center text-sm text-graphite-500 transition-colors hover:border-aviation-400 hover:text-aviation-600 dark:border-border-dark dark:bg-surface-card dark:text-graphite-400">
-                    {formImagem ? (
-                      <img src={formImagem} alt="Imagem da OS" className="max-h-40 rounded-lg object-contain" />
-                    ) : (
-                      <>
-                        <Plus className="mb-2 h-8 w-8 text-graphite-300 dark:text-graphite-500" />
-                        Selecionar imagem
-                      </>
-                    )}
-                    <input type="file" accept="image/*" className="hidden" onChange={e => handleImagem(e.target.files?.[0] || null)} />
-                  </label>
-                  {formImagem && (
-                    <button type="button" onClick={() => setFormImagem('')} className="mt-1 rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" title="Remover imagem">
-                      <X className="h-4 w-4" />
-                    </button>
+                <label className={labelCls}>Imagens do Problema</label>
+                <div className="space-y-3">
+                  {formImagens.length > 0 && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {formImagens.map((imagem, index) => (
+                        <div key={`${imagem.slice(0, 32)}-${index}`} className="relative rounded-xl border border-graphite-200 bg-graphite-50/60 p-2 dark:border-border-dark dark:bg-surface-card">
+                          <img src={imagem} alt={`Imagem da OS ${index + 1}`} className="h-40 w-full rounded-lg object-contain" />
+                          <button type="button" onClick={() => removerImagem(index)} className="absolute right-2 top-2 rounded-lg bg-white/90 p-1.5 text-red-500 shadow-sm hover:bg-red-50 hover:text-red-700 dark:bg-surface-elevated dark:hover:bg-red-900/20" title="Remover imagem">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   )}
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-graphite-300 bg-graphite-50/60 px-6 py-5 text-center text-sm text-graphite-500 transition-colors hover:border-aviation-400 hover:text-aviation-600 dark:border-border-dark dark:bg-surface-card dark:text-graphite-400">
+                    <ImagePlus className="mb-2 h-7 w-7 text-graphite-300 dark:text-graphite-500" />
+                    Adicionar imagem
+                    <input type="file" accept="image/*" className="hidden" onChange={e => { handleImagem(e.target.files?.[0] || null); e.currentTarget.value = ''; }} />
+                  </label>
                 </div>
               </div>
 
@@ -669,10 +665,14 @@ export function OrdemServico() {
                 <h2 className="mb-1 text-xs font-bold uppercase text-graphite-500 dark:text-graphite-400">Descrição</h2>
                 <div className="rounded-lg border border-graphite-300 bg-graphite-50 p-4 text-sm text-graphite-900 whitespace-pre-wrap dark:border-border-dark dark:bg-surface-hover dark:text-graphite-100">{visualizando.descricao}</div>
               </div>
-              {visualizando.imagem && (
+              {imagensVisualizando.length > 0 && (
                 <div>
-                  <h2 className="mb-1 text-xs font-bold uppercase text-graphite-500 dark:text-graphite-400">Imagem do Problema</h2>
-                  <img src={visualizando.imagem} alt="Imagem da OS" className="max-h-72 w-full rounded-lg object-contain border border-graphite-300 dark:border-border-dark" />
+                  <h2 className="mb-1 text-xs font-bold uppercase text-graphite-500 dark:text-graphite-400">Imagens do Problema</h2>
+                  <div className={imagensVisualizando.length === 1 ? '' : 'grid grid-cols-2 gap-3'}>
+                    {imagensVisualizando.map((imagem, index) => (
+                      <img key={`${imagem.slice(0, 32)}-${index}`} src={imagem} alt={`Imagem da OS ${index + 1}`} className="max-h-72 w-full rounded-lg border border-graphite-300 object-contain dark:border-border-dark" />
+                    ))}
+                  </div>
                 </div>
               )}
               {visualizando.observacoes && (
@@ -682,7 +682,7 @@ export function OrdemServico() {
                 </div>
               )}
               <div className="pt-4 text-center text-xs text-graphite-400 border-t border-graphite-200 dark:border-border-dark dark:text-graphite-500">
-                Documento gerado em {new Date().toLocaleString('pt-BR')}
+                Documento gerado em {formatarDataHoraBR(new Date())}
               </div>
             </div>
           </div>

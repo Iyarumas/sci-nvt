@@ -1,5 +1,6 @@
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
+import { formatarDataBR, normalizarDataISO } from '../utils/datas';
 
 export function extrairVariaveis(html: string): string[] {
   const matches = html.match(/\{\{\s*(\w+)\s*\}\}/g);
@@ -11,7 +12,10 @@ export function substituirVariaveis(html: string, dados: Record<string, string>)
   let result = html;
   for (const [key, value] of Object.entries(dados)) {
     const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
-    result = result.replace(regex, value || '');
+    const displayValue = /^data/i.test(key) && normalizarDataISO(value)
+      ? formatarDataBR(value, value)
+      : value;
+    result = result.replace(regex, displayValue || '');
   }
   result = result.replace(/\{\{\s*\w+\s*\}\}/g, '');
   return result;

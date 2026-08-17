@@ -3,6 +3,7 @@ import type { Bombeiro } from '../types/bombeiro';
 import type { DocumentFill } from '../types/document';
 import type { FeriasGozo } from '../types/ferias';
 import type { VigenciaSubstituicao } from '../services/vigenciaSubstituicaoService';
+import { estaNoPeriodoISO, mesmoDiaISO } from './datas';
 
 export interface EfetivoOperacionalEntry {
   bombeiro: Bombeiro;
@@ -12,16 +13,6 @@ export interface EfetivoOperacionalEntry {
     nome: string;
     cargo: string;
   };
-}
-
-function dataLocal(data: string): Date {
-  return new Date(`${data}T12:00:00`);
-}
-
-function dataNoPeriodo(data: string, dataInicio: string, dataFim: string): boolean {
-  if (!data || !dataInicio || !dataFim) return false;
-  const dia = dataLocal(data);
-  return dataLocal(dataInicio) <= dia && dataLocal(dataFim) >= dia;
 }
 
 function nomeKey(value: unknown): string {
@@ -55,7 +46,7 @@ export function montarEfetivoOperacional(params: {
   const vigenciasNoDia = vigencias.filter(v =>
     v.ativa &&
     v.substitutoId &&
-    dataNoPeriodo(dataPlantao, v.dataInicio, v.dataFim) &&
+    estaNoPeriodoISO(dataPlantao, v.dataInicio, v.dataFim) &&
     equipeDaVaga(v) === equipe
   );
   const vigenciasReais = vigenciasNoDia.filter(v => v.substitutoId !== v.funcionarioOriginalId);
@@ -69,7 +60,7 @@ export function montarEfetivoOperacional(params: {
 
   const trocasNoDia = (trocaFills || []).filter(fl => {
     const fd = fl?.filled_data || {};
-    return (fd?.data_solicitada === dataPlantao || fd?.data_folga_solicitado === dataPlantao) &&
+    return (mesmoDiaISO(fd?.data_solicitada, dataPlantao) || mesmoDiaISO(fd?.data_folga_solicitado, dataPlantao)) &&
       fd?.nome_solicitante &&
       fd?.nome_solicitado;
   });
@@ -81,7 +72,7 @@ export function montarEfetivoOperacional(params: {
     const solicitado = porNome.get(nomeKey(fd.nome_solicitado));
     if (!solicitante || !solicitado) continue;
 
-    if (fd.data_solicitada === dataPlantao && solicitante.equipe === equipe) {
+    if (mesmoDiaISO(fd.data_solicitada, dataPlantao) && solicitante.equipe === equipe) {
       trocaExcluidos.add(solicitante.id);
       trocaExcluidos.add(solicitado.id);
       trocaIncluidos.push({
@@ -91,7 +82,7 @@ export function montarEfetivoOperacional(params: {
       });
     }
 
-    if (fd.data_folga_solicitado === dataPlantao && solicitado.equipe === equipe) {
+    if (mesmoDiaISO(fd.data_folga_solicitado, dataPlantao) && solicitado.equipe === equipe) {
       trocaExcluidos.add(solicitante.id);
       trocaExcluidos.add(solicitado.id);
       trocaIncluidos.push({
@@ -104,7 +95,7 @@ export function montarEfetivoOperacional(params: {
 
   const gozosNoDia = feriasGozo.filter(g =>
     g.status !== 'Gozadas' &&
-    dataNoPeriodo(dataPlantao, g.dataInicio, g.dataFim)
+    estaNoPeriodoISO(dataPlantao, g.dataInicio, g.dataFim)
   );
   const emGozo = new Set(gozosNoDia.map(g => g.funcionarioId));
   const vagasAbertas = new Set(vigenciasAuto.map(v => v.funcionarioOriginalId));

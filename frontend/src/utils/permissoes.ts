@@ -1,6 +1,7 @@
 import type { Bombeiro, Cargo, Equipe } from '../types/bombeiro';
 import { listarAtivos, obterBombeiro } from '../services/bombeiroService';
 import { listarVigencias } from '../services/vigenciaSubstituicaoService';
+import { estaNoPeriodoISO, hojeLocalISO } from './datas';
 
 const EQUIPES: readonly Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista', 'Embaixador'];
 const CARGOS_RESPONSAVEIS_EQUIPE: readonly Cargo[] = ['BA-CE', 'BA-LR'];
@@ -108,7 +109,7 @@ export async function resolverContextoOperacional(user: AuthUserPermissao): Prom
   const bombeiro = await resolverBombeiroVinculado(user);
   if (!bombeiro) return base;
 
-  const hoje = new Date().toISOString().split('T')[0];
+  const hoje = hojeLocalISO();
   try {
     const vigencias = await listarVigencias({
       ativa: true,
@@ -119,8 +120,7 @@ export async function resolverContextoOperacional(user: AuthUserPermissao): Prom
 
     const vigenciaAtual = vigencias.find(v =>
       v.substitutoId !== v.funcionarioOriginalId &&
-      v.dataInicio <= hoje &&
-      hoje <= v.dataFim
+      estaNoPeriodoISO(hoje, v.dataInicio, v.dataFim)
     );
 
     const cargoEfetivo = vigenciaAtual?.cargoExercido || bombeiro.cargo;

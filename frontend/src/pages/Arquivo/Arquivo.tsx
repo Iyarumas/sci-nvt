@@ -19,6 +19,7 @@ import {
   podeVerCadastroCompletoBase,
   resolverContextoOperacional,
 } from '../../utils/permissoes';
+import { formatarDataBR } from '../../utils/datas';
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -67,8 +68,7 @@ function getStatusLabel(status: string) {
 }
 
 function fmt(d: string) {
-  if (!d) return '-';
-  return new Date(d).toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 function getCardInfo(doc: Document, fill: DocumentFill): { titulo: string; subtitulo: string; cor: string; icon: typeof FileText } {

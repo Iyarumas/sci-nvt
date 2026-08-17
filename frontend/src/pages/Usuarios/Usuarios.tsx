@@ -21,6 +21,7 @@ import type { APOC } from '../../types/apoc';
 import { CARGO_OPTIONS } from '../../types/bombeiro';
 import { FUNCAO_APOC_OPTIONS } from '../../types/apoc';
 import { podeVerCadastroCompletoBase, resolverContextoOperacional } from '../../utils/permissoes';
+import { formatarDataBR } from '../../utils/datas';
 
 const ROLE_BADGE: Record<string, string> = {
   desenvolvedor: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
@@ -553,10 +554,10 @@ export function Usuarios() {
                     </p>
                     <p className="text-xs text-graphite-500">
                       {c.usado
-                        ? `Usado em ${new Date(c.usadoEm!).toLocaleDateString('pt-BR')} por ${c.registradoPor}`
+                        ? `Usado em ${formatarDataBR(c.usadoEm)} por ${c.registradoPor}`
                         : expirado
                           ? `Expirou`
-                          : `Criado em ${new Date(c.createdAt).toLocaleDateString('pt-BR')}`
+                          : `Criado em ${formatarDataBR(c.createdAt)}`
                       }
                     </p>
                   </div>

@@ -1,19 +1,25 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Plus, Search, Trash2, Save, X, Timer, Clock,
-  AlertTriangle, Shield, CheckCircle, XCircle, Users,
+  Plus, Search, Trash2, Save, X, Timer,
+  AlertTriangle, Shield, Eye, Printer, CheckCircle2, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { SearchSelect } from '../../components/ui/SearchSelect';
+import type { AtivoItem } from '../../components/ui/SearchSelect';
+import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
-import { listarAtivos } from '../../services/bombeiroService';
-import { resolverEfetivo } from '../../services/vigenciaSubstituicaoService';
+import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import {
   listarTreinos, criarTreino, atualizarTreino,
   excluirTreino, obterProximoNumero,
 } from '../../services/tempoRespostaService';
-import type { TreinamentoTempoResposta } from '../../types/tempoResposta';
+import { listarAtivos } from '../../services/bombeiroService';
+import { gerarTempoRespostaPdf } from '../../services/tempoRespostaPdfService';
+import type { TreinamentoTempoResposta, TreinamentoTempoRespostaInput } from '../../types/tempoResposta';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
+import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
+import { imprimirPdfBlob } from '../../utils/pdfPrint';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const CCI_OPTIONS = ['319', '320', '333'];
@@ -24,22 +30,31 @@ const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 
 function fmt(d: string) {
-  if (!d) return '-';
-  return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
+  return formatarDataBR(d);
 }
 
 export default function TempoResposta() {
-  const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
+  const { user, contexto, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
   const canCreate = canManageGlobal || !!equipeEfetiva;
+  const isAdminSistema = contexto.isAdministradorSistema;
+  const currentUsername = user?.username || user?.name || '';
+  const currentName = user?.name || user?.username || '';
   const [treinos, setTreinos] = useState<TreinamentoTempoResposta[]>([]);
-  const [bombeiros, setBombeiros] = useState<any[]>([]);
+  const [opcoesParticipantes, setOpcoesParticipantes] = useState<AtivoItem[]>([]);
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TreinamentoTempoResposta | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [processingPdfId, setProcessingPdfId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [expandidoId, setExpandidoId] = useState<string | null>(null);
+  const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
+  const [previewPdfTitle, setPreviewPdfTitle] = useState('');
+  const [nomeGsPadrao, setNomeGsPadrao] = useState('');
+  const saving = savingAction !== null;
 
   // Form state
   const [formEquipe, setFormEquipe] = useState('');
@@ -95,11 +110,26 @@ export default function TempoResposta() {
   }, [canManageGlobal, equipeEfetiva]);
 
   useEffect(() => {
-    listarAtivos().then(setBombeiros);
     carregar();
   }, []);
 
   useEffect(() => { carregar(); }, [filtroAno]);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    let active = true;
+    (async () => {
+      try {
+        const nomeCompletoGs = await obterNomeGsCompleto();
+        if (!active || !nomeCompletoGs) return;
+        setNomeGsPadrao(nomeCompletoGs);
+        setFormGerente(prev => prev || nomeCompletoGs);
+      } catch {
+        // Mantém o valor manual caso o cadastro de GS não esteja disponível.
+      }
+    })();
+    return () => { active = false; };
+  }, [formOpen]);
 
   async function carregar() {
     const lista = await listarTreinos({ ano: filtroAno });
@@ -124,6 +154,91 @@ export default function TempoResposta() {
     total: treinos.length,
   }), [treinos]);
 
+  function registroAprovado(registro?: Pick<TreinamentoTempoResposta, 'status'> | null) {
+    return registro?.status === 'Aprovado';
+  }
+
+  function canUsarPdf(registro: TreinamentoTempoResposta) {
+    return registroAprovado(registro) || isAdminSistema;
+  }
+
+  function canAlterarRegistro(registro: TreinamentoTempoResposta) {
+    return registroAprovado(registro) ? isAdminSistema : canManageEquipe(registro.equipe);
+  }
+
+  function mensagemBloqueioRegistro(registro: TreinamentoTempoResposta) {
+    return registroAprovado(registro)
+      ? 'Este treino já foi aprovado. Somente administradores e desenvolvedores podem alterar.'
+      : 'Você só pode alterar treinamentos da sua equipe efetiva.';
+  }
+
+  async function obterNomeGsCompleto() {
+    const listaGs = await listarAtivos({ cargo: 'GS' });
+    const gs = listaGs.find(b =>
+      `${b.nomeCompleto} ${b.nomeGuerra}`.toLowerCase().includes('gustavo')
+    ) || listaGs[0];
+    return gs?.nomeCompleto || gs?.nomeGuerra || '';
+  }
+
+  async function completarNomesAssinatura(registro: TreinamentoTempoResposta): Promise<TreinamentoTempoResposta> {
+    let chefeEquipe = registro.chefeEquipe;
+    let gerente = registro.gerente || nomeGsPadrao;
+
+    try {
+      const efetivo = await resolverEfetivoOperacional(registro.equipe, registro.data);
+      const opcoes = montarOpcoesEfetivoOperacional(efetivo, registro.equipe);
+      const nomeSalvo = (registro.chefeEquipe || '').trim().toLowerCase();
+      const chefe = opcoes.find(item =>
+        item.cargo === 'BA-CE' &&
+        (
+          item.nomeCompleto.toLowerCase() === nomeSalvo ||
+          item.nomeGuerra.toLowerCase() === nomeSalvo
+        )
+      ) || opcoes.find(item => item.cargo === 'BA-CE');
+      chefeEquipe = chefe?.nomeCompleto || chefeEquipe;
+    } catch {
+      // Mantém o nome salvo se não conseguir consultar o efetivo.
+    }
+
+    if (!gerente) {
+      try {
+        gerente = await obterNomeGsCompleto();
+        if (gerente) setNomeGsPadrao(gerente);
+      } catch {
+        gerente = registro.aprovadoPorNome || registro.aprovadoPor;
+      }
+    }
+
+    return {
+      ...registro,
+      chefeEquipe,
+      gerente,
+    };
+  }
+
+  function limparSelecoesEquipe() {
+    setF2BaMc('');
+    setF2BaCe('');
+    setF2Ba2('');
+    setF3BaMc('');
+    setF3Ba21('');
+    setF3Ba22('');
+    setFormChefeEquipe('');
+  }
+
+  function handleEquipeChange(equipe: string) {
+    setFormEquipe(equipe);
+    limparSelecoesEquipe();
+  }
+
+  function handleDataChange(data: string) {
+    setFormData(data);
+    if (data) {
+      setFormAno(data.slice(0, 4));
+    }
+    limparSelecoesEquipe();
+  }
+
   function resetForm() {
     setFormEquipe(canManageGlobal ? '' : equipeEfetiva || ''); setFormNumero(0); setFormAno(''); setFormData(''); setFormHora(''); setFormLocal('');
     setF2Cci(''); setF2BaMc(''); setF2BaCe(''); setF2Ba2(''); setF2T1(''); setF2T2(''); setF2T3(''); setF2Conceito(''); setF2Performance('');
@@ -131,8 +246,9 @@ export default function TempoResposta() {
     setFormObservacoes(''); setFormResumo(''); setFormConsideracoes(''); setFormCoordenacao('');
     setFormAcionamento(''); setFormSistemaAlarmes(''); setFormComunicacao(''); setFormDeslocamento('');
     setFormVisibilidade(''); setFormProcedimentos(''); setFormTempoResposta(''); setFormFeedbackSpe(''); setFormFeedbackTwr(''); setFormFeedbackSci('');
-    setFormGerente('');
+    setFormGerente(contexto.cargo === 'GS' ? currentName : '');
     setFormChefeEquipe('');
+    setOpcoesParticipantes([]);
   }
 
   async function handleNovo() {
@@ -144,7 +260,7 @@ export default function TempoResposta() {
     setEditando(null);
     const anoAtual = new Date().getFullYear().toString();
     setFormAno(anoAtual);
-    setFormData(new Date().toISOString().split('T')[0]);
+    setFormData(hojeLocalISO());
     setFormHora(new Date().toTimeString().slice(0, 5));
     const prox = await obterProximoNumero(anoAtual);
     setFormNumero(prox);
@@ -152,23 +268,33 @@ export default function TempoResposta() {
   }
 
   useEffect(() => {
-    if (!formOpen || editando || !formEquipe || !formData) return;
+    if (!formOpen || !formEquipe || !formData) {
+      setOpcoesParticipantes([]);
+      return;
+    }
+
     let active = true;
     (async () => {
       try {
-        const efetivo = await resolverEfetivo(formEquipe, formData);
+        const efetivo = await resolverEfetivoOperacional(formEquipe, formData);
         if (!active) return;
-        const chefe = [...efetivo.efetivos, ...efetivo.substitutosExternos]
-          .find(item => !item.emFerias && item.cargoExercido === 'BA-CE');
-        if (chefe) setFormChefeEquipe(chefe.bombeiro.nomeGuerra || chefe.bombeiro.nomeCompleto || '');
-      } catch { /* mantem vazio, fallback no salvar */ }
+        const opcoes = montarOpcoesEfetivoOperacional(efetivo, formEquipe);
+        setOpcoesParticipantes(opcoes);
+        const deveAtualizarChefe = !editando || formEquipe !== editando.equipe || formData !== editando.data || !formChefeEquipe;
+        if (deveAtualizarChefe) {
+          const chefe = opcoes.find(item => item.cargo === 'BA-CE');
+          setFormChefeEquipe(chefe?.nomeCompleto || chefe?.nomeGuerra || '');
+        }
+      } catch {
+        if (active) setOpcoesParticipantes([]);
+      }
     })();
     return () => { active = false; };
-  }, [formOpen, editando, formEquipe, formData]);
+  }, [formOpen, editando, formEquipe, formData, formChefeEquipe]);
 
   function handleEditar(t: TreinamentoTempoResposta) {
-    if (!canManageEquipe(t.equipe)) {
-      alert('Você só pode editar treinamentos da sua equipe efetiva.');
+    if (!canAlterarRegistro(t)) {
+      alert(mensagemBloqueioRegistro(t));
       return;
     }
     setEditando(t);
@@ -187,20 +313,21 @@ export default function TempoResposta() {
     setFormOpen(true);
   }
 
-  async function handleSalvar() {
+  async function handleSalvar(aprovar = false) {
     const equipeAlvo = canManageGlobal ? formEquipe : equipeEfetiva || '';
     if (!equipeAlvo || !formData) return;
-    if (editando && !canManageEquipe(editando.equipe)) {
-      alert('Você só pode editar treinamentos da sua equipe efetiva.');
+    if (editando && !canAlterarRegistro(editando)) {
+      alert(mensagemBloqueioRegistro(editando));
       return;
     }
     if (!canManageEquipe(equipeAlvo)) {
       alert('Você só pode salvar treinamentos da sua equipe efetiva.');
       return;
     }
-    setSaving(true);
+    setSavingAction(aprovar ? 'approve' : 'draft');
     try {
-      const data: Omit<TreinamentoTempoResposta, 'id' | 'createdAt' | 'updatedAt'> = {
+      const ano = formAno || formData.slice(0, 4);
+      const data: TreinamentoTempoRespostaInput = {
         equipe: equipeAlvo, numero: formNumero, ano: formAno,
         data: formData, hora: formHora, local: formLocal,
         f2Cci, f2BaMc, f2BaCe, f2Ba2, f2T1, f2T2, f2T3, f2Conceito, f2Performance,
@@ -211,24 +338,34 @@ export default function TempoResposta() {
         visibilidadeSuperficie: formVisibilidade, procedimentoPcinc: formProcedimentos,
         tempoResposta: formTempoResposta, feedbackSpe: formFeedbackSpe,
         feedbackTwr: formFeedbackTwr, feedbackSci: formFeedbackSci,
-        chefeEquipe: formChefeEquipe || user?.name || '', gerente: formGerente,
+        chefeEquipe: formChefeEquipe || user?.name || '',
+        gerente: formGerente || nomeGsPadrao || (contexto.cargo === 'GS' ? currentName : ''),
       };
+      data.ano = ano;
+      data.numero = formNumero || await obterProximoNumero(ano);
+      if (aprovar) {
+        data.status = 'Aprovado';
+        data.aprovadoPor = currentUsername;
+        data.aprovadoPorNome = currentName;
+        data.aprovadoEm = new Date().toISOString();
+      }
       if (editando) {
         await atualizarTreino(editando.id, data);
       } else {
         await criarTreino(data);
       }
-      await carregar();
+      if (filtroAno !== ano) setFiltroAno(ano);
+      setTreinos(await listarTreinos({ ano }));
       setFormOpen(false);
     } catch (err) {
       alert('Erro ao salvar: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
-    } finally { setSaving(false); }
+    } finally { setSavingAction(null); }
   }
 
   async function handleExcluir(id: string) {
     const treino = treinos.find(t => t.id === id);
-    if (treino && !canManageEquipe(treino.equipe)) {
-      alert('Você só pode excluir treinamentos da sua equipe efetiva.');
+    if (treino && !canAlterarRegistro(treino)) {
+      alert(mensagemBloqueioRegistro(treino));
       setDeleteConfirm(null);
       return;
     }
@@ -237,13 +374,69 @@ export default function TempoResposta() {
     setDeleteConfirm(null);
   }
 
-  function VeiculoCard({ titulo, cor, children }: { titulo: string; cor: string; children: React.ReactNode }) {
-    return (
-      <div className={`rounded-xl border-2 ${cor} p-4`}>
-        <h4 className="text-sm font-bold mb-3">{titulo}</h4>
-        {children}
-      </div>
-    );
+  async function handleAprovarRegistro(treino: TreinamentoTempoResposta) {
+    if (!canAlterarRegistro(treino)) {
+      alert(mensagemBloqueioRegistro(treino));
+      return;
+    }
+    setApprovingId(treino.id);
+    try {
+      const treinoComAssinaturas = await completarNomesAssinatura(treino);
+      await atualizarTreino(treino.id, {
+        chefeEquipe: treinoComAssinaturas.chefeEquipe,
+        gerente: treinoComAssinaturas.gerente,
+        status: 'Aprovado',
+        aprovadoPor: currentUsername,
+        aprovadoPorNome: currentName,
+        aprovadoEm: new Date().toISOString(),
+      });
+      await carregar();
+    } catch (err) {
+      alert('Erro ao aprovar: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  function closePreviewPdf() {
+    setPreviewPdfData(null);
+    setPreviewPdfTitle('');
+  }
+
+  async function handlePreviewPdf(treino: TreinamentoTempoResposta) {
+    if (!canUsarPdf(treino)) {
+      alert('O PDF fica disponível depois da aprovação.');
+      return;
+    }
+    setProcessingPdfId(treino.id);
+    try {
+      closePreviewPdf();
+      const treinoComAssinaturas = await completarNomesAssinatura(treino);
+      const pdf = await gerarTempoRespostaPdf(treinoComAssinaturas);
+      setPreviewPdfData(await pdf.arrayBuffer());
+      setPreviewPdfTitle(`${String(treino.numero).padStart(3, '0')}/${treino.ano} - Tempo Resposta`);
+    } catch (err) {
+      alert('Erro ao visualizar PDF: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
+    } finally {
+      setProcessingPdfId(null);
+    }
+  }
+
+  async function handlePrintPdf(treino: TreinamentoTempoResposta) {
+    if (!canUsarPdf(treino)) {
+      alert('Só é possível imprimir depois de aprovado.');
+      return;
+    }
+    setProcessingPdfId(treino.id);
+    try {
+      const treinoComAssinaturas = await completarNomesAssinatura(treino);
+      const pdf = await gerarTempoRespostaPdf(treinoComAssinaturas);
+      await imprimirPdfBlob(pdf);
+    } catch (err) {
+      alert('Erro ao imprimir PDF: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
+    } finally {
+      setProcessingPdfId(null);
+    }
   }
 
   function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
@@ -315,36 +508,173 @@ export default function TempoResposta() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filtered.map(t => (
-              <div key={t.id}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-aviation-500 to-aviation-700 text-sm font-bold text-white">
-                    {t.equipe.charAt(0)}
+            {filtered.map(t => {
+              const aprovado = registroAprovado(t);
+              const podeAlterar = canAlterarRegistro(t);
+              const podeUsarPdf = canUsarPdf(t);
+              const processing = processingPdfId === t.id;
+              const expandido = expandidoId === t.id;
+              const f2Dados = [
+                ['CCI', t.f2Cci],
+                ['BA-MC', t.f2BaMc],
+                ['BA-CE', t.f2BaCe],
+                ['BA-2', t.f2Ba2],
+                ['T1', t.f2T1],
+                ['T2', t.f2T2],
+                ['T3', t.f2T3],
+                ['Conceito', t.f2Conceito],
+                ['Performance', t.f2Performance],
+              ].filter(([, valor]) => Boolean(valor));
+              const f3Dados = [
+                ['CCI', t.f3Cci],
+                ['BA-MC', t.f3BaMc],
+                ['BA-2', t.f3Ba21],
+                ['BA-2', t.f3Ba22],
+                ['T1', t.f3T1],
+                ['T2', t.f3T2],
+                ['T3', t.f3T3],
+                ['Conceito', t.f3Conceito],
+                ['Performance', t.f3Performance],
+              ].filter(([, valor]) => Boolean(valor));
+              return (
+                <div key={t.id} className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandidoId(expandido ? null : t.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-aviation-500 to-aviation-700 text-sm font-bold text-white">
+                        {t.equipe.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">
+                            {String(t.numero).padStart(3, '0')}/{t.ano} - {t.equipe} - Tempo Resposta
+                          </p>
+                          <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${aprovado ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                            {aprovado ? 'Aprovado' : 'Rascunho'}
+                          </span>
+                        </div>
+                        <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
+                          {fmt(t.data)} {t.hora && `às ${t.hora}`} - {t.local || 'Sem local'} - Chefe: {t.chefeEquipe || '-'}
+                        </p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExpandidoId(expandido ? null : t.id)}
+                      className="flex shrink-0 items-center gap-1 rounded-xl border border-graphite-200 bg-white px-3 py-1.5 text-xs font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-200"
+                    >
+                      Detalhes {expandido ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 truncate">
-                      {String(t.numero).padStart(3, '0')}/{t.ano} · {t.equipe}
-                    </p>
-                    <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">
-                      {fmt(t.data)} {t.hora && `às ${t.hora}`} · {t.local || 'Sem local'}
-                    </p>
-                  </div>
+
+                  {expandido && (
+                    <div className="mt-4 space-y-4 border-t border-graphite-200/60 pt-4 dark:border-border-dark">
+                      <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
+                        <div><span className="font-black text-graphite-500 dark:text-graphite-400">Data</span><p className="font-semibold text-graphite-900 dark:text-graphite-100">{fmt(t.data)}</p></div>
+                        <div><span className="font-black text-graphite-500 dark:text-graphite-400">Hora</span><p className="font-semibold text-graphite-900 dark:text-graphite-100">{t.hora || '-'}</p></div>
+                        <div><span className="font-black text-graphite-500 dark:text-graphite-400">Local</span><p className="font-semibold text-graphite-900 dark:text-graphite-100">{t.local || '-'}</p></div>
+                        <div><span className="font-black text-graphite-500 dark:text-graphite-400">Chefe</span><p className="font-semibold text-graphite-900 dark:text-graphite-100">{t.chefeEquipe || '-'}</p></div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div className="rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/60">
+                          <p className="mb-2 text-xs font-black uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Faísca 2</p>
+                          <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                            {f2Dados.length === 0 ? (
+                              <p className="text-graphite-500 dark:text-graphite-400">Sem dados preenchidos.</p>
+                            ) : (
+                              f2Dados.map(([label, valor], index) => (
+                                <p key={`${label}-${index}`} className="min-w-0 text-graphite-700 dark:text-graphite-300">
+                                  <b>{label}:</b> <span className="break-words">{valor}</span>
+                                </p>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/60">
+                          <p className="mb-2 text-xs font-black uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Faísca 3</p>
+                          <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                            {f3Dados.length === 0 ? (
+                              <p className="text-graphite-500 dark:text-graphite-400">Sem dados preenchidos.</p>
+                            ) : (
+                              f3Dados.map(([label, valor], index) => (
+                                <p key={`${label}-${index}`} className="min-w-0 text-graphite-700 dark:text-graphite-300">
+                                  <b>{label}:</b> <span className="break-words">{valor}</span>
+                                </p>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {(t.resumoExercicio || t.observacoes || t.consideracoesFinais) && (
+                        <div className="space-y-2 text-xs text-graphite-700 dark:text-graphite-300">
+                          {t.resumoExercicio && <p><b>Resumo:</b> {t.resumoExercicio}</p>}
+                          {t.observacoes && <p><b>Observações:</b> {t.observacoes}</p>}
+                          {t.consideracoesFinais && <p><b>Considerações:</b> {t.consideracoesFinais}</p>}
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!aprovado && podeAlterar && (
+                          <button
+                            type="button"
+                            onClick={() => void handleAprovarRegistro(t)}
+                            disabled={approvingId === t.id}
+                            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <CheckCircle2 className="h-4 w-4" /> {approvingId === t.id ? 'Aprovando...' : 'Aprovar'}
+                          </button>
+                        )}
+                        {podeUsarPdf && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handlePreviewPdf(t)}
+                              disabled={processing}
+                              className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                            >
+                              <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handlePrintPdf(t)}
+                              disabled={processing}
+                              className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                            >
+                              <Printer className="h-4 w-4" /> Imprimir
+                            </button>
+                          </>
+                        )}
+                        {podeAlterar && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleEditar(t)}
+                              className="rounded-xl p-2 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
+                              title="Editar"
+                            >
+                              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirm(t.id)}
+                              className="rounded-xl p-2 text-red-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                              title="Excluir"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {canManageEquipe(t.equipe) && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button onClick={() => handleEditar(t)}
-                      className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover">
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button onClick={() => setDeleteConfirm(t.id)}
-                      className="rounded-xl p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -354,9 +684,16 @@ export default function TempoResposta() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 py-5">
           <div className="relative w-full max-w-4xl mx-4 rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-sm dark:bg-surface-elevated/95">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
-                {editando ? 'Editar' : 'Novo'} Treino de Tempo Resposta
-              </h2>
+              <div>
+                <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
+                  {editando ? 'Editar' : 'Novo'} Treino de Tempo Resposta
+                </h2>
+                {editando && (
+                  <p className="mt-1 text-xs font-semibold text-graphite-500 dark:text-graphite-400">
+                    Status: {registroAprovado(editando) ? 'Aprovado' : 'Rascunho'}
+                  </p>
+                )}
+              </div>
               <button onClick={() => setFormOpen(false)}
                 className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover">
                 <X className="h-5 w-5" />
@@ -368,7 +705,7 @@ export default function TempoResposta() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <div>
                   <label className={labelCls}>Equipe</label>
-                  <select value={formEquipe} onChange={e => setFormEquipe(e.target.value)} disabled={!canManageGlobal} className={inputCls}>
+                  <select value={formEquipe} onChange={e => handleEquipeChange(e.target.value)} disabled={!canManageGlobal} className={inputCls}>
                     <option value="">Selecione</option>
                     {equipesFormulario.map(eq => <option key={eq} value={eq}>{eq}</option>)}
                   </select>
@@ -379,7 +716,7 @@ export default function TempoResposta() {
                 </div>
                 <div>
                   <label className={labelCls}>Data</label>
-                  <input type="date" value={formData} onChange={e => setFormData(e.target.value)} className={inputCls} />
+                  <input type="date" value={formData} onChange={e => handleDataChange(e.target.value)} className={inputCls} />
                 </div>
                 <div>
                   <label className={labelCls}>Hora</label>
@@ -400,9 +737,9 @@ export default function TempoResposta() {
                   <div className="space-y-3">
                     <SelectField label="CCI" value={f2Cci} onChange={setF2Cci}
                       options={CCI_OPTIONS.map(v => ({ value: v, label: `CCI ${v}` }))} />
-                    <SlotField label="BA-MC" value={f2BaMc} onChange={setF2BaMc} cargo="BA-MC" />
-                    <SlotField label="BA-CE" value={f2BaCe} onChange={setF2BaCe} cargo="BA-CE" />
-                    <SlotField label="BA-2" value={f2Ba2} onChange={setF2Ba2} cargo="BA-2" />
+                    <SlotField label="BA-MC" value={f2BaMc} onChange={setF2BaMc} cargo="BA-MC" options={opcoesParticipantes} />
+                    <SlotField label="BA-CE" value={f2BaCe} onChange={setF2BaCe} cargo="BA-CE" options={opcoesParticipantes} />
+                    <SlotField label="BA-2" value={f2Ba2} onChange={setF2Ba2} cargo="BA-2" options={opcoesParticipantes} />
                   </div>
                   <div className="space-y-3">
                     <SelectField label="Conceito" value={f2Conceito} onChange={setF2Conceito}
@@ -434,9 +771,9 @@ export default function TempoResposta() {
                   <div className="space-y-3">
                     <SelectField label="CCI" value={f3Cci} onChange={setF3Cci}
                       options={CCI_OPTIONS.map(v => ({ value: v, label: `CCI ${v}` }))} />
-                    <SlotField label="BA-MC" value={f3BaMc} onChange={setF3BaMc} cargo="BA-MC" />
-                    <SlotField label="BA-2" value={f3Ba21} onChange={setF3Ba21} cargo="BA-2" />
-                    <SlotField label="BA-2" value={f3Ba22} onChange={setF3Ba22} cargo="BA-2" />
+                    <SlotField label="BA-MC" value={f3BaMc} onChange={setF3BaMc} cargo="BA-MC" options={opcoesParticipantes} />
+                    <SlotField label="BA-2" value={f3Ba21} onChange={setF3Ba21} cargo="BA-2" options={opcoesParticipantes} />
+                    <SlotField label="BA-2" value={f3Ba22} onChange={setF3Ba22} cargo="BA-2" options={opcoesParticipantes} />
                   </div>
                   <div className="space-y-3">
                     <SelectField label="Conceito" value={f3Conceito} onChange={setF3Conceito}
@@ -496,11 +833,36 @@ export default function TempoResposta() {
                   className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                   Cancelar
                 </button>
-                <button onClick={handleSalvar} disabled={!formEquipe || !formData || saving}
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
-                  <Save className="h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar'}
+                <button onClick={() => handleSalvar(false)} disabled={!formEquipe || !formData || saving}
+                  className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) ? 'Salvar' : 'Salvar rascunho'}
                 </button>
+                {!registroAprovado(editando) && (
+                  <button onClick={() => handleSalvar(true)} disabled={!formEquipe || !formData || saving}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
+                    <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
+                  </button>
+                )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewPdfData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl shadow-black/10 dark:bg-surface-elevated">
+            <div className="flex items-center justify-between gap-3 border-b border-graphite-200/70 px-5 py-4 dark:border-border-dark">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-bold text-graphite-900 dark:text-graphite-100">{previewPdfTitle || 'Tempo Resposta'}</h3>
+                <p className="text-xs text-graphite-500 dark:text-graphite-400">Visualização do documento</p>
+              </div>
+              <button onClick={closePreviewPdf} className="shrink-0 rounded-lg p-1.5 text-graphite-500 transition-colors hover:bg-graphite-100 hover:text-graphite-800 dark:text-graphite-300 dark:hover:bg-surface-hover" title="Fechar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-graphite-100/60 p-4 dark:bg-surface-card/40">
+              <PdfPreview pdfData={previewPdfData} fields={[]} />
             </div>
           </div>
         </div>
@@ -530,11 +892,19 @@ export default function TempoResposta() {
   );
 }
 
-function SlotField({ label, value, onChange, cargo }: { label: string; value: string; onChange: (v: string) => void; cargo?: string }) {
+function SlotField({ label, value, onChange, cargo, options }: { label: string; value: string; onChange: (v: string) => void; cargo?: string; options: AtivoItem[] }) {
   return (
     <div>
       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">{label}</label>
-      <SearchSelect value={value} onChange={onChange} cargo={cargo} placeholder={`Selecione ${label}`} />
+      <SearchSelect
+        value={value}
+        onChange={onChange}
+        cargo={cargo}
+        options={options}
+        showCargo
+        displayMode="operational"
+        placeholder={`Selecione ${label}`}
+      />
     </div>
   );
 }

@@ -1,3 +1,5 @@
+export type ExercicioPosicionamentoStatus = 'Rascunho' | 'Aprovado';
+
 export interface ExercicioPosicionamento {
   id: string;
   equipe: string;
@@ -35,6 +37,28 @@ export interface ExercicioPosicionamento {
   visibilidadeSuperficie: string;
   feedbackCoe: string;
   chefeEquipe: string;
+  gerente: string;
+  status: ExercicioPosicionamentoStatus;
+  aprovadoPor: string;
+  aprovadoPorNome: string;
+  aprovadoEm: string;
   createdAt: string;
   updatedAt: string;
 }
+
+type CamposControleExercicioPosicionamento =
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'status'
+  | 'aprovadoPor'
+  | 'aprovadoPorNome'
+  | 'aprovadoEm';
+type CamposAprovacaoExercicioPosicionamento = Pick<
+  ExercicioPosicionamento,
+  'status' | 'aprovadoPor' | 'aprovadoPorNome' | 'aprovadoEm'
+>;
+
+export type ExercicioPosicionamentoInput =
+  Omit<ExercicioPosicionamento, CamposControleExercicioPosicionamento> &
+  Partial<CamposAprovacaoExercicioPosicionamento>;

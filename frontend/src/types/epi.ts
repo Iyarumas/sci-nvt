@@ -1,3 +1,5 @@
+import { dataLocalISO, parseDataLocalISO } from '../utils/datas';
+
 export type EPIStatus = 'entregue' | 'pago' | 'enviado_autentique' | 'assinado' | 'devolvido';
 
 export type EstadoConservacao = 'Novo' | 'Bom' | 'Regular' | 'Ruim' | 'Sem uso';
@@ -121,9 +123,9 @@ export function getLabelValidade(dataValidade: string): { label: string; cor: st
 
 export function calcularDataValidade(dataFabricacao: string, tempoValidadeMeses: number): string {
   if (!dataFabricacao || !tempoValidadeMeses) return '';
-  const data = new Date(dataFabricacao);
+  const data = parseDataLocalISO(dataFabricacao);
   data.setMonth(data.getMonth() + tempoValidadeMeses);
-  return data.toISOString().split('T')[0];
+  return dataLocalISO(data);
 }
 
 export function getDiasParaVencerLabel(dataValidade: string): string {

@@ -40,7 +40,7 @@ function formatFileDate(value: string): string {
   if (!value) return 'sem-data';
   const [year, month, day] = value.split('-');
   if (!year || !month || !day) return value.replace(/\//g, '-');
-  return `${Number(day)}-${Number(month)}-${year}`;
+  return `${day}-${month}-${year}`;
 }
 
 function upper(value: string): string {

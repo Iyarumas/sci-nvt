@@ -39,7 +39,10 @@ export const PTRBA_COMPLETO_SITUACOES = [
   'OC',
   'INSTR. 1',
   'INSTR. 2',
+  'INSTR. 3',
   'INSTR. 1-2',
+  'INSTR. 2-3',
+  'INSTR. 1-3',
 ] as const;
 
 export const PTRBA_COMPLETO_FUNCOES = ['BA-CE', 'BA-LR', 'BA-MC', 'BA-2', 'BA-RE', 'GS', 'OC', 'APOC'] as const;

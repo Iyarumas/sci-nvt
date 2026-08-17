@@ -27,9 +27,10 @@ import { capitalizarNome } from '../../utils/capitalize';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
 import { getCargosPermitidosSubstituto } from '../../types/ferias';
 import { AlertModal } from '../../components/ui/AlertModal';
+import { formatarDataBR } from '../../utils/datas';
 
 function capitalize(str: string) { return capitalizarNome(str); }
-function formatDate(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '-'; }
+function formatDate(d: string) { return formatarDataBR(d); }
 
 const INPUT_CLASS = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const TIPO_OPTIONS: TipoSubstituicao[] = ['Substituição', 'Extra', 'Afastamento'];

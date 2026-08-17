@@ -10,6 +10,7 @@ import type { Extintor } from '../../types/extintor';
 import type { Hidrante } from '../../types/hidrante';
 import type { Conferencia } from '../../types/conferencia';
 import { RESULTADO_FINAL_OPTIONS } from '../../types/conferencia';
+import { formatarDataBR } from '../../utils/datas';
 
 const INPUT_CLASS = "w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark";
 
@@ -240,7 +241,7 @@ export function Conferencia() {
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-graphite-900 dark:text-graphite-100 truncate">{c.itemNome}</p>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400">
-                      {c.inspetorNomeGuerra || c.createdBy} · {new Date(c.dataConferencia).toLocaleDateString('pt-BR')}
+                      {c.inspetorNomeGuerra || c.createdBy} · {formatarDataBR(c.dataConferencia)}
                     </p>
                   </div>
                 </div>

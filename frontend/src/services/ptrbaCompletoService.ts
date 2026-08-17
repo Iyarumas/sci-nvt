@@ -66,8 +66,12 @@ function inputToRow(input: Partial<PTRBACompletoInput>): Record<string, unknown>
   if (input.identificacaoAeroporto !== undefined) row.identificacao_aeroporto = input.identificacaoAeroporto;
   if (input.observacoes !== undefined) row.observacoes = input.observacoes;
   if (input.chefeEquipe !== undefined) row.chefe_equipe = input.chefeEquipe;
-  if (input.participantes !== undefined) row.participantes = normalizarParticipantesPTRBACompleto(input.participantes);
-  if (input.evidencias !== undefined) row.evidencias = normalizarEvidenciasPTRBACompleto(input.evidencias);
+  if (input.participantes !== undefined) {
+    row.participantes = JSON.stringify(normalizarParticipantesPTRBACompleto(input.participantes));
+  }
+  if (input.evidencias !== undefined) {
+    row.evidencias = JSON.stringify(normalizarEvidenciasPTRBACompleto(input.evidencias));
+  }
   return row;
 }
 

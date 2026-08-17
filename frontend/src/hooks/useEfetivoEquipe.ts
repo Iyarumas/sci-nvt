@@ -6,6 +6,7 @@ import {
   type VigenciaSubstituicao,
 } from '../services/vigenciaSubstituicaoService';
 import type { Bombeiro } from '../types/bombeiro';
+import { periodosSobrepostosISO } from '../utils/datas';
 
 export interface MembroEfetivo {
   bombeiro: Bombeiro;
@@ -70,11 +71,7 @@ export function useEfetivoEquipe(equipe: string, mes: number, ano: number) {
       );
 
       const vigenciasPeriodo = vigencias.filter(v => {
-        const vInicio = new Date(v.dataInicio);
-        const vFim = new Date(v.dataFim);
-        const mInicio = new Date(dataInicio);
-        const mFim = new Date(dataFim);
-        return vInicio <= mFim && vFim >= mInicio;
+        return periodosSobrepostosISO(v.dataInicio, v.dataFim, dataInicio, dataFim);
       });
 
       // Mapa: substitutoId → vigência
@@ -93,11 +90,7 @@ export function useEfetivoEquipe(equipe: string, mes: number, ano: number) {
         feriasGozo
           .filter(g => {
             if (g.status === 'Gozadas') return false;
-            const gInicio = new Date(g.dataInicio);
-            const gFim = new Date(g.dataFim);
-            const mInicio = new Date(dataInicio);
-            const mFim = new Date(dataFim);
-            return gInicio <= mFim && gFim >= mInicio;
+            return periodosSobrepostosISO(g.dataInicio, g.dataFim, dataInicio, dataFim);
           })
           .map(g => g.funcionarioId)
       );

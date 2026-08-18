@@ -750,6 +750,9 @@ export function EscalaMensal() {
 
   async function atualizarListaSelecionando(configId: string) {
     const c = await listarCompletas();
+    if (!c.some(item => item.config.id === configId)) {
+      throw new Error('A escala mensal foi salva, mas não apareceu na listagem recarregada.');
+    }
     setCompletas(c);
     setSelecionada(configId);
     setMode('view');

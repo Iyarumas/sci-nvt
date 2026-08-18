@@ -15,6 +15,14 @@ function parseJSON(val: unknown): any {
   return val;
 }
 
+function handleSupabaseError(err: unknown): never {
+  const msg =
+    err instanceof Error ? err.message :
+    err && typeof err === 'object' && 'message' in err ? String((err as any).message) :
+    'Erro inesperado no banco de dados';
+  throw new Error(msg);
+}
+
 function rowToConfig(row: Record<string, unknown>): EscalaMensalConfig {
   return {
     id: row.id as string,
@@ -77,26 +85,33 @@ export function novaConfigId(): string {
 export async function salvarConfig(config: EscalaMensalConfig): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
-  const existing = await db.from(CONFIG_TABLE).select('id').eq('id', config.id).single();
+  const existing = await db.from(CONFIG_TABLE).select('id').eq('id', config.id).maybeSingle();
+  if (existing.error) handleSupabaseError(existing.error);
   if (existing.data) {
-    await db.from(CONFIG_TABLE).update({ ...configToRow(config), updated_at: now }).eq('id', config.id);
+    const { error } = await db.from(CONFIG_TABLE).update({ ...configToRow(config), updated_at: now }).eq('id', config.id);
+    if (error) handleSupabaseError(error);
   } else {
-    await db.from(CONFIG_TABLE).insert({ id: config.id, ...configToRow(config), created_at: now, updated_at: now });
+    const { error } = await db.from(CONFIG_TABLE).insert({ id: config.id, ...configToRow(config), created_at: now, updated_at: now });
+    if (error) handleSupabaseError(error);
   }
 }
 
 export async function excluirConfig(id: string): Promise<void> {
   const db = getDb();
-  await db.from(GERADAS_TABLE).delete().eq('config_id', id);
-  await db.from(CONFIG_TABLE).delete().eq('id', id);
+  const geradas = await db.from(GERADAS_TABLE).delete().eq('config_id', id);
+  if (geradas.error) handleSupabaseError(geradas.error);
+  const config = await db.from(CONFIG_TABLE).delete().eq('id', id);
+  if (config.error) handleSupabaseError(config.error);
 }
 
 export async function obterCompleta(configId: string): Promise<EscalaMensalCompleta | undefined> {
   const db = getDb();
-  const { data: configData } = await db.from(CONFIG_TABLE).select('*').eq('id', configId).single();
+  const { data: configData, error: configError } = await db.from(CONFIG_TABLE).select('*').eq('id', configId).maybeSingle();
+  if (configError) handleSupabaseError(configError);
   if (!configData) return undefined;
   const config = rowToConfig(configData);
-  const { data: gerada } = await db.from(GERADAS_TABLE).select('*').eq('config_id', configId).single();
+  const { data: gerada, error: geradaError } = await db.from(GERADAS_TABLE).select('*').eq('config_id', configId).maybeSingle();
+  if (geradaError) handleSupabaseError(geradaError);
   if (!gerada) return undefined;
   return rowToCompleta(gerada, config);
 }
@@ -112,11 +127,18 @@ export async function salvarCompleta(completa: EscalaMensalCompleta): Promise<vo
     responsabilidades: completa.responsabilidades,
     created_at: now,
   };
-  const existing = await db.from(GERADAS_TABLE).select('id').eq('config_id', completa.config.id).single();
+  const existing = await db.from(GERADAS_TABLE).select('id').eq('config_id', completa.config.id).maybeSingle();
+  if (existing.error) handleSupabaseError(existing.error);
   if (existing.data) {
-    await db.from(GERADAS_TABLE).update(row).eq('config_id', completa.config.id);
+    const { error } = await db.from(GERADAS_TABLE).update(row).eq('config_id', completa.config.id);
+    if (error) handleSupabaseError(error);
   } else {
-    await db.from(GERADAS_TABLE).insert(row);
+    const { error } = await db.from(GERADAS_TABLE).insert(row);
+    if (error) handleSupabaseError(error);
+  }
+  const persisted = await obterCompleta(completa.config.id);
+  if (!persisted) {
+    throw new Error('A escala mensal foi salva, mas não foi encontrada na recarga. Verifique as tabelas de escala mensal e tente novamente.');
   }
 }
 

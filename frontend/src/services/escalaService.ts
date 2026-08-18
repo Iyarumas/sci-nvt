@@ -26,6 +26,10 @@ function parseJSON(val: unknown): any {
   return val;
 }
 
+function emptyFuncaoSlot() {
+  return { funcao: '', nomeGuerra: '' };
+}
+
 function rowToEscala(row: Record<string, unknown>): EscalaDiaria {
   const g = parseJSON(row.guarnicoes);
   return {
@@ -40,9 +44,10 @@ function rowToEscala(row: Record<string, unknown>): EscalaDiaria {
     horarioTermino: (row.horario_termino as string) || '',
     turno: (row.turno as string) || '',
     guarnicoes: g?.cci02 ? g : { cci02: { baMc:'', baCe:'', ba2:'' }, cci03: { baMc:'', ba2_1:'', ba2_2:'' }, crs: { baMc:'', baLr:'', baRe1:'', baRe2:'' } },
-    bds: parseJSON(row.bds) || { funcao: '', nomeGuerra: '' },
-    ptr1: parseJSON(row.ptr1) || { funcao: '', nomeGuerra: '' },
-    ptr2: parseJSON(row.ptr2) || { funcao: '', nomeGuerra: '' },
+    bds: parseJSON(row.bds) || emptyFuncaoSlot(),
+    ptr1: parseJSON(row.ptr1) || emptyFuncaoSlot(),
+    ptr2: parseJSON(row.ptr2) || emptyFuncaoSlot(),
+    ptr3: parseJSON(row.ptr3) || emptyFuncaoSlot(),
     atestados: parseJSON(row.atestados) || [],
     trocas: parseJSON(row.trocas) || [],
     radio: parseJSON(row.radio) || [],
@@ -83,7 +88,7 @@ export async function criarEscala(data: Omit<EscalaDiaria, 'id' | 'createdAt' | 
     data_plantao: data.dataPlantao, horario_inicio: data.horarioInicio,
     horario_termino: data.horarioTermino, turno: data.turno,
     guarnicoes: data.guarnicoes, bds: data.bds,
-    ptr1: data.ptr1, ptr2: data.ptr2,
+    ptr1: data.ptr1, ptr2: data.ptr2, ptr3: data.ptr3 || emptyFuncaoSlot(),
     atestados: data.atestados, trocas: data.trocas,
     radio: data.radio,
   };
@@ -114,6 +119,7 @@ export async function atualizarEscala(id: string, data: Partial<EscalaDiaria>): 
   if (data.bds !== undefined) r.bds = data.bds;
   if (data.ptr1 !== undefined) r.ptr1 = data.ptr1;
   if (data.ptr2 !== undefined) r.ptr2 = data.ptr2;
+  if (data.ptr3 !== undefined) r.ptr3 = data.ptr3;
   if (data.atestados !== undefined) r.atestados = data.atestados;
   if (data.trocas !== undefined) r.trocas = data.trocas;
   if (data.radio !== undefined) r.radio = data.radio;

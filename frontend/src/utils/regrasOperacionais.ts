@@ -414,6 +414,7 @@ export function validarEscalaDiaria(params: {
   adicionarSlot(slots, escala.bds?.nomeGuerra, 'BDS', true);
   adicionarSlot(slots, escala.ptr1?.nomeGuerra, 'PTR 1', true);
   adicionarSlot(slots, escala.ptr2?.nomeGuerra, 'PTR 2', true);
+  adicionarSlot(slots, escala.ptr3?.nomeGuerra, 'PTR 3', true);
 
   const seen = new Map<string, string>();
   for (const slot of slots) {

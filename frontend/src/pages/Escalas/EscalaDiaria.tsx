@@ -34,6 +34,18 @@ const optionCls = 'dark:bg-graphite-700 dark:text-graphite-100';
 const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
+const INSTRUTOR_SECTIONS = [
+  { key: 'bds', label: 'BDS' },
+  { key: 'ptr1', label: 'PTR-1' },
+  { key: 'ptr2', label: 'PTR-2' },
+  { key: 'ptr3', label: 'PTR-3' },
+] as const;
+
+type InstrutorSection = (typeof INSTRUTOR_SECTIONS)[number]['key'];
+
+function emptyFuncaoSlot() {
+  return { funcao: '', nomeGuerra: '' };
+}
 
 function emptyGuarnicoes() {
   return {
@@ -53,9 +65,10 @@ function emptyEscala(): Omit<EscalaDiaria, 'id' | 'createdAt' | 'updatedAt' | 'c
     horarioTermino: horario.horarioTermino,
     turno: horario.turno,
     guarnicoes: emptyGuarnicoes(),
-    bds: { funcao: '', nomeGuerra: '' },
-    ptr1: { funcao: '', nomeGuerra: '' },
-    ptr2: { funcao: '', nomeGuerra: '' },
+    bds: emptyFuncaoSlot(),
+    ptr1: emptyFuncaoSlot(),
+    ptr2: emptyFuncaoSlot(),
+    ptr3: emptyFuncaoSlot(),
     atestados: [],
     trocas: [],
     radio: [],
@@ -428,9 +441,10 @@ function EscalaDiariaForm({
         horarioTermino: escala.horarioTermino,
         turno: escala.turno,
         guarnicoes: escala.guarnicoes,
-        bds: escala.bds,
-        ptr1: escala.ptr1,
-        ptr2: escala.ptr2,
+        bds: escala.bds || emptyFuncaoSlot(),
+        ptr1: escala.ptr1 || emptyFuncaoSlot(),
+        ptr2: escala.ptr2 || emptyFuncaoSlot(),
+        ptr3: escala.ptr3 || emptyFuncaoSlot(),
         atestados: escala.atestados,
         trocas: escala.trocas,
         radio: escala.radio,
@@ -517,9 +531,10 @@ function EscalaDiariaForm({
         cci02: { baMc: mc2, baCe: chefe, ba2: b2_3 },
         cci03: { baMc: mc3, ba2_1: b2_4, ba2_2: b2_5 },
       },
-      bds: { funcao: '', nomeGuerra: '' },
-      ptr1: { funcao: '', nomeGuerra: '' },
-      ptr2: { funcao: '', nomeGuerra: '' },
+      bds: emptyFuncaoSlot(),
+      ptr1: emptyFuncaoSlot(),
+      ptr2: emptyFuncaoSlot(),
+      ptr3: emptyFuncaoSlot(),
       radio: [],
     }));
   }
@@ -838,7 +853,7 @@ function EscalaDiariaForm({
     }));
   }
 
-  function updateInstrutor(section: 'bds' | 'ptr1' | 'ptr2', field: 'funcao' | 'nomeGuerra', value: string) {
+  function updateInstrutor(section: InstrutorSection, field: 'funcao' | 'nomeGuerra', value: string) {
     setForm(f => ({
       ...f,
       [section]: { ...f[section], [field]: value, ...(field === 'funcao' ? { nomeGuerra: '' } : {}) },
@@ -942,8 +957,8 @@ function EscalaDiariaForm({
         </div>
       </fieldset>
 
-      {/* BDS / PTR-1 / PTR-2 */}
-      {(['bds', 'ptr1', 'ptr2'] as const).map(section => {
+      {/* BDS / PTR-1 / PTR-2 / PTR-3 */}
+      {INSTRUTOR_SECTIONS.map(({ key: section, label }) => {
         const funcaoSelecionada = form[section].funcao;
         const isApoc = funcaoSelecionada === 'APOC';
         const instrutorOptions = isApoc
@@ -954,7 +969,7 @@ function EscalaDiariaForm({
         return (
         <fieldset key={section}>
           <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
-            <FileText className="mr-1 inline h-4 w-4" /> {section === 'bds' ? 'BDS' : section === 'ptr1' ? 'PTR-1' : 'PTR-2'}
+            <FileText className="mr-1 inline h-4 w-4" /> {label}
           </legend>
           <div className="flex flex-wrap items-end gap-4">
             <div className="w-48">
@@ -1242,12 +1257,15 @@ function EscalaCard({ escala, onView, onEdit, onDelete, onClone, canManage }: {
           )}
 
           {/* BDS/PTR */}
-          {([['BDS', escala.bds], ['PTR-1', escala.ptr1], ['PTR-2', escala.ptr2]] as const).map(([label, slot]) => (
+          {INSTRUTOR_SECTIONS.map(({ key, label }) => {
+            const slot = escala[key];
+            return (
             <div key={label}>
               <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">{label}</p>
               <p className="text-sm">{slot?.funcao || '-'}: {slot?.nomeGuerra || '-'}</p>
             </div>
-          ))}
+            );
+          })}
 
           {escala.atestados.length > 0 && (
             <div>
@@ -1595,12 +1613,15 @@ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void
           </div>
         )}
 
-        {([['BDS', escala.bds], ['PTR-1', escala.ptr1], ['PTR-2', escala.ptr2]] as const).map(([label, slot]) => (
+        {INSTRUTOR_SECTIONS.map(({ key, label }) => {
+          const slot = escala[key];
+          return (
           <div key={label} className="mb-4">
             <p className="mb-1 text-xs font-semibold text-aviation-600 dark:text-aviation-400">{label}</p>
             <p className="text-sm">{slot?.funcao || '-'}: {slot?.nomeGuerra || '-'}</p>
           </div>
-        ))}
+          );
+        })}
 
         {escala.atestados.length > 0 && (
           <div className="mb-4">

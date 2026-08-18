@@ -55,6 +55,7 @@ export interface EscalaDiaria {
   bds: FuncaoSlot;
   ptr1: FuncaoSlot;
   ptr2: FuncaoSlot;
+  ptr3: FuncaoSlot;
   atestados: string[];
   trocas: TrocaSlot[];
   radio: RadioSlot[];

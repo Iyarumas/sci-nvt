@@ -251,6 +251,7 @@ const escalaBase = {
   bds: { funcao: 'BA-2', nomeGuerra: 'BDS1' },
   ptr1: { funcao: 'BA-2', nomeGuerra: 'PTR1' },
   ptr2: { funcao: 'BA-2', nomeGuerra: 'PTR2' },
+  ptr3: { funcao: 'BA-2', nomeGuerra: 'PTR3' },
   atestados: [],
   trocas: [],
   radio: [],

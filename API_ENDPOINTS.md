@@ -617,6 +617,7 @@ GET com filtro `ativa=true`. ✅ OK
   "bds": { "funcao": "string", "nomeGuerra": "string" },
   "ptr1": { "funcao": "string", "nomeGuerra": "string" },
   "ptr2": { "funcao": "string", "nomeGuerra": "string" },
+  "ptr3": { "funcao": "string", "nomeGuerra": "string" },
   "atestados": ["string"],
   "trocas": [{ "funcaoSaindo": "string", "nomeSaindo": "string", "funcaoEntrando": "string", "nomeEntrando": "string" }],
   "radio": [{ "funcao": "string", "nomeGuerra": "string", "horarioInicio": "string", "horarioFim": "string" }]
@@ -626,7 +627,7 @@ GET com filtro `ativa=true`. ✅ OK
 ### criarEscala / atualizarEscala / excluirEscala
 
 ✅ OK  
-**Regras:** criação é idempotente por `equipe + dataPlantao`; criação/edição validam se a equipe está prevista para o dia pelo helper `equipesNoDia`, bloqueiam duplicidade de escala diária e impedem a mesma pessoa em múltiplos slots operacionais incompatíveis.
+**Regras:** criação é idempotente por `equipe + dataPlantao`; criação/edição validam se a equipe está prevista para o dia pelo helper `equipesNoDia`, bloqueiam duplicidade de escala diária e impedem a mesma pessoa em múltiplos slots operacionais incompatíveis. A escala diária possui quatro slots de instrução: `bds`, `ptr1`, `ptr2` e `ptr3`.
 
 ---
 

@@ -1,6 +1,7 @@
 import type { AtivoItem } from '../components/ui/SearchSelect';
 import type { Bombeiro } from '../types/bombeiro';
 import type { DocumentFill } from '../types/document';
+import type { TrocaSlot } from '../types/escala';
 import type { FeriasGozo } from '../types/ferias';
 import type { VigenciaSubstituicao } from '../services/vigenciaSubstituicaoService';
 import { estaNoPeriodoISO, mesmoDiaISO } from './datas';
@@ -19,6 +20,85 @@ function nomeKey(value: unknown): string {
   return String(value || '').trim().toLowerCase();
 }
 
+function cargoCampo(value: unknown): string {
+  return String(value || '').split(' - ')[0].trim();
+}
+
+function pessoaPorNome(porNome: Map<string, Bombeiro>, nome: unknown): Bombeiro | undefined {
+  return porNome.get(nomeKey(nome));
+}
+
+interface TrocaServicoResolvida {
+  saindo: Bombeiro;
+  entrando: Bombeiro;
+  funcaoSaindo: string;
+  funcaoEntrando: string;
+}
+
+function montarTrocasServicoResolvidas(params: {
+  bombeiros: Bombeiro[];
+  trocaFills: DocumentFill[];
+  equipe: string;
+  dataPlantao: string;
+}): TrocaServicoResolvida[] {
+  const { bombeiros, trocaFills, equipe, dataPlantao } = params;
+  if (!equipe || !dataPlantao) return [];
+
+  const ativos = bombeiros.filter(b => !b.dataDesligamento);
+  const porNome = new Map<string, Bombeiro>();
+  ativos.forEach(b => {
+    if (b.nomeCompleto) porNome.set(nomeKey(b.nomeCompleto), b);
+    if (b.nomeGuerra) porNome.set(nomeKey(b.nomeGuerra), b);
+  });
+
+  const result: TrocaServicoResolvida[] = [];
+  const usados = new Set<string>();
+
+  for (const fill of trocaFills || []) {
+    if (fill.status && fill.status !== 'signed') continue;
+    const fd = fill.filled_data || {};
+    const solicitante = pessoaPorNome(porNome, fd.nome_solicitante);
+    const solicitado = pessoaPorNome(porNome, fd.nome_solicitado);
+    if (!solicitante || !solicitado) continue;
+
+    const add = (saindo: Bombeiro, entrando: Bombeiro, funcaoSaindo: unknown, funcaoEntrando: unknown) => {
+      if (saindo.equipe !== equipe) return;
+      const chave = `${fill.id}:${saindo.id}:${entrando.id}`;
+      if (usados.has(chave)) return;
+      usados.add(chave);
+      result.push({
+        saindo,
+        entrando,
+        funcaoSaindo: saindo.cargo || cargoCampo(funcaoSaindo),
+        funcaoEntrando: entrando.cargo || cargoCampo(funcaoEntrando),
+      });
+    };
+
+    if (mesmoDiaISO(fd.data_solicitada, dataPlantao)) {
+      add(solicitante, solicitado, fd.funcao_solicitante, fd.funcao_solicitado);
+    }
+    if (mesmoDiaISO(fd.data_folga_solicitado, dataPlantao)) {
+      add(solicitado, solicitante, fd.funcao_solicitado, fd.funcao_solicitante);
+    }
+  }
+
+  return result;
+}
+
+export function montarTrocasServicoDoDia(params: {
+  bombeiros: Bombeiro[];
+  trocaFills: DocumentFill[];
+  equipe: string;
+  dataPlantao: string;
+}): TrocaSlot[] {
+  return montarTrocasServicoResolvidas(params).map(troca => ({
+    funcaoSaindo: troca.funcaoSaindo,
+    nomeSaindo: troca.saindo.nomeCompleto || troca.saindo.nomeGuerra,
+    funcaoEntrando: troca.funcaoEntrando,
+    nomeEntrando: troca.entrando.nomeCompleto || troca.entrando.nomeGuerra,
+  }));
+}
+
 export function montarEfetivoOperacional(params: {
   bombeiros: Bombeiro[];
   feriasGozo: FeriasGozo[];
@@ -32,11 +112,6 @@ export function montarEfetivoOperacional(params: {
 
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
   const porId = new Map(ativos.map(b => [b.id, b]));
-  const porNome = new Map<string, Bombeiro>();
-  ativos.forEach(b => {
-    if (b.nomeCompleto) porNome.set(nomeKey(b.nomeCompleto), b);
-    if (b.nomeGuerra) porNome.set(nomeKey(b.nomeGuerra), b);
-  });
 
   const equipeDaVaga = (v: VigenciaSubstituicao): string => {
     const original = porId.get(v.funcionarioOriginalId);
@@ -58,39 +133,20 @@ export function montarEfetivoOperacional(params: {
     realPorSubstituto.set(v.substitutoId, v);
   }
 
-  const trocasNoDia = (trocaFills || []).filter(fl => {
-    const fd = fl?.filled_data || {};
-    return (mesmoDiaISO(fd?.data_solicitada, dataPlantao) || mesmoDiaISO(fd?.data_folga_solicitado, dataPlantao)) &&
-      fd?.nome_solicitante &&
-      fd?.nome_solicitado;
-  });
   const trocaExcluidos = new Set<string>();
   const trocaIncluidos: EfetivoOperacionalEntry[] = [];
-  for (const fl of trocasNoDia) {
-    const fd = fl.filled_data || {};
-    const solicitante = porNome.get(nomeKey(fd.nome_solicitante));
-    const solicitado = porNome.get(nomeKey(fd.nome_solicitado));
-    if (!solicitante || !solicitado) continue;
-
-    if (mesmoDiaISO(fd.data_solicitada, dataPlantao) && solicitante.equipe === equipe) {
-      trocaExcluidos.add(solicitante.id);
-      trocaExcluidos.add(solicitado.id);
-      trocaIncluidos.push({
-        bombeiro: solicitado,
-        cargoExercido: solicitante.cargo,
-        substituindo: { id: solicitante.id, nome: solicitante.nomeCompleto, cargo: solicitante.cargo },
-      });
-    }
-
-    if (mesmoDiaISO(fd.data_folga_solicitado, dataPlantao) && solicitado.equipe === equipe) {
-      trocaExcluidos.add(solicitante.id);
-      trocaExcluidos.add(solicitado.id);
-      trocaIncluidos.push({
-        bombeiro: solicitante,
-        cargoExercido: solicitado.cargo,
-        substituindo: { id: solicitado.id, nome: solicitado.nomeCompleto, cargo: solicitado.cargo },
-      });
-    }
+  for (const troca of montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, equipe, dataPlantao })) {
+    trocaExcluidos.add(troca.saindo.id);
+    trocaExcluidos.add(troca.entrando.id);
+    trocaIncluidos.push({
+      bombeiro: troca.entrando,
+      cargoExercido: troca.funcaoSaindo || troca.saindo.cargo,
+      substituindo: {
+        id: troca.saindo.id,
+        nome: troca.saindo.nomeCompleto,
+        cargo: troca.funcaoSaindo || troca.saindo.cargo,
+      },
+    });
   }
 
   const gozosNoDia = feriasGozo.filter(g =>

@@ -19,12 +19,12 @@ import { listarFeriasGozo, listarEscalas as listarEscalasFerias, listarItensEsca
 import { listarCompletas } from '../../services/escalaMensalService';
 import { gerarRadioPlantao } from '../../services/escalaMensalGenerator';
 import { FUNCOES_BDS_PTR } from '../../types/escala';
-import type { EscalaDiaria } from '../../types/escala';
+import type { EscalaDiaria, TrocaSlot } from '../../types/escala';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
 import type { DocumentFill } from '../../types/document';
 import type { FeriasGozo } from '../../types/ferias';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
-import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
+import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional, montarTrocasServicoDoDia } from '../../utils/efetivoOperacional';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
 import { RegraNegocioError } from '../../utils/regrasOperacionais';
 
@@ -115,6 +115,17 @@ interface EfetivoDiarioEntry {
 
 function dataNoPeriodo(data: string, dataInicio: string, dataFim: string): boolean {
   return estaNoPeriodoISO(data, dataInicio, dataFim);
+}
+
+function trocasIguais(a: TrocaSlot[], b: TrocaSlot[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((troca, index) => {
+    const outra = b[index];
+    return troca.funcaoSaindo === outra.funcaoSaindo &&
+      troca.nomeSaindo === outra.nomeSaindo &&
+      troca.funcaoEntrando === outra.funcaoEntrando &&
+      troca.nomeEntrando === outra.nomeEntrando;
+  });
 }
 
 function _montarEfetivoDiario(params: {
@@ -380,56 +391,17 @@ function EscalaDiariaForm({
   }, []);
 
   useEffect(() => {
-    if (!form.dataPlantao) return;
-    const data = form.dataPlantao;
-    const aprovadas = substituicoes.filter(s =>
-      s.status === 'Aprovada' && estaNoPeriodoISO(data, s.dataInicio, s.dataFim)
-    );
-
-    const trocasSubstituicao = aprovadas.map(s => ({
-      funcaoSaindo: s.funcionarioCargo || '',
-      nomeSaindo: s.funcionarioNome,
-      funcaoEntrando: s.substitutoCargo || '',
-      nomeEntrando: s.substitutoNome,
-    }));
-
-    const trocasDocumento = trocaFills
-      .filter(fl => {
-        const fd = (fl.filled_data as any) || {};
-        return (mesmoDiaISO(fd.data_solicitada, data) || mesmoDiaISO(fd.data_folga_solicitado, data)) && fd.nome_solicitante && fd.nome_solicitado;
-      })
-      .flatMap(fl => {
-        const fd = (fl.filled_data as Record<string, string>) || {};
-        const items: { funcaoSaindo: string; nomeSaindo: string; funcaoEntrando: string; nomeEntrando: string }[] = [];
-        if (mesmoDiaISO(fd.data_solicitada, data)) {
-          items.push({
-            funcaoSaindo: fd.funcao_solicitante || '',
-            nomeSaindo: fd.nome_solicitante || '',
-            funcaoEntrando: fd.funcao_solicitado || '',
-            nomeEntrando: fd.nome_solicitado || '',
-          });
-        }
-        if (mesmoDiaISO(fd.data_folga_solicitado, data)) {
-          items.push({
-            funcaoSaindo: fd.funcao_solicitado || '',
-            nomeSaindo: fd.nome_solicitado || '',
-            funcaoEntrando: fd.funcao_solicitante || '',
-            nomeEntrando: fd.nome_solicitante || '',
-          });
-        }
-        return items;
-      });
-
-    const novas = [...trocasSubstituicao, ...trocasDocumento].filter(t => t.nomeSaindo && t.nomeEntrando);
-    if (novas.length === 0) return;
-
-    setForm(f => {
-      const combinadas = [...f.trocas, ...novas.filter(n =>
-        !f.trocas.some(t => t.nomeSaindo === n.nomeSaindo && t.nomeEntrando === n.nomeEntrando)
-      )];
-      return { ...f, trocas: combinadas };
+    const novas = montarTrocasServicoDoDia({
+      bombeiros: allBombeiros,
+      trocaFills,
+      equipe: form.equipe,
+      dataPlantao: form.dataPlantao,
     });
-  }, [form.dataPlantao, substituicoes, trocaFills]);
+    setForm(f => {
+      if (trocasIguais(f.trocas, novas)) return f;
+      return { ...f, trocas: novas };
+    });
+  }, [form.dataPlantao, form.equipe, allBombeiros, trocaFills]);
 
   useEffect(() => {
     if (escala) {
@@ -446,7 +418,7 @@ function EscalaDiariaForm({
         ptr2: escala.ptr2 || emptyFuncaoSlot(),
         ptr3: escala.ptr3 || emptyFuncaoSlot(),
         atestados: escala.atestados,
-        trocas: escala.trocas,
+        trocas: [],
         radio: escala.radio,
       });
     } else if (!canManageGlobal && equipeEfetiva) {
@@ -862,7 +834,15 @@ function EscalaDiariaForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSave(form);
+    onSave({
+      ...form,
+      trocas: montarTrocasServicoDoDia({
+        bombeiros: allBombeiros,
+        trocaFills,
+        equipe: form.equipe,
+        dataPlantao: form.dataPlantao,
+      }),
+    });
   }
 
   return (
@@ -1329,8 +1309,20 @@ export function EscalaDiariaView() {
   }, [escalas, filtroEquipe, filterMode, filtroAno, filtroMes, dataInicio, dataFinal]);
 
   async function carregar() {
-    const todas = await listarEscalas();
-    setEscalas(todas);
+    const [todas, bombeiros, trocas] = await Promise.all([
+      listarEscalas(),
+      listarAtivos().catch(() => []),
+      listarTrocasServicoAssinadas().catch(() => []),
+    ]);
+    setEscalas(todas.map(escala => ({
+      ...escala,
+      trocas: montarTrocasServicoDoDia({
+        bombeiros,
+        trocaFills: trocas,
+        equipe: escala.equipe,
+        dataPlantao: escala.dataPlantao,
+      }),
+    })));
   }
 
   useEffect(() => { carregar(); }, [username]);

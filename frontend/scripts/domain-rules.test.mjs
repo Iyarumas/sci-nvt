@@ -12,8 +12,10 @@ const filesToCompile = [
   'src/types/ferias.ts',
   'src/types/tpepr.ts',
   'src/types/substituicaoTemporaria.ts',
+  'src/utils/datas.ts',
   'src/utils/tempo.ts',
   'src/utils/equipes.ts',
+  'src/utils/efetivoOperacional.ts',
   'src/utils/regrasOperacionais.ts',
   'src/utils/validacaoCursos.ts',
 ];
@@ -42,6 +44,7 @@ const requireFromTest = createRequire(import.meta.url);
 const regras = requireFromTest(path.join(outRoot, 'src/utils/regrasOperacionais.js'));
 const cursos = requireFromTest(path.join(outRoot, 'src/utils/validacaoCursos.js'));
 const equipesUtils = requireFromTest(path.join(outRoot, 'src/utils/equipes.js'));
+const efetivoOperacional = requireFromTest(path.join(outRoot, 'src/utils/efetivoOperacional.js'));
 const tpepr = requireFromTest(path.join(outRoot, 'src/types/tpepr.js'));
 
 const {
@@ -59,6 +62,9 @@ const {
   calcularQuartaTomada,
   normalizarParticipantesTPEPR,
 } = tpepr;
+const {
+  montarTrocasServicoDoDia,
+} = efetivoOperacional;
 
 const base = {
   matricula: '',
@@ -280,6 +286,69 @@ assert.match(
     },
   }).join('\n'),
   /mesma pessoa/,
+);
+
+const trocaAssinada = {
+  id: 'troca-1',
+  status: 'signed',
+  filled_data: {
+    nome_solicitante: ce.nomeCompleto,
+    funcao_solicitante: ce.cargo,
+    nome_solicitado: mc.nomeCompleto,
+    funcao_solicitado: mc.cargo,
+    data_solicitada: '2026-07-21',
+    data_folga_solicitado: '2026-07-23',
+  },
+};
+
+assert.deepEqual(
+  montarTrocasServicoDoDia({
+    bombeiros,
+    trocaFills: [trocaAssinada],
+    equipe: 'Alfa',
+    dataPlantao: '2026-07-21',
+  }),
+  [{
+    funcaoSaindo: 'BA-CE',
+    nomeSaindo: 'Chefe',
+    funcaoEntrando: 'BA-MC',
+    nomeEntrando: 'MC',
+  }],
+);
+
+assert.deepEqual(
+  montarTrocasServicoDoDia({
+    bombeiros,
+    trocaFills: [trocaAssinada],
+    equipe: 'Charlie',
+    dataPlantao: '2026-07-21',
+  }),
+  [],
+);
+
+assert.deepEqual(
+  montarTrocasServicoDoDia({
+    bombeiros,
+    trocaFills: [{ ...trocaAssinada, status: 'cancelled' }],
+    equipe: 'Alfa',
+    dataPlantao: '2026-07-21',
+  }),
+  [],
+);
+
+assert.deepEqual(
+  montarTrocasServicoDoDia({
+    bombeiros,
+    trocaFills: [trocaAssinada],
+    equipe: 'Alfa',
+    dataPlantao: '2026-07-23',
+  }),
+  [{
+    funcaoSaindo: 'BA-MC',
+    nomeSaindo: 'MC',
+    funcaoEntrando: 'BA-CE',
+    nomeEntrando: 'Chefe',
+  }],
 );
 
 assert.match(

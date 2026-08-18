@@ -15,6 +15,10 @@ function parseJSON(val: unknown): any {
   return val;
 }
 
+function jsonb(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}
+
 function handleSupabaseError(err: unknown): never {
   const msg =
     err instanceof Error ? err.message :
@@ -42,7 +46,7 @@ function configToRow(data: Partial<EscalaMensalConfig>): Record<string, unknown>
   if (data.mes !== undefined) r.mes = data.mes;
   if (data.ano !== undefined) r.ano = data.ano;
   if (data.paridade !== undefined) r.paridade = data.paridade;
-  if (data.pessoas !== undefined) r.pessoas = data.pessoas;
+  if (data.pessoas !== undefined) r.pessoas = jsonb(data.pessoas);
   return r;
 }
 
@@ -122,9 +126,9 @@ export async function salvarCompleta(completa: EscalaMensalCompleta): Promise<vo
   await salvarConfig(completa.config);
   const row = {
     config_id: completa.config.id,
-    paradas: completa.paradas,
-    faxina_mensal: completa.faxinaMensal,
-    responsabilidades: completa.responsabilidades,
+    paradas: jsonb(completa.paradas),
+    faxina_mensal: jsonb(completa.faxinaMensal),
+    responsabilidades: jsonb(completa.responsabilidades),
     created_at: now,
   };
   const existing = await db.from(GERADAS_TABLE).select('id').eq('config_id', completa.config.id).maybeSingle();

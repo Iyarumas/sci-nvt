@@ -26,6 +26,10 @@ function parseJSON(val: unknown): any {
   return val;
 }
 
+function jsonb(value: unknown): string {
+  return JSON.stringify(value ?? null);
+}
+
 function emptyFuncaoSlot() {
   return { funcao: '', nomeGuerra: '' };
 }
@@ -87,10 +91,10 @@ export async function criarEscala(data: Omit<EscalaDiaria, 'id' | 'createdAt' | 
     equipe: data.equipe, chefe_equipe: data.chefeEquipe,
     data_plantao: data.dataPlantao, horario_inicio: data.horarioInicio,
     horario_termino: data.horarioTermino, turno: data.turno,
-    guarnicoes: data.guarnicoes, bds: data.bds,
-    ptr1: data.ptr1, ptr2: data.ptr2, ptr3: data.ptr3 || emptyFuncaoSlot(),
-    atestados: data.atestados, trocas: data.trocas,
-    radio: data.radio,
+    guarnicoes: jsonb(data.guarnicoes), bds: jsonb(data.bds),
+    ptr1: jsonb(data.ptr1), ptr2: jsonb(data.ptr2), ptr3: jsonb(data.ptr3 || emptyFuncaoSlot()),
+    atestados: jsonb(data.atestados), trocas: jsonb(data.trocas),
+    radio: jsonb(data.radio),
   };
   const { data: created, error } = await db.from(TABLE).insert(row).select().single();
   if (error) handleSupabaseError(error);
@@ -115,14 +119,14 @@ export async function atualizarEscala(id: string, data: Partial<EscalaDiaria>): 
   if (data.horarioInicio !== undefined) r.horario_inicio = data.horarioInicio;
   if (data.horarioTermino !== undefined) r.horario_termino = data.horarioTermino;
   if (data.turno !== undefined) r.turno = data.turno;
-  if (data.guarnicoes !== undefined) r.guarnicoes = data.guarnicoes;
-  if (data.bds !== undefined) r.bds = data.bds;
-  if (data.ptr1 !== undefined) r.ptr1 = data.ptr1;
-  if (data.ptr2 !== undefined) r.ptr2 = data.ptr2;
-  if (data.ptr3 !== undefined) r.ptr3 = data.ptr3;
-  if (data.atestados !== undefined) r.atestados = data.atestados;
-  if (data.trocas !== undefined) r.trocas = data.trocas;
-  if (data.radio !== undefined) r.radio = data.radio;
+  if (data.guarnicoes !== undefined) r.guarnicoes = jsonb(data.guarnicoes);
+  if (data.bds !== undefined) r.bds = jsonb(data.bds);
+  if (data.ptr1 !== undefined) r.ptr1 = jsonb(data.ptr1);
+  if (data.ptr2 !== undefined) r.ptr2 = jsonb(data.ptr2);
+  if (data.ptr3 !== undefined) r.ptr3 = jsonb(data.ptr3);
+  if (data.atestados !== undefined) r.atestados = jsonb(data.atestados);
+  if (data.trocas !== undefined) r.trocas = jsonb(data.trocas);
+  if (data.radio !== undefined) r.radio = jsonb(data.radio);
   const { data: updated, error } = await db.from(TABLE).update(r).eq('id', id).select().single();
   if (error) handleSupabaseError(error);
   return updated ? rowToEscala(updated) : null;

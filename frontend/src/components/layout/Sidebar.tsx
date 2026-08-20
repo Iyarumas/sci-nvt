@@ -9,11 +9,13 @@ import type { MenuItem as MenuItemType } from '../../types/navigation';
 import {
   canVisualizarArquivo,
   canVisualizarCertificacoes,
+  canVisualizarRelatoriosPtrBa,
   canVisualizarRelatorios,
   isAdministradorSistema,
   podeVerCadastroCompletoBase,
   podeVerArquivoBase,
   podeVerCertificacoesBase,
+  podeVerRelatoriosPtrBaBase,
   podeVerRelatoriosBase,
   resolverContextoOperacional,
 } from '../../utils/permissoes';
@@ -25,14 +27,20 @@ function isVisible(
   canViewArquivo: boolean,
   canViewCertificacoes: boolean,
   canViewRelatorios: boolean,
+  canViewRelatoriosPtrBa: boolean,
 ): boolean {
   if (item.adminOnly && !isAdmin) return false;
   if (item.adminOrGsOnly && !canViewCadastroCompleto) return false;
   if (item.arquivoOnly && !canViewArquivo) return false;
   if (item.certificacoesOnly && !canViewCertificacoes) return false;
-  if (item.relatoriosOnly && !canViewRelatorios) return false;
+  if (item.ptrBaRelatoriosOnly && !canViewRelatoriosPtrBa) return false;
+  if (item.relatoriosOnly && !canViewRelatorios) {
+    if (!item.children) return false;
+    const visibleChildren = item.children.filter(c => isVisible(c, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa));
+    return visibleChildren.length > 0;
+  }
   if (item.children) {
-    const visibleChildren = item.children.filter(c => isVisible(c, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios));
+    const visibleChildren = item.children.filter(c => isVisible(c, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa));
     if (visibleChildren.length === 0) return false;
   }
   return true;
@@ -45,10 +53,11 @@ function filterMenu(
   canViewArquivo: boolean,
   canViewCertificacoes: boolean,
   canViewRelatorios: boolean,
+  canViewRelatoriosPtrBa: boolean,
 ): MenuItemType[] {
-  return items.filter(item => isVisible(item, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios)).map(item => {
+  return items.filter(item => isVisible(item, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa)).map(item => {
     if (item.children) {
-      return { ...item, children: filterMenu(item.children, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios) };
+      return { ...item, children: filterMenu(item.children, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa) };
     }
     return item;
   });
@@ -168,7 +177,8 @@ export function Sidebar() {
   const [canViewArquivo, setCanViewArquivo] = useState(() => podeVerArquivoBase(user));
   const [canViewCertificacoes, setCanViewCertificacoes] = useState(() => podeVerCertificacoesBase(user));
   const [canViewRelatorios, setCanViewRelatorios] = useState(() => podeVerRelatoriosBase(user));
-  const visibleMenu = filterMenu(menuItems, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios);
+  const [canViewRelatoriosPtrBa, setCanViewRelatoriosPtrBa] = useState(() => podeVerRelatoriosPtrBaBase(user));
+  const visibleMenu = filterMenu(menuItems, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa);
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const asideRef = useRef<HTMLElement>(null);
@@ -184,6 +194,7 @@ export function Sidebar() {
     setCanViewArquivo(podeVerArquivoBase(user));
     setCanViewCertificacoes(podeVerCertificacoesBase(user));
     setCanViewRelatorios(podeVerRelatoriosBase(user));
+    setCanViewRelatoriosPtrBa(podeVerRelatoriosPtrBaBase(user));
 
     resolverContextoOperacional(user)
       .then(contexto => {
@@ -192,6 +203,7 @@ export function Sidebar() {
           setCanViewArquivo(canVisualizarArquivo(contexto));
           setCanViewCertificacoes(canVisualizarCertificacoes(contexto));
           setCanViewRelatorios(canVisualizarRelatorios(contexto));
+          setCanViewRelatoriosPtrBa(canVisualizarRelatoriosPtrBa(contexto));
         }
       })
       .catch(() => {
@@ -200,6 +212,7 @@ export function Sidebar() {
           setCanViewArquivo(podeVerArquivoBase(user));
           setCanViewCertificacoes(podeVerCertificacoesBase(user));
           setCanViewRelatorios(podeVerRelatoriosBase(user));
+          setCanViewRelatoriosPtrBa(podeVerRelatoriosPtrBaBase(user));
         }
       });
 

@@ -49,6 +49,19 @@ export const BONA_FUNCOES = [
   'BA-2 - Bombeiro de Aeródromo',
 ] as const;
 
+export const BONA_TIPOS_OCORRENCIA = [
+  'FOGO EM VEGETAÇÃO',
+  'OUTRAS EMERGÊNCIAS/ACIONAMENTOS',
+  'REMOÇÃO/DISPERSÃO/CAPTURA DE ANIMAIS OU INSETOS',
+  'EMERGÊNCIA NAS EDIFICAÇÕES/INSTALAÇÕES AEROPORTUÁRIAS',
+  'TESTE DOS SISTEMAS DE AGENTES EXTINTORES DO CCI',
+  'EMERGÊNCIA COM MATERIAIS PERIGOSOS',
+  'EMERGÊNCIA MÉDICA',
+  'MISSÃO PRESIDENCIAL',
+  'EMERGÊNCIA AERONÁUTICA',
+  'INCÊNDIO EM INSTALAÇÕES AEROPORTUÁRIAS',
+] as const;
+
 export function normalizarFuncaoBona(funcao: string): string {
   const value = String(funcao || '').trim();
   if (!value) return '';

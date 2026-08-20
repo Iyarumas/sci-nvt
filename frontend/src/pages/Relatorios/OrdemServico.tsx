@@ -24,6 +24,13 @@ const PRIORIDADE_CORES: Record<string, string> = {
   'Urgente': 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
 };
 
+const PRIORIDADE_BADGE_CORES: Record<string, string> = {
+  'Baixa': 'bg-gradient-to-br from-sky-500 to-sky-700',
+  'Média': 'bg-gradient-to-br from-amber-500 to-amber-700',
+  'Alta': 'bg-gradient-to-br from-orange-500 to-orange-700',
+  'Urgente': 'bg-gradient-to-br from-red-500 to-red-700',
+};
+
 const STATUS_CORES: Record<string, string> = {
   'Aberta': 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
   'Manutenção': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400',
@@ -33,6 +40,16 @@ const STATUS_CORES: Record<string, string> = {
 
 function fmt(d: string) {
   return formatarDataBR(d);
+}
+
+function dataFiltroOrdem(os: OrdemServico): string {
+  return os.dataEmissao || os.createdAt?.slice(0, 10) || '';
+}
+
+function numeroDestaqueOS(numero: string): string {
+  const texto = String(numero || '').trim();
+  const match = texto.match(/(?:OS\/SCI|OS SCI|OS-SCI)-?(\d+)\//i) || texto.match(/(\d+)(?=\/\d{4})/);
+  return match?.[1] || texto || '-';
 }
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
@@ -51,8 +68,11 @@ export function OrdemServico() {
   const [search, setSearch] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
   const [filtroPrioridade, setFiltroPrioridade] = useState('');
+  const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
   const [filtroMes, setFiltroMes] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFinal, setDataFinal] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<OrdemServico | null>(null);
   const [visualizando, setVisualizando] = useState<OrdemServico | null>(null);
@@ -103,24 +123,30 @@ export function OrdemServico() {
     let lista = ordens;
     if (filtroStatus) lista = lista.filter(o => o.status === filtroStatus);
     if (filtroPrioridade) lista = lista.filter(o => o.prioridade === filtroPrioridade);
-    if (filtroAno) {
+    if (filterMode === 'mes-ano' && filtroAno) {
       lista = lista.filter(o => {
-        const y = o.dataEmissao ? new Date(o.dataEmissao + 'T12:00:00').getFullYear() : new Date(o.createdAt).getFullYear();
+        const data = dataFiltroOrdem(o);
+        const y = data ? new Date(data + 'T12:00:00').getFullYear() : new Date(o.createdAt).getFullYear();
         return String(y) === filtroAno;
       });
     }
-    if (filtroMes) {
+    if (filterMode === 'mes-ano' && filtroMes) {
       lista = lista.filter(o => {
-        const m = o.dataEmissao ? new Date(o.dataEmissao + 'T12:00:00').getMonth() + 1 : new Date(o.createdAt).getMonth() + 1;
+        const data = dataFiltroOrdem(o);
+        const m = data ? new Date(data + 'T12:00:00').getMonth() + 1 : new Date(o.createdAt).getMonth() + 1;
         return String(m) === filtroMes;
       });
+    }
+    if (filterMode === 'periodo') {
+      if (dataInicio) lista = lista.filter(o => dataFiltroOrdem(o) >= dataInicio);
+      if (dataFinal) lista = lista.filter(o => dataFiltroOrdem(o) <= dataFinal);
     }
     if (search) {
       const t = search.toLowerCase();
       lista = lista.filter(o => o.numero.toLowerCase().includes(t) || o.solicitanteNome.toLowerCase().includes(t) || o.descricao.toLowerCase().includes(t));
     }
     return lista.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [ordens, search, filtroStatus, filtroPrioridade, filtroMes, filtroAno]);
+  }, [ordens, search, filtroStatus, filtroPrioridade, filterMode, filtroMes, filtroAno, dataInicio, dataFinal]);
 
   function proximoNumero(): string {
     const ano = new Date().getFullYear();
@@ -363,22 +389,44 @@ export function OrdemServico() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar OS..." className={`${inputCls} !pl-10`} />
           </div>
+          <div className="inline-flex overflow-hidden rounded-xl border border-graphite-300 bg-white text-sm dark:border-border-dark dark:bg-surface-card">
+            <button onClick={() => setFilterMode('mes-ano')}
+              className={`px-3 py-2 transition-colors ${filterMode === 'mes-ano' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
+              Mês/Ano
+            </button>
+            <button onClick={() => setFilterMode('periodo')}
+              className={`px-3 py-2 transition-colors ${filterMode === 'periodo' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
+              Período
+            </button>
+          </div>
+          {filterMode === 'mes-ano' ? (
+            <>
+              <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`}>
+                <option value="">Todos os meses</option>
+                {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+              </select>
+              <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
+                <option value="">Todos os anos</option>
+                {ANOS.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </>
+          ) : (
+            <>
+              <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className={`${inputCls} !w-auto`} />
+              <input type="date" value={dataFinal} onChange={e => setDataFinal(e.target.value)} className={`${inputCls} !w-auto`} />
+            </>
+          )}
           <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className={`${inputCls} !w-auto`}>
-            <option value="">Todos Status</option>
+            <option value="">Todos os status</option>
             {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <select value={filtroPrioridade} onChange={e => setFiltroPrioridade(e.target.value)} className={`${inputCls} !w-auto`}>
-            <option value="">Todas Prioridades</option>
+            <option value="">Todas as prioridades</option>
             {PRIORIDADES.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
-          <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
-            <option value="">Todos os Anos</option>
-            {ANOS.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`} disabled={!filtroAno}>
-            <option value="">Todos os Meses</option>
-            {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
+          <span className="rounded-full bg-graphite-100 px-3 py-2 text-xs font-semibold text-graphite-600 dark:bg-surface-card dark:text-graphite-300">
+            {filtered.length} OS
+          </span>
           {(canManageGlobal || equipeEfetiva) && (
             <button onClick={handleNovo}
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]">
@@ -405,11 +453,12 @@ export function OrdemServico() {
               <div key={os.id} onClick={() => handleVisualizar(os)}
                 className="cursor-pointer rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
                 <div className="flex items-center gap-4 px-5 py-4">
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white ${
-                    os.prioridade === 'Urgente' ? 'bg-gradient-to-br from-red-500 to-red-700' :
-                    os.prioridade === 'Alta' ? 'bg-gradient-to-br from-orange-500 to-orange-700' :
-                    'bg-gradient-to-br from-aviation-500 to-aviation-700'
-                  }`}>{os.numero.slice(-2)}</div>
+                  <div
+                    title={os.numero}
+                    className={`flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl px-3 text-xs font-black text-white shadow-sm ${PRIORIDADE_BADGE_CORES[os.prioridade] || 'bg-gradient-to-br from-aviation-500 to-aviation-700'}`}
+                  >
+                    {numeroDestaqueOS(os.numero)}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{os.numero}</p>

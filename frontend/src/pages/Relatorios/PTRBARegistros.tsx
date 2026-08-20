@@ -112,7 +112,7 @@ function linhaDeCompleto(c: PTRBACompleto): Linha {
 const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 
 export function PTRBARegistros() {
-  const { canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
+  const { canVisualizarRelatoriosPtrBa, loadingContexto } = useContextoOperacional();
   const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
   const [completos, setCompletos] = useState<PTRBACompleto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,19 +133,19 @@ export function PTRBARegistros() {
 
   useEffect(() => {
     if (loadingContexto) return;
-    if (!canVisualizarRelatorios) {
+    if (!canVisualizarRelatoriosPtrBa) {
       setLoading(false);
       return;
     }
     carregar().finally(() => setLoading(false));
-  }, [canVisualizarRelatorios, loadingContexto]);
+  }, [canVisualizarRelatoriosPtrBa, loadingContexto]);
 
   useEffect(() => {
-    if (loadingContexto || !canVisualizarRelatorios) return;
+    if (loadingContexto || !canVisualizarRelatoriosPtrBa) return;
     const onFocus = () => carregar();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [canVisualizarRelatorios, loadingContexto]);
+  }, [canVisualizarRelatoriosPtrBa, loadingContexto]);
 
   const linhas = useMemo(() => {
     const todas: Linha[] = [...ptrbs.map(linhaDePTRB), ...completos.map(linhaDeCompleto)];
@@ -172,13 +172,13 @@ export function PTRBARegistros() {
     return <PageContainer><div className="flex justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-aviation-500 border-t-transparent" /></div></PageContainer>;
   }
 
-  if (!canVisualizarRelatorios) {
+  if (!canVisualizarRelatoriosPtrBa) {
     return (
       <PageContainer>
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white p-12 text-center dark:border-border-dark dark:bg-surface-card">
           <Lock className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Acesso restrito</h3>
-          <p className="text-sm text-graphite-400 dark:text-graphite-500">A tela de relatórios está disponível apenas para GS e administradores do sistema.</p>
+          <p className="text-sm text-graphite-400 dark:text-graphite-500">O relatório PTR-BA está disponível para Admin, GS, BA-CE, BA-LR e equipe Embaixador.</p>
         </div>
       </PageContainer>
     );

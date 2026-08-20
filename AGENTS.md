@@ -502,7 +502,7 @@ Referência: **21/07/2026** = Alfa + Bravo
 | Documentos > Escalas | Todos visualizam; editar/excluir/salvar: apenas a equipe efetiva, exceto Admin/GS |
 | Documentos > Ordens de Serviço | Todos visualizam; criar/editar/excluir: apenas a equipe efetiva, exceto Admin/GS |
 | Treinamentos | Todos visualizam; registros com equipe podem ser criados/editados/excluídos apenas pela equipe efetiva, exceto Admin/GS; registros locais sem equipe usam `createdBy` e legados sem dono só são editáveis por Admin/GS |
-| Relatórios | Acesso à sidebar e rotas diretas apenas para Admin/GS |
+| Relatórios | Relatórios gerais: acesso à sidebar e rotas diretas apenas para Admin/GS; exceção PTR-BA e PTR-BA Registros: Admin/GS/`BA-CE`/`BA-LR` e equipe `Embaixador` visualizam |
 
 ### Horários por Equipa
 

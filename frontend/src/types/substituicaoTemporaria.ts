@@ -6,12 +6,15 @@ export type MotivoSubstituicao =
   | 'Casamento'
   | 'Nascimento Filho'
   | 'Doacao Sangue'
+  | 'INSS'
+  | 'INSS Indeterminado'
   | 'Outro';
 
 export type TipoSubstituicao = 'Substituição' | 'Extra' | 'Afastamento';
 export type RespostaPlantaoExtra = 'Sim' | 'Nao' | '';
 
 export interface EloCadeiaSubstituicaoTemporaria {
+  tipo?: 'cadeia' | 'extra';
   pessoaId: string;
   pessoaNome: string;
   pessoaCargo: string;
@@ -19,6 +22,20 @@ export interface EloCadeiaSubstituicaoTemporaria {
   cargoOriginal: string;
   cargoVacante: string;
   substituindoNome: string;
+  dataPlantao?: string;
+  funcionarioId?: string;
+  funcionarioNome?: string;
+  funcionarioCargo?: string;
+  funcionarioEquipe?: string;
+  equipePlantao?: string;
+  substituindoId?: string;
+  substituindoCargo?: string;
+  substituindoCoberturaNome?: string;
+  substitutoId?: string;
+  substitutoNome?: string;
+  substitutoCargo?: string;
+  cargoExercido?: string;
+  plantaoExtra?: boolean;
 }
 
 export const MOTIVOS_OBRIGATORIOS_POR_LEI: MotivoSubstituicao[] = [
@@ -29,6 +46,8 @@ export const MOTIVOS_OBRIGATORIOS_POR_LEI: MotivoSubstituicao[] = [
   'Casamento',
   'Nascimento Filho',
   'Doacao Sangue',
+  'INSS',
+  'INSS Indeterminado',
 ];
 
 export interface SubstituicaoTemporaria {
@@ -66,6 +85,8 @@ export const MOTIVOS_SUBSTITUICAO: { value: MotivoSubstituicao; label: string; d
   { value: 'Casamento', label: 'Casamento', dias: 3 },
   { value: 'Nascimento Filho', label: 'Nascimento de Filho', dias: 5 },
   { value: 'Doacao Sangue', label: 'Doação de Sangue', dias: 1 },
+  { value: 'INSS', label: 'INSS', dias: 15 },
+  { value: 'INSS Indeterminado', label: 'INSS/Indeterminado', dias: 0 },
   { value: 'Outro', label: 'Outro', dias: 0 },
 ];
 

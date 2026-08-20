@@ -16,7 +16,7 @@ import { gerarReaPdf } from '../../services/reaPdfService';
 import { gerarBonaPdf } from '../../services/bonaPdfService';
 import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { downloadPdf } from '../../services/pdfService';
-import { BONA_FUNCOES, CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO, criarBonaDadosVazios, normalizarFuncaoBona } from '../../types/ocorrencia';
+import { BONA_FUNCOES, BONA_TIPOS_OCORRENCIA, CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO, criarBonaDadosVazios, normalizarFuncaoBona } from '../../types/ocorrencia';
 import type { BonaBombeiro, BonaDados, Ocorrencia, TipoDocumento } from '../../types/ocorrencia';
 import type { ReaDados, ReaRegistro, ReaStatus } from '../../types/rea';
 import { ReaModal } from './ReaModal';
@@ -286,6 +286,9 @@ function OcorrenciaForm({
   const bonaDados = bonaDadosFromOcorrencia(form);
   const tempoCalculado = calcularTempoAtendimento(bonaDados.acionamento, bonaDados.retornoSci);
   const camposBloqueados = form.status === 'Fechada';
+  const tipoOcorrenciaSelecionado = (BONA_TIPOS_OCORRENCIA as readonly string[]).includes(bonaDados.tipoOcorrencia)
+    ? bonaDados.tipoOcorrencia
+    : '';
 
   useEffect(() => {
     let active = true;
@@ -455,7 +458,7 @@ function OcorrenciaForm({
   const status = form.status;
   const salvarDesabilitado = camposBloqueados
     ? !isAdminSistema || !form.numero.trim()
-    : !form.data || !form.hora || !form.equipe || !bonaDados.areaEvento.trim() || !bonaDados.tipoOcorrencia.trim() || !bonaDados.descricaoOcorrencia.trim();
+    : !form.data || !form.hora || !form.equipe || !bonaDados.areaEvento.trim() || !tipoOcorrenciaSelecionado || !bonaDados.descricaoOcorrencia.trim();
 
   function disabledIdsBombeiros(indexAtual: number): Set<string> {
     const ids = bonaDados.bombeiros
@@ -484,8 +487,8 @@ function OcorrenciaForm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8 sm:pt-16">
-      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl shadow-black/10 dark:bg-surface-elevated">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 pt-6 sm:p-4 sm:pt-10">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-2xl bg-white shadow-2xl shadow-black/10 dark:bg-surface-elevated">
         <div className="flex items-center justify-between border-b border-graphite-200 px-6 py-4 dark:border-border-dark">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{ocorrencia ? 'Editar Documento' : 'Novo Documento'}</h2>
@@ -523,8 +526,8 @@ function OcorrenciaForm({
           </div>
 
           <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
-              <div className="sm:col-span-2 lg:col-span-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
+              <div className="sm:col-span-2 lg:col-span-4">
                 <label className={label}>Nº Ocorrência</label>
                 <input
                   value={form.numero}
@@ -533,41 +536,50 @@ function OcorrenciaForm({
                   className={isAdminSistema ? input : inputReadOnly}
                 />
               </div>
-              <div>
+              <div className="lg:col-span-2">
                 <label className={label}>Data *</label>
                 <input type="date" value={form.data} onChange={e => handleData(e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
               </div>
-              <div>
+              <div className="lg:col-span-2">
                 <label className={label}>Hora *</label>
                 <input type="time" value={form.hora} onChange={e => handleHora(e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
               </div>
-              <div>
+              <div className="lg:col-span-2">
                 <label className={label}>Equipe *</label>
                 <select value={form.equipe} onChange={e => handleEquipe(e.target.value)} className={camposBloqueados ? inputReadOnly : select} disabled={!canManageGlobal || camposBloqueados}>
                   <option value="">Selecione</option>
                   {EQUIPES.filter(eq => canManageGlobal || eq === userEquipe).map(eq => <option key={eq} value={eq}>{eq}</option>)}
                 </select>
               </div>
-              <div>
+              <div className="lg:col-span-2">
                 <label className={label}>Turno</label>
                 <input value={form.turno} readOnly className={inputReadOnly} />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
+              <div className="lg:col-span-4">
                 <label className={label}>Área do evento (Mapa de Grade) *</label>
                 <input value={bonaDados.areaEvento} onChange={e => setBonaCampo('areaEvento', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
               </div>
-              <div>
+              <div className="sm:col-span-2 lg:col-span-4">
                 <label className={label}>Tipo de Ocorrência *</label>
-                <input value={bonaDados.tipoOcorrencia} onChange={e => setBonaCampo('tipoOcorrencia', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+                <select
+                  value={tipoOcorrenciaSelecionado}
+                  onChange={e => setBonaCampo('tipoOcorrencia', e.target.value)}
+                  disabled={camposBloqueados}
+                  className={camposBloqueados ? inputReadOnly : select}
+                  title={tipoOcorrenciaSelecionado}
+                >
+                  <option value="">Selecione...</option>
+                  {BONA_TIPOS_OCORRENCIA.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+                </select>
               </div>
-              <div>
+              <div className="lg:col-span-2">
                 <label className={label}>Vítimas Fatais</label>
                 <input type="number" min="0" value={bonaDados.vitimasFatais} onChange={e => setBonaCampo('vitimasFatais', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
               </div>
-              <div>
+              <div className="lg:col-span-2">
                 <label className={label}>Vítimas Feridas</label>
                 <input type="number" min="0" value={bonaDados.vitimasFeridas} onChange={e => setBonaCampo('vitimasFeridas', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
               </div>
@@ -1208,23 +1220,6 @@ export function Ocorrencias() {
     setMode('list');
   }
 
-  if (mode === 'form') {
-    return (
-      <PageContainer>
-        <PageTitle icon={AlertTriangle} title={editando ? 'Editar Documento' : 'Novo Documento'} />
-        <OcorrenciaForm
-          ocorrencia={editando || undefined}
-          userEquipe={equipeEfetiva || ''}
-          todas={ocorrencias}
-          canManageGlobal={canManageGlobal}
-          isAdminSistema={isAdminSistema}
-          onSave={handleSave}
-          onSelectRea={() => openReaForm(null)}
-          onCancel={() => { setMode('list'); setEditando(null); setSavedId(null); }} />
-      </PageContainer>
-    );
-  }
-
   if (mode === 'view' && visualizando) {
     return (
       <PageContainer>
@@ -1358,12 +1353,26 @@ export function Ocorrencias() {
         </div>
       )}
 
+      {mode === 'form' && (
+        <OcorrenciaForm
+          ocorrencia={editando || undefined}
+          userEquipe={equipeEfetiva || ''}
+          todas={ocorrencias}
+          canManageGlobal={canManageGlobal}
+          isAdminSistema={isAdminSistema}
+          onSave={handleSave}
+          onSelectRea={() => openReaForm(null)}
+          onCancel={() => { setMode('list'); setEditando(null); setSavedId(null); }}
+        />
+      )}
+
       {showReaModal && (
         <ReaModal
           registro={editandoRea}
           numero={editandoRea?.numero || gerarNumeroRea(reas)}
           saving={savingRea}
           onSave={handleSaveRea}
+          onSelectBona={() => { setShowReaModal(false); setEditandoRea(null); openBonaForm(); }}
           onCancel={() => { setShowReaModal(false); setEditandoRea(null); }}
         />
       )}

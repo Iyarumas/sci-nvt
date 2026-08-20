@@ -6,6 +6,7 @@ import {
   getCargosPermitidosSubstituto,
   isSubstitutoObrigatorio,
 } from '../types/ferias';
+import { formatarDataBR } from './datas';
 import { equipeEstaNoPlantao } from './equipes';
 
 type BombeiroOperacional = Pick<
@@ -387,7 +388,7 @@ export function validarEscalaDiaria(params: {
 
   if (escala.equipe && dataEhValida(escala.dataPlantao)) {
     if (!equipeEstaNoPlantao(escala.equipe, parseData(escala.dataPlantao))) {
-      errors.push(`${escala.equipe} nao esta prevista para o plantao de ${escala.dataPlantao}.`);
+      errors.push(`${escala.equipe} nao esta prevista para o plantao de ${formatarDataBR(escala.dataPlantao)}.`);
     }
   }
 
@@ -397,7 +398,7 @@ export function validarEscalaDiaria(params: {
     e.dataPlantao === escala.dataPlantao
   );
   if (duplicada) {
-    errors.push(`Ja existe escala diaria para ${escala.equipe} em ${escala.dataPlantao}.`);
+    errors.push(`Ja existe escala diaria para ${escala.equipe} em ${formatarDataBR(escala.dataPlantao)}.`);
   }
 
   const slots: Array<{ nome: string; label: string; isentoDuplicado?: boolean }> = [];
@@ -453,7 +454,10 @@ export function validarSubstituicaoTemporaria(params: {
   ignoreSubstituicaoId?: string;
 }): string[] {
   const { substituicao, substituicoesExistentes, funcionario, substituto, bombeiros, ignoreSubstituicaoId } = params;
-  const errors = validarPeriodoBasico(substituicao.dataInicio, substituicao.dataFim, substituicao.dias, 'Substituicao temporaria');
+  const afastamentoComExtras = substituicao.tipo === 'Afastamento' &&
+    (substituicao.cadeiaSubstituicao || []).some(elo => elo.tipo === 'extra');
+  const diasValidacao = substituicao.motivo === 'INSS Indeterminado' ? undefined : substituicao.dias;
+  const errors = validarPeriodoBasico(substituicao.dataInicio, substituicao.dataFim, diasValidacao, 'Substituicao temporaria');
 
   if (!substituicao.funcionarioId) errors.push('Informe o funcionario substituido.');
   if (!substituicao.substitutoId) errors.push('Informe o substituto.');
@@ -462,6 +466,13 @@ export function validarSubstituicaoTemporaria(params: {
   }
   if (substituicao.motivo === 'Outro' && !substituicao.motivoOutro?.trim()) {
     errors.push('Descreva o motivo quando selecionar Outro.');
+  }
+  if (
+    substituicao.tipo === 'Afastamento' &&
+    ['Atestado Medico', 'INSS', 'INSS Indeterminado'].includes(substituicao.motivo) &&
+    !substituicao.motivoOutro?.trim()
+  ) {
+    errors.push('Descreva o motivo do afastamento/atestado.');
   }
   if (substituicao.tipo === 'Extra' && !substituicao.plantaoExtra) {
     errors.push('Informe se havera plantao extra.');
@@ -480,8 +491,28 @@ export function validarSubstituicaoTemporaria(params: {
       errors.push(`${nomePessoa(substituto)} esta desligado e nao pode substituir.`);
     }
 
-    if (funcionario && substituto) {
-      const cadeiaValidacao: EloCadeiaValidacao[] = (substituicao.cadeiaSubstituicao || []).map(elo => ({
+    if (afastamentoComExtras) {
+      const extras = (substituicao.cadeiaSubstituicao || []).filter(elo => elo.tipo === 'extra');
+      if (extras.length === 0) {
+        errors.push('Informe ao menos um plantao extra para o afastamento/atestado.');
+      }
+      for (const extra of extras) {
+        if (!extra.dataPlantao) errors.push('Informe a data do plantao extra.');
+        if (!extra.pessoaId) errors.push(`Informe quem fara o extra em ${extra.dataPlantao || 'um dos dias'}.`);
+        if (extra.pessoaId && extra.pessoaId === substituicao.funcionarioId) {
+          errors.push('Quem fara o extra nao pode ser a propria pessoa afastada.');
+        }
+        const pessoaExtra = extra.pessoaId ? pessoaPorId(bombeiros, extra.pessoaId) : undefined;
+        if (extra.pessoaId && !pessoaExtra) {
+          errors.push(`Pessoa do extra nao encontrada: ${extra.pessoaNome || extra.pessoaId}.`);
+        } else if (pessoaExtra?.dataDesligamento) {
+          errors.push(`${nomePessoa(pessoaExtra)} esta desligado e nao pode fazer extra.`);
+        }
+      }
+    } else if (funcionario && substituto) {
+      const cadeiaValidacao: EloCadeiaValidacao[] = (substituicao.cadeiaSubstituicao || [])
+        .filter(elo => elo.tipo !== 'extra')
+        .map(elo => ({
         pessoaId: elo.pessoaId,
         pessoaNome: elo.pessoaNome,
         pessoaCargo: (elo.pessoaCargo || elo.cargoOriginal || '') as Cargo | '',
@@ -519,6 +550,9 @@ export function validarSubstituicaoTemporaria(params: {
   const idsSubstituicao = (s: SubstituicaoTemporaria | Omit<SubstituicaoTemporaria, 'id' | 'createdAt' | 'updatedAt'>): Set<string> => {
     const ids = new Set<string>();
     if (s.funcionarioId) ids.add(s.funcionarioId);
+    if (s.tipo === 'Afastamento' && (s.cadeiaSubstituicao || []).some(elo => elo.tipo === 'extra')) {
+      return ids;
+    }
     if (s.substitutoId) ids.add(s.substitutoId);
     for (const elo of s.cadeiaSubstituicao || []) {
       if (elo.pessoaId) ids.add(elo.pessoaId);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Printer, ClipboardList, ArrowLeft } from 'lucide-react';
 import { listarOrdensServico } from '../../services/ordemServicoService';
 import type { OrdemServico } from '../../types/ordemServico';
@@ -12,6 +12,13 @@ const PRIORIDADE_CORES: Record<string, string> = {
   'Urgente': 'bg-red-100 text-red-700',
 };
 
+const PRIORIDADE_BADGE_CORES: Record<string, string> = {
+  'Baixa': 'bg-gradient-to-br from-sky-500 to-sky-700',
+  'Média': 'bg-gradient-to-br from-amber-500 to-amber-700',
+  'Alta': 'bg-gradient-to-br from-orange-500 to-orange-700',
+  'Urgente': 'bg-gradient-to-br from-red-500 to-red-700',
+};
+
 const STATUS_CORES: Record<string, string> = {
   'Aberta': 'bg-blue-100 text-blue-700',
   'Manutenção': 'bg-yellow-100 text-yellow-700',
@@ -19,15 +26,61 @@ const STATUS_CORES: Record<string, string> = {
   'Cancelada': 'bg-red-100 text-red-700',
 };
 
+const STATUS_LIST = ['Aberta', 'Manutenção', 'Concluída', 'Cancelada'];
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const ANOS = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - i).toString());
+const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 outline-none transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400';
+
 function fmt(d: string) {
   return formatarDataBR(d);
+}
+
+function dataFiltroOrdem(os: OrdemServico): string {
+  return os.dataEmissao || os.createdAt?.slice(0, 10) || '';
+}
+
+function numeroDestaqueOS(numero: string): string {
+  const texto = String(numero || '').trim();
+  const match = texto.match(/(?:OS\/SCI|OS SCI|OS-SCI)-?(\d+)\//i) || texto.match(/(\d+)(?=\/\d{4})/);
+  return match?.[1] || texto || '-';
 }
 
 export function OrdemServicoPublica() {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
   const [selecionada, setSelecionada] = useState<OrdemServico | null>(null);
+  const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
+  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFinal, setDataFinal] = useState('');
+  const [filtroStatus, setFiltroStatus] = useState('');
   const imagensSelecionada = selecionada ? parseOrdemServicoImagens(selecionada.imagem) : [];
+
+  const ordensFiltradas = useMemo(() => {
+    let lista = ordens;
+    if (filtroStatus) lista = lista.filter(os => os.status === filtroStatus);
+    if (filterMode === 'mes-ano') {
+      if (filtroAno) {
+        lista = lista.filter(os => {
+          const data = dataFiltroOrdem(os);
+          const ano = data ? new Date(`${data}T12:00:00`).getFullYear() : new Date(os.createdAt).getFullYear();
+          return String(ano) === filtroAno;
+        });
+      }
+      if (filtroMes) {
+        lista = lista.filter(os => {
+          const data = dataFiltroOrdem(os);
+          const mes = data ? new Date(`${data}T12:00:00`).getMonth() + 1 : new Date(os.createdAt).getMonth() + 1;
+          return String(mes) === filtroMes;
+        });
+      }
+    } else {
+      if (dataInicio) lista = lista.filter(os => dataFiltroOrdem(os) >= dataInicio);
+      if (dataFinal) lista = lista.filter(os => dataFiltroOrdem(os) <= dataFinal);
+    }
+    return [...lista].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [ordens, filtroStatus, filterMode, filtroAno, filtroMes, dataInicio, dataFinal]);
 
   useEffect(() => {
     let active = true;
@@ -162,17 +215,60 @@ export function OrdemServicoPublica() {
           <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">Acompanhamento público das ordens de serviço</p>
         </div>
 
-        {ordens.length === 0 ? (
+        <div className="mb-5 flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-graphite-200 bg-white/80 p-3 shadow-sm dark:border-border-dark dark:bg-surface-card">
+          <div className="inline-flex overflow-hidden rounded-xl border border-graphite-300 bg-white text-sm dark:border-border-dark dark:bg-surface-card">
+            <button onClick={() => setFilterMode('mes-ano')}
+              className={`px-3 py-2 transition-colors ${filterMode === 'mes-ano' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
+              Mês/Ano
+            </button>
+            <button onClick={() => setFilterMode('periodo')}
+              className={`px-3 py-2 transition-colors ${filterMode === 'periodo' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
+              Período
+            </button>
+          </div>
+          {filterMode === 'mes-ano' ? (
+            <>
+              <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} sm:!w-auto`}>
+                <option value="">Todos os meses</option>
+                {MESES.map((mes, index) => <option key={mes} value={index + 1}>{mes}</option>)}
+              </select>
+              <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} sm:!w-auto`}>
+                <option value="">Todos os anos</option>
+                {ANOS.map(ano => <option key={ano} value={ano}>{ano}</option>)}
+              </select>
+            </>
+          ) : (
+            <>
+              <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className={`${inputCls} sm:!w-auto`} />
+              <input type="date" value={dataFinal} onChange={e => setDataFinal(e.target.value)} className={`${inputCls} sm:!w-auto`} />
+            </>
+          )}
+          <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className={`${inputCls} sm:!w-auto`}>
+            <option value="">Todos os status</option>
+            {STATUS_LIST.map(status => <option key={status} value={status}>{status}</option>)}
+          </select>
+          <span className="rounded-full bg-graphite-100 px-3 py-2 text-xs font-semibold text-graphite-600 dark:bg-[#0d1117] dark:text-graphite-300">
+            {ordensFiltradas.length} OS
+          </span>
+        </div>
+
+        {ordensFiltradas.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white p-12 text-center dark:border-border-dark dark:bg-surface-card">
             <ClipboardList className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
             <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhuma OS encontrada</h3>
           </div>
         ) : (
           <div className="space-y-2">
-            {ordens.map(os => (
+            {ordensFiltradas.map(os => (
               <button key={os.id} onClick={() => setSelecionada(os)}
                 className="block w-full rounded-2xl border border-graphite-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
                 <div className="flex items-center gap-3">
+                  <div
+                    title={os.numero}
+                    className={`flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl px-3 text-xs font-black text-white shadow-sm ${PRIORIDADE_BADGE_CORES[os.prioridade] || 'bg-gradient-to-br from-aviation-500 to-aviation-700'}`}
+                  >
+                    {numeroDestaqueOS(os.numero)}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{os.numero}</p>

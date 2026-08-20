@@ -31,7 +31,7 @@ function jsonb(value: unknown): string {
 }
 
 function emptyFuncaoSlot() {
-  return { funcao: '', nomeGuerra: '' };
+  return { funcao: '', nomeGuerra: '', assunto: '' };
 }
 
 function rowToEscala(row: Record<string, unknown>): EscalaDiaria {
@@ -54,6 +54,7 @@ function rowToEscala(row: Record<string, unknown>): EscalaDiaria {
     ptr3: parseJSON(row.ptr3) || emptyFuncaoSlot(),
     atestados: parseJSON(row.atestados) || [],
     trocas: parseJSON(row.trocas) || [],
+    extras: parseJSON(row.extras) || [],
     radio: parseJSON(row.radio) || [],
   };
 }
@@ -94,6 +95,7 @@ export async function criarEscala(data: Omit<EscalaDiaria, 'id' | 'createdAt' | 
     guarnicoes: jsonb(data.guarnicoes), bds: jsonb(data.bds),
     ptr1: jsonb(data.ptr1), ptr2: jsonb(data.ptr2), ptr3: jsonb(data.ptr3 || emptyFuncaoSlot()),
     atestados: jsonb(data.atestados), trocas: jsonb(data.trocas),
+    extras: jsonb(data.extras),
     radio: jsonb(data.radio),
   };
   const { data: created, error } = await db.from(TABLE).insert(row).select().single();
@@ -126,6 +128,7 @@ export async function atualizarEscala(id: string, data: Partial<EscalaDiaria>): 
   if (data.ptr3 !== undefined) r.ptr3 = jsonb(data.ptr3);
   if (data.atestados !== undefined) r.atestados = jsonb(data.atestados);
   if (data.trocas !== undefined) r.trocas = jsonb(data.trocas);
+  if (data.extras !== undefined) r.extras = jsonb(data.extras);
   if (data.radio !== undefined) r.radio = jsonb(data.radio);
   const { data: updated, error } = await db.from(TABLE).update(r).eq('id', id).select().single();
   if (error) handleSupabaseError(error);

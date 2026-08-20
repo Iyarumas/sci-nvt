@@ -18,6 +18,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
 import { listarAPOCs } from '../../services/apocService';
 import { listarBombeiros } from '../../services/bombeiroService';
+import { listarEscalas } from '../../services/escalaService';
 import { baixarPTRBACompletoPdf, gerarPTRBACompletoPdf } from '../../services/ptrbaCompletoPdfService';
 import {
   atualizarPTRBACompleto,
@@ -30,6 +31,7 @@ import { listarDocumentos, listarPreenchimentos } from '../../services/documento
 import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
 import type { APOC } from '../../types/apoc';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
+import type { EscalaDiaria } from '../../types/escala';
 import { ASSUNTOS } from '../../types/ptrb';
 import {
   criarEvidenciasPTRBACompletoVazias,
@@ -58,6 +60,13 @@ const EVIDENCIA_VAZIA: PTRBACompletoEvidencia = {
   descricao: '',
 };
 type CampoCompartilhadoEvidencia = Exclude<keyof PTRBACompletoEvidencia, 'imagem'>;
+type InstrucaoPTRNumero = 1 | 2 | 3;
+type InstrucaoPTRDaEscala = {
+  numero: InstrucaoPTRNumero;
+  funcao: string;
+  nomeGuerra: string;
+  assunto: string;
+};
 
 const AEROPORTO_KEY = 'sescinc-aeroporto';
 const AEROPORTO_DEFAULT = 'SBNF - Aeroporto Internacional de Navegantes';
@@ -97,6 +106,52 @@ function evidenciasEmPares(evidencias: PTRBACompletoEvidencia[]) {
     const segunda = evidencias[segundoIndex] || EVIDENCIA_VAZIA;
     return { grupoIndex, primeiroIndex, segundoIndex, primeira, segunda };
   }).filter(({ primeira, segunda }) => evidenciaPreenchida(primeira) || evidenciaPreenchida(segunda));
+}
+
+function normalizarBusca(value: string): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function extrairInstrucoesPTREscala(escala?: EscalaDiaria): InstrucaoPTRDaEscala[] {
+  if (!escala) return [];
+  return [
+    { numero: 1 as const, slot: escala.ptr1 },
+    { numero: 2 as const, slot: escala.ptr2 },
+    { numero: 3 as const, slot: escala.ptr3 },
+  ].map(({ numero, slot }) => ({
+    numero,
+    funcao: String(slot?.funcao || '').trim(),
+    nomeGuerra: String(slot?.nomeGuerra || '').trim(),
+    assunto: String(slot?.assunto || '').trim(),
+  })).filter(instrucao => instrucao.nomeGuerra || instrucao.assunto);
+}
+
+function resolverPessoaInstrutor(nomeGuerra: string, opcoes: AtivoItem[], funcao?: string): AtivoItem | null {
+  const nomeAlvo = normalizarBusca(nomeGuerra);
+  if (!nomeAlvo) return null;
+  const cargoAlvo = normalizarBusca(funcao || '');
+  const pontuadas = opcoes.map(pessoa => {
+    const nomes = [pessoa.nomeGuerra, pessoa.nomeCompleto].map(normalizarBusca).filter(Boolean);
+    const cargoOk = !cargoAlvo || normalizarBusca(pessoa.cargo || '') === cargoAlvo;
+    const exato = nomes.some(nome => nome === nomeAlvo);
+    const parcial = nomeAlvo.length > 2 && nomes.some(nome => nome.includes(nomeAlvo) || nomeAlvo.includes(nome));
+    const score = exato && cargoOk ? 4 : exato ? 3 : parcial && cargoOk ? 2 : parcial ? 1 : 0;
+    return { pessoa, score };
+  }).filter(item => item.score > 0).sort((a, b) => b.score - a.score);
+  return pontuadas[0]?.pessoa || null;
+}
+
+function situacaoInstrutor(numeros: InstrucaoPTRNumero[]): string {
+  const unicos = Array.from(new Set(numeros)).sort((a, b) => a - b);
+  if (unicos.length === 0) return 'P';
+  if (unicos.length === 1) return `INSTR. ${unicos[0]}`;
+  if (unicos.includes(1) && unicos.includes(3)) return 'INSTR. 1-3';
+  return `INSTR. ${unicos.join('-')}`;
 }
 
 function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
@@ -145,6 +200,7 @@ function PTRBACompletoForm({
   onSave,
   bombeiros,
   apocs,
+  escalasDiarias,
   vigencias,
   trocaFills,
   canManageGlobal,
@@ -156,6 +212,7 @@ function PTRBACompletoForm({
   onSave: (input: Omit<PTRBACompletoInput, 'createdBy'>) => void;
   bombeiros: Bombeiro[];
   apocs: APOC[];
+  escalasDiarias: EscalaDiaria[];
   vigencias: any[];
   trocaFills: any[];
   canManageGlobal: boolean;
@@ -164,6 +221,7 @@ function PTRBACompletoForm({
 }) {
   const [form, setForm] = useState(() => montarInicial(canManageGlobal ? null : equipeEfetiva));
   const ultimaAutoFill = useRef('');
+  const ultimaEscalaPTRFill = useRef('');
 
   useEffect(() => {
     if (registro) {
@@ -289,6 +347,80 @@ function PTRBACompletoForm({
     const chefeEquipe = preenchidos.find(p => p.funcao === 'BA-CE')?.nomeCompleto || '';
     setForm(f => ({ ...f, participantes: preenchidos, chefeEquipe }));
   }, [registro, form.equipe, form.data, opcoesParticipantes]);
+
+  useEffect(() => {
+    if (registro) return;
+    const escala = escalasDiarias.find(e => e.equipe === form.equipe && mesmoDiaISO(e.dataPlantao, form.data));
+    const instrucoesBase = extrairInstrucoesPTREscala(escala);
+    if (!escala || instrucoesBase.length === 0) return;
+
+    const assinatura = instrucoesBase
+      .map(instrucao => `${instrucao.numero}:${instrucao.funcao}:${instrucao.nomeGuerra}:${instrucao.assunto}`)
+      .join('|');
+    const chave = `${form.equipe}-${form.data}-${escala.id}-${assinatura}`;
+    if (ultimaEscalaPTRFill.current === chave) return;
+    ultimaEscalaPTRFill.current = chave;
+
+    const instrucoes = instrucoesBase.map(instrucao => ({
+      ...instrucao,
+      pessoa: resolverPessoaInstrutor(instrucao.nomeGuerra, opcoesParticipantes, instrucao.funcao),
+    }));
+
+    setForm(f => {
+      const participantes = normalizarParticipantesPTRBACompleto(f.participantes);
+      const grupos = new Map<string, {
+        numeros: InstrucaoPTRNumero[];
+        nomeCompleto: string;
+        funcao: string;
+      }>();
+
+      instrucoes.forEach(instrucao => {
+        if (!instrucao.nomeGuerra) return;
+        const nomeCompleto = instrucao.pessoa?.nomeCompleto || instrucao.nomeGuerra;
+        const chavePessoa = instrucao.pessoa?.id || normalizarBusca(nomeCompleto);
+        const atual = grupos.get(chavePessoa) || {
+          numeros: [],
+          nomeCompleto,
+          funcao: instrucao.pessoa?.cargo || instrucao.funcao,
+        };
+        atual.numeros.push(instrucao.numero);
+        if (!atual.funcao) atual.funcao = instrucao.funcao;
+        grupos.set(chavePessoa, atual);
+      });
+
+      Array.from(grupos.values()).forEach(grupo => {
+        const nomeKey = normalizarBusca(grupo.nomeCompleto);
+        let index = participantes.findIndex(p => normalizarBusca(p.nomeCompleto) === nomeKey);
+        if (index < 0 && grupo.funcao) {
+          index = participantes.findIndex(p => !p.nomeCompleto && p.funcao === grupo.funcao);
+        }
+        if (index < 0) {
+          index = participantes.findIndex(p => !p.nomeCompleto);
+        }
+        if (index < 0) return;
+
+        const atual = participantes[index];
+        participantes[index] = {
+          funcao: atual.funcao || grupo.funcao,
+          nomeCompleto: grupo.nomeCompleto,
+          situacao: situacaoInstrutor(grupo.numeros),
+        };
+      });
+
+      const evidencias = normalizarEvidenciasPTRBACompleto(f.evidencias);
+      instrucoes.forEach(instrucao => {
+        if (!instrucao.assunto) return;
+        const par = PTRBA_COMPLETO_EVIDENCIA_PARES[instrucao.numero - 1];
+        if (!par) return;
+        par.forEach(index => {
+          evidencias[index] = { ...evidencias[index], assunto: instrucao.assunto };
+        });
+      });
+
+      const chefeEquipe = participantes.find(p => p.funcao === 'BA-CE' && p.nomeCompleto)?.nomeCompleto || f.chefeEquipe;
+      return { ...f, participantes, evidencias, chefeEquipe };
+    });
+  }, [registro, escalasDiarias, form.equipe, form.data, opcoesParticipantes]);
 
   function updateEquipe(equipe: string) {
     if (!canEscolherEquipe) return;
@@ -713,6 +845,7 @@ export function PTRBACompletoPage() {
   const [registros, setRegistros] = useState<PTRBACompleto[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
+  const [escalasDiarias, setEscalasDiarias] = useState<EscalaDiaria[]>([]);
   const [vigencias, setVigencias] = useState<any[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -749,17 +882,19 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const [lista, b, a, v] = await Promise.all([
+        const [lista, b, a, v, escalas] = await Promise.all([
           listarPTRBACompletos(),
           listarBombeiros(),
           listarAPOCs(),
           listarVigencias({ ativa: true }),
+          listarEscalas(),
         ]);
         if (cancelado) return;
         setRegistros(lista);
         setBombeiros(b);
         setApocs(a);
         setVigencias(v);
+        setEscalasDiarias(escalas);
         try {
           const docs = await listarDocumentos();
           const trocaDoc = (docs as any[]).find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
@@ -864,6 +999,7 @@ export function PTRBACompletoPage() {
           onSave={handleSave}
           bombeiros={bombeiros}
           apocs={apocs}
+          escalasDiarias={escalasDiarias}
           vigencias={vigencias}
           trocaFills={trocaFills}
           canManageGlobal={canManageGlobal}

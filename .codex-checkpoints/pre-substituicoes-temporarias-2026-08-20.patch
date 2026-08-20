@@ -1,0 +1,2654 @@
+diff --git a/API_ENDPOINTS.md b/API_ENDPOINTS.md
+index d9ce9db..d16d582 100644
+--- a/API_ENDPOINTS.md
++++ b/API_ENDPOINTS.md
+@@ -614,10 +614,10 @@ GET com filtro `ativa=true`. ✅ OK
+     "cci03": { "baMc": "string", "ba2_1": "string", "ba2_2": "string" },
+     "crs": { "baMc": "string", "baLr": "string", "baRe1": "string", "baRe2": "string" }
+   },
+-  "bds": { "funcao": "string", "nomeGuerra": "string" },
+-  "ptr1": { "funcao": "string", "nomeGuerra": "string" },
+-  "ptr2": { "funcao": "string", "nomeGuerra": "string" },
+-  "ptr3": { "funcao": "string", "nomeGuerra": "string" },
++  "bds": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
++  "ptr1": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
++  "ptr2": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
++  "ptr3": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
+   "atestados": ["string"],
+   "trocas": [{ "funcaoSaindo": "string", "nomeSaindo": "string", "funcaoEntrando": "string", "nomeEntrando": "string" }],
+   "radio": [{ "funcao": "string", "nomeGuerra": "string", "horarioInicio": "string", "horarioFim": "string" }]
+@@ -627,7 +627,7 @@ GET com filtro `ativa=true`. ✅ OK
+ ### criarEscala / atualizarEscala / excluirEscala
+ 
+ ✅ OK  
+-**Regras:** criação é idempotente por `equipe + dataPlantao`; criação/edição validam se a equipe está prevista para o dia pelo helper `equipesNoDia`, bloqueiam duplicidade de escala diária e impedem a mesma pessoa em múltiplos slots operacionais incompatíveis. A escala diária possui quatro slots de instrução: `bds`, `ptr1`, `ptr2` e `ptr3`.
++**Regras:** criação é idempotente por `equipe + dataPlantao`; criação/edição validam se a equipe está prevista para o dia pelo helper `equipesNoDia`, bloqueiam duplicidade de escala diária e impedem a mesma pessoa em múltiplos slots operacionais incompatíveis. A escala diária possui quatro slots de instrução: `bds`, `ptr1`, `ptr2` e `ptr3`; os slots `ptr1`/`ptr2`/`ptr3` podem guardar o `assunto` selecionado da lista padrão do PTR-BA para aparecer nos detalhes e na impressão.
+ 
+ ---
+ 
+@@ -949,7 +949,7 @@ GET com filtro `ativa=true`. ✅ OK
+ **Fluxo BONA:** registros BONA ficam com `status = "Aberta"` após salvar e viram `status = "Fechada"` somente quando aprovados nos detalhes do documento; após aprovado, a tela bloqueia alteração do conteúdo, mantém a visualização do documento e libera a impressão somente para BONA finalizado. Apenas administrador do sistema pode excluir BONA aprovado e editar seu número para reaproveitar uma sequência.
+ **Numeração BONA:** a UI inicia a sequência nova em `BONA-064/{ano}` porque os números 1 a 63 foram emitidos em sistema anterior; quando houver BONA maior no ano corrente, usa o maior número cadastrado + 1. No PDF MMS.BR.BA.FOR.003 aparece somente o número curto da ocorrência.
+ **Campos BONA:** `bona_dados` guarda os campos específicos do formulário oficial MMS.BR.BA.FOR.003. O service mantém compatibilidade preenchendo `local` com `areaEvento`, `titulo` com `tipoOcorrencia`, `categoria` com a categoria correspondente quando existir (senão `Outros`), `envolvidos` a partir da tabela de bombeiros, `acoes_tomadas` com `descricaoAtuacaoEquipe` e `descricao` com `descricaoOcorrencia`. A tela do BONA não exibe upload de fotos e preenche os bombeiros com o efetivo operacional da equipe/data, considerando trocas, férias e substituições.
+-**Uso no LRO:** BONA com `numero` iniciado por `BONA` fica listado em BONA/REA e alimenta IX. Ocorrências Não Aeronáuticas com `data - hora - descrição`; não aparece na tela LRO/Ocorrências. Registros criados em LRO/Ocorrências usam `numero` vazio, `titulo` como tipo, `local` como data do turno e alimentam XII. Outras Ocorrências com `data - hora - equipe - tipo - descrição`. Ao marcar um LRO como `finalizado`, as ocorrências operacionais incluídas no texto final do LRO são atualizadas para `status = "Fechada"` e ficam bloqueadas para edição/exclusão na tela LRO/Ocorrências. Ao excluir um LRO finalizado/assinado/arquivado, as ocorrências vinculadas a ele voltam para `status = "Aberta"`, exceto quando ainda estão vinculadas a outro LRO finalizado/assinado/arquivado.
++**Uso no LRO:** BONA com `numero` iniciado por `BONA` fica listado em BONA/REA e alimenta IX. Ocorrências Não Aeronáuticas com `hora - número BONA - tipo - descrição`; não aparece na tela LRO/Ocorrências. Registros criados em LRO/Ocorrências usam `numero` vazio, `titulo` como tipo, `local` como data do turno e alimentam XII. Outras Ocorrências com `data - hora - equipe - tipo - descrição`. Ao marcar um LRO como `finalizado`, as ocorrências operacionais incluídas no texto final do LRO são atualizadas para `status = "Fechada"` e ficam bloqueadas para edição/exclusão na tela LRO/Ocorrências. Ao excluir um LRO finalizado/assinado/arquivado, as ocorrências vinculadas a ele voltam para `status = "Aberta"`, exceto quando ainda estão vinculadas a outro LRO finalizado/assinado/arquivado.
+ 
+ **`listarOcorrencias` — Query Params adicionais:** `numeroPrefixo?: string` — filtra por `numero like 'prefixo%'` (ex: `'BONA'` traz só BONAs, excluindo registros do LRO/Ocorrências que usam `numero` vazio). **REST equivalência:** `GET /rest/v1/ocorrencias_operacionais?select=*&numero=like.BONA%25&order=data.desc`
+ 
+diff --git a/frontend/src/pages/Escalas/EscalaDiaria.tsx b/frontend/src/pages/Escalas/EscalaDiaria.tsx
+index b92475d..6a977d2 100644
+--- a/frontend/src/pages/Escalas/EscalaDiaria.tsx
++++ b/frontend/src/pages/Escalas/EscalaDiaria.tsx
+@@ -1,7 +1,7 @@
+ import { useState, useEffect, useMemo, useRef } from 'react';
+ import {
+   Calendar, Shield, Users, Plus, Trash2, FileText, Radio,
+-  ChevronDown, ChevronUp, Save, Eye, Pencil, Copy, Printer,
++  ChevronDown, ChevronUp, Save, Pencil, Copy, Printer,
+   AlertTriangle,
+   ArrowRightLeft, ArrowRight, Sparkles,
+ } from 'lucide-react';
+@@ -9,7 +9,7 @@ import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
+ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+ import { listarEscalas, criarEscala, atualizarEscala, excluirEscala } from '../../services/escalaService';
+ import { listarAtivos } from '../../services/bombeiroService';
+-import { equipesNoDia, horarioPlantaoPorEquipe } from '../../utils/equipes';
++import { horarioPlantaoPorEquipe } from '../../utils/equipes';
+ import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO, parseDataLocalISO } from '../../utils/datas';
+ import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
+ import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
+@@ -19,11 +19,11 @@ import { listarFeriasGozo, listarEscalas as listarEscalasFerias, listarItensEsca
+ import { listarCompletas } from '../../services/escalaMensalService';
+ import { gerarRadioPlantao } from '../../services/escalaMensalGenerator';
+ import { FUNCOES_BDS_PTR } from '../../types/escala';
++import { ASSUNTOS as ASSUNTOS_PTRBA } from '../../types/ptrb';
+ import type { EscalaDiaria, TrocaSlot } from '../../types/escala';
+ import type { Bombeiro, Cargo } from '../../types/bombeiro';
+ import type { DocumentFill } from '../../types/document';
+ import type { FeriasGozo } from '../../types/ferias';
+-import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
+ import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional, montarTrocasServicoDoDia } from '../../utils/efetivoOperacional';
+ import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
+ import { RegraNegocioError } from '../../utils/regrasOperacionais';
+@@ -44,7 +44,7 @@ const INSTRUTOR_SECTIONS = [
+ type InstrutorSection = (typeof INSTRUTOR_SECTIONS)[number]['key'];
+ 
+ function emptyFuncaoSlot() {
+-  return { funcao: '', nomeGuerra: '' };
++  return { funcao: '', nomeGuerra: '', assunto: '' };
+ }
+ 
+ function emptyGuarnicoes() {
+@@ -56,14 +56,13 @@ function emptyGuarnicoes() {
+ }
+ 
+ function emptyEscala(): Omit<EscalaDiaria, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
+-  const horario = horarioPlantaoPorEquipe('Alfa');
+   return {
+-    equipe: 'Alfa',
++    equipe: '',
+     chefeEquipe: '',
+     dataPlantao: hojeLocalISO(),
+-    horarioInicio: horario.horarioInicio,
+-    horarioTermino: horario.horarioTermino,
+-    turno: horario.turno,
++    horarioInicio: '',
++    horarioTermino: '',
++    turno: '',
+     guarnicoes: emptyGuarnicoes(),
+     bds: emptyFuncaoSlot(),
+     ptr1: emptyFuncaoSlot(),
+@@ -92,13 +91,6 @@ function formatDate(d: string) {
+   return formatarDataBR(d);
+ }
+ 
+-function motivoVigenciaLabel(motivo: VigenciaSubstituicao['motivo']): string {
+-  if (motivo === 'ferias') return 'férias';
+-  if (motivo === 'afastamento') return 'afastamento';
+-  if (motivo === 'substituicao') return 'substituição';
+-  return 'cascata';
+-}
+-
+ function autoPreencher(equipe: string) {
+   return horarioPlantaoPorEquipe(equipe);
+ }
+@@ -113,6 +105,46 @@ interface EfetivoDiarioEntry {
+   };
+ }
+ 
++type GrupoEscalaDetalhe = {
++  titulo: string;
++  linhas: Array<{ label: string; nome: string }>;
++};
++
++function valorEscala(value?: string): string {
++  const texto = String(value || '').trim();
++  return texto || '-';
++}
++
++function gruposGuarnicaoDetalhe(escala: EscalaDiaria): GrupoEscalaDetalhe[] {
++  return [
++    {
++      titulo: 'FAÍSCA 2',
++      linhas: [
++        { label: 'BA-MC', nome: valorEscala(escala.guarnicoes?.cci02?.baMc) },
++        { label: 'BA-CE', nome: valorEscala(escala.guarnicoes?.cci02?.baCe) },
++        { label: 'BA-2', nome: valorEscala(escala.guarnicoes?.cci02?.ba2) },
++      ],
++    },
++    {
++      titulo: 'FAÍSCA 3',
++      linhas: [
++        { label: 'BA-MC', nome: valorEscala(escala.guarnicoes?.cci03?.baMc) },
++        { label: 'BA-2', nome: valorEscala(escala.guarnicoes?.cci03?.ba2_1) },
++        { label: 'BA-2', nome: valorEscala(escala.guarnicoes?.cci03?.ba2_2) },
++      ],
++    },
++    {
++      titulo: 'CRS',
++      linhas: [
++        { label: 'BA-MC', nome: valorEscala(escala.guarnicoes?.crs?.baMc) },
++        { label: 'BA-LR', nome: valorEscala(escala.guarnicoes?.crs?.baLr) },
++        { label: 'BA-RE', nome: valorEscala(escala.guarnicoes?.crs?.baRe1) },
++        { label: 'BA-RE', nome: valorEscala(escala.guarnicoes?.crs?.baRe2) },
++      ],
++    },
++  ];
++}
++
+ function dataNoPeriodo(data: string, dataInicio: string, dataFim: string): boolean {
+   return estaNoPeriodoISO(data, dataInicio, dataFim);
+ }
+@@ -364,7 +396,6 @@ function EscalaDiariaForm({
+   const [allBombeiros, setAllBombeiros] = useState<Bombeiro[]>([]);
+   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
+   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
+-  const [substituicoes, setSubstituicoes] = useState<SubstituicaoTemporaria[]>([]);
+   const [trocaFills, setTrocaFills] = useState<DocumentFill[]>([]);
+   const [autoFilling, setAutoFilling] = useState(false);
+ 
+@@ -380,12 +411,6 @@ function EscalaDiariaForm({
+     }).catch(() => {});
+   }, []);
+ 
+-  useEffect(() => {
+-    listarSubstituicoesTemporarias().then(lista => {
+-      setSubstituicoes(lista.filter(s => s.status === 'Aprovada'));
+-    }).catch(() => {});
+-  }, []);
+-
+   useEffect(() => {
+     listarTrocasServicoAssinadas().then(setTrocaFills).catch(() => {});
+   }, []);
+@@ -426,24 +451,24 @@ function EscalaDiariaForm({
+     }
+   }, [escala, canManageGlobal, equipeEfetiva]);
+ 
+-  // Auto-selecionar equipa com base na data se nenhuma equipa foi escolhida
++  const autoFillKeyRef = useRef(escala ? `${escala.equipe}|${escala.dataPlantao}` : '');
++  const userChangedScheduleRef = useRef(false);
+   useEffect(() => {
+-    if (!form.dataPlantao) return;
+-    if (!canManageGlobal) return;
+-    const data = parseDataLocalISO(form.dataPlantao);
+-    const equipes = equipesNoDia(data);
+-    if (!equipes.some(eq => eq === form.equipe)) {
+-      setForm(f => ({ ...f, equipe: equipes[0] }));
++    if (!form.equipe || !form.dataPlantao || autoFilling) return;
++    const key = `${form.equipe}|${form.dataPlantao}`;
++    const escalaOriginalKey = escala ? `${escala.equipe}|${escala.dataPlantao}` : '';
++    if (escalaOriginalKey && !userChangedScheduleRef.current) {
++      autoFillKeyRef.current = escalaOriginalKey;
++      return;
+     }
+-  }, [form.dataPlantao, canManageGlobal]);
+-
+-  const autoFilledRef = useRef(false);
+-  useEffect(() => {
+-    if (form.equipe && form.dataPlantao && !escala && allBombeiros.length > 0 && !autoFilledRef.current) {
+-      autoPreencherGuarnicoes();
+-      autoFilledRef.current = true;
++    if (escalaOriginalKey && key === escalaOriginalKey) {
++      autoFillKeyRef.current = key;
++      return;
+     }
+-  }, [form.equipe, form.dataPlantao, allBombeiros]);
++    if (autoFillKeyRef.current === key) return;
++    autoFillKeyRef.current = key;
++    autoPreencherGuarnicoes();
++  }, [form.equipe, form.dataPlantao, escala, autoFilling]);
+ 
+   const efetivoDiario = useMemo(() => montarEfetivoOperacional({
+     bombeiros: allBombeiros,
+@@ -468,6 +493,24 @@ function EscalaDiariaForm({
+ 
+   function updateEquipe(equipe: string) {
+     if (!canManageGlobal) return;
++    userChangedScheduleRef.current = true;
++    if (!equipe) {
++      setForm(f => ({
++        ...f,
++        equipe: '',
++        horarioInicio: '',
++        horarioTermino: '',
++        turno: '',
++        chefeEquipe: '',
++        guarnicoes: emptyGuarnicoes(),
++        bds: emptyFuncaoSlot(),
++        ptr1: emptyFuncaoSlot(),
++        ptr2: emptyFuncaoSlot(),
++        ptr3: emptyFuncaoSlot(),
++        radio: [],
++      }));
++      return;
++    }
+     const auto = autoPreencher(equipe);
+     const membros = montarEfetivoOperacional({
+       bombeiros: allBombeiros,
+@@ -515,17 +558,21 @@ function EscalaDiariaForm({
+     if (!form.equipe || !form.dataPlantao || autoFilling) return;
+     setAutoFilling(true);
+     try {
+-      const [all, gozos, escalas, vigs, completas] = await Promise.all([
++      const [all, gozos, escalas, vigs, completas, trocasDocs, substituicoesDocs] = await Promise.all([
+         listarAtivos(),
+         listarFeriasGozo(),
+         listarEscalasFerias(),
+         listarVigencias({ ativa: true }),
+         listarCompletas(),
++        listarTrocasServicoAssinadas(),
++        listarSubstituicoesTemporarias(),
+       ]);
++      const substituicoesAprovadas = substituicoesDocs.filter(s => s.status === 'Aprovada');
+ 
+       setAllBombeiros(all);
+       setFeriasGozo(gozos);
+       setVigencias(vigs);
++      setTrocaFills(trocasDocs);
+ 
+       const allItems: any[] = [];
+       for (const esc of escalas) {
+@@ -551,7 +598,7 @@ function EscalaDiariaForm({
+         if (pessoa) {
+           const pNome = pessoa.nomeCompleto?.toLowerCase();
+           const pGuerra = pessoa.nomeGuerra?.toLowerCase();
+-          const troca = trocaFills.find((fl: any) => {
++          const troca = trocasDocs.find((fl: any) => {
+             const fd = fl?.filled_data || {};
+             const solNome = String(fd?.nome_solicitante || '').toLowerCase();
+             const solicNome = String(fd?.nome_solicitado || '').toLowerCase();
+@@ -652,7 +699,7 @@ function EscalaDiariaForm({
+       }
+       const trocaExcluidosNoDia = new Set<string>();
+       const trocaIncluidosNoDia: { bombeiro: any; cargo: string }[] = [];
+-      for (const fl of trocaFills) {
++      for (const fl of trocasDocs) {
+         const fd = fl?.filled_data || {};
+         const solDia = mesmoDiaISO(fd?.data_solicitada, form.dataPlantao);
+         const solicDia = mesmoDiaISO(fd?.data_folga_solicitado, form.dataPlantao);
+@@ -699,7 +746,7 @@ function EscalaDiariaForm({
+       }
+ 
+       // ── 3. Aplicar trocas temporárias ──
+-      const trocasAtivas = substituicoes.filter(s =>
++      const trocasAtivas = substituicoesAprovadas.filter(s =>
+         s.status === 'Aprovada' && estaNoPeriodoISO(form.dataPlantao, s.dataInicio, s.dataFim)
+       );
+       // Aplicar swaps nos nomes dos slots
+@@ -825,7 +872,7 @@ function EscalaDiariaForm({
+     }));
+   }
+ 
+-  function updateInstrutor(section: InstrutorSection, field: 'funcao' | 'nomeGuerra', value: string) {
++  function updateInstrutor(section: InstrutorSection, field: 'funcao' | 'nomeGuerra' | 'assunto', value: string) {
+     setForm(f => ({
+       ...f,
+       [section]: { ...f[section], [field]: value, ...(field === 'funcao' ? { nomeGuerra: '' } : {}) },
+@@ -845,58 +892,82 @@ function EscalaDiariaForm({
+     });
+   }
+ 
++  const autoPreencherButton = (
++    <button type="button" onClick={autoPreencherGuarnicoes} disabled={!form.equipe || autoFilling}
++      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-medium text-aviation-700 transition-all duration-200 hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300 dark:hover:bg-aviation-900/30 sm:w-auto">
++      {autoFilling ? (
++        <div className="h-4 w-4 animate-spin rounded-full border-2 border-aviation-700 border-t-transparent dark:border-aviation-300" />
++      ) : (
++        <Sparkles className="h-4 w-4" />
++      )}
++      {autoFilling ? 'Preenchendo...' : 'Auto-Preenchimento'}
++    </button>
++  );
++
+   return (
+     <form onSubmit={handleSubmit} className="space-y-8">
+-      {/* Cabeçalho */}
+-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+-        <div>
+-          <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Equipe</label>
+-          <select value={form.equipe} onChange={e => updateEquipe(e.target.value)}
+-            className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated"
+-            disabled={!canManageGlobal}>
+-            {EQUIPES.filter(eq => canManageGlobal || eq === equipeEfetiva).map(eq => <option key={eq} value={eq} className={optionCls}>{eq}</option>)}
+-          </select>
+-        </div>
+-        <div>
+-          <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Chefe de Equipe - SCI NVT</label>
+-          <SearchSelect value={form.chefeEquipe} onChange={v => setForm(f => ({ ...f, chefeEquipe: v }))} placeholder="Selecione o chefe" options={opcoesChefe} cargo="BA-CE" showCargo showEquipe />
+-          {form.chefeEquipe && (() => {
+-            const b = allBombeiros.find(x => x.nomeGuerra === form.chefeEquipe);
+-            const aviso = b ? validarCursoParaFuncao(b, 'BA-CE') : null;
+-            return aviso ? (
+-              <div className={`mt-1.5 flex items-start gap-2 rounded-lg px-2.5 py-2 text-[11px] leading-tight ${
+-                aviso.nivel === 'bloqueado'
+-                  ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+-                  : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+-              }`}>
+-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+-                <span>{aviso.mensagem}</span>
+-              </div>
+-            ) : null;
+-          })()}
+-        </div>
+-        <div>
+-          <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Data do Plantão</label>
+-          <input type="date" value={form.dataPlantao} onChange={e => setForm(f => ({ ...f, dataPlantao: e.target.value }))}
+-            className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated" />
+-        </div>
+-        <div>
+-          <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Turno</label>
+-          <input value={form.turno} disabled
+-            className="w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card dark:text-graphite-500" />
+-        </div>
++      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
++        <h3 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
++          {escala?.id ? 'Editar Escala Diária' : escala ? 'Clonar Escala Diária' : 'Nova Escala Diária'}
++        </h3>
++        {autoPreencherButton}
+       </div>
+ 
+-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+-        <div>
+-          <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Horário Início</label>
+-          <input type="time" value={form.horarioInicio} disabled
+-            className="w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card dark:text-graphite-500" />
++      <div className="space-y-4">
++        <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(180px,0.9fr)_minmax(260px,1.2fr)_minmax(180px,0.9fr)]">
++          <div>
++            <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Equipe</label>
++            <select value={form.equipe} onChange={e => updateEquipe(e.target.value)}
++              className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated"
++              disabled={!canManageGlobal}>
++              <option value="" className={optionCls}>Selecionar equipe</option>
++              {EQUIPES.filter(eq => canManageGlobal || eq === equipeEfetiva).map(eq => <option key={eq} value={eq} className={optionCls}>{eq}</option>)}
++            </select>
++          </div>
++          <div>
++            <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Chefe de Equipe - SCI NVT</label>
++            <SearchSelect value={form.chefeEquipe} onChange={v => setForm(f => ({ ...f, chefeEquipe: v }))} placeholder="Selecione o chefe" options={opcoesChefe} cargo="BA-CE" showCargo showEquipe />
++            {form.chefeEquipe && (() => {
++              const b = allBombeiros.find(x => x.nomeGuerra === form.chefeEquipe);
++              const aviso = b ? validarCursoParaFuncao(b, 'BA-CE') : null;
++              return aviso ? (
++                <div className={`mt-1.5 flex items-start gap-2 rounded-lg px-2.5 py-2 text-[11px] leading-tight ${
++                  aviso.nivel === 'bloqueado'
++                    ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
++                    : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
++                }`}>
++                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
++                  <span>{aviso.mensagem}</span>
++                </div>
++              ) : null;
++            })()}
++          </div>
++          <div>
++            <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Data do Plantão</label>
++            <input type="date" value={form.dataPlantao} onChange={e => {
++              userChangedScheduleRef.current = true;
++              setForm(f => ({ ...f, dataPlantao: e.target.value }));
++            }}
++              className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated" />
++          </div>
+         </div>
+-        <div>
+-          <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Horário Término</label>
+-          <input type="time" value={form.horarioTermino} disabled
+-            className="w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card dark:text-graphite-500" />
++
++        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
++          <div>
++            <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Horário Início</label>
++            <input type="time" value={form.horarioInicio} disabled
++              className="w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card dark:text-graphite-500" />
++          </div>
++          <div>
++            <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Horário Término</label>
++            <input type="time" value={form.horarioTermino} disabled
++              className="w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card dark:text-graphite-500" />
++          </div>
++          <div>
++            <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Turno</label>
++            <input value={form.turno} disabled
++              className="w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card dark:text-graphite-500" />
++          </div>
+         </div>
+       </div>
+ 
+@@ -973,6 +1044,19 @@ function EscalaDiariaForm({
+               />
+             </div>
+           </div>
++          {section !== 'bds' && (
++            <div className="mt-4">
++              <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">Assunto do PTR-BA</label>
++              <select
++                value={form[section].assunto || ''}
++                onChange={e => updateInstrutor(section, 'assunto', e.target.value)}
++                className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated"
++              >
++                <option value="" className={optionCls}>Selecione o assunto</option>
++                {ASSUNTOS_PTRBA.map(assunto => <option key={assunto} value={assunto} className={optionCls}>{assunto}</option>)}
++              </select>
++            </div>
++          )}
+         </fieldset>
+         );
+       })}
+@@ -985,12 +1069,20 @@ function EscalaDiariaForm({
+         <div className="space-y-2">
+           {form.atestados.map((a, i) => (
+             <div key={i} className="flex items-center gap-2">
+-              <input value={a} onChange={e => {
+-                const next = [...form.atestados];
+-                next[i] = e.target.value;
+-                setForm(f => ({ ...f, atestados: next }));
+-              }} placeholder="Nome do funcionário com atestado"
+-                className="flex-1 rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated" />
++              <SearchSelect
++                value={a}
++                onChange={value => {
++                  const next = [...form.atestados];
++                  next[i] = value;
++                  setForm(f => ({ ...f, atestados: next }));
++                }}
++                placeholder={form.equipe ? 'Selecione o funcionário com atestado' : 'Selecione a equipe primeiro'}
++                className="flex-1"
++                options={efetivoOptions}
++                valueField="nomeCompleto"
++                showCargo
++                showEquipe
++              />
+               <button type="button" onClick={() => setForm(f => ({ ...f, atestados: f.atestados.filter((_, j) => j !== i) }))}
+               className="rounded-xl p-1.5 text-alert-red transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-900/20">
+                 <Trash2 className="h-4 w-4" />
+@@ -1103,15 +1195,6 @@ function EscalaDiariaForm({
+ 
+       {/* Actions */}
+       <div className="flex items-center justify-end gap-3 border-t border-graphite-200 pt-6 dark:border-border-dark">
+-        <button type="button" onClick={autoPreencherGuarnicoes} disabled={autoFilling}
+-          className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-medium text-aviation-700 transition-all duration-200 hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300 dark:hover:bg-aviation-900/30">
+-          {autoFilling ? (
+-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-aviation-700 border-t-transparent dark:border-aviation-300" />
+-          ) : (
+-            <Sparkles className="h-4 w-4" />
+-          )}
+-          {autoFilling ? 'Preenchendo...' : 'Auto-Preenchimento'}
+-        </button>
+         <button type="button" onClick={onCancel}
+           className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-medium text-graphite-700 backdrop-blur-sm transition-all duration-200 hover:bg-graphite-50 hover:border-graphite-300 dark:border-border-dark dark:bg-surface-card/80 dark:text-graphite-200 dark:hover:bg-surface-hover/50">
+           Cancelar
+@@ -1126,17 +1209,13 @@ function EscalaDiariaForm({
+   );
+ }
+ 
+-// ─── LIST VIEW ──────────────────────────────────────────────
+-function EscalaCard({ escala, onView, onEdit, onDelete, onClone, canManage }: {
+-  escala: EscalaDiaria;
+-  onView: () => void;
+-  onEdit: () => void;
+-  onDelete: () => void;
+-  onClone: () => void;
+-  canManage: boolean;
+-}) {
+-  const [expanded, setExpanded] = useState(false);
++function EscalaDetalhesConteudo({ escala, printable = false }: { escala: EscalaDiaria; printable?: boolean }) {
+   const [vigenciasAtivas, setVigenciasAtivas] = useState<VigenciaSubstituicao[]>([]);
++  const grupos = gruposGuarnicaoDetalhe(escala);
++  const atestados = (escala.atestados || []).map(atestado => atestado.trim()).filter(Boolean);
++  const trocas = escala.trocas || [];
++  const radio = escala.radio || [];
++  const horario = [escala.horarioInicio, escala.horarioTermino].filter(Boolean).join(' - ');
+ 
+   useEffect(() => {
+     if (!escala.dataPlantao || !escala.equipe) return;
+@@ -1146,7 +1225,157 @@ function EscalaCard({ escala, onView, onEdit, onDelete, onClone, canManage }: {
+   }, [escala.dataPlantao, escala.equipe]);
+ 
+   return (
+-    <div className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-border-dark dark:bg-surface-card">
++    <div className={printable ? 'daily-scale-print-content space-y-5 text-graphite-950 print:space-y-2 print:text-[10px] print:leading-tight' : 'space-y-5'}>
++      <div className="daily-scale-summary grid grid-cols-2 gap-4 sm:grid-cols-4 print:grid-cols-4 print:gap-2">
++        <div>
++          <p className="text-xs font-semibold text-graphite-400 dark:text-graphite-500 print:text-graphite-500">Data</p>
++          <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">{formatDate(escala.dataPlantao)}</p>
++        </div>
++        <div>
++          <p className="text-xs font-semibold text-graphite-400 dark:text-graphite-500 print:text-graphite-500">Hora</p>
++          <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">{valorEscala(horario)}</p>
++        </div>
++        <div>
++          <p className="text-xs font-semibold text-graphite-400 dark:text-graphite-500 print:text-graphite-500">Turno</p>
++          <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">{valorEscala(escala.turno)}</p>
++        </div>
++        <div>
++          <p className="text-xs font-semibold text-graphite-400 dark:text-graphite-500 print:text-graphite-500">Chefe</p>
++          <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">{valorEscala(escala.chefeEquipe)}</p>
++        </div>
++      </div>
++
++      <div className="daily-scale-guarnicoes grid gap-3 lg:grid-cols-3 print:grid-cols-3 print:gap-2">
++          {grupos.map(grupo => (
++            <div key={grupo.titulo} className="daily-print-avoid-break rounded-xl border border-graphite-200 bg-graphite-50 p-3 dark:border-border-dark dark:bg-surface-hover print:border-graphite-300 print:bg-white print:p-2">
++              <p className="text-sm font-bold text-aviation-700 dark:text-aviation-300 print:text-[10px] print:text-aviation-800">{grupo.titulo}</p>
++              <div className="mt-3 space-y-2 print:mt-2 print:space-y-1">
++                {grupo.linhas.map((linha, index) => (
++                  <div key={`${grupo.titulo}-${linha.label}-${index}`} className="grid grid-cols-[72px_1fr] gap-3 rounded-lg border border-graphite-200 bg-white/70 px-3 py-2 dark:border-border-dark dark:bg-surface-card/70 print:grid-cols-[42px_1fr] print:gap-1 print:border-graphite-200 print:bg-white print:px-2 print:py-1">
++                    <p className="text-xs font-bold text-aviation-700 dark:text-aviation-300 print:text-[9px] print:text-aviation-800">{linha.label}</p>
++                    <p className="text-sm font-semibold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">{linha.nome}</p>
++                  </div>
++                ))}
++              </div>
++            </div>
++          ))}
++      </div>
++
++      <div className="daily-scale-training-radio grid gap-4 print:gap-2">
++          <div className="daily-print-avoid-break rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-hover print:border-graphite-300 print:bg-white print:p-2">
++            <div className="mb-3 flex items-center gap-2 print:mb-2 print:gap-1">
++              <FileText className="h-4 w-4 text-aviation-500 print:h-3 print:w-3 print:text-aviation-800" />
++              <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">BDS / PTR</p>
++            </div>
++            <div className="space-y-2 print:space-y-1">
++              {INSTRUTOR_SECTIONS.map(({ key, label }) => {
++                const slot = escala[key];
++                return (
++                  <div key={label} className="grid gap-1 sm:grid-cols-[80px_1fr] print:grid-cols-[48px_1fr] print:gap-1">
++                    <p className="text-xs font-bold text-aviation-700 dark:text-aviation-300 print:text-[9px] print:text-aviation-800">{label}</p>
++                    <div>
++                      <p className="text-sm text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">{valorEscala(slot?.funcao)}: {valorEscala(slot?.nomeGuerra)}</p>
++                      {slot?.assunto && (
++                        <p className="mt-0.5 text-xs text-graphite-500 dark:text-graphite-400 print:text-[8px] print:text-graphite-600">Assunto: {slot.assunto}</p>
++                      )}
++                    </div>
++                  </div>
++                );
++              })}
++            </div>
++          </div>
++
++          <div className="daily-print-avoid-break rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-hover print:border-graphite-300 print:bg-white print:p-2">
++            <div className="mb-3 flex items-center gap-2 print:mb-2 print:gap-1">
++              <Radio className="h-4 w-4 text-aviation-500 print:h-3 print:w-3 print:text-aviation-800" />
++              <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">Escala de Rádio</p>
++            </div>
++            {radio.length > 0 ? (
++              <div className="space-y-2 print:space-y-1">
++                {radio.map((r, index) => (
++                  <div key={index} className="grid grid-cols-[58px_minmax(0,1fr)_auto] items-center gap-2 text-sm text-graphite-900 dark:text-graphite-100 print:grid-cols-[40px_minmax(0,1fr)_auto] print:gap-1 print:text-[9px] print:text-graphite-950">
++                    <span className="font-bold">{valorEscala(r.funcao)}</span>
++                    <span className="min-w-0 truncate font-semibold">{valorEscala(r.nomeGuerra)}</span>
++                    <span className="whitespace-nowrap text-graphite-400 dark:text-graphite-500 print:text-graphite-600">
++                      {valorEscala(r.horarioInicio)} às {valorEscala(r.horarioFim)}
++                    </span>
++                  </div>
++                ))}
++              </div>
++            ) : (
++              <p className="text-sm text-graphite-500 dark:text-graphite-400">-</p>
++            )}
++          </div>
++      </div>
++
++        {vigenciasAtivas.length > 0 && (
++          <div className="daily-scale-substituicoes daily-print-avoid-break rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-hover print:border-graphite-300 print:bg-white print:p-2">
++            <div className="mb-3 flex items-center gap-2 print:mb-2 print:gap-1">
++              <Shield className="h-4 w-4 text-aviation-500 print:h-3 print:w-3 print:text-aviation-800" />
++              <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100 print:text-[10px] print:text-graphite-950">Substituições Ativas</p>
++            </div>
++            <div className="space-y-2 print:space-y-1">
++              {vigenciasAtivas.map((v, index) => (
++                <p key={index} className="text-sm text-graphite-900 dark:text-graphite-100 print:text-[9px] print:text-graphite-950">
++                  <span className="font-semibold">{v.substitutoNome}</span>
++                  <span className="text-graphite-400"> ({v.cargoExercido}) substitui </span>
++                  <span className="font-semibold">{v.funcionarioOriginalNome}</span>
++                </p>
++              ))}
++            </div>
++          </div>
++        )}
++
++        <div className="daily-scale-footer grid gap-4 print:gap-2">
++          <div className="daily-print-avoid-break h-full rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-hover print:border-graphite-300 print:bg-white print:p-2">
++            <p className="mb-3 text-sm font-bold text-graphite-900 dark:text-graphite-100 print:mb-2 print:text-[10px] print:text-graphite-950">Trocas</p>
++            <div className="space-y-1 print:space-y-0.5">
++              {trocas.map((troca, index) => (
++                <p key={index} className="text-sm text-graphite-900 dark:text-graphite-100 print:text-[9px] print:text-graphite-950">
++                  {troca.funcaoSaindo} {troca.nomeSaindo} ↔ {troca.funcaoEntrando} {troca.nomeEntrando}
++                </p>
++              ))}
++            </div>
++          </div>
++
++          <div className="daily-print-avoid-break h-full rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-hover print:border-graphite-300 print:bg-white print:p-2">
++            <p className="mb-3 text-sm font-bold text-graphite-900 dark:text-graphite-100 print:mb-2 print:text-[10px] print:text-graphite-950">Atestados</p>
++            <div className="space-y-1 print:space-y-0.5">
++              {atestados.map((atestado, index) => (
++                <p key={index} className="text-sm text-graphite-900 dark:text-graphite-100 print:text-[9px] print:text-graphite-950">{atestado}</p>
++              ))}
++            </div>
++          </div>
++        </div>
++    </div>
++  );
++}
++
++// ─── LIST VIEW ──────────────────────────────────────────────
++function EscalaCard({ escala, onPrint, onEdit, onDelete, onClone, canManage }: {
++  escala: EscalaDiaria;
++  onPrint: () => void;
++  onEdit: () => void;
++  onDelete: () => void;
++  onClone: () => void;
++  canManage: boolean;
++}) {
++  const [expanded, setExpanded] = useState(false);
++
++  return (
++    <div
++      role="button"
++      tabIndex={0}
++      onClick={() => setExpanded(current => !current)}
++      onKeyDown={event => {
++        if (event.target !== event.currentTarget) return;
++        if (event.key === 'Enter' || event.key === ' ') {
++          event.preventDefault();
++          setExpanded(current => !current);
++        }
++      }}
++      className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-aviation-300 hover:bg-white hover:shadow-md dark:border-border-dark dark:bg-surface-card dark:hover:border-aviation-700 dark:hover:bg-surface-elevated"
++    >
+       <div className="flex items-center justify-between">
+         <div className="flex items-center gap-4">
+           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-aviation-50 to-aviation-100 shadow-sm dark:from-aviation-900/30 dark:to-aviation-800/20">
+@@ -1162,29 +1391,29 @@ function EscalaCard({ escala, onView, onEdit, onDelete, onClone, canManage }: {
+           </div>
+         </div>
+         <div className="flex items-center gap-1">
+-          <button onClick={onView} title="Visualizar"
++          <button onClick={event => { event.stopPropagation(); onPrint(); }} title="Imprimir escala"
+             className="rounded-xl p-1.5 text-graphite-400 transition-all duration-200 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300">
+-            <Eye className="h-4 w-4" />
++            <Printer className="h-4 w-4" />
+           </button>
+           {canManage && (
+             <>
+-              <button onClick={onEdit} title="Editar"
++              <button onClick={event => { event.stopPropagation(); onEdit(); }} title="Editar"
+                 className="rounded-xl p-1.5 text-graphite-400 transition-all duration-200 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300">
+                 <Pencil className="h-4 w-4" />
+               </button>
+-              <button onClick={onClone} title="Clonar"
++              <button onClick={event => { event.stopPropagation(); onClone(); }} title="Clonar"
+                 className="rounded-xl p-1.5 text-graphite-400 transition-all duration-200 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300">
+                 <Copy className="h-4 w-4" />
+               </button>
+             </>
+           )}
+           {canManage && (
+-            <button onClick={onDelete} title="Excluir"
++            <button onClick={event => { event.stopPropagation(); onDelete(); }} title="Excluir"
+               className="rounded-xl p-1.5 text-alert-red transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-900/20">
+               <Trash2 className="h-4 w-4" />
+             </button>
+           )}
+-          <button onClick={() => setExpanded(!expanded)}
++          <button onClick={event => { event.stopPropagation(); setExpanded(!expanded); }} title={expanded ? 'Recolher resumo' : 'Expandir resumo'}
+             className="rounded-xl p-1.5 text-graphite-400 transition-all duration-200 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300">
+             {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+           </button>
+@@ -1192,87 +1421,8 @@ function EscalaCard({ escala, onView, onEdit, onDelete, onClone, canManage }: {
+       </div>
+ 
+       {expanded && (
+-        <div className="mt-4 space-y-3 border-t border-graphite-200 pt-4 dark:border-border-dark">
+-          {/* Guarnições */}
+-          <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">Guarnições</p>
+-          <div className="grid grid-cols-3 gap-4">
+-            <div>
+-              <p className="text-xs text-graphite-400">CCI 02</p>
+-              <p className="text-sm">BA-MC: {escala.guarnicoes?.cci02?.baMc || '-'}</p>
+-              <p className="text-sm">BA-CE: {escala.guarnicoes?.cci02?.baCe || '-'}</p>
+-              <p className="text-sm">BA-2: {escala.guarnicoes?.cci02?.ba2 || '-'}</p>
+-            </div>
+-            <div>
+-              <p className="text-xs text-graphite-400">CCI 03</p>
+-              <p className="text-sm">BA-MC: {escala.guarnicoes?.cci03?.baMc || '-'}</p>
+-              <p className="text-sm">BA-2: {escala.guarnicoes?.cci03?.ba2_1 || '-'}</p>
+-              <p className="text-sm">BA-2: {escala.guarnicoes?.cci03?.ba2_2 || '-'}</p>
+-            </div>
+-            <div>
+-              <p className="text-xs text-graphite-400">CRS</p>
+-              <p className="text-sm">BA-MC: {escala.guarnicoes?.crs?.baMc || '-'}</p>
+-              <p className="text-sm">BA-LR: {escala.guarnicoes?.crs?.baLr || '-'}</p>
+-              <p className="text-sm">BA-RE: {escala.guarnicoes?.crs?.baRe1 || '-'}</p>
+-              <p className="text-sm">BA-RE: {escala.guarnicoes?.crs?.baRe2 || '-'}</p>
+-            </div>
+-          </div>
+-
+-          {/* Substituições Ativas */}
+-          {vigenciasAtivas.length > 0 && (
+-            <div>
+-              <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">Substituições Ativas</p>
+-              <div className="space-y-1">
+-                {vigenciasAtivas.map((v, i) => (
+-                  <p key={i} className="text-sm">
+-                    <span className="font-medium text-graphite-900 dark:text-graphite-100">{v.substitutoNome}</span>
+-                    <span className="mx-1.5 text-graphite-400">({v.cargoExercido})</span>
+-                    <span className="text-graphite-400">→ substitui </span>
+-                    <span className="font-medium text-graphite-900 dark:text-graphite-100">{v.funcionarioOriginalNome}</span>
+-                    <span className="mx-1.5 text-graphite-400">({motivoVigenciaLabel(v.motivo)})</span>
+-                    <span className="ml-2 text-[10px] text-graphite-400">nível {v.nivelCascata}</span>
+-                  </p>
+-                ))}
+-              </div>
+-            </div>
+-          )}
+-
+-          {/* BDS/PTR */}
+-          {INSTRUTOR_SECTIONS.map(({ key, label }) => {
+-            const slot = escala[key];
+-            return (
+-            <div key={label}>
+-              <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">{label}</p>
+-              <p className="text-sm">{slot?.funcao || '-'}: {slot?.nomeGuerra || '-'}</p>
+-            </div>
+-            );
+-          })}
+-
+-          {escala.atestados.length > 0 && (
+-            <div>
+-              <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">Atestados</p>
+-              {escala.atestados.map((a, i) => <p key={i} className="text-sm">{a}</p>)}
+-            </div>
+-          )}
+-
+-          {escala.trocas.length > 0 && (
+-            <div>
+-              <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">Trocas</p>
+-              {escala.trocas.map((t, i) => (
+-                <p key={i} className="text-sm">
+-                  {t.funcaoSaindo} {t.nomeSaindo} ↔ {t.funcaoEntrando} {t.nomeEntrando}
+-                </p>
+-              ))}
+-            </div>
+-          )}
+-
+-          {escala.radio.length > 0 && (
+-            <div>
+-              <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">Escala de Rádio</p>
+-              {escala.radio.map((r, i) => (
+-                <p key={i} className="text-sm">{r.funcao} {r.nomeGuerra} - {r.horarioInicio} às {r.horarioFim}</p>
+-              ))}
+-            </div>
+-          )}
++        <div className="mt-4 border-t border-graphite-200 pt-4 dark:border-border-dark">
++          <EscalaDetalhesConteudo escala={escala} />
+         </div>
+       )}
+     </div>
+@@ -1285,7 +1435,7 @@ export function EscalaDiariaView() {
+   const username = user?.username || '';
+   const canCreate = canManageGlobal || !!equipeEfetiva;
+   const [escalas, setEscalas] = useState<EscalaDiaria[]>([]);
+-  const [mode, setMode] = useState<'list' | 'form' | 'view'>('list');
++  const [mode, setMode] = useState<'list' | 'form' | 'print'>('list');
+   const [editando, setEditando] = useState<EscalaDiaria | null>(null);
+   const [visualizando, setVisualizando] = useState<EscalaDiaria | null>(null);
+   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+@@ -1349,7 +1499,7 @@ export function EscalaDiariaView() {
+       await carregar();
+       if (saved) {
+         setVisualizando(saved);
+-        setMode('view');
++        setMode('list');
+       } else {
+         setMode('list');
+       }
+@@ -1394,11 +1544,6 @@ export function EscalaDiariaView() {
+   if (mode === 'form') {
+     return (
+       <div>
+-        <div className="mb-6">
+-          <h3 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
+-            {editando?.id ? 'Editar Escala Diária' : editando && !editando.id ? 'Clonar Escala Diária' : 'Nova Escala Diária'}
+-          </h3>
+-        </div>
+         <EscalaDiariaForm
+           escala={editando || undefined}
+           onSave={handleSave}
+@@ -1410,7 +1555,7 @@ export function EscalaDiariaView() {
+     );
+   }
+ 
+-  if (mode === 'view' && visualizando) {
++  if (mode === 'print' && visualizando) {
+     return (
+       <ViewMode escala={visualizando} onBack={() => setMode('list')} />
+     );
+@@ -1479,7 +1624,7 @@ export function EscalaDiariaView() {
+               key={e.id}
+               escala={e}
+               canManage={canManageEquipe(e.equipe)}
+-              onView={() => { setVisualizando(e); setMode('view'); }}
++              onPrint={() => { setVisualizando(e); setMode('print'); }}
+               onEdit={() => { setEditando(e); setMode('form'); }}
+               onClone={() => handleClone(e)}
+               onDelete={() => setConfirmDelete(e.id)}
+@@ -1511,21 +1656,101 @@ export function EscalaDiariaView() {
+ }
+ 
+ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void }) {
+-  const [vigenciasAtivas, setVigenciasAtivas] = useState<VigenciaSubstituicao[]>([]);
+-
+-  useEffect(() => {
+-    if (!escala.dataPlantao || !escala.equipe) return;
+-    listarVigencias({ equipe: escala.equipe, ativa: true, dataInicio: escala.dataPlantao, dataFim: escala.dataPlantao })
+-      .then(setVigenciasAtivas)
+-      .catch(() => setVigenciasAtivas([]));
+-  }, [escala.dataPlantao, escala.equipe]);
+-
+   return (
+-    <div>
+-      <div className="mb-6 flex items-center justify-between print-hidden">
+-        <h3 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
+-          Escala Diária - {escala.equipe} - {formatDate(escala.dataPlantao)}
+-        </h3>
++    <div className="mx-auto max-w-5xl">
++      <style>{`
++        @media print {
++          @page { size: A4 portrait; margin: 6mm; }
++          #print-area.daily-scale-print-area {
++            position: absolute !important;
++            left: 0 !important;
++            top: 0 !important;
++            width: 100% !important;
++            max-width: 100% !important;
++            height: calc(297mm - 12mm) !important;
++            display: flex !important;
++            flex-direction: column !important;
++            overflow: hidden !important;
++          }
++          #print-area.daily-scale-print-area .daily-print-header {
++            flex: 0 0 auto !important;
++            padding: 6mm 8mm 4mm !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-print-body {
++            flex: 1 1 auto !important;
++            min-height: 0 !important;
++            padding: 5mm 8mm 6mm !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-print-content {
++            height: 100% !important;
++            width: 100% !important;
++            display: grid !important;
++            grid-template-rows: auto minmax(50mm, 0.8fr) minmax(92mm, 1.35fr) auto minmax(38mm, 0.55fr) !important;
++            gap: 3mm !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-print-content > * {
++            margin-top: 0 !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-summary {
++            grid-row: 1 !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-guarnicoes {
++            grid-row: 2 !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-training-radio {
++            grid-row: 3 !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-substituicoes {
++            grid-row: 4 !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-footer {
++            grid-row: 5 !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-guarnicoes,
++          #print-area.daily-scale-print-area .daily-scale-training-radio,
++          #print-area.daily-scale-print-area .daily-scale-footer {
++            align-items: stretch !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-guarnicoes > *,
++          #print-area.daily-scale-print-area .daily-scale-training-radio > *,
++          #print-area.daily-scale-print-area .daily-scale-footer > * {
++            height: 100% !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-training-radio,
++          #print-area.daily-scale-print-area .daily-scale-footer {
++            grid-template-columns: 1fr !important;
++          }
++          #print-area.daily-scale-print-area .daily-print-avoid-break {
++            padding: 2.8mm !important;
++          }
++          #print-area.daily-scale-print-area h1 {
++            font-size: 22px !important;
++            line-height: 1.05 !important;
++          }
++          #print-area.daily-scale-print-area .daily-scale-print-content p,
++          #print-area.daily-scale-print-area .daily-scale-print-content span {
++            line-height: 1.18 !important;
++          }
++          #print-area.daily-scale-print-area,
++          #print-area.daily-scale-print-area * {
++            print-color-adjust: exact;
++            -webkit-print-color-adjust: exact;
++          }
++          #print-area.daily-scale-print-area .daily-print-avoid-break {
++            break-inside: avoid;
++            page-break-inside: avoid;
++          }
++        }
++      `}</style>
++      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print-hidden">
++        <div>
++          <h3 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
++            Impressão da Escala Diária
++          </h3>
++          <p className="text-sm text-graphite-500 dark:text-graphite-400">
++            {escala.equipe} · {formatDate(escala.dataPlantao)}
++          </p>
++        </div>
+         <div className="flex items-center gap-2">
+           <button onClick={() => window.print()}
+             className="flex items-center gap-1 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-1.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all duration-200 hover:shadow-xl hover:shadow-aviation-500/30 hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
+@@ -1537,108 +1762,23 @@ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void
+           </button>
+         </div>
+       </div>
+-      <div id="print-area" className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-border-dark dark:bg-surface-card print:border-none print:shadow-none">
+-        <div className="grid grid-cols-2 gap-4 mb-6">
+-          <div>
+-            <p className="text-xs text-graphite-400">Equipe</p>
+-            <p className="text-sm font-medium">{escala.equipe}</p>
+-          </div>
+-          <div>
+-            <p className="text-xs text-graphite-400">Chefe de Equipe</p>
+-            <p className="text-sm font-medium">{escala.chefeEquipe || '-'}</p>
+-          </div>
+-          <div>
+-            <p className="text-xs text-graphite-400">Data</p>
+-            <p className="text-sm font-medium">{formatDate(escala.dataPlantao)}</p>
+-          </div>
+-          <div>
+-            <p className="text-xs text-graphite-400">Horário</p>
+-            <p className="text-sm font-medium">{escala.horarioInicio} às {escala.horarioTermino}</p>
+-          </div>
+-          <div>
+-            <p className="text-xs text-graphite-400">Turno</p>
+-            <p className="text-sm font-medium">{escala.turno}</p>
+-          </div>
+-        </div>
+-
+-        <div className="mb-6">
+-          <p className="mb-2 text-xs font-semibold text-aviation-600 dark:text-aviation-400">Guarnições</p>
+-          <div className="grid grid-cols-3 gap-4">
+-            <div className="rounded-2xl bg-white/60 p-3 backdrop-blur-sm dark:bg-surface-card/60">
+-              <p className="mb-1 text-xs font-bold text-graphite-500">CCI 02</p>
+-              <p className="text-sm">BA-MC: {escala.guarnicoes?.cci02?.baMc || '-'}</p>
+-              <p className="text-sm">BA-CE: {escala.guarnicoes?.cci02?.baCe || '-'}</p>
+-              <p className="text-sm">BA-2: {escala.guarnicoes?.cci02?.ba2 || '-'}</p>
+-            </div>
+-            <div className="rounded-2xl bg-white/60 p-3 backdrop-blur-sm dark:bg-surface-card/60">
+-              <p className="mb-1 text-xs font-bold text-graphite-500">CCI 03</p>
+-              <p className="text-sm">BA-MC: {escala.guarnicoes?.cci03?.baMc || '-'}</p>
+-              <p className="text-sm">BA-2: {escala.guarnicoes?.cci03?.ba2_1 || '-'}</p>
+-              <p className="text-sm">BA-2: {escala.guarnicoes?.cci03?.ba2_2 || '-'}</p>
++      <div id="print-area" className="daily-scale-print-area overflow-hidden rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card print:rounded-none print:border-0 print:shadow-none">
++        <div className="daily-print-header border-b border-graphite-200 bg-gradient-to-r from-aviation-900 to-aviation-700 px-6 py-5 text-white print:bg-none print:bg-white print:px-3 print:py-2 print:text-graphite-950">
++          <div className="flex flex-wrap items-start justify-between gap-4 print:gap-2">
++            <div>
++              <p className="text-xs font-semibold uppercase tracking-wider text-aviation-100 print:text-[9px] print:text-aviation-800">SESCINC</p>
++              <h1 className="mt-1 text-2xl font-bold print:text-lg">Escala Diária</h1>
+             </div>
+-            <div className="rounded-2xl bg-white/60 p-3 backdrop-blur-sm dark:bg-surface-card/60">
+-              <p className="mb-1 text-xs font-bold text-graphite-500">CRS</p>
+-              <p className="text-sm">BA-MC: {escala.guarnicoes?.crs?.baMc || '-'}</p>
+-              <p className="text-sm">BA-LR: {escala.guarnicoes?.crs?.baLr || '-'}</p>
+-              <p className="text-sm">BA-RE: {escala.guarnicoes?.crs?.baRe1 || '-'}</p>
+-              <p className="text-sm">BA-RE: {escala.guarnicoes?.crs?.baRe2 || '-'}</p>
++            <div className="rounded-xl bg-white/10 px-4 py-2 text-right print:border print:border-graphite-300 print:bg-white print:px-2 print:py-1">
++              <p className="text-xs font-semibold uppercase tracking-wider text-aviation-100 print:text-[9px] print:text-graphite-500">Equipe</p>
++              <p className="text-lg font-bold print:text-sm">{escala.equipe}</p>
+             </div>
+           </div>
+         </div>
+ 
+-        {/* Substituições Ativas */}
+-        {vigenciasAtivas.length > 0 && (
+-          <div className="mb-4">
+-            <p className="mb-1 text-xs font-semibold text-aviation-600 dark:text-aviation-400">Substituições Ativas</p>
+-            <div className="space-y-1">
+-              {vigenciasAtivas.map((v, i) => (
+-                <p key={i} className="text-sm">
+-                  <span className="font-medium text-graphite-900 dark:text-graphite-100">{v.substitutoNome}</span>
+-                  <span className="mx-1.5 text-graphite-400">({v.cargoExercido})</span>
+-                  <span className="text-graphite-400">→ substitui </span>
+-                  <span className="font-medium text-graphite-900 dark:text-graphite-100">{v.funcionarioOriginalNome}</span>
+-                  <span className="mx-1.5 text-graphite-400">({motivoVigenciaLabel(v.motivo)})</span>
+-                  <span className="ml-2 text-[10px] text-graphite-400">nível {v.nivelCascata}</span>
+-                </p>
+-              ))}
+-            </div>
+-          </div>
+-        )}
+-
+-        {INSTRUTOR_SECTIONS.map(({ key, label }) => {
+-          const slot = escala[key];
+-          return (
+-          <div key={label} className="mb-4">
+-            <p className="mb-1 text-xs font-semibold text-aviation-600 dark:text-aviation-400">{label}</p>
+-            <p className="text-sm">{slot?.funcao || '-'}: {slot?.nomeGuerra || '-'}</p>
+-          </div>
+-          );
+-        })}
+-
+-        {escala.atestados.length > 0 && (
+-          <div className="mb-4">
+-            <p className="mb-1 text-xs font-semibold text-aviation-600 dark:text-aviation-400">Atestados</p>
+-            {escala.atestados.map((a, i) => <p key={i} className="text-sm">- {a}</p>)}
+-          </div>
+-        )}
+-
+-        {escala.trocas.length > 0 && (
+-          <div className="mb-4">
+-            <p className="mb-1 text-xs font-semibold text-aviation-600 dark:text-aviation-400">Trocas</p>
+-            {escala.trocas.map((t, i) => (
+-              <p key={i} className="text-sm">- {t.funcaoSaindo} {t.nomeSaindo} ↔ {t.funcaoEntrando} {t.nomeEntrando}</p>
+-            ))}
+-          </div>
+-        )}
+-
+-        {escala.radio.length > 0 && (
+-          <div>
+-            <p className="mb-1 text-xs font-semibold text-aviation-600 dark:text-aviation-400">Escala de Rádio</p>
+-            {escala.radio.map((r, i) => (
+-              <p key={i} className="text-sm">- {r.funcao} {r.nomeGuerra}: {r.horarioInicio} às {r.horarioFim}</p>
+-            ))}
+-          </div>
+-        )}
++        <div className="daily-scale-print-body p-6 print:p-3">
++          <EscalaDetalhesConteudo escala={escala} printable />
++        </div>
+       </div>
+     </div>
+   );
+diff --git a/frontend/src/pages/GerarLRO/GerarLRO.tsx b/frontend/src/pages/GerarLRO/GerarLRO.tsx
+index 526b28e..e648d65 100644
+--- a/frontend/src/pages/GerarLRO/GerarLRO.tsx
++++ b/frontend/src/pages/GerarLRO/GerarLRO.tsx
+@@ -101,6 +101,23 @@ type SubstituicaoDetectada = {
+   dataFolga?: string;
+   confirmada: boolean | null;
+ };
++type TrocaManualLRO = {
++  solicitante: string;
++  solicitado: string;
++  dataFolga: string;
++  motivo: string;
++  documentoFillId?: string;
++};
++type SubstituicaoInfo = {
++  substitutoNome: string;
++  substitutoId: string;
++  tipo: 'troca' | 'substituicao';
++  substituidoId: string;
++  substituidoNome: string;
++  cargoSubstituido?: string;
++  equipeSubstituido?: string;
++  cargoExercido?: string;
++};
+ const EMPTY_FROTA_LINHA: FrotaLinhaDados = {
+   viaturaId: '',
+   prefixo: '',
+@@ -130,6 +147,7 @@ const STATUS_LABELS: Record<LRODraftStatus, string> = {
+ };
+ 
+ const STATUS_LRO_TRAVAM_OCORRENCIAS = new Set<LRODraftStatus>(['assinado', 'finalizado', 'arquivado']);
++const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);
+ 
+ export function GerarLRO() {
+   const { user, contexto, equipeEfetiva } = useContextoOperacional();
+@@ -178,7 +196,7 @@ export function GerarLRO() {
+   const [trocaSolicitado, setTrocaSolicitado] = useState('');
+   const [trocaDataFolga, setTrocaDataFolga] = useState('');
+   const [trocaMotivo, setTrocaMotivo] = useState('');
+-  const [trocasManuais, setTrocasManuais] = useState<Array<{ solicitante: string; solicitado: string; dataFolga: string; motivo: string }>>([]);
++  const [trocasManuais, setTrocasManuais] = useState<TrocaManualLRO[]>([]);
+   const [substituicoesDetectadas, setSubstituicoesDetectadas] = useState<SubstituicaoDetectada[]>([]);
+ 
+   // -- LRO Sections --
+@@ -242,6 +260,16 @@ export function GerarLRO() {
+     return true;
+   }
+ 
++  function limparCamposAutomaticosPlantao() {
++    setChefeEquipe('');
++    setComunicacao('');
++    setEquipagemCCI({});
++    setEquipagemCCIRT({});
++    setEquipagemCRS({});
++    setTrocasManuais([]);
++    setSubstituicoesDetectadas([]);
++  }
++
+   useEffect(() => {
+     if (!canEscolherEquipe && equipeEfetiva && equipe !== equipeEfetiva) {
+       setEquipe(equipeEfetiva as EquipeOpcao);
+@@ -322,13 +350,13 @@ export function GerarLRO() {
+         const trocaDoc = docs.find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
+         if (trocaDoc) {
+           setTrocaDocId(trocaDoc.id);
+-          const fills = await listarPreenchimentos({ documentId: trocaDoc.id, status: 'signed' });
+-          setTrocaFills(fills);
++          const fills = await listarPreenchimentos({ documentId: trocaDoc.id });
++          setTrocaFills(fills.filter(trocaFillVisivelNoLRO));
+         } else {
+           const todosFills = await Promise.all(docs.map((d: any) => listarPreenchimentos({ documentId: d.id }).catch(() => [])));
+           const comNome = todosFills.flat().filter((fl: any) => {
+             const fd = fl.filled_data || {};
+-            return (fd.nome_solicitante || fd.nome_solicitado) && fl.status === 'signed';
++            return trocaFillVisivelNoLRO(fl) && (fd.nome_solicitante || fd.nome_solicitado);
+           });
+           setTrocaFills(comNome);
+         }
+@@ -384,6 +412,24 @@ export function GerarLRO() {
+   useEffect(() => {
+     if (!dataInicio) return;
+     const nomesEquipe = bombeiros.filter((b: any) => b.equipe === equipe).map((b: any) => b.nomeGuerra.toLowerCase());
++    const pessoaPorNome = (nome: string) => {
++      const alvo = String(nome || '').trim().toLocaleLowerCase('pt-BR');
++      if (!alvo) return undefined;
++      return bombeiros.find((b: any) =>
++        String(b.nomeGuerra || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
++        String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
++        String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR').includes(alvo)
++      );
++    };
++    const cobreEquipeAtual = (pessoa?: Bombeiro) => {
++      if (!pessoa) return false;
++      return vigencias.some(v => {
++        if (!v.ativa || v.substitutoId !== pessoa.id) return false;
++        if (!estaNoPeriodoISO(dataInicio, v.dataInicio, v.dataFim)) return false;
++        const original = bombeiros.find((b: any) => b.id === v.funcionarioOriginalId);
++        return (original?.equipe || v.equipe) === equipe;
++      });
++    };
+     const resultados: SubstituicaoDetectada[] = [];
+     // De trocaFills (documento Troca de Serviço) — filtra pela data solicitada / folga do solicitado
+     trocaFills.forEach((fl: any) => {
+@@ -398,10 +444,23 @@ export function GerarLRO() {
+       const substituto = naDataSolicitada ? nomeSolic : nomeSol;
+       const solNome = substituido.toLowerCase();
+       const solicNome = substituto.toLowerCase();
+-      const pertenceEquipe = nomesEquipe.some(n => solNome.includes(n)) || nomesEquipe.some(n => solicNome.includes(n));
++      const pessoaSubstituida = pessoaPorNome(substituido);
++      const pessoaSubstituta = pessoaPorNome(substituto);
++      const pertenceEquipe = nomesEquipe.some(n => solNome.includes(n)) ||
++        nomesEquipe.some(n => solicNome.includes(n)) ||
++        cobreEquipeAtual(pessoaSubstituida) ||
++        cobreEquipeAtual(pessoaSubstituta);
+       if (pertenceEquipe) {
+         const jaConfirmada = mesmoDiaISO(fd.lro_confirmada, dataInicio);
+-        resultados.push({ id: fl.id, tipo: 'troca' as const, substituido, substituto, dataSolicitada: fd.data_solicitada || '', dataFolga: fd.data_folga_solicitado || '', confirmada: jaConfirmada ? true : null });
++        resultados.push({
++          id: fl.id,
++          tipo: 'troca' as const,
++          substituido,
++          substituto,
++          dataSolicitada: fd.data_solicitada || '',
++          dataFolga: fd.data_folga_solicitado || '',
++          confirmada: jaConfirmada || trocaFillAprovada(fl, fd) ? true : null,
++        });
+       }
+     });
+     // De todasSubstituicoes (substituições temporárias aprovadas) — filtra pela data
+@@ -421,7 +480,7 @@ export function GerarLRO() {
+       }
+     });
+     setSubstituicoesDetectadas(resultados);
+-  }, [dataInicio, equipe, trocaFills, todasSubstituicoes, bombeiros]);
++  }, [dataInicio, equipe, trocaFills, todasSubstituicoes, bombeiros, vigencias]);
+ 
+   const equipeInversa: Record<string, string> = { Alfa: 'Charlie', Charlie: 'Alfa', Bravo: 'Delta', Delta: 'Bravo' };
+ 
+@@ -507,6 +566,14 @@ export function GerarLRO() {
+     return cabecalho ? `${cabecalho}\n${descricaoLimpa}` : descricaoLimpa;
+   }
+ 
++  function linhaBonaLRO(registro: Ocorrencia): string {
++    const identificacao = [
++      textoInline(registro.numero),
++      textoInline(registro.titulo || registro.bonaDados?.tipoOcorrencia || 'BONA'),
++    ].filter(Boolean).join(' - ');
++    return linhaLRO(registro.data, registro.hora, registro.equipe, identificacao, registro.descricao);
++  }
++
+   function lancamentosParaTexto(valor: unknown): string {
+     if (!Array.isArray(valor)) return String(valor || '');
+     const items = (valor as string[]).filter(Boolean);
+@@ -626,9 +693,9 @@ export function GerarLRO() {
+         registroNoPlantao(registro.data, registro.hora, registro.equipe)
+       )
+       .sort((a, b) => `${dataISO(a.data)} ${horaCurta(a.hora)}`.localeCompare(`${dataISO(b.data)} ${horaCurta(b.hora)}`))
+-      .map(registro => linhaLRO(registro.data, registro.hora, '', '', registro.descricao))
++      .map(linhaBonaLRO)
+       .filter(Boolean)
+-      .join('\n');
++      .join('\n\n');
+   }, [ocorrenciasOperacionais, equipe, dataInicio, dataFim, horarioBase.turno, horarioPlantao.inicio, horarioPlantao.fim]);
+ 
+   const reaAutomaticas = useMemo(() => {
+@@ -709,37 +776,55 @@ export function GerarLRO() {
+     return aviso?.nivel !== 'bloqueado';
+   }
+ 
+-  const jaTemManual = trocasManuais.length > 0;
++  function trocaFillVisivelNoLRO(fill: any): boolean {
++    const status = String(fill?.status || '');
++    if (!STATUS_TROCA_ENTRA_LRO.has(status)) return false;
++    const fd = fill?.filled_data || {};
++    return !!(fd.nome_solicitante || fd.nome_solicitado);
++  }
++
++  function trocaFillAprovada(fill: any, filledData: Record<string, any>): boolean {
++    return fill?.status === 'signed' ||
++      filledData.deferido_indeferido === 'DEFERIDO' ||
++      filledData.check_deferido === 'V';
++  }
++
+   const substituicoesMap = useMemo(() => {
+     if (!dataInicio) return {};
+-    const map: Record<string, { substitutoNome: string; substitutoId: string; tipo: 'troca' | 'substituicao'; cargoExercido?: string }> = {};
+-    // De trocaFills (documento Troca de Serviço) — filtra pela data solicitada / folga do solicitado (data exata)
+-    trocaFills.forEach((fl: any) => {
+-      const fd = fl.filled_data || {};
+-      const nomeSol = fd.nome_solicitante || '';
+-      const nomeSolic = fd.nome_solicitado || '';
+-      const pessoaSol = bombeiros.find((b: any) => b.nomeCompleto === nomeSol || b.nomeGuerra === nomeSol);
+-      const pessoaSolic = bombeiros.find((b: any) => b.nomeCompleto === nomeSolic || b.nomeGuerra === nomeSolic);
+-      if (!pessoaSol || !pessoaSolic) return;
+-      if (mesmoDiaISO(fd.data_solicitada, dataInicio)) {
+-        map[pessoaSol.id] = { substitutoNome: nomeSolic, substitutoId: pessoaSolic.id, tipo: 'troca' };
+-      }
+-      if (mesmoDiaISO(fd.data_folga_solicitado, dataInicio)) {
+-        map[pessoaSolic.id] = { substitutoNome: nomeSol, substitutoId: pessoaSol.id, tipo: 'troca' };
+-      }
+-    });
++    const map: Record<string, SubstituicaoInfo> = {};
++    const registrar = (
++      ausente: Bombeiro | undefined,
++      substituto: Bombeiro | undefined,
++      tipo: 'troca' | 'substituicao',
++      cargoExercido?: string,
++      substituidoEfetivo?: Partial<Pick<SubstituicaoInfo, 'substituidoId' | 'substituidoNome' | 'cargoSubstituido' | 'equipeSubstituido'>>,
++    ) => {
++      if (!ausente || !substituto || ausente.id === substituto.id) return;
++      map[ausente.id] = {
++        substitutoNome: substituto.nomeGuerra || substituto.nomeCompleto,
++        substitutoId: substituto.id,
++        tipo,
++        substituidoId: substituidoEfetivo?.substituidoId || ausente.id,
++        substituidoNome: substituidoEfetivo?.substituidoNome || ausente.nomeGuerra || ausente.nomeCompleto,
++        cargoSubstituido: substituidoEfetivo?.cargoSubstituido || ausente.cargo,
++        equipeSubstituido: substituidoEfetivo?.equipeSubstituido || ausente.equipe,
++        cargoExercido: cargoExercido || substituidoEfetivo?.cargoSubstituido || ausente.cargo,
++      };
++    };
++
+     // De vigências (férias/cascata/substituições salvas) — original ausente -> substituto presente
+     vigencias.forEach(v => {
+       if (!v.ativa || !v.substitutoId || v.substitutoId === v.funcionarioOriginalId) return;
+       if (!estaNoPeriodoISO(dataInicio, v.dataInicio, v.dataFim)) return;
+       const original = bombeiros.find((b: any) => b.id === v.funcionarioOriginalId);
++      const substituto = bombeiros.find((b: any) => b.id === v.substitutoId || b.nomeGuerra === v.substitutoNome || b.nomeCompleto === v.substitutoNome);
+       if ((original?.equipe || v.equipe) !== equipe) return;
+-      map[v.funcionarioOriginalId] = {
+-        substitutoNome: v.substitutoNome,
+-        substitutoId: v.substitutoId,
+-        tipo: 'substituicao',
+-        cargoExercido: v.cargoExercido,
+-      };
++      registrar(original, substituto, 'substituicao', v.cargoExercido, {
++        substituidoId: v.funcionarioOriginalId,
++        substituidoNome: v.funcionarioOriginalNome,
++        cargoSubstituido: v.cargoOriginalFuncionario,
++        equipeSubstituido: original?.equipe || v.equipe,
++      });
+     });
+     // De todasSubstituicoes (substituições temporárias) — filtra pelo período do plantão
+     todasSubstituicoes.forEach((s: any) => {
+@@ -747,23 +832,51 @@ export function GerarLRO() {
+       const dataSubstInicio = s.dataInicio || s.data_inicio || '';
+       const dataSubstFim = s.dataFim || s.data_fim || dataSubstInicio;
+       if (!estaNoPeriodoISO(dataInicio, dataSubstInicio, dataSubstFim)) return;
+-      const nomeSubstituto = s.substitutoNome || s.substituto_nome || '';
+       const idSubstituido = s.funcionarioId || s.funcionario_id || '';
+       const idSubstituto = s.substitutoId || s.substituto_id || '';
+-      if (idSubstituido && nomeSubstituto) {
+-        map[idSubstituido] = { substitutoNome: nomeSubstituto, substitutoId: idSubstituto, tipo: 'substituicao' };
+-      }
++      const ausente = bombeiros.find((b: any) => b.id === idSubstituido);
++      if (ausente?.equipe !== equipe) return;
++      const substituto = bombeiros.find((b: any) =>
++        b.id === idSubstituto ||
++        b.nomeGuerra === (s.substitutoNome || s.substituto_nome) ||
++        b.nomeCompleto === (s.substitutoNome || s.substituto_nome)
++      );
++      registrar(ausente, substituto, 'substituicao', s.funcionarioCargo || s.funcionario_cargo || ausente?.cargo);
++    });
++    // De trocas detectadas (aprovadas ou pendentes no LRO) — solicitante/solicitado alternam conforme a data
++    substituicoesDetectadas
++      .filter(s => s.tipo === 'troca' && s.confirmada !== false)
++      .forEach(s => {
++        const ausente = buscarBombeiroPorNome(s.substituido);
++        const substituto = buscarBombeiroPorNome(s.substituto);
++        const coberturaAnterior = ausente
++          ? Object.values(map).find(info => info.substitutoId === ausente.id)
++          : undefined;
++        const equipeEfetivaAusente = coberturaAnterior?.equipeSubstituido || ausente?.equipe;
++        if (equipeEfetivaAusente !== equipe) return;
++        registrar(ausente, substituto, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || ausente?.cargo, coberturaAnterior);
+     });
+     // De trocasManuais (troca emergencial) — solicitante sai, solicitado entra
+     trocasManuais.forEach(tm => {
+-      const solicitante = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante);
+-      const solicitado = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado);
+-      if (solicitante && solicitado) {
+-        map[solicitante.id] = { substitutoNome: tm.solicitado, substitutoId: solicitado.id, tipo: 'troca' };
+-      }
++      const solicitante = buscarBombeiroPorNome(tm.solicitante);
++      const solicitado = buscarBombeiroPorNome(tm.solicitado);
++      const coberturaAnterior = solicitante
++        ? Object.values(map).find(info => info.substitutoId === solicitante.id)
++        : undefined;
++      const equipeEfetivaSolicitante = coberturaAnterior?.equipeSubstituido || solicitante?.equipe;
++      if (equipeEfetivaSolicitante !== equipe) return;
++      registrar(solicitante, solicitado, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || solicitante?.cargo, coberturaAnterior);
++    });
++    return map;
++  }, [dataInicio, vigencias, todasSubstituicoes, substituicoesDetectadas, trocasManuais, bombeiros, equipe]);
++
++  const substituicoesPorSubstituto = useMemo(() => {
++    const map: Record<string, SubstituicaoInfo> = {};
++    Object.values(substituicoesMap).forEach(info => {
++      if (info.substitutoId) map[info.substitutoId] = info;
+     });
+     return map;
+-  }, [dataInicio, trocaFills, vigencias, todasSubstituicoes, trocasManuais, bombeiros, equipe]);
++  }, [substituicoesMap]);
+ 
+   const disponiveis = useMemo(() => {
+     const feriasIds = new Set(emFerias.map(f => f.funcionarioId));
+@@ -776,10 +889,13 @@ export function GerarLRO() {
+     });
+     Object.entries(substituicoesMap).forEach(([ausenteId, sub]) => {
+       if (idsAdicionados.has(ausenteId)) return;
+-      // Só adiciona o substituto se o ausente for da equipe atual
+-      const ausente = bombeiros.find((b: any) => b.id === ausenteId);
+-      if (ausente?.equipe !== equipe) return;
+-      const substituto = bombeiros.find((b: any) => b.nomeGuerra === sub.substitutoNome || b.nomeCompleto === sub.substitutoNome);
++      if (substituidoIds.has(sub.substitutoId)) return;
++      if ((sub.equipeSubstituido || '') !== equipe) return;
++      const substituto = bombeiros.find((b: any) =>
++        b.id === sub.substitutoId ||
++        b.nomeGuerra === sub.substitutoNome ||
++        b.nomeCompleto === sub.substitutoNome
++      );
+       if (substituto && !idsAdicionados.has(substituto.id)) {
+         presentes.push(substituto);
+         idsAdicionados.add(substituto.id);
+@@ -818,14 +934,25 @@ export function GerarLRO() {
+     const parada = completa?.paradas.find(p => mesmoDiaISO(p.data, dataInicio)) || completa?.paradas[0];
+     const pessoas = configEscala?.pessoas || completa?.config?.pessoas || [];
+ 
+-    const resolvePessoa = (id: string | undefined, nomeGuerra: string | undefined): string => {
+-      if (!nomeGuerra) return '';
+-      const b = bombeiros.find((x: any) => x.id === id || x.nomeGuerra === nomeGuerra || x.nomeCompleto?.includes(nomeGuerra));
++    const resolvePessoa = (id: string | undefined, nomeGuerra: string | undefined, visitados = new Set<string>()): string => {
++      const b = bombeiros.find((x: any) =>
++        (!!id && x.id === id) ||
++        (!!nomeGuerra && (x.nomeGuerra === nomeGuerra || x.nomeCompleto?.includes(nomeGuerra)))
++      );
+       if (!b) return nomeGuerra || '';
++      if (visitados.has(b.id)) return b.nomeGuerra || nomeGuerra || '';
+       const sub = substituicoesMap[b.id];
+       if (sub) {
+-        const substituto = bombeiros.find((x: any) => x.nomeGuerra === sub.substitutoNome || x.nomeCompleto === sub.substitutoNome);
+-        return substituto?.nomeGuerra || sub.substitutoNome;
++        const substituto = bombeiros.find((x: any) =>
++          x.id === sub.substitutoId ||
++          x.nomeGuerra === sub.substitutoNome ||
++          x.nomeCompleto === sub.substitutoNome
++        );
++        const proximosVisitados = new Set(visitados);
++        proximosVisitados.add(b.id);
++        return substituto
++          ? resolvePessoa(substituto.id, substituto.nomeGuerra, proximosVisitados)
++          : sub.substitutoNome;
+       }
+       return b.nomeGuerra || '';
+     };
+@@ -846,20 +973,17 @@ export function GerarLRO() {
+       return designadoDisponivel ? resolvePessoa(designado.id, designado.nomeGuerra) : '';
+     })();
+     const chefeAtual = buscarBombeiroPorNome(chefeEquipe);
+-    const chefeAtualInvalido = !!chefeEquipe && (!chefeAtual || !podeSerChefeEquipe(chefeAtual));
+-    if (!chefeEquipe || chefeAtualInvalido) {
+-      const candidato = [nomeChefeDaEscala, nomeChefeDesignado]
+-        .map(nome => buscarBombeiroPorNome(nome))
+-        .find(b => podeSerChefeEquipe(b));
+-      if (candidato && candidato.nomeGuerra !== chefeEquipe) {
+-        setChefeEquipe(candidato.nomeGuerra);
+-      } else if (chefeAtualInvalido) {
+-        setChefeEquipe('');
+-      }
++    const chefeAtualSaiu = !!chefeAtual && !!substituicoesMap[chefeAtual.id];
++    const chefeAtualPresente = !!chefeAtual && disponiveis.some(b => b.id === chefeAtual.id);
++    const candidatoChefe = [nomeChefeDaEscala, nomeChefeDesignado].find(Boolean) || '';
++    if (candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente) && candidatoChefe !== chefeEquipe) {
++      setChefeEquipe(candidatoChefe);
+     }
+ 
+     // 1.2 Comunicação BA-OC — comunicante do plantão (rádio fixo da parada do dia)
+-    if (!comunicacao && parada?.radio) {
++    const comunicacaoAtual = buscarBombeiroPorNome(comunicacao);
++    const comunicacaoAtualSaiu = !!comunicacaoAtual && !!substituicoesMap[comunicacaoAtual.id];
++    if ((!comunicacao || comunicacaoAtualSaiu) && parada?.radio) {
+       const comunicante = parada.radio.find(r => r.fixo)?.pessoaNomeGuerra || parada.radio[0]?.pessoaNomeGuerra || '';
+       if (comunicante && comunicante !== '-') {
+         const nomeReal = resolvePessoa(undefined, comunicante);
+@@ -868,8 +992,7 @@ export function GerarLRO() {
+     }
+ 
+     // 1.3 Equipagem dos CCI — pessoas da escala (CCI F2, CCI F3, CRS), aplicando trocas
+-    const jaPreenchida = Object.values(equipagemCCI).some(Boolean) || Object.values(equipagemCCIRT).some(Boolean) || Object.values(equipagemCRS).some(Boolean);
+-    if (jaPreenchida || !pessoas.length) return;
++    if (!pessoas.length) return;
+ 
+     const slotPorFuncao: Record<string, Record<string, string>> = {
+       cciF2: { BaCe: 'BA-CE_0', BaMc: 'BA-MC_1', Ba2: 'BA-2_2' },
+@@ -879,19 +1002,48 @@ export function GerarLRO() {
+     const novoCCI: Record<string, string> = {};
+     const novoCCIRT: Record<string, string> = {};
+     const novoCRS: Record<string, string> = {};
++    const originalCCI: Record<string, string> = {};
++    const originalCCIRT: Record<string, string> = {};
++    const originalCRS: Record<string, string> = {};
+     const alvo: Record<string, Record<string, string>> = { cciF2: novoCCI, cciF3: novoCCIRT, crs: novoCRS };
++    const originais: Record<string, Record<string, string>> = { cciF2: originalCCI, cciF3: originalCCIRT, crs: originalCRS };
+ 
+     pessoas.forEach(p => {
+       const slotKey = slotPorFuncao[p.veiculo]?.[p.funcaoNoVeiculo];
+       if (!slotKey) return;
++      originais[p.veiculo][slotKey] = p.nomeGuerra;
+       const nomeFinal = resolvePessoa(p.id, p.nomeGuerra);
+-      if (slotKey === 'BA-CE_0' && !podeSerChefeEquipe(buscarBombeiroPorNome(nomeFinal))) return;
+       if (nomeFinal) alvo[p.veiculo][slotKey] = nomeFinal;
+     });
+ 
+-    setEquipagemCCI(novoCCI);
+-    setEquipagemCCIRT(novoCCIRT);
+-    setEquipagemCRS(novoCRS);
++    const mesclarAuto = (
++      atual: Record<string, string>,
++      novo: Record<string, string>,
++      original: Record<string, string>,
++    ) => {
++      const next = { ...atual };
++      Object.entries(novo).forEach(([key, nomeFinal]) => {
++        const valorAtual = next[key] || '';
++        const bombeiroAtual = buscarBombeiroPorNome(valorAtual);
++        const atualSaiu = !!bombeiroAtual && !!substituicoesMap[bombeiroAtual.id];
++        if (!valorAtual || valorAtual === original[key] || atualSaiu || !bombeiroAtual) {
++          next[key] = nomeFinal;
++        }
++      });
++      return next;
++    };
++
++    const registrosIguais = (a: Record<string, string>, b: Record<string, string>) => {
++      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
++      return Array.from(keys).every(key => (a[key] || '') === (b[key] || ''));
++    };
++
++    const nextCCI = mesclarAuto(equipagemCCI, novoCCI, originalCCI);
++    const nextCCIRT = mesclarAuto(equipagemCCIRT, novoCCIRT, originalCCIRT);
++    const nextCRS = mesclarAuto(equipagemCRS, novoCRS, originalCRS);
++    if (!registrosIguais(nextCCI, equipagemCCI)) setEquipagemCCI(nextCCI);
++    if (!registrosIguais(nextCCIRT, equipagemCCIRT)) setEquipagemCCIRT(nextCCIRT);
++    if (!registrosIguais(nextCRS, equipagemCRS)) setEquipagemCRS(nextCRS);
+   }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
+ 
+   async function handleSalvarRascunho() {
+@@ -1638,14 +1790,14 @@ export function GerarLRO() {
+             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+               <div>
+                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Equipe *</label>
+-                <select value={equipe} onChange={e => setEquipe(e.target.value as EquipeOpcao)} disabled={!canEscolherEquipe} className={inputClass}>
++                <select value={equipe} onChange={e => { setEquipe(e.target.value as EquipeOpcao); limparCamposAutomaticosPlantao(); }} disabled={!canEscolherEquipe} className={inputClass}>
+                   <option value="">Selecione a equipe</option>
+                   {equipesFormulario.map(eq => <option key={eq} value={eq}>{eq}</option>)}
+                 </select>
+               </div>
+               <div>
+                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Data Início *</label>
+-                <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className={inputClass} />
++                <input type="date" value={dataInicio} onChange={e => { setDataInicio(e.target.value); limparCamposAutomaticosPlantao(); }} className={inputClass} />
+               </div>
+               <div>
+                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Data Fim</label>
+@@ -1669,10 +1821,12 @@ export function GerarLRO() {
+             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+               {[...disponiveis].sort((a, b) => {
+                 const hierarquia: Record<string, number> = { 'BA-CE': 1, 'BA-LR': 2, 'BA-MC': 3, 'BA-RE': 4, 'BA-2': 5, 'OC': 6, 'GS': 7 };
+-                return (hierarquia[a.cargo] || 99) - (hierarquia[b.cargo] || 99);
++                const cargoA = substituicoesPorSubstituto[a.id]?.cargoExercido || substituicoesPorSubstituto[a.id]?.cargoSubstituido || a.cargo;
++                const cargoB = substituicoesPorSubstituto[b.id]?.cargoExercido || substituicoesPorSubstituto[b.id]?.cargoSubstituido || b.cargo;
++                return (hierarquia[cargoA] || 99) - (hierarquia[cargoB] || 99);
+               }).map(b => {
+-                const sub = substituicoesMap[b.id];
+-                const cargoAusente = sub ? (() => { const ba = bombeiros.find((x: any) => x.nomeGuerra === sub.substitutoNome || x.nomeCompleto === sub.substitutoNome); return ba?.cargo || ''; })() : '';
++                const sub = substituicoesPorSubstituto[b.id];
++                const cargoExercido = sub?.cargoExercido || sub?.cargoSubstituido || b.cargo;
+                 return (
+                   <div key={b.id} className={`group relative rounded-xl border p-2 transition-all ${sub ? (sub.tipo === 'troca' ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/10' : 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/10') : 'border-graphite-100 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-hover/30'}`}>
+                     {sub ? (
+@@ -1682,14 +1836,14 @@ export function GerarLRO() {
+                             {sub.tipo === 'troca' ? '↔ TROCA' : '↔ SUBSTITUIÇÃO'}
+                           </span>
+                           <p className={`text-xs font-bold ${sub.tipo === 'troca' ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'}`}>{b.nomeGuerra}</p>
+-                          <p className={`text-[9px] ${sub.tipo === 'troca' ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>como {b.cargo}</p>
++                          <p className={`text-[9px] ${sub.tipo === 'troca' ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>como {cargoExercido}</p>
+                         </div>
+                         <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:scale-100 scale-90">
+                           <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-bold mb-0.5 ${sub.tipo === 'troca' ? 'bg-amber-100 text-amber-700 dark:bg-amber-800/30 dark:text-amber-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-800/30 dark:text-blue-300'}`}>
+-                            {sub.tipo === 'troca' ? '↔ TROCADO' : '↔ SUBSTITUÍDO'}
++                            SUBSTITUI
+                           </span>
+-                          <p className={`text-xs font-bold ${sub.tipo === 'troca' ? 'text-graphite-600 dark:text-graphite-400' : 'text-graphite-600 dark:text-graphite-400'}`}>{getNomeGuerra(sub.substitutoNome)}</p>
+-                          <p className="text-[9px] text-graphite-500">{cargoAusente}</p>
++                          <p className="text-xs font-bold text-graphite-600 dark:text-graphite-400">{getNomeGuerra(sub.substituidoNome)}</p>
++                          <p className="text-[9px] text-graphite-500">{sub.cargoSubstituido || cargoExercido}</p>
+                         </div>
+                       </div>
+                     ) : (
+@@ -1993,10 +2147,18 @@ export function GerarLRO() {
+               // Criar documentos para trocas manuais
+               if (trocasManuais.length > 0 && trocaDocId) {
+                 try {
+-                  for (const tm of trocasManuais) {
++                  const usuarioBombeiro = bombeiros.find((b: any) =>
++                    b.id === user?.pessoa?.id ||
++                    b.nomeGuerra === user?.pessoa?.nomeGuerra
++                  );
++                  const criadorNome = usuarioBombeiro?.nomeCompleto || user?.name || user?.pessoa?.nomeGuerra || username || '';
++                  const criadorCargo = usuarioBombeiro?.cargo || user?.pessoa?.funcao || '';
++                  const criadoPor = criadorCargo ? `${criadorCargo} ${criadorNome}` : criadorNome;
++                  const trocasPersistidas = await Promise.all(trocasManuais.map(async tm => {
++                    if (tm.documentoFillId) return tm;
+                     const bSol = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante || b.nomeCompleto === tm.solicitante);
+                     const bSolic = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado || b.nomeCompleto === tm.solicitado);
+-                    await criarPreenchimento({
++                    const created = await criarPreenchimento({
+                       document_id: trocaDocId,
+                       filled_by: username,
+                       filled_data: {
+@@ -2005,22 +2167,30 @@ export function GerarLRO() {
+                         funcao_solicitante: bSol?.cargo || '',
+                         nome_solicitado: tm.solicitado,
+                         cpf_solicitado: bSolic?.cpf || '',
++                        funcao_solicitado: bSolic?.cargo || '',
+                         data_solicitada: dataInicio,
+                         data_folga_solicitado: tm.dataFolga || '',
+                         motivo_troca: tm.motivo || '',
+                         troca_emergencial: 'SIM',
+                         justificativa_emergencial: tm.motivo || '',
++                        criada_no_lro: 'SIM',
+                         check_troca_sim: 'V',
+                         check_troca_nao: '',
+                         deferido_indeferido: 'DEFERIDO',
+                         check_deferido: 'V',
+                         check_indeferido: '',
++                        criado_por: criadoPor,
++                        autorizado_por: 'Embaixador',
++                        data_autorizacao: hojeLocalISO(),
++                        lro_confirmada: dataInicio,
+                       },
+-                      status: 'draft',
++                      status: 'signed',
+                       autentique_document_id: null,
+                       autentique_link: null,
+                     });
+-                  }
++                    return { ...tm, documentoFillId: created.id };
++                  }));
++                  setTrocasManuais(trocasPersistidas);
+                 } catch (err) {
+                   console.error('Erro ao criar documento de troca:', err);
+                 }
+@@ -2046,8 +2216,8 @@ export function GerarLRO() {
+                   onChange={setChefeEquipe}
+                   options={(() => {
+                     const opcoes = new Map<string, { value: string; label: string }>();
+-                    const adicionarOpcao = (bombeiro?: Bombeiro) => {
+-                      if (!bombeiro || !podeSerChefeEquipe(bombeiro)) return;
++                    const adicionarOpcao = (bombeiro?: Bombeiro, forcar = false) => {
++                      if (!bombeiro || (!forcar && !podeSerChefeEquipe(bombeiro))) return;
+                       opcoes.set(bombeiro.nomeGuerra, {
+                         value: bombeiro.nomeGuerra,
+                         label: `${bombeiro.nomeGuerra} - ${bombeiro.nomeCompleto} (${bombeiro.cargo})`,
+@@ -2056,7 +2226,7 @@ export function GerarLRO() {
+ 
+                     disponiveis
+                       .filter(b => b.cargo === 'BA-CE' || b.cursoChefeEquipe)
+-                      .forEach(adicionarOpcao);
++                      .forEach(b => adicionarOpcao(b));
+ 
+                     Object.entries(substituicoesMap).forEach(([ausenteId, sub]) => {
+                       const ausente = bombeiros.find((b: any) => b.id === ausenteId);
+@@ -2066,10 +2236,10 @@ export function GerarLRO() {
+                         b.nomeGuerra === sub.substitutoNome ||
+                         b.nomeCompleto === sub.substitutoNome
+                       );
+-                      adicionarOpcao(substituto);
++                      adicionarOpcao(substituto, true);
+                     });
+ 
+-                    adicionarOpcao(buscarBombeiroPorNome(chefeEquipe));
++                    adicionarOpcao(buscarBombeiroPorNome(chefeEquipe), true);
+                     return Array.from(opcoes.values());
+                   })()}
+                   placeholder="Chefe de equipe"
+@@ -2121,10 +2291,15 @@ export function GerarLRO() {
+                         ...Object.values(equipagemCCIRT),
+                         ...Object.values(equipagemCRS),
+                       ].filter(Boolean));
+-                      const opts = disponiveis
++                      const optsMap = new Map<string, { value: string; label: string }>();
++                      disponiveis
+                         .filter(b => b.cargo === cargoFiltro && (!selectedInOtherSlots.has(b.nomeGuerra) || selected === b.nomeGuerra))
+-                        .map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto}` }));
+-                      const selB = bombeiros.find((b: any) => b.nomeGuerra === selected);
++                        .forEach(b => optsMap.set(b.nomeGuerra, { value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto}` }));
++                      const selB = buscarBombeiroPorNome(selected);
++                      if (selB) {
++                        optsMap.set(selB.nomeGuerra, { value: selB.nomeGuerra, label: `${selB.nomeGuerra} - ${selB.nomeCompleto}` });
++                      }
++                      const opts = Array.from(optsMap.values());
+                       const cargoValidacao = ['BA-CE', 'BA-LR', 'BA-MC'].includes(cargo) ? cargo as 'BA-CE' | 'BA-LR' | 'BA-MC' : null;
+                       const aviso = selB && cargoValidacao ? validarCursoParaFuncao(selB, cargoValidacao, cargoValidacao === 'BA-MC' ? section.veiculo : undefined) : null;
+                       return (
+diff --git a/frontend/src/pages/Ocorrencias/Ocorrencias.tsx b/frontend/src/pages/Ocorrencias/Ocorrencias.tsx
+index 5ddcf6f..20f5a91 100644
+--- a/frontend/src/pages/Ocorrencias/Ocorrencias.tsx
++++ b/frontend/src/pages/Ocorrencias/Ocorrencias.tsx
+@@ -16,7 +16,7 @@ import { gerarReaPdf } from '../../services/reaPdfService';
+ import { gerarBonaPdf } from '../../services/bonaPdfService';
+ import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
+ import { downloadPdf } from '../../services/pdfService';
+-import { BONA_FUNCOES, CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO, criarBonaDadosVazios, normalizarFuncaoBona } from '../../types/ocorrencia';
++import { BONA_FUNCOES, BONA_TIPOS_OCORRENCIA, CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO, criarBonaDadosVazios, normalizarFuncaoBona } from '../../types/ocorrencia';
+ import type { BonaBombeiro, BonaDados, Ocorrencia, TipoDocumento } from '../../types/ocorrencia';
+ import type { ReaDados, ReaRegistro, ReaStatus } from '../../types/rea';
+ import { ReaModal } from './ReaModal';
+@@ -286,6 +286,9 @@ function OcorrenciaForm({
+   const bonaDados = bonaDadosFromOcorrencia(form);
+   const tempoCalculado = calcularTempoAtendimento(bonaDados.acionamento, bonaDados.retornoSci);
+   const camposBloqueados = form.status === 'Fechada';
++  const tipoOcorrenciaSelecionado = (BONA_TIPOS_OCORRENCIA as readonly string[]).includes(bonaDados.tipoOcorrencia)
++    ? bonaDados.tipoOcorrencia
++    : '';
+ 
+   useEffect(() => {
+     let active = true;
+@@ -455,7 +458,7 @@ function OcorrenciaForm({
+   const status = form.status;
+   const salvarDesabilitado = camposBloqueados
+     ? !isAdminSistema || !form.numero.trim()
+-    : !form.data || !form.hora || !form.equipe || !bonaDados.areaEvento.trim() || !bonaDados.tipoOcorrencia.trim() || !bonaDados.descricaoOcorrencia.trim();
++    : !form.data || !form.hora || !form.equipe || !bonaDados.areaEvento.trim() || !tipoOcorrenciaSelecionado || !bonaDados.descricaoOcorrencia.trim();
+ 
+   function disabledIdsBombeiros(indexAtual: number): Set<string> {
+     const ids = bonaDados.bombeiros
+@@ -484,8 +487,8 @@ function OcorrenciaForm({
+   }
+ 
+   return (
+-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8 sm:pt-16">
+-      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl shadow-black/10 dark:bg-surface-elevated">
++    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-3 pt-6 sm:p-4 sm:pt-10">
++      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-2xl bg-white shadow-2xl shadow-black/10 dark:bg-surface-elevated">
+         <div className="flex items-center justify-between border-b border-graphite-200 px-6 py-4 dark:border-border-dark">
+           <div className="flex items-center gap-3">
+             <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{ocorrencia ? 'Editar Documento' : 'Novo Documento'}</h2>
+@@ -523,8 +526,8 @@ function OcorrenciaForm({
+           </div>
+ 
+           <div className="space-y-5">
+-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+-              <div className="sm:col-span-2 lg:col-span-2">
++            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
++              <div className="sm:col-span-2 lg:col-span-4">
+                 <label className={label}>Nº Ocorrência</label>
+                 <input
+                   value={form.numero}
+@@ -533,41 +536,50 @@ function OcorrenciaForm({
+                   className={isAdminSistema ? input : inputReadOnly}
+                 />
+               </div>
+-              <div>
++              <div className="lg:col-span-2">
+                 <label className={label}>Data *</label>
+                 <input type="date" value={form.data} onChange={e => handleData(e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+               </div>
+-              <div>
++              <div className="lg:col-span-2">
+                 <label className={label}>Hora *</label>
+                 <input type="time" value={form.hora} onChange={e => handleHora(e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+               </div>
+-              <div>
++              <div className="lg:col-span-2">
+                 <label className={label}>Equipe *</label>
+                 <select value={form.equipe} onChange={e => handleEquipe(e.target.value)} className={camposBloqueados ? inputReadOnly : select} disabled={!canManageGlobal || camposBloqueados}>
+                   <option value="">Selecione</option>
+                   {EQUIPES.filter(eq => canManageGlobal || eq === userEquipe).map(eq => <option key={eq} value={eq}>{eq}</option>)}
+                 </select>
+               </div>
+-              <div>
++              <div className="lg:col-span-2">
+                 <label className={label}>Turno</label>
+                 <input value={form.turno} readOnly className={inputReadOnly} />
+               </div>
+             </div>
+ 
+-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+-              <div>
++            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
++              <div className="lg:col-span-4">
+                 <label className={label}>Área do evento (Mapa de Grade) *</label>
+                 <input value={bonaDados.areaEvento} onChange={e => setBonaCampo('areaEvento', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+               </div>
+-              <div>
++              <div className="sm:col-span-2 lg:col-span-4">
+                 <label className={label}>Tipo de Ocorrência *</label>
+-                <input value={bonaDados.tipoOcorrencia} onChange={e => setBonaCampo('tipoOcorrencia', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
++                <select
++                  value={tipoOcorrenciaSelecionado}
++                  onChange={e => setBonaCampo('tipoOcorrencia', e.target.value)}
++                  disabled={camposBloqueados}
++                  className={camposBloqueados ? inputReadOnly : select}
++                  title={tipoOcorrenciaSelecionado}
++                >
++                  <option value="">Selecione...</option>
++                  {BONA_TIPOS_OCORRENCIA.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
++                </select>
+               </div>
+-              <div>
++              <div className="lg:col-span-2">
+                 <label className={label}>Vítimas Fatais</label>
+                 <input type="number" min="0" value={bonaDados.vitimasFatais} onChange={e => setBonaCampo('vitimasFatais', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+               </div>
+-              <div>
++              <div className="lg:col-span-2">
+                 <label className={label}>Vítimas Feridas</label>
+                 <input type="number" min="0" value={bonaDados.vitimasFeridas} onChange={e => setBonaCampo('vitimasFeridas', e.target.value)} disabled={camposBloqueados} className={camposBloqueados ? inputReadOnly : input} />
+               </div>
+@@ -1208,23 +1220,6 @@ export function Ocorrencias() {
+     setMode('list');
+   }
+ 
+-  if (mode === 'form') {
+-    return (
+-      <PageContainer>
+-        <PageTitle icon={AlertTriangle} title={editando ? 'Editar Documento' : 'Novo Documento'} />
+-        <OcorrenciaForm
+-          ocorrencia={editando || undefined}
+-          userEquipe={equipeEfetiva || ''}
+-          todas={ocorrencias}
+-          canManageGlobal={canManageGlobal}
+-          isAdminSistema={isAdminSistema}
+-          onSave={handleSave}
+-          onSelectRea={() => openReaForm(null)}
+-          onCancel={() => { setMode('list'); setEditando(null); setSavedId(null); }} />
+-      </PageContainer>
+-    );
+-  }
+-
+   if (mode === 'view' && visualizando) {
+     return (
+       <PageContainer>
+@@ -1358,12 +1353,26 @@ export function Ocorrencias() {
+         </div>
+       )}
+ 
++      {mode === 'form' && (
++        <OcorrenciaForm
++          ocorrencia={editando || undefined}
++          userEquipe={equipeEfetiva || ''}
++          todas={ocorrencias}
++          canManageGlobal={canManageGlobal}
++          isAdminSistema={isAdminSistema}
++          onSave={handleSave}
++          onSelectRea={() => openReaForm(null)}
++          onCancel={() => { setMode('list'); setEditando(null); setSavedId(null); }}
++        />
++      )}
++
+       {showReaModal && (
+         <ReaModal
+           registro={editandoRea}
+           numero={editandoRea?.numero || gerarNumeroRea(reas)}
+           saving={savingRea}
+           onSave={handleSaveRea}
++          onSelectBona={() => { setShowReaModal(false); setEditandoRea(null); openBonaForm(); }}
+           onCancel={() => { setShowReaModal(false); setEditandoRea(null); }}
+         />
+       )}
+diff --git a/frontend/src/pages/Ocorrencias/ReaModal.tsx b/frontend/src/pages/Ocorrencias/ReaModal.tsx
+index de46752..7fd0e9c 100644
+--- a/frontend/src/pages/Ocorrencias/ReaModal.tsx
++++ b/frontend/src/pages/Ocorrencias/ReaModal.tsx
+@@ -1,5 +1,5 @@
+ import { useEffect, useState } from 'react';
+-import { Save, X } from 'lucide-react';
++import { FileText, Save, X } from 'lucide-react';
+ import {
+   agenteExtintorReaKey,
+   criarReaDadosVazios,
+@@ -11,12 +11,15 @@ import {
+   recursoReaKey,
+ } from '../../types/rea';
+ import type { ReaDados, ReaFormField, ReaRegistro, ReaStatus } from '../../types/rea';
++import { TIPO_DOCUMENTO } from '../../types/ocorrencia';
++import type { TipoDocumento } from '../../types/ocorrencia';
+ 
+ interface ReaModalProps {
+   registro?: ReaRegistro | null;
+   numero: string;
+   saving?: boolean;
+   onSave: (data: { status: ReaStatus; dados: ReaDados }) => void;
++  onSelectBona?: () => void;
+   onCancel: () => void;
+ }
+ 
+@@ -247,7 +250,7 @@ function ExtinguisherTable({
+   );
+ }
+ 
+-export function ReaModal({ registro, numero, saving = false, onSave, onCancel }: ReaModalProps) {
++export function ReaModal({ registro, numero, saving = false, onSave, onSelectBona, onCancel }: ReaModalProps) {
+   const [dados, setDados] = useState<ReaDados>(() => buildInitialDados(registro));
+   const [status, setStatus] = useState<ReaStatus>(registro?.status || 'Aberta');
+ 
+@@ -262,14 +265,22 @@ export function ReaModal({ registro, numero, saving = false, onSave, onCancel }:
+ 
+   const baseSections = REA_FORM_SECTIONS.slice(0, 5);
+   const finalSections = REA_FORM_SECTIONS.slice(5);
++  const statusBadge = status === 'Fechada'
++    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
++    : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+ 
+   return (
+     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
+       <div className="flex max-h-[88vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl shadow-black/10 dark:bg-surface-elevated">
+         <div className="flex items-center justify-between border-b border-graphite-200 px-6 py-4 dark:border-border-dark">
+-          <div>
+-            <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{registro ? 'Editar REA' : 'Novo REA'}</h2>
+-            <p className="text-xs font-semibold text-graphite-500 dark:text-graphite-400">{registro?.numero || numero}</p>
++          <div className="flex flex-wrap items-center gap-3">
++            <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{registro ? 'Editar Documento' : 'Novo Documento'}</h2>
++            <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/20 dark:text-red-400">
++              REA · {registro?.numero || numero}
++            </span>
++            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${statusBadge}`}>
++              {status}
++            </span>
+           </div>
+           <button onClick={onCancel} className="rounded-lg p-1.5 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover">
+             <X className="h-5 w-5" />
+@@ -277,6 +288,35 @@ export function ReaModal({ registro, numero, saving = false, onSave, onCancel }:
+         </div>
+ 
+         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
++          <div className="rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-card">
++            <label className={labelCls}>Tipo de Documento *</label>
++            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
++              {(['BONA', 'REA'] as TipoDocumento[]).map(tipo => {
++                const selected = tipo === 'REA';
++                return (
++                  <button
++                    key={tipo}
++                    type="button"
++                    onClick={() => {
++                      if (tipo === 'BONA') onSelectBona?.();
++                    }}
++                    className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
++                      selected
++                        ? 'border-aviation-500 bg-aviation-50 dark:border-aviation-400 dark:bg-aviation-900/20'
++                        : 'border-graphite-200 bg-white hover:border-graphite-300 dark:border-border-dark dark:bg-surface-card dark:hover:border-graphite-600'
++                    }`}
++                  >
++                    <FileText className={`h-5 w-5 shrink-0 ${selected ? 'text-aviation-600 dark:text-aviation-400' : 'text-graphite-400'}`} />
++                    <div>
++                      <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{tipo}</p>
++                      <p className="text-[11px] text-graphite-500 dark:text-graphite-400">{TIPO_DOCUMENTO[tipo]}</p>
++                    </div>
++                  </button>
++                );
++              })}
++            </div>
++          </div>
++
+           <div className="rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-card">
+             <label className={labelCls}>Status</label>
+             <select value={status} onChange={e => setStatus(e.target.value as ReaStatus)} className={inputCls}>
+diff --git a/frontend/src/pages/RegistrosDiarios/PTRBACompleto.tsx b/frontend/src/pages/RegistrosDiarios/PTRBACompleto.tsx
+index 63b8230..ca85648 100644
+--- a/frontend/src/pages/RegistrosDiarios/PTRBACompleto.tsx
++++ b/frontend/src/pages/RegistrosDiarios/PTRBACompleto.tsx
+@@ -18,6 +18,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
+ import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
+ import { listarAPOCs } from '../../services/apocService';
+ import { listarBombeiros } from '../../services/bombeiroService';
++import { listarEscalas } from '../../services/escalaService';
+ import { baixarPTRBACompletoPdf, gerarPTRBACompletoPdf } from '../../services/ptrbaCompletoPdfService';
+ import {
+   atualizarPTRBACompleto,
+@@ -30,6 +31,7 @@ import { listarDocumentos, listarPreenchimentos } from '../../services/documento
+ import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
+ import type { APOC } from '../../types/apoc';
+ import type { Bombeiro, Equipe } from '../../types/bombeiro';
++import type { EscalaDiaria } from '../../types/escala';
+ import { ASSUNTOS } from '../../types/ptrb';
+ import {
+   criarEvidenciasPTRBACompletoVazias,
+@@ -58,6 +60,13 @@ const EVIDENCIA_VAZIA: PTRBACompletoEvidencia = {
+   descricao: '',
+ };
+ type CampoCompartilhadoEvidencia = Exclude<keyof PTRBACompletoEvidencia, 'imagem'>;
++type InstrucaoPTRNumero = 1 | 2 | 3;
++type InstrucaoPTRDaEscala = {
++  numero: InstrucaoPTRNumero;
++  funcao: string;
++  nomeGuerra: string;
++  assunto: string;
++};
+ 
+ const AEROPORTO_KEY = 'sescinc-aeroporto';
+ const AEROPORTO_DEFAULT = 'SBNF - Aeroporto Internacional de Navegantes';
+@@ -99,6 +108,52 @@ function evidenciasEmPares(evidencias: PTRBACompletoEvidencia[]) {
+   }).filter(({ primeira, segunda }) => evidenciaPreenchida(primeira) || evidenciaPreenchida(segunda));
+ }
+ 
++function normalizarBusca(value: string): string {
++  return String(value || '')
++    .normalize('NFD')
++    .replace(/[\u0300-\u036f]/g, '')
++    .replace(/\s+/g, ' ')
++    .trim()
++    .toLowerCase();
++}
++
++function extrairInstrucoesPTREscala(escala?: EscalaDiaria): InstrucaoPTRDaEscala[] {
++  if (!escala) return [];
++  return [
++    { numero: 1 as const, slot: escala.ptr1 },
++    { numero: 2 as const, slot: escala.ptr2 },
++    { numero: 3 as const, slot: escala.ptr3 },
++  ].map(({ numero, slot }) => ({
++    numero,
++    funcao: String(slot?.funcao || '').trim(),
++    nomeGuerra: String(slot?.nomeGuerra || '').trim(),
++    assunto: String(slot?.assunto || '').trim(),
++  })).filter(instrucao => instrucao.nomeGuerra || instrucao.assunto);
++}
++
++function resolverPessoaInstrutor(nomeGuerra: string, opcoes: AtivoItem[], funcao?: string): AtivoItem | null {
++  const nomeAlvo = normalizarBusca(nomeGuerra);
++  if (!nomeAlvo) return null;
++  const cargoAlvo = normalizarBusca(funcao || '');
++  const pontuadas = opcoes.map(pessoa => {
++    const nomes = [pessoa.nomeGuerra, pessoa.nomeCompleto].map(normalizarBusca).filter(Boolean);
++    const cargoOk = !cargoAlvo || normalizarBusca(pessoa.cargo || '') === cargoAlvo;
++    const exato = nomes.some(nome => nome === nomeAlvo);
++    const parcial = nomeAlvo.length > 2 && nomes.some(nome => nome.includes(nomeAlvo) || nomeAlvo.includes(nome));
++    const score = exato && cargoOk ? 4 : exato ? 3 : parcial && cargoOk ? 2 : parcial ? 1 : 0;
++    return { pessoa, score };
++  }).filter(item => item.score > 0).sort((a, b) => b.score - a.score);
++  return pontuadas[0]?.pessoa || null;
++}
++
++function situacaoInstrutor(numeros: InstrucaoPTRNumero[]): string {
++  const unicos = Array.from(new Set(numeros)).sort((a, b) => a - b);
++  if (unicos.length === 0) return 'P';
++  if (unicos.length === 1) return `INSTR. ${unicos[0]}`;
++  if (unicos.includes(1) && unicos.includes(3)) return 'INSTR. 1-3';
++  return `INSTR. ${unicos.join('-')}`;
++}
++
+ function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
+   const equipe = PTRBA_COMPLETO_EQUIPES.includes(equipePadrao as Equipe) ? equipePadrao as Equipe : 'Alfa';
+   return {
+@@ -145,6 +200,7 @@ function PTRBACompletoForm({
+   onSave,
+   bombeiros,
+   apocs,
++  escalasDiarias,
+   vigencias,
+   trocaFills,
+   canManageGlobal,
+@@ -156,6 +212,7 @@ function PTRBACompletoForm({
+   onSave: (input: Omit<PTRBACompletoInput, 'createdBy'>) => void;
+   bombeiros: Bombeiro[];
+   apocs: APOC[];
++  escalasDiarias: EscalaDiaria[];
+   vigencias: any[];
+   trocaFills: any[];
+   canManageGlobal: boolean;
+@@ -164,6 +221,7 @@ function PTRBACompletoForm({
+ }) {
+   const [form, setForm] = useState(() => montarInicial(canManageGlobal ? null : equipeEfetiva));
+   const ultimaAutoFill = useRef('');
++  const ultimaEscalaPTRFill = useRef('');
+ 
+   useEffect(() => {
+     if (registro) {
+@@ -290,6 +348,80 @@ function PTRBACompletoForm({
+     setForm(f => ({ ...f, participantes: preenchidos, chefeEquipe }));
+   }, [registro, form.equipe, form.data, opcoesParticipantes]);
+ 
++  useEffect(() => {
++    if (registro) return;
++    const escala = escalasDiarias.find(e => e.equipe === form.equipe && mesmoDiaISO(e.dataPlantao, form.data));
++    const instrucoesBase = extrairInstrucoesPTREscala(escala);
++    if (!escala || instrucoesBase.length === 0) return;
++
++    const assinatura = instrucoesBase
++      .map(instrucao => `${instrucao.numero}:${instrucao.funcao}:${instrucao.nomeGuerra}:${instrucao.assunto}`)
++      .join('|');
++    const chave = `${form.equipe}-${form.data}-${escala.id}-${assinatura}`;
++    if (ultimaEscalaPTRFill.current === chave) return;
++    ultimaEscalaPTRFill.current = chave;
++
++    const instrucoes = instrucoesBase.map(instrucao => ({
++      ...instrucao,
++      pessoa: resolverPessoaInstrutor(instrucao.nomeGuerra, opcoesParticipantes, instrucao.funcao),
++    }));
++
++    setForm(f => {
++      const participantes = normalizarParticipantesPTRBACompleto(f.participantes);
++      const grupos = new Map<string, {
++        numeros: InstrucaoPTRNumero[];
++        nomeCompleto: string;
++        funcao: string;
++      }>();
++
++      instrucoes.forEach(instrucao => {
++        if (!instrucao.nomeGuerra) return;
++        const nomeCompleto = instrucao.pessoa?.nomeCompleto || instrucao.nomeGuerra;
++        const chavePessoa = instrucao.pessoa?.id || normalizarBusca(nomeCompleto);
++        const atual = grupos.get(chavePessoa) || {
++          numeros: [],
++          nomeCompleto,
++          funcao: instrucao.pessoa?.cargo || instrucao.funcao,
++        };
++        atual.numeros.push(instrucao.numero);
++        if (!atual.funcao) atual.funcao = instrucao.funcao;
++        grupos.set(chavePessoa, atual);
++      });
++
++      Array.from(grupos.values()).forEach(grupo => {
++        const nomeKey = normalizarBusca(grupo.nomeCompleto);
++        let index = participantes.findIndex(p => normalizarBusca(p.nomeCompleto) === nomeKey);
++        if (index < 0 && grupo.funcao) {
++          index = participantes.findIndex(p => !p.nomeCompleto && p.funcao === grupo.funcao);
++        }
++        if (index < 0) {
++          index = participantes.findIndex(p => !p.nomeCompleto);
++        }
++        if (index < 0) return;
++
++        const atual = participantes[index];
++        participantes[index] = {
++          funcao: atual.funcao || grupo.funcao,
++          nomeCompleto: grupo.nomeCompleto,
++          situacao: situacaoInstrutor(grupo.numeros),
++        };
++      });
++
++      const evidencias = normalizarEvidenciasPTRBACompleto(f.evidencias);
++      instrucoes.forEach(instrucao => {
++        if (!instrucao.assunto) return;
++        const par = PTRBA_COMPLETO_EVIDENCIA_PARES[instrucao.numero - 1];
++        if (!par) return;
++        par.forEach(index => {
++          evidencias[index] = { ...evidencias[index], assunto: instrucao.assunto };
++        });
++      });
++
++      const chefeEquipe = participantes.find(p => p.funcao === 'BA-CE' && p.nomeCompleto)?.nomeCompleto || f.chefeEquipe;
++      return { ...f, participantes, evidencias, chefeEquipe };
++    });
++  }, [registro, escalasDiarias, form.equipe, form.data, opcoesParticipantes]);
++
+   function updateEquipe(equipe: string) {
+     if (!canEscolherEquipe) return;
+     setForm(f => ({ ...f, equipe }));
+@@ -713,6 +845,7 @@ export function PTRBACompletoPage() {
+   const [registros, setRegistros] = useState<PTRBACompleto[]>([]);
+   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
+   const [apocs, setApocs] = useState<APOC[]>([]);
++  const [escalasDiarias, setEscalasDiarias] = useState<EscalaDiaria[]>([]);
+   const [vigencias, setVigencias] = useState<any[]>([]);
+   const [trocaFills, setTrocaFills] = useState<any[]>([]);
+   const [loading, setLoading] = useState(true);
+@@ -749,17 +882,19 @@ export function PTRBACompletoPage() {
+     async function init() {
+       try {
+         setLoading(true);
+-        const [lista, b, a, v] = await Promise.all([
++        const [lista, b, a, v, escalas] = await Promise.all([
+           listarPTRBACompletos(),
+           listarBombeiros(),
+           listarAPOCs(),
+           listarVigencias({ ativa: true }),
++          listarEscalas(),
+         ]);
+         if (cancelado) return;
+         setRegistros(lista);
+         setBombeiros(b);
+         setApocs(a);
+         setVigencias(v);
++        setEscalasDiarias(escalas);
+         try {
+           const docs = await listarDocumentos();
+           const trocaDoc = (docs as any[]).find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
+@@ -864,6 +999,7 @@ export function PTRBACompletoPage() {
+           onSave={handleSave}
+           bombeiros={bombeiros}
+           apocs={apocs}
++          escalasDiarias={escalasDiarias}
+           vigencias={vigencias}
+           trocaFills={trocaFills}
+           canManageGlobal={canManageGlobal}
+diff --git a/frontend/src/pages/Relatorios/OrdemServico.tsx b/frontend/src/pages/Relatorios/OrdemServico.tsx
+index 633f81c..5446810 100644
+--- a/frontend/src/pages/Relatorios/OrdemServico.tsx
++++ b/frontend/src/pages/Relatorios/OrdemServico.tsx
+@@ -24,6 +24,13 @@ const PRIORIDADE_CORES: Record<string, string> = {
+   'Urgente': 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+ };
+ 
++const PRIORIDADE_BADGE_CORES: Record<string, string> = {
++  'Baixa': 'bg-gradient-to-br from-sky-500 to-sky-700',
++  'Média': 'bg-gradient-to-br from-amber-500 to-amber-700',
++  'Alta': 'bg-gradient-to-br from-orange-500 to-orange-700',
++  'Urgente': 'bg-gradient-to-br from-red-500 to-red-700',
++};
++
+ const STATUS_CORES: Record<string, string> = {
+   'Aberta': 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+   'Manutenção': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400',
+@@ -35,6 +42,16 @@ function fmt(d: string) {
+   return formatarDataBR(d);
+ }
+ 
++function dataFiltroOrdem(os: OrdemServico): string {
++  return os.dataEmissao || os.createdAt?.slice(0, 10) || '';
++}
++
++function numeroDestaqueOS(numero: string): string {
++  const texto = String(numero || '').trim();
++  const match = texto.match(/(?:OS\/SCI|OS SCI|OS-SCI)-?(\d+)\//i) || texto.match(/(\d+)(?=\/\d{4})/);
++  return match?.[1] || texto || '-';
++}
++
+ const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
+ const PRIORIDADES = ['Baixa', 'Média', 'Alta', 'Urgente'];
+ const STATUS_LIST = ['Aberta', 'Manutenção', 'Concluída', 'Cancelada'];
+@@ -51,8 +68,11 @@ export function OrdemServico() {
+   const [search, setSearch] = useState('');
+   const [filtroStatus, setFiltroStatus] = useState('');
+   const [filtroPrioridade, setFiltroPrioridade] = useState('');
++  const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
+   const [filtroMes, setFiltroMes] = useState('');
+   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
++  const [dataInicio, setDataInicio] = useState('');
++  const [dataFinal, setDataFinal] = useState('');
+   const [formOpen, setFormOpen] = useState(false);
+   const [editando, setEditando] = useState<OrdemServico | null>(null);
+   const [visualizando, setVisualizando] = useState<OrdemServico | null>(null);
+@@ -103,24 +123,30 @@ export function OrdemServico() {
+     let lista = ordens;
+     if (filtroStatus) lista = lista.filter(o => o.status === filtroStatus);
+     if (filtroPrioridade) lista = lista.filter(o => o.prioridade === filtroPrioridade);
+-    if (filtroAno) {
++    if (filterMode === 'mes-ano' && filtroAno) {
+       lista = lista.filter(o => {
+-        const y = o.dataEmissao ? new Date(o.dataEmissao + 'T12:00:00').getFullYear() : new Date(o.createdAt).getFullYear();
++        const data = dataFiltroOrdem(o);
++        const y = data ? new Date(data + 'T12:00:00').getFullYear() : new Date(o.createdAt).getFullYear();
+         return String(y) === filtroAno;
+       });
+     }
+-    if (filtroMes) {
++    if (filterMode === 'mes-ano' && filtroMes) {
+       lista = lista.filter(o => {
+-        const m = o.dataEmissao ? new Date(o.dataEmissao + 'T12:00:00').getMonth() + 1 : new Date(o.createdAt).getMonth() + 1;
++        const data = dataFiltroOrdem(o);
++        const m = data ? new Date(data + 'T12:00:00').getMonth() + 1 : new Date(o.createdAt).getMonth() + 1;
+         return String(m) === filtroMes;
+       });
+     }
++    if (filterMode === 'periodo') {
++      if (dataInicio) lista = lista.filter(o => dataFiltroOrdem(o) >= dataInicio);
++      if (dataFinal) lista = lista.filter(o => dataFiltroOrdem(o) <= dataFinal);
++    }
+     if (search) {
+       const t = search.toLowerCase();
+       lista = lista.filter(o => o.numero.toLowerCase().includes(t) || o.solicitanteNome.toLowerCase().includes(t) || o.descricao.toLowerCase().includes(t));
+     }
+     return lista.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+-  }, [ordens, search, filtroStatus, filtroPrioridade, filtroMes, filtroAno]);
++  }, [ordens, search, filtroStatus, filtroPrioridade, filterMode, filtroMes, filtroAno, dataInicio, dataFinal]);
+ 
+   function proximoNumero(): string {
+     const ano = new Date().getFullYear();
+@@ -363,22 +389,44 @@ export function OrdemServico() {
+             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
+             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar OS..." className={`${inputCls} !pl-10`} />
+           </div>
++          <div className="inline-flex overflow-hidden rounded-xl border border-graphite-300 bg-white text-sm dark:border-border-dark dark:bg-surface-card">
++            <button onClick={() => setFilterMode('mes-ano')}
++              className={`px-3 py-2 transition-colors ${filterMode === 'mes-ano' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
++              Mês/Ano
++            </button>
++            <button onClick={() => setFilterMode('periodo')}
++              className={`px-3 py-2 transition-colors ${filterMode === 'periodo' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
++              Período
++            </button>
++          </div>
++          {filterMode === 'mes-ano' ? (
++            <>
++              <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`}>
++                <option value="">Todos os meses</option>
++                {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
++              </select>
++              <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
++                <option value="">Todos os anos</option>
++                {ANOS.map(a => <option key={a} value={a}>{a}</option>)}
++              </select>
++            </>
++          ) : (
++            <>
++              <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className={`${inputCls} !w-auto`} />
++              <input type="date" value={dataFinal} onChange={e => setDataFinal(e.target.value)} className={`${inputCls} !w-auto`} />
++            </>
++          )}
+           <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className={`${inputCls} !w-auto`}>
+-            <option value="">Todos Status</option>
++            <option value="">Todos os status</option>
+             {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+           </select>
+           <select value={filtroPrioridade} onChange={e => setFiltroPrioridade(e.target.value)} className={`${inputCls} !w-auto`}>
+-            <option value="">Todas Prioridades</option>
++            <option value="">Todas as prioridades</option>
+             {PRIORIDADES.map(p => <option key={p} value={p}>{p}</option>)}
+           </select>
+-          <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
+-            <option value="">Todos os Anos</option>
+-            {ANOS.map(a => <option key={a} value={a}>{a}</option>)}
+-          </select>
+-          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`} disabled={!filtroAno}>
+-            <option value="">Todos os Meses</option>
+-            {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+-          </select>
++          <span className="rounded-full bg-graphite-100 px-3 py-2 text-xs font-semibold text-graphite-600 dark:bg-surface-card dark:text-graphite-300">
++            {filtered.length} OS
++          </span>
+           {(canManageGlobal || equipeEfetiva) && (
+             <button onClick={handleNovo}
+               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]">
+@@ -405,11 +453,12 @@ export function OrdemServico() {
+               <div key={os.id} onClick={() => handleVisualizar(os)}
+                 className="cursor-pointer rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+                 <div className="flex items-center gap-4 px-5 py-4">
+-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white ${
+-                    os.prioridade === 'Urgente' ? 'bg-gradient-to-br from-red-500 to-red-700' :
+-                    os.prioridade === 'Alta' ? 'bg-gradient-to-br from-orange-500 to-orange-700' :
+-                    'bg-gradient-to-br from-aviation-500 to-aviation-700'
+-                  }`}>{os.numero.slice(-2)}</div>
++                  <div
++                    title={os.numero}
++                    className={`flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl px-3 text-xs font-black text-white shadow-sm ${PRIORIDADE_BADGE_CORES[os.prioridade] || 'bg-gradient-to-br from-aviation-500 to-aviation-700'}`}
++                  >
++                    {numeroDestaqueOS(os.numero)}
++                  </div>
+                   <div className="min-w-0 flex-1">
+                     <div className="flex items-center gap-2">
+                       <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{os.numero}</p>
+diff --git a/frontend/src/pages/Relatorios/OrdemServicoPublica.tsx b/frontend/src/pages/Relatorios/OrdemServicoPublica.tsx
+index b009755..48315fa 100644
+--- a/frontend/src/pages/Relatorios/OrdemServicoPublica.tsx
++++ b/frontend/src/pages/Relatorios/OrdemServicoPublica.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useState } from 'react';
++import { useEffect, useMemo, useState } from 'react';
+ import { Printer, ClipboardList, ArrowLeft } from 'lucide-react';
+ import { listarOrdensServico } from '../../services/ordemServicoService';
+ import type { OrdemServico } from '../../types/ordemServico';
+@@ -12,6 +12,13 @@ const PRIORIDADE_CORES: Record<string, string> = {
+   'Urgente': 'bg-red-100 text-red-700',
+ };
+ 
++const PRIORIDADE_BADGE_CORES: Record<string, string> = {
++  'Baixa': 'bg-gradient-to-br from-sky-500 to-sky-700',
++  'Média': 'bg-gradient-to-br from-amber-500 to-amber-700',
++  'Alta': 'bg-gradient-to-br from-orange-500 to-orange-700',
++  'Urgente': 'bg-gradient-to-br from-red-500 to-red-700',
++};
++
+ const STATUS_CORES: Record<string, string> = {
+   'Aberta': 'bg-blue-100 text-blue-700',
+   'Manutenção': 'bg-yellow-100 text-yellow-700',
+@@ -19,16 +26,62 @@ const STATUS_CORES: Record<string, string> = {
+   'Cancelada': 'bg-red-100 text-red-700',
+ };
+ 
++const STATUS_LIST = ['Aberta', 'Manutenção', 'Concluída', 'Cancelada'];
++const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
++const ANOS = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - i).toString());
++const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 outline-none transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400';
++
+ function fmt(d: string) {
+   return formatarDataBR(d);
+ }
+ 
++function dataFiltroOrdem(os: OrdemServico): string {
++  return os.dataEmissao || os.createdAt?.slice(0, 10) || '';
++}
++
++function numeroDestaqueOS(numero: string): string {
++  const texto = String(numero || '').trim();
++  const match = texto.match(/(?:OS\/SCI|OS SCI|OS-SCI)-?(\d+)\//i) || texto.match(/(\d+)(?=\/\d{4})/);
++  return match?.[1] || texto || '-';
++}
++
+ export function OrdemServicoPublica() {
+   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [selecionada, setSelecionada] = useState<OrdemServico | null>(null);
++  const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
++  const [filtroMes, setFiltroMes] = useState('');
++  const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
++  const [dataInicio, setDataInicio] = useState('');
++  const [dataFinal, setDataFinal] = useState('');
++  const [filtroStatus, setFiltroStatus] = useState('');
+   const imagensSelecionada = selecionada ? parseOrdemServicoImagens(selecionada.imagem) : [];
+ 
++  const ordensFiltradas = useMemo(() => {
++    let lista = ordens;
++    if (filtroStatus) lista = lista.filter(os => os.status === filtroStatus);
++    if (filterMode === 'mes-ano') {
++      if (filtroAno) {
++        lista = lista.filter(os => {
++          const data = dataFiltroOrdem(os);
++          const ano = data ? new Date(`${data}T12:00:00`).getFullYear() : new Date(os.createdAt).getFullYear();
++          return String(ano) === filtroAno;
++        });
++      }
++      if (filtroMes) {
++        lista = lista.filter(os => {
++          const data = dataFiltroOrdem(os);
++          const mes = data ? new Date(`${data}T12:00:00`).getMonth() + 1 : new Date(os.createdAt).getMonth() + 1;
++          return String(mes) === filtroMes;
++        });
++      }
++    } else {
++      if (dataInicio) lista = lista.filter(os => dataFiltroOrdem(os) >= dataInicio);
++      if (dataFinal) lista = lista.filter(os => dataFiltroOrdem(os) <= dataFinal);
++    }
++    return [...lista].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
++  }, [ordens, filtroStatus, filterMode, filtroAno, filtroMes, dataInicio, dataFinal]);
++
+   useEffect(() => {
+     let active = true;
+     listarOrdensServico()
+@@ -162,17 +215,60 @@ export function OrdemServicoPublica() {
+           <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">Acompanhamento público das ordens de serviço</p>
+         </div>
+ 
+-        {ordens.length === 0 ? (
++        <div className="mb-5 flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-graphite-200 bg-white/80 p-3 shadow-sm dark:border-border-dark dark:bg-surface-card">
++          <div className="inline-flex overflow-hidden rounded-xl border border-graphite-300 bg-white text-sm dark:border-border-dark dark:bg-surface-card">
++            <button onClick={() => setFilterMode('mes-ano')}
++              className={`px-3 py-2 transition-colors ${filterMode === 'mes-ano' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
++              Mês/Ano
++            </button>
++            <button onClick={() => setFilterMode('periodo')}
++              className={`px-3 py-2 transition-colors ${filterMode === 'periodo' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
++              Período
++            </button>
++          </div>
++          {filterMode === 'mes-ano' ? (
++            <>
++              <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} sm:!w-auto`}>
++                <option value="">Todos os meses</option>
++                {MESES.map((mes, index) => <option key={mes} value={index + 1}>{mes}</option>)}
++              </select>
++              <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} sm:!w-auto`}>
++                <option value="">Todos os anos</option>
++                {ANOS.map(ano => <option key={ano} value={ano}>{ano}</option>)}
++              </select>
++            </>
++          ) : (
++            <>
++              <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className={`${inputCls} sm:!w-auto`} />
++              <input type="date" value={dataFinal} onChange={e => setDataFinal(e.target.value)} className={`${inputCls} sm:!w-auto`} />
++            </>
++          )}
++          <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className={`${inputCls} sm:!w-auto`}>
++            <option value="">Todos os status</option>
++            {STATUS_LIST.map(status => <option key={status} value={status}>{status}</option>)}
++          </select>
++          <span className="rounded-full bg-graphite-100 px-3 py-2 text-xs font-semibold text-graphite-600 dark:bg-[#0d1117] dark:text-graphite-300">
++            {ordensFiltradas.length} OS
++          </span>
++        </div>
++
++        {ordensFiltradas.length === 0 ? (
+           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white p-12 text-center dark:border-border-dark dark:bg-surface-card">
+             <ClipboardList className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
+             <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhuma OS encontrada</h3>
+           </div>
+         ) : (
+           <div className="space-y-2">
+-            {ordens.map(os => (
++            {ordensFiltradas.map(os => (
+               <button key={os.id} onClick={() => setSelecionada(os)}
+                 className="block w-full rounded-2xl border border-graphite-200 bg-white p-4 text-left shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+                 <div className="flex items-center gap-3">
++                  <div
++                    title={os.numero}
++                    className={`flex h-11 min-w-11 shrink-0 items-center justify-center rounded-xl px-3 text-xs font-black text-white shadow-sm ${PRIORIDADE_BADGE_CORES[os.prioridade] || 'bg-gradient-to-br from-aviation-500 to-aviation-700'}`}
++                  >
++                    {numeroDestaqueOS(os.numero)}
++                  </div>
+                   <div className="min-w-0 flex-1">
+                     <div className="flex flex-wrap items-center gap-2">
+                       <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{os.numero}</p>
+diff --git a/frontend/src/pages/Relatorios/Trocas.tsx b/frontend/src/pages/Relatorios/Trocas.tsx
+index 3c17e39..015cd2b 100644
+--- a/frontend/src/pages/Relatorios/Trocas.tsx
++++ b/frontend/src/pages/Relatorios/Trocas.tsx
+@@ -473,6 +473,11 @@ export function Trocas() {
+     return { cargo: match._raw.funcao || 'APOC', nomeGuerra: match._raw.nomeGuerra || match.label, nomeCompleto: match._raw.nomeCompleto || match.label, equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
+   }
+ 
++  function getNomeCompletoRelatorio(nome: string): string {
++    if (!nome) return '-';
++    return getPessoaByNome(nome)?.nomeCompleto || nome;
++  }
++
+   function getFillEquipes(fill: DocumentFill): string[] {
+     const data = fill.filled_data as Record<string, string>;
+     return Array.from(new Set([
+@@ -1452,8 +1457,8 @@ export function Trocas() {
+             }
+           });
+           const alfabetico = [...unique.values()].sort((a, b) => {
+-            const nomeA = ((a.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
+-            const nomeB = ((b.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
++            const nomeA = getNomeCompletoRelatorio((a.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
++            const nomeB = getNomeCompletoRelatorio((b.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
+             const cmp = nomeA.localeCompare(nomeB);
+             if (cmp !== 0) return cmp;
+             return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+@@ -1487,8 +1492,8 @@ export function Trocas() {
+                         const da = fill.filled_data as Record<string, string>;
+                         return (
+                           <tr key={fill.id} className={`border-b border-graphite-100 dark:border-border-dark ${idx === arr.length - 1 ? 'border-b-0' : ''}`}>
+-                            <td className="px-4 py-3 text-graphite-900 dark:text-graphite-100">{da.nome_solicitante || '-'}</td>
+-                            <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{da.nome_solicitado || '-'}</td>
++                            <td className="px-4 py-3 text-graphite-900 dark:text-graphite-100">{getNomeCompletoRelatorio(da.nome_solicitante || '')}</td>
++                            <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{getNomeCompletoRelatorio(da.nome_solicitado || '')}</td>
+                             <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_solicitada)}</td>
+                             <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_folga_solicitado)}</td>
+                             <td className="px-4 py-3 text-center">
+@@ -1539,8 +1544,8 @@ export function Trocas() {
+                           const da = fill.filled_data as Record<string, string>;
+                           return (
+                             <tr key={fill.id} className={`border-b border-green-100 dark:border-green-800/20 ${idx === arr.length - 1 ? 'border-b-0' : ''}`}>
+-                              <td className="px-4 py-3 text-green-900 dark:text-green-100">{da.nome_solicitante || '-'}</td>
+-                              <td className="px-4 py-3 text-green-800 dark:text-green-300">{da.nome_solicitado || '-'}</td>
++                              <td className="px-4 py-3 text-green-900 dark:text-green-100">{getNomeCompletoRelatorio(da.nome_solicitante || '')}</td>
++                              <td className="px-4 py-3 text-green-800 dark:text-green-300">{getNomeCompletoRelatorio(da.nome_solicitado || '')}</td>
+                               <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{formatarDataBR(da.data_solicitada)}</td>
+                               <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{formatarDataBR(da.data_folga_solicitado)}</td>
+                               <td className="px-4 py-3 text-center">
+@@ -1764,10 +1769,23 @@ export function Trocas() {
+                             <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-green-700 dark:text-green-300">
+                               <CheckCircle className="h-4 w-4" /> AUTORIZADO PELO EMBAIXADOR
+                             </div>
+-                            <p className="text-[10px] text-green-600 dark:text-green-400">
+-                              {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
+-                              {data.autorizado_por ? ` · ${data.autorizado_por}` : ''}
+-                            </p>
++                            {data.criada_no_lro === 'SIM' ? (
++                              <>
++                                <p className="text-[10px] text-green-600 dark:text-green-400">
++                                  {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
++                                </p>
++                                {(data.criado_por || fill.filled_by) && (
++                                  <p className="text-[10px] font-semibold text-green-700 dark:text-green-300">
++                                    Criado por {data.criado_por || fill.filled_by}
++                                  </p>
++                                )}
++                              </>
++                            ) : (
++                              <p className="text-[10px] text-green-600 dark:text-green-400">
++                                {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
++                                {data.autorizado_por ? ` · ${data.autorizado_por}` : ''}
++                              </p>
++                            )}
+                           </div>
+                         )}
+                       </div>
+diff --git a/frontend/src/services/escalaService.ts b/frontend/src/services/escalaService.ts
+index 6ea0d96..58047e2 100644
+--- a/frontend/src/services/escalaService.ts
++++ b/frontend/src/services/escalaService.ts
+@@ -31,7 +31,7 @@ function jsonb(value: unknown): string {
+ }
+ 
+ function emptyFuncaoSlot() {
+-  return { funcao: '', nomeGuerra: '' };
++  return { funcao: '', nomeGuerra: '', assunto: '' };
+ }
+ 
+ function rowToEscala(row: Record<string, unknown>): EscalaDiaria {
+diff --git a/frontend/src/types/escala.ts b/frontend/src/types/escala.ts
+index 691b171..a3f49c3 100644
+--- a/frontend/src/types/escala.ts
++++ b/frontend/src/types/escala.ts
+@@ -20,6 +20,7 @@ export interface GuarnicaoCRS {
+ export interface FuncaoSlot {
+   funcao: string;
+   nomeGuerra: string;
++  assunto?: string;
+ }
+ 
+ export interface TrocaSlot {
+diff --git a/frontend/src/types/ocorrencia.ts b/frontend/src/types/ocorrencia.ts
+index ac3a919..93b2f44 100644
+--- a/frontend/src/types/ocorrencia.ts
++++ b/frontend/src/types/ocorrencia.ts
+@@ -49,6 +49,19 @@ export const BONA_FUNCOES = [
+   'BA-2 - Bombeiro de Aeródromo',
+ ] as const;
+ 
++export const BONA_TIPOS_OCORRENCIA = [
++  'FOGO EM VEGETAÇÃO',
++  'OUTRAS EMERGÊNCIAS/ACIONAMENTOS',
++  'REMOÇÃO/DISPERSÃO/CAPTURA DE ANIMAIS OU INSETOS',
++  'EMERGÊNCIA NAS EDIFICAÇÕES/INSTALAÇÕES AEROPORTUÁRIAS',
++  'TESTE DOS SISTEMAS DE AGENTES EXTINTORES DO CCI',
++  'EMERGÊNCIA COM MATERIAIS PERIGOSOS',
++  'EMERGÊNCIA MÉDICA',
++  'MISSÃO PRESIDENCIAL',
++  'EMERGÊNCIA AERONÁUTICA',
++  'INCÊNDIO EM INSTALAÇÕES AEROPORTUÁRIAS',
++] as const;
++
+ export function normalizarFuncaoBona(funcao: string): string {
+   const value = String(funcao || '').trim();
+   if (!value) return '';
+diff --git a/frontend/src/utils/regrasOperacionais.ts b/frontend/src/utils/regrasOperacionais.ts
+index ad3e490..3afcb35 100644
+--- a/frontend/src/utils/regrasOperacionais.ts
++++ b/frontend/src/utils/regrasOperacionais.ts
+@@ -6,6 +6,7 @@ import {
+   getCargosPermitidosSubstituto,
+   isSubstitutoObrigatorio,
+ } from '../types/ferias';
++import { formatarDataBR } from './datas';
+ import { equipeEstaNoPlantao } from './equipes';
+ 
+ type BombeiroOperacional = Pick<
+@@ -387,7 +388,7 @@ export function validarEscalaDiaria(params: {
+ 
+   if (escala.equipe && dataEhValida(escala.dataPlantao)) {
+     if (!equipeEstaNoPlantao(escala.equipe, parseData(escala.dataPlantao))) {
+-      errors.push(`${escala.equipe} nao esta prevista para o plantao de ${escala.dataPlantao}.`);
++      errors.push(`${escala.equipe} nao esta prevista para o plantao de ${formatarDataBR(escala.dataPlantao)}.`);
+     }
+   }
+ 
+@@ -397,7 +398,7 @@ export function validarEscalaDiaria(params: {
+     e.dataPlantao === escala.dataPlantao
+   );
+   if (duplicada) {
+-    errors.push(`Ja existe escala diaria para ${escala.equipe} em ${escala.dataPlantao}.`);
++    errors.push(`Ja existe escala diaria para ${escala.equipe} em ${formatarDataBR(escala.dataPlantao)}.`);
+   }
+ 
+   const slots: Array<{ nome: string; label: string; isentoDuplicado?: boolean }> = [];

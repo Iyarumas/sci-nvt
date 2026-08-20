@@ -11,4 +11,5 @@ export interface MenuItem {
   arquivoOnly?: boolean;
   certificacoesOnly?: boolean;
   relatoriosOnly?: boolean;
+  ptrBaRelatoriosOnly?: boolean;
 }

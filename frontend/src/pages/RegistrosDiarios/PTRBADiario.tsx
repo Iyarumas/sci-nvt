@@ -22,26 +22,11 @@ import type { APOC } from '../../types/apoc';
 import type { PTRB, PTRBParticipante } from '../../types/ptrb';
 import { EQUIPES, SITUACOES, ASSUNTOS } from '../../types/ptrb';
 import { horarioPlantaoPorEquipe } from '../../utils/equipes';
-import { estaNoPeriodoISO, formatarDataArquivo, formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
+import { formatarDataArquivo, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
+import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
-
-type AusenciaFerias = Pick<FeriasGozo, 'funcionarioId' | 'funcionarioNome' | 'equipe' | 'status' | 'dataInicio' | 'dataFim'>;
-
-function nomeKey(value: unknown): string {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
-function nomeBatePessoa(nome: string, pessoa: Pick<Bombeiro, 'nomeCompleto' | 'nomeGuerra'>): boolean {
-  const alvo = nomeKey(nome);
-  return nomeKey(pessoa.nomeCompleto) === alvo || nomeKey(pessoa.nomeGuerra) === alvo;
-}
 
 function formatDate(d: string) {
   return formatarDataBR(d);
@@ -233,109 +218,18 @@ function PTRBAForm({
     onSave(form);
   }
 
-  const membrosEquipe = useMemo(() => {
-    return bombeiros.filter(b => b.equipe === form.equipe && !b.dataDesligamento);
-  }, [bombeiros, form.equipe]);
-
-  const emFerias = useMemo(() => {
-    const ferias: AusenciaFerias[] = feriasGozo.filter(f =>
-      f.equipe === form.equipe &&
-      f.status !== 'Gozadas' &&
-      estaNoPeriodoISO(form.data, f.dataInicio, f.dataFim)
-    );
-    // Incluir também pessoas que estão a ser cobertas por vigências (férias programadas)
-    const vigiados = vigencias.reduce<AusenciaFerias[]>((acc, v) => {
-      if (!(v.equipe === form.equipe && v.ativa && estaNoPeriodoISO(form.data, v.dataInicio, v.dataFim))) return acc;
-      const b = bombeiros.find(bb => bb.id === v.funcionarioOriginalId);
-      if (!b) return acc;
-      acc.push({
-        funcionarioId: b.id,
-        funcionarioNome: b.nomeCompleto,
-        equipe: form.equipe as Equipe,
-        status: 'Em Gozo',
-        dataInicio: v.dataInicio,
-        dataFim: v.dataFim,
-      });
-      return acc;
-    }, []);
-    return [...ferias, ...vigiados];
-  }, [feriasGozo, form.equipe, vigencias, form.data, bombeiros]);
-
-  const substituicoesMap = useMemo(() => {
-    const map: Record<string, { substitutoNome: string; substitutoId: string; tipo: string }> = {};
-    trocaFills.forEach((fl: any) => {
-      const fd = fl.filled_data || {};
-      const naDataSolicitada = mesmoDiaISO(fd.data_solicitada, form.data);
-      const naDataFolgaSolicitado = mesmoDiaISO(fd.data_folga_solicitado, form.data);
-      if (!naDataSolicitada && !naDataFolgaSolicitado) return;
-      const nomeSol = fd.nome_solicitante || '';
-      const nomeSolic = fd.nome_solicitado || '';
-      const pessoaSol = bombeiros.find(b => nomeBatePessoa(nomeSol, b));
-      const pessoaSolic = bombeiros.find(b => nomeBatePessoa(nomeSolic, b));
-      if (pessoaSol && pessoaSolic && naDataSolicitada) {
-        map[pessoaSol.id] = { substitutoNome: nomeSolic, substitutoId: pessoaSolic.id, tipo: 'troca' };
-      }
-      if (pessoaSol && pessoaSolic && naDataFolgaSolicitado) {
-        map[pessoaSolic.id] = { substitutoNome: nomeSol, substitutoId: pessoaSol.id, tipo: 'troca' };
-      }
-    });
-    substituicoesTemporarias.forEach(s => {
-      if (s.status !== 'Aprovada') return;
-      if (!estaNoPeriodoISO(form.data, s.dataInicio, s.dataFim || s.dataInicio)) return;
-      if (s.funcionarioId && s.substitutoNome) {
-        map[s.funcionarioId] = { substitutoNome: s.substitutoNome, substitutoId: s.substitutoId, tipo: 'substituicao' };
-      }
-      if (s.substitutoId && s.funcionarioNome) {
-        map[s.substitutoId] = { substitutoNome: s.funcionarioNome, substitutoId: s.funcionarioId, tipo: 'substituicao' };
-      }
-    });
-    // Vigências de substituição (férias em cascata)
-    vigencias.forEach(v => {
-      if (!v.ativa) return;
-      if (!estaNoPeriodoISO(form.data, v.dataInicio, v.dataFim)) return;
-      if (v.funcionarioOriginalId && v.substitutoNome) {
-        if (!map[v.funcionarioOriginalId]) {
-          map[v.funcionarioOriginalId] = {
-            substitutoNome: v.substitutoNome,
-            substitutoId: v.substitutoId,
-            tipo: 'ferias',
-          };
-        }
-      }
-    });
-    return map;
-  }, [form.data, trocaFills, substituicoesTemporarias, vigencias, bombeiros]);
-
-  const disponiveis = useMemo(() => {
-    const feriasIds = new Set(emFerias.map(f => f.funcionarioId));
-    const substituidoIds = new Set(Object.keys(substituicoesMap));
-    const idsAdicionados = new Set<string>();
-    const presentes = membrosEquipe.filter(b => {
-      if (feriasIds.has(b.id) || substituidoIds.has(b.id)) return false;
-      idsAdicionados.add(b.id);
-      return true;
-    });
-    Object.entries(substituicoesMap).forEach(([ausenteId, sub]) => {
-      if (idsAdicionados.has(ausenteId)) return;
-      const ausente = bombeiros.find(b => b.id === ausenteId);
-      if (ausente?.equipe !== form.equipe) return;
-      const substituto = bombeiros.find(b => b.nomeGuerra === sub.substitutoNome || b.nomeCompleto === sub.substitutoNome);
-      if (substituto && !idsAdicionados.has(substituto.id)) {
-        presentes.push(substituto);
-        idsAdicionados.add(substituto.id);
-      }
-    });
-    return presentes;
-  }, [membrosEquipe, emFerias, substituicoesMap, bombeiros, form.equipe]);
+  const efetivoOperacional = useMemo(() => montarEfetivoOperacional({
+    bombeiros,
+    feriasGozo,
+    vigencias,
+    trocaFills,
+    substituicoesTemporarias,
+    equipe: form.equipe,
+    dataPlantao: form.data,
+  }), [bombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias, form.equipe, form.data]);
 
   const opcoesParticipantes: AtivoItem[] = useMemo(() => {
-    const bombeirosList = disponiveis.map(b => ({
-      id: b.id,
-      nomeGuerra: b.nomeGuerra,
-      nomeCompleto: b.nomeCompleto,
-      cargo: b.cargo,
-      equipe: b.equipe,
-    }));
+    const bombeirosList = montarOpcoesEfetivoOperacional(efetivoOperacional, form.equipe);
     const apocsList = apocs.map(a => ({
       id: a.id,
       nomeGuerra: a.nomeGuerra,
@@ -344,7 +238,7 @@ function PTRBAForm({
       equipe: a.equipe,
     }));
     return [...bombeirosList, ...apocsList];
-  }, [disponiveis, apocs]);
+  }, [efetivoOperacional, form.equipe, apocs]);
 
   const ultimaAutoFill = useRef('');
 
@@ -352,10 +246,13 @@ function PTRBAForm({
     if (ptrb) return;
     const chave = `${form.equipe}-${form.data}`;
     if (ultimaAutoFill.current === chave) return;
-    if (disponiveis.length === 0 && membrosEquipe.length === 0) return;
+    if (efetivoOperacional.length === 0) return;
     ultimaAutoFill.current = chave;
 
-    const pool = [...disponiveis];
+    const pool = efetivoOperacional.map(entry => ({
+      nomeCompleto: entry.bombeiro.nomeCompleto,
+      cargo: entry.cargoExercido,
+    }));
     const novos = HIERARQUIA_EQUIPE.map(funcao => {
       const idx = pool.findIndex(p => p.cargo === funcao);
       if (idx >= 0) {
@@ -367,7 +264,7 @@ function PTRBAForm({
     });
 
     setForm(f => ({ ...f, participantes: novos }));
-  }, [form.equipe, form.data, disponiveis, ptrb]);
+  }, [form.equipe, form.data, efetivoOperacional, ptrb]);
 
   const input = 'w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
   const inputDisabled = 'w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card/50 dark:text-graphite-500';

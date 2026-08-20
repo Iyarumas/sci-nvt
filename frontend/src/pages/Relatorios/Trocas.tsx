@@ -473,6 +473,11 @@ export function Trocas() {
     return { cargo: match._raw.funcao || 'APOC', nomeGuerra: match._raw.nomeGuerra || match.label, nomeCompleto: match._raw.nomeCompleto || match.label, equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
   }
 
+  function getNomeCompletoRelatorio(nome: string): string {
+    if (!nome) return '-';
+    return getPessoaByNome(nome)?.nomeCompleto || nome;
+  }
+
   function getFillEquipes(fill: DocumentFill): string[] {
     const data = fill.filled_data as Record<string, string>;
     return Array.from(new Set([
@@ -1452,8 +1457,8 @@ export function Trocas() {
             }
           });
           const alfabetico = [...unique.values()].sort((a, b) => {
-            const nomeA = ((a.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
-            const nomeB = ((b.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
+            const nomeA = getNomeCompletoRelatorio((a.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
+            const nomeB = getNomeCompletoRelatorio((b.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
             const cmp = nomeA.localeCompare(nomeB);
             if (cmp !== 0) return cmp;
             return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
@@ -1487,8 +1492,8 @@ export function Trocas() {
                         const da = fill.filled_data as Record<string, string>;
                         return (
                           <tr key={fill.id} className={`border-b border-graphite-100 dark:border-border-dark ${idx === arr.length - 1 ? 'border-b-0' : ''}`}>
-                            <td className="px-4 py-3 text-graphite-900 dark:text-graphite-100">{da.nome_solicitante || '-'}</td>
-                            <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{da.nome_solicitado || '-'}</td>
+                            <td className="px-4 py-3 text-graphite-900 dark:text-graphite-100">{getNomeCompletoRelatorio(da.nome_solicitante || '')}</td>
+                            <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{getNomeCompletoRelatorio(da.nome_solicitado || '')}</td>
                             <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_solicitada)}</td>
                             <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_folga_solicitado)}</td>
                             <td className="px-4 py-3 text-center">
@@ -1539,8 +1544,8 @@ export function Trocas() {
                           const da = fill.filled_data as Record<string, string>;
                           return (
                             <tr key={fill.id} className={`border-b border-green-100 dark:border-green-800/20 ${idx === arr.length - 1 ? 'border-b-0' : ''}`}>
-                              <td className="px-4 py-3 text-green-900 dark:text-green-100">{da.nome_solicitante || '-'}</td>
-                              <td className="px-4 py-3 text-green-800 dark:text-green-300">{da.nome_solicitado || '-'}</td>
+                              <td className="px-4 py-3 text-green-900 dark:text-green-100">{getNomeCompletoRelatorio(da.nome_solicitante || '')}</td>
+                              <td className="px-4 py-3 text-green-800 dark:text-green-300">{getNomeCompletoRelatorio(da.nome_solicitado || '')}</td>
                               <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{formatarDataBR(da.data_solicitada)}</td>
                               <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{formatarDataBR(da.data_folga_solicitado)}</td>
                               <td className="px-4 py-3 text-center">
@@ -1764,10 +1769,23 @@ export function Trocas() {
                             <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-green-700 dark:text-green-300">
                               <CheckCircle className="h-4 w-4" /> AUTORIZADO PELO EMBAIXADOR
                             </div>
-                            <p className="text-[10px] text-green-600 dark:text-green-400">
-                              {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
-                              {data.autorizado_por ? ` · ${data.autorizado_por}` : ''}
-                            </p>
+                            {data.criada_no_lro === 'SIM' ? (
+                              <>
+                                <p className="text-[10px] text-green-600 dark:text-green-400">
+                                  {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
+                                </p>
+                                {(data.criado_por || fill.filled_by) && (
+                                  <p className="text-[10px] font-semibold text-green-700 dark:text-green-300">
+                                    Criado por {data.criado_por || fill.filled_by}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="text-[10px] text-green-600 dark:text-green-400">
+                                {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
+                                {data.autorizado_por ? ` · ${data.autorizado_por}` : ''}
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>

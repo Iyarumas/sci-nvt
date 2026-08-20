@@ -3,8 +3,10 @@ import type { Bombeiro } from '../types/bombeiro';
 import type { DocumentFill } from '../types/document';
 import type { TrocaSlot } from '../types/escala';
 import type { FeriasGozo } from '../types/ferias';
+import type { SubstituicaoTemporaria } from '../types/substituicaoTemporaria';
 import type { VigenciaSubstituicao } from '../services/vigenciaSubstituicaoService';
-import { estaNoPeriodoISO, mesmoDiaISO } from './datas';
+import { estaNoPeriodoISO, mesmoDiaISO, parseDataLocalISO } from './datas';
+import { equipeEstaNoPlantao } from './equipes';
 
 export interface EfetivoOperacionalEntry {
   bombeiro: Bombeiro;
@@ -33,6 +35,20 @@ interface TrocaServicoResolvida {
   entrando: Bombeiro;
   funcaoSaindo: string;
   funcaoEntrando: string;
+}
+
+interface ExtraAfastamentoResolvido {
+  ausente: Bombeiro;
+  substituto: Bombeiro;
+  cargoAusente: string;
+  cargoExercido: string;
+  equipePlantao: string;
+}
+
+interface AfastamentoResolvido {
+  ausente: Bombeiro;
+  cargoAusente: string;
+  equipePlantao: string;
 }
 
 function montarTrocasServicoResolvidas(params: {
@@ -104,10 +120,11 @@ export function montarEfetivoOperacional(params: {
   feriasGozo: FeriasGozo[];
   vigencias: VigenciaSubstituicao[];
   trocaFills: DocumentFill[];
+  substituicoesTemporarias?: SubstituicaoTemporaria[];
   equipe: string;
   dataPlantao: string;
 }): EfetivoOperacionalEntry[] {
-  const { bombeiros, feriasGozo, vigencias, trocaFills, equipe, dataPlantao } = params;
+  const { bombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias = [], equipe, dataPlantao } = params;
   if (!equipe || !dataPlantao) return [];
 
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
@@ -155,6 +172,23 @@ export function montarEfetivoOperacional(params: {
   );
   const emGozo = new Set(gozosNoDia.map(g => g.funcionarioId));
   const vagasAbertas = new Set(vigenciasAuto.map(v => v.funcionarioOriginalId));
+
+  const extrasAfastamento = montarExtrasAfastamentoResolvidos({
+    substituicoes: substituicoesTemporarias,
+    porId,
+    equipe,
+    dataPlantao,
+  });
+  const afastamentosNoPlantao = montarAfastamentosResolvidos({
+    substituicoes: substituicoesTemporarias,
+    porId,
+    vigencias,
+    equipe,
+    dataPlantao,
+  });
+  const extraAfastados = new Set(extrasAfastamento.map(extra => extra.ausente.id));
+  const extraSubstitutos = new Set(extrasAfastamento.map(extra => extra.substituto.id));
+  const afastadosTemporarios = new Set(afastamentosNoPlantao.map(afastamento => afastamento.ausente.id));
 
   const fallbackPorOriginal = new Map<string, { substituto: Bombeiro; cargo: string; original: Bombeiro }>();
   const fallbackPorSubstituto = new Map<string, { substituto: Bombeiro; cargo: string; original: Bombeiro }>();
@@ -205,14 +239,27 @@ export function montarEfetivoOperacional(params: {
       realPorOriginal.has(membro.id) ||
       fallbackPorOriginal.has(membro.id) ||
       vagasAbertas.has(membro.id) ||
-      trocaExcluidos.has(membro.id)
+      trocaExcluidos.has(membro.id) ||
+      afastadosTemporarios.has(membro.id) ||
+      extraAfastados.has(membro.id) ||
+      extraSubstitutos.has(membro.id)
     ) {
       continue;
     }
     adicionar(membro, membro.cargo);
   }
 
+  for (const extra of extrasAfastamento) {
+    adicionar(extra.substituto, extra.cargoExercido || extra.substituto.cargo, {
+      id: extra.ausente.id,
+      nome: extra.ausente.nomeCompleto,
+      cargo: extra.cargoAusente || extra.ausente.cargo,
+    });
+  }
+
   for (const v of vigenciasReais) {
+    if (afastadosTemporarios.has(v.substitutoId)) continue;
+    if (extraSubstitutos.has(v.substitutoId)) continue;
     const substituto = porId.get(v.substitutoId);
     if (!substituto) continue;
     adicionar(substituto, v.cargoExercido || substituto.cargo, {
@@ -223,10 +270,14 @@ export function montarEfetivoOperacional(params: {
   }
 
   for (const troca of trocaIncluidos) {
+    if (afastadosTemporarios.has(troca.bombeiro.id)) continue;
+    if (extraSubstitutos.has(troca.bombeiro.id)) continue;
     adicionar(troca.bombeiro, troca.cargoExercido, troca.substituindo);
   }
 
   for (const fallback of fallbackPorSubstituto.values()) {
+    if (afastadosTemporarios.has(fallback.substituto.id)) continue;
+    if (extraSubstitutos.has(fallback.substituto.id)) continue;
     adicionar(fallback.substituto, fallback.cargo, {
       id: fallback.original.id,
       nome: fallback.original.nomeCompleto,
@@ -253,4 +304,88 @@ export function montarOpcoesEfetivoOperacional(efetivo: EfetivoOperacionalEntry[
     cargo: entry.cargoExercido,
     equipe,
   }));
+}
+
+function contextoAfastamentoNoPlantao(params: {
+  sub: SubstituicaoTemporaria;
+  porId: Map<string, Bombeiro>;
+  vigencias: VigenciaSubstituicao[];
+  dataPlantao: string;
+}): AfastamentoResolvido | null {
+  const { sub, porId, vigencias, dataPlantao } = params;
+  const ausente = porId.get(sub.funcionarioId);
+  if (!ausente) return null;
+
+  const vigencia = vigencias.find(v =>
+    v.ativa &&
+    v.substitutoId === sub.funcionarioId &&
+    v.substitutoId !== v.funcionarioOriginalId &&
+    estaNoPeriodoISO(dataPlantao, v.dataInicio, v.dataFim)
+  );
+  const originalVigencia = vigencia ? porId.get(vigencia.funcionarioOriginalId) : undefined;
+
+  return {
+    ausente,
+    cargoAusente: vigencia?.cargoExercido || sub.funcionarioCargo || ausente.cargo,
+    equipePlantao: originalVigencia?.equipe || vigencia?.equipe || ausente.equipe,
+  };
+}
+
+function montarAfastamentosResolvidos(params: {
+  substituicoes: SubstituicaoTemporaria[];
+  porId: Map<string, Bombeiro>;
+  vigencias: VigenciaSubstituicao[];
+  equipe: string;
+  dataPlantao: string;
+}): AfastamentoResolvido[] {
+  const { substituicoes, porId, vigencias, equipe, dataPlantao } = params;
+  const data = parseDataLocalISO(dataPlantao);
+  if (Number.isNaN(data.getTime()) || !equipeEstaNoPlantao(equipe, data)) return [];
+
+  const afastamentos: AfastamentoResolvido[] = [];
+  for (const sub of substituicoes) {
+    if (sub.tipo !== 'Afastamento' || sub.status !== 'Aprovada') continue;
+    if (!estaNoPeriodoISO(dataPlantao, sub.dataInicio, sub.dataFim)) continue;
+    const contexto = contextoAfastamentoNoPlantao({ sub, porId, vigencias, dataPlantao });
+    if (!contexto || contexto.equipePlantao !== equipe) continue;
+    afastamentos.push(contexto);
+  }
+  return afastamentos;
+}
+
+function montarExtrasAfastamentoResolvidos(params: {
+  substituicoes: SubstituicaoTemporaria[];
+  porId: Map<string, Bombeiro>;
+  equipe: string;
+  dataPlantao: string;
+}): ExtraAfastamentoResolvido[] {
+  const { substituicoes, porId, equipe, dataPlantao } = params;
+  const data = parseDataLocalISO(dataPlantao);
+  if (Number.isNaN(data.getTime()) || !equipeEstaNoPlantao(equipe, data)) return [];
+
+  const extras: ExtraAfastamentoResolvido[] = [];
+  for (const sub of substituicoes) {
+    if (sub.tipo !== 'Afastamento' || sub.status !== 'Aprovada') continue;
+    if (!estaNoPeriodoISO(dataPlantao, sub.dataInicio, sub.dataFim)) continue;
+    for (const elo of sub.cadeiaSubstituicao || []) {
+      if (elo.tipo !== 'extra') continue;
+      if (!mesmoDiaISO(elo.dataPlantao || '', dataPlantao)) continue;
+
+      const equipePlantao = elo.equipePlantao || elo.funcionarioEquipe || '';
+      if (equipePlantao && equipePlantao !== equipe) continue;
+
+      const ausente = porId.get(elo.funcionarioId || sub.funcionarioId);
+      const substituto = porId.get(elo.substitutoId || elo.pessoaId || sub.substitutoId);
+      if (!ausente || !substituto || ausente.id === substituto.id) continue;
+
+      extras.push({
+        ausente,
+        substituto,
+        cargoAusente: elo.funcionarioCargo || sub.funcionarioCargo || ausente.cargo,
+        cargoExercido: elo.cargoExercido || elo.cargoVacante || sub.funcionarioCargo || ausente.cargo,
+        equipePlantao: equipePlantao || equipe,
+      });
+    }
+  }
+  return extras;
 }

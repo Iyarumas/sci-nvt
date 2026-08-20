@@ -29,6 +29,12 @@ function fmt(d?: string) {
   return formatarDataBR(d);
 }
 
+function numeroDocumentoBadge(numero?: string): string {
+  const texto = String(numero || '').trim();
+  const sequencial = texto.match(/^(?:BONA|REA)-?(\d+)/i)?.[1] || texto.match(/^(\d+)/)?.[1];
+  return sequencial || '?';
+}
+
 function StatusBadge({ status, map }: { status: string; map: Record<string, string> }) {
   return <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${map[status] || 'bg-graphite-100 text-graphite-600'}`}>{status}</span>;
 }
@@ -343,7 +349,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
                         ? 'bg-gradient-to-br from-red-400 to-red-600'
                         : d.status === 'Fechada' ? 'bg-gradient-to-br from-green-400 to-green-600' : 'bg-gradient-to-br from-red-400 to-red-600'
                     }`}>
-                      {d.numero?.slice(-2) || '?'}
+                      {numeroDocumentoBadge(d.numero)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold text-graphite-900 dark:text-graphite-100 truncate">

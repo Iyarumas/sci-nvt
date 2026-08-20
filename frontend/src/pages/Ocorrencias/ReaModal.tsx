@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Save, X } from 'lucide-react';
+import { FileText, Save, X } from 'lucide-react';
 import {
   agenteExtintorReaKey,
   criarReaDadosVazios,
@@ -11,12 +11,15 @@ import {
   recursoReaKey,
 } from '../../types/rea';
 import type { ReaDados, ReaFormField, ReaRegistro, ReaStatus } from '../../types/rea';
+import { TIPO_DOCUMENTO } from '../../types/ocorrencia';
+import type { TipoDocumento } from '../../types/ocorrencia';
 
 interface ReaModalProps {
   registro?: ReaRegistro | null;
   numero: string;
   saving?: boolean;
   onSave: (data: { status: ReaStatus; dados: ReaDados }) => void;
+  onSelectBona?: () => void;
   onCancel: () => void;
 }
 
@@ -247,7 +250,7 @@ function ExtinguisherTable({
   );
 }
 
-export function ReaModal({ registro, numero, saving = false, onSave, onCancel }: ReaModalProps) {
+export function ReaModal({ registro, numero, saving = false, onSave, onSelectBona, onCancel }: ReaModalProps) {
   const [dados, setDados] = useState<ReaDados>(() => buildInitialDados(registro));
   const [status, setStatus] = useState<ReaStatus>(registro?.status || 'Aberta');
 
@@ -262,14 +265,22 @@ export function ReaModal({ registro, numero, saving = false, onSave, onCancel }:
 
   const baseSections = REA_FORM_SECTIONS.slice(0, 5);
   const finalSections = REA_FORM_SECTIONS.slice(5);
+  const statusBadge = status === 'Fechada'
+    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+    : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
       <div className="flex max-h-[88vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl shadow-black/10 dark:bg-surface-elevated">
         <div className="flex items-center justify-between border-b border-graphite-200 px-6 py-4 dark:border-border-dark">
-          <div>
-            <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{registro ? 'Editar REA' : 'Novo REA'}</h2>
-            <p className="text-xs font-semibold text-graphite-500 dark:text-graphite-400">{registro?.numero || numero}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{registro ? 'Editar Documento' : 'Novo Documento'}</h2>
+            <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/20 dark:text-red-400">
+              REA · {registro?.numero || numero}
+            </span>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${statusBadge}`}>
+              {status}
+            </span>
           </div>
           <button onClick={onCancel} className="rounded-lg p-1.5 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover">
             <X className="h-5 w-5" />
@@ -277,6 +288,35 @@ export function ReaModal({ registro, numero, saving = false, onSave, onCancel }:
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          <div className="rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-card">
+            <label className={labelCls}>Tipo de Documento *</label>
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(['BONA', 'REA'] as TipoDocumento[]).map(tipo => {
+                const selected = tipo === 'REA';
+                return (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => {
+                      if (tipo === 'BONA') onSelectBona?.();
+                    }}
+                    className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${
+                      selected
+                        ? 'border-aviation-500 bg-aviation-50 dark:border-aviation-400 dark:bg-aviation-900/20'
+                        : 'border-graphite-200 bg-white hover:border-graphite-300 dark:border-border-dark dark:bg-surface-card dark:hover:border-graphite-600'
+                    }`}
+                  >
+                    <FileText className={`h-5 w-5 shrink-0 ${selected ? 'text-aviation-600 dark:text-aviation-400' : 'text-graphite-400'}`} />
+                    <div>
+                      <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{tipo}</p>
+                      <p className="text-[11px] text-graphite-500 dark:text-graphite-400">{TIPO_DOCUMENTO[tipo]}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="rounded-xl border border-graphite-200 bg-graphite-50 p-4 dark:border-border-dark dark:bg-surface-card">
             <label className={labelCls}>Status</label>
             <select value={status} onChange={e => setStatus(e.target.value as ReaStatus)} className={inputCls}>

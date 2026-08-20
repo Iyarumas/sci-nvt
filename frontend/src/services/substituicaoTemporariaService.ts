@@ -49,11 +49,19 @@ function plantaoExtraToDb(value: SubstituicaoTemporaria['plantaoExtra'] | undefi
   return value === 'Sim';
 }
 
+function jsonb(value: unknown): string {
+  return JSON.stringify(value ?? []);
+}
+
 function parseCadeia(value: unknown): EloCadeiaSubstituicaoTemporaria[] {
-  if (!Array.isArray(value)) return [];
-  return value.map(item => {
+  const parsed = typeof value === 'string'
+    ? (() => { try { return JSON.parse(value); } catch { return []; } })()
+    : value;
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map(item => {
     const elo = item && typeof item === 'object' ? item as Record<string, unknown> : {};
     return {
+      tipo: (elo.tipo === 'extra' ? 'extra' : 'cadeia') as EloCadeiaSubstituicaoTemporaria['tipo'],
       pessoaId: String(elo.pessoaId || ''),
       pessoaNome: String(elo.pessoaNome || ''),
       pessoaCargo: String(elo.pessoaCargo || elo.cargoOriginal || ''),
@@ -61,11 +69,26 @@ function parseCadeia(value: unknown): EloCadeiaSubstituicaoTemporaria[] {
       cargoOriginal: String(elo.cargoOriginal || elo.pessoaCargo || ''),
       cargoVacante: String(elo.cargoVacante || ''),
       substituindoNome: String(elo.substituindoNome || ''),
+      dataPlantao: String(elo.dataPlantao || ''),
+      funcionarioId: String(elo.funcionarioId || ''),
+      funcionarioNome: String(elo.funcionarioNome || ''),
+      funcionarioCargo: String(elo.funcionarioCargo || ''),
+      funcionarioEquipe: String(elo.funcionarioEquipe || ''),
+      equipePlantao: String(elo.equipePlantao || ''),
+      substituindoId: String(elo.substituindoId || ''),
+      substituindoCargo: String(elo.substituindoCargo || ''),
+      substituindoCoberturaNome: String(elo.substituindoCoberturaNome || ''),
+      substitutoId: String(elo.substitutoId || elo.pessoaId || ''),
+      substitutoNome: String(elo.substitutoNome || elo.pessoaNome || ''),
+      substitutoCargo: String(elo.substitutoCargo || elo.pessoaCargo || elo.cargoOriginal || ''),
+      cargoExercido: String(elo.cargoExercido || elo.cargoVacante || ''),
+      plantaoExtra: elo.plantaoExtra === true,
     };
   }).filter(elo => elo.pessoaId);
 }
 
 function rowToSubstituicao(row: Record<string, unknown>): SubstituicaoTemporaria {
+  const tipo = normalizarTipo(row.tipo);
   return {
     id: row.id as string,
     funcionarioId: row.funcionario_id as string,
@@ -74,10 +97,10 @@ function rowToSubstituicao(row: Record<string, unknown>): SubstituicaoTemporaria
     substitutoId: row.substituto_id as string,
     substitutoNome: row.substituto_nome as string,
     substitutoCargo: row.substituto_cargo as string,
-    tipo: normalizarTipo(row.tipo),
+    tipo,
     motivo: row.motivo as SubstituicaoTemporaria['motivo'],
     motivoOutro: row.motivo_outro as string,
-    plantaoExtra: normalizarTipo(row.tipo) === 'Extra' ? normalizarPlantaoExtra(row.plantao_extra) : '',
+    plantaoExtra: tipo === 'Extra' || tipo === 'Afastamento' ? normalizarPlantaoExtra(row.plantao_extra) : '',
     dataInicio: row.data_inicio as string,
     dataFim: row.data_fim as string,
     dias: row.dias as number,
@@ -116,7 +139,7 @@ function substituicaoToRow(data: Partial<SubstituicaoTemporaria>): Record<string
   if (data.aprovadoPor !== undefined) row.aprovado_por = data.aprovadoPor;
   if (data.aprovadoPorNome !== undefined) row.aprovado_por_nome = data.aprovadoPorNome;
   if (data.aprovadoEm !== undefined) row.aprovado_em = data.aprovadoEm;
-  if (data.cadeiaSubstituicao !== undefined) row.cadeia_substituicao = data.cadeiaSubstituicao;
+  if (data.cadeiaSubstituicao !== undefined) row.cadeia_substituicao = jsonb(data.cadeiaSubstituicao);
   return row;
 }
 
@@ -133,13 +156,15 @@ async function processarVigenciasSubstituicaoTemporaria(
   bombeiros: Bombeiro[],
 ): Promise<void> {
   const funcionario = bombeiros.find(b => b.id === substituicao.funcionarioId);
-  const cadeiaInput: EloCadeiaInput[] = substituicao.cadeiaSubstituicao.map(elo => ({
-    pessoaId: elo.pessoaId,
-    pessoaNome: elo.pessoaNome,
-    cargoOriginal: (elo.cargoOriginal || elo.pessoaCargo) as Cargo,
-    cargoVacante: elo.cargoVacante,
-    substituindoNome: elo.substituindoNome,
-  }));
+  const cadeiaInput: EloCadeiaInput[] = substituicao.cadeiaSubstituicao
+    .filter(elo => elo.tipo !== 'extra')
+    .map(elo => ({
+      pessoaId: elo.pessoaId,
+      pessoaNome: elo.pessoaNome,
+      cargoOriginal: (elo.cargoOriginal || elo.pessoaCargo) as Cargo,
+      cargoVacante: elo.cargoVacante,
+      substituindoNome: elo.substituindoNome,
+    }));
 
   await processarCadeiaSubstituicao({
     id: substituicao.id,
@@ -204,6 +229,78 @@ export async function criarSubstituicaoTemporaria(
   return rowToSubstituicao(created);
 }
 
+export async function atualizarSubstituicaoTemporaria(
+  id: string,
+  data: Partial<Omit<SubstituicaoTemporaria, 'id' | 'createdAt' | 'updatedAt'>>,
+): Promise<SubstituicaoTemporaria | null> {
+  const db = getDb();
+  const { data: atualRaw, error: atualError } = await db
+    .from(TABLE)
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (atualError) handleSupabaseError(atualError);
+
+  const atual = rowToSubstituicao(atualRaw);
+  const merged: SubstituicaoTemporaria = {
+    ...atual,
+    ...data,
+    id: atual.id,
+    createdAt: atual.createdAt,
+    updatedAt: atual.updatedAt,
+  };
+  const [existentes, bombeiros] = await Promise.all([
+    listarSubstituicoesTemporarias(),
+    listarAtivos(),
+  ]);
+  const contexto = contextoValidacao(merged, bombeiros);
+  assertSemErros(validarSubstituicaoTemporaria({
+    substituicao: merged,
+    substituicoesExistentes: existentes,
+    ignoreSubstituicaoId: id,
+    ...contexto,
+  }));
+
+  const now = new Date().toISOString();
+  const deveReaprovar = atual.status === 'Aprovada';
+  const dadosParaPersistir: Partial<Omit<SubstituicaoTemporaria, 'id' | 'createdAt' | 'updatedAt'>> = deveReaprovar
+    ? {
+        ...data,
+        status: 'Pendente',
+        aprovadoPor: '',
+        aprovadoPorNome: '',
+        aprovadoEm: '',
+      }
+    : data;
+  const row = {
+    ...substituicaoToRow(dadosParaPersistir),
+    updated_at: now,
+  };
+  const { data: updated, error } = await db
+    .from(TABLE)
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) handleSupabaseError(error);
+
+  if (deveReaprovar) {
+    await desativarVigencias(id);
+  }
+
+  const substituicaoAtualizada = updated ? rowToSubstituicao(updated) : null;
+  const afastamentoComExtras = substituicaoAtualizada?.tipo === 'Afastamento' &&
+    substituicaoAtualizada.cadeiaSubstituicao.some(elo => elo.tipo === 'extra');
+  if (!deveReaprovar && substituicaoAtualizada?.status === 'Aprovada') {
+    await desativarVigencias(id);
+    if (substituicaoAtualizada.tipo === 'Substituição' || (substituicaoAtualizada.tipo === 'Afastamento' && !afastamentoComExtras)) {
+      await processarVigenciasSubstituicaoTemporaria(substituicaoAtualizada, bombeiros);
+    }
+  }
+
+  return substituicaoAtualizada;
+}
+
 export async function aprovarSubstituicaoTemporaria(
   id: string,
   aprovadoPor: string,
@@ -247,7 +344,9 @@ export async function aprovarSubstituicaoTemporaria(
     .single();
   if (error) handleSupabaseError(error);
   const aprovado = updated ? rowToSubstituicao(updated) : null;
-  if (aprovado?.tipo === 'Afastamento' || aprovado?.tipo === 'Substituição') {
+  const afastamentoComExtras = aprovado?.tipo === 'Afastamento' &&
+    aprovado.cadeiaSubstituicao.some(elo => elo.tipo === 'extra');
+  if (aprovado?.tipo === 'Substituição' || (aprovado?.tipo === 'Afastamento' && !afastamentoComExtras)) {
     try {
       await processarVigenciasSubstituicaoTemporaria(aprovado, bombeiros);
     } catch (err) {

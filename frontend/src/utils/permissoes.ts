@@ -7,6 +7,7 @@ const EQUIPES: readonly Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferist
 const CARGOS_RESPONSAVEIS_EQUIPE: readonly Cargo[] = ['BA-CE', 'BA-LR'];
 const CARGOS_VISUALIZAM_ARQUIVO: readonly Cargo[] = ['BA-CE', 'BA-LR'];
 const CARGOS_VISUALIZAM_CERTIFICACOES: readonly Cargo[] = ['BA-CE', 'BA-LR'];
+const CARGOS_VISUALIZAM_RELATORIO_PTRBA: readonly Cargo[] = ['BA-CE', 'BA-LR'];
 
 export type CadastroModuloRestrito = 'equipamentos' | 'viaturas' | 'extintores' | 'agentesExtintores' | 'hidrantes';
 
@@ -186,9 +187,26 @@ export function podeVerRelatoriosBase(user: AuthUserPermissao): boolean {
   );
 }
 
+export function podeVerRelatoriosPtrBaBase(user: AuthUserPermissao): boolean {
+  if (podeVerRelatoriosBase(user)) return true;
+  if (user?.pessoa?.personType !== 'bombeiro') return false;
+  return (
+    CARGOS_VISUALIZAM_RELATORIO_PTRBA.includes(user.pessoa.funcao as Cargo) ||
+    user.pessoa.equipe === 'Embaixador'
+  );
+}
+
 export function canVisualizarRelatorios(contexto: ContextoOperacionalPermissao): boolean {
   if (canAcessarDadosPessoais(contexto)) return true;
   return contexto.cargo === 'BA-LR' && contexto.equipe === 'Delta';
+}
+
+export function canVisualizarRelatoriosPtrBa(contexto: ContextoOperacionalPermissao): boolean {
+  if (canVisualizarRelatorios(contexto)) return true;
+  return (
+    CARGOS_VISUALIZAM_RELATORIO_PTRBA.includes(contexto.cargo as Cargo) ||
+    contexto.equipe === 'Embaixador'
+  );
 }
 
 export function canGerenciarArquivo(contexto: ContextoOperacionalPermissao): boolean {

@@ -28,8 +28,8 @@ import type { Ocorrencia } from '../../types/ocorrencia';
 import type { PTRB } from '../../types/ptrb';
 import type { PTRBACompleto } from '../../types/ptrbaCompleto';
 import type { ReaRegistro } from '../../types/rea';
-import { dataSaidaPlantao, horarioPlantaoPorEquipe } from '../../utils/equipes';
-import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO, normalizarDataISO } from '../../utils/datas';
+import { dataSaidaPlantao, equipeEstaNoPlantao, horarioPlantaoPorEquipe } from '../../utils/equipes';
+import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO, normalizarDataISO, parseDataLocalISO } from '../../utils/datas';
 import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
 
@@ -101,6 +101,23 @@ type SubstituicaoDetectada = {
   dataFolga?: string;
   confirmada: boolean | null;
 };
+type TrocaManualLRO = {
+  solicitante: string;
+  solicitado: string;
+  dataFolga: string;
+  motivo: string;
+  documentoFillId?: string;
+};
+type SubstituicaoInfo = {
+  substitutoNome: string;
+  substitutoId: string;
+  tipo: 'troca' | 'substituicao';
+  substituidoId: string;
+  substituidoNome: string;
+  cargoSubstituido?: string;
+  equipeSubstituido?: string;
+  cargoExercido?: string;
+};
 const EMPTY_FROTA_LINHA: FrotaLinhaDados = {
   viaturaId: '',
   prefixo: '',
@@ -130,6 +147,7 @@ const STATUS_LABELS: Record<LRODraftStatus, string> = {
 };
 
 const STATUS_LRO_TRAVAM_OCORRENCIAS = new Set<LRODraftStatus>(['assinado', 'finalizado', 'arquivado']);
+const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);
 
 export function GerarLRO() {
   const { user, contexto, equipeEfetiva } = useContextoOperacional();
@@ -178,7 +196,7 @@ export function GerarLRO() {
   const [trocaSolicitado, setTrocaSolicitado] = useState('');
   const [trocaDataFolga, setTrocaDataFolga] = useState('');
   const [trocaMotivo, setTrocaMotivo] = useState('');
-  const [trocasManuais, setTrocasManuais] = useState<Array<{ solicitante: string; solicitado: string; dataFolga: string; motivo: string }>>([]);
+  const [trocasManuais, setTrocasManuais] = useState<TrocaManualLRO[]>([]);
   const [substituicoesDetectadas, setSubstituicoesDetectadas] = useState<SubstituicaoDetectada[]>([]);
 
   // -- LRO Sections --
@@ -240,6 +258,16 @@ export function GerarLRO() {
     if (canCriarRegistrosDiarios(contexto)) return false;
     setErroValidacao(`Você não tem permissão para ${acao} LRO.`);
     return true;
+  }
+
+  function limparCamposAutomaticosPlantao() {
+    setChefeEquipe('');
+    setComunicacao('');
+    setEquipagemCCI({});
+    setEquipagemCCIRT({});
+    setEquipagemCRS({});
+    setTrocasManuais([]);
+    setSubstituicoesDetectadas([]);
   }
 
   useEffect(() => {
@@ -322,13 +350,13 @@ export function GerarLRO() {
         const trocaDoc = docs.find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
         if (trocaDoc) {
           setTrocaDocId(trocaDoc.id);
-          const fills = await listarPreenchimentos({ documentId: trocaDoc.id, status: 'signed' });
-          setTrocaFills(fills);
+          const fills = await listarPreenchimentos({ documentId: trocaDoc.id });
+          setTrocaFills(fills.filter(trocaFillVisivelNoLRO));
         } else {
           const todosFills = await Promise.all(docs.map((d: any) => listarPreenchimentos({ documentId: d.id }).catch(() => [])));
           const comNome = todosFills.flat().filter((fl: any) => {
             const fd = fl.filled_data || {};
-            return (fd.nome_solicitante || fd.nome_solicitado) && fl.status === 'signed';
+            return trocaFillVisivelNoLRO(fl) && (fd.nome_solicitante || fd.nome_solicitado);
           });
           setTrocaFills(comNome);
         }
@@ -384,6 +412,24 @@ export function GerarLRO() {
   useEffect(() => {
     if (!dataInicio) return;
     const nomesEquipe = bombeiros.filter((b: any) => b.equipe === equipe).map((b: any) => b.nomeGuerra.toLowerCase());
+    const pessoaPorNome = (nome: string) => {
+      const alvo = String(nome || '').trim().toLocaleLowerCase('pt-BR');
+      if (!alvo) return undefined;
+      return bombeiros.find((b: any) =>
+        String(b.nomeGuerra || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
+        String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
+        String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR').includes(alvo)
+      );
+    };
+    const cobreEquipeAtual = (pessoa?: Bombeiro) => {
+      if (!pessoa) return false;
+      return vigencias.some(v => {
+        if (!v.ativa || v.substitutoId !== pessoa.id) return false;
+        if (!estaNoPeriodoISO(dataInicio, v.dataInicio, v.dataFim)) return false;
+        const original = bombeiros.find((b: any) => b.id === v.funcionarioOriginalId);
+        return (original?.equipe || v.equipe) === equipe;
+      });
+    };
     const resultados: SubstituicaoDetectada[] = [];
     // De trocaFills (documento Troca de Serviço) — filtra pela data solicitada / folga do solicitado
     trocaFills.forEach((fl: any) => {
@@ -398,10 +444,23 @@ export function GerarLRO() {
       const substituto = naDataSolicitada ? nomeSolic : nomeSol;
       const solNome = substituido.toLowerCase();
       const solicNome = substituto.toLowerCase();
-      const pertenceEquipe = nomesEquipe.some(n => solNome.includes(n)) || nomesEquipe.some(n => solicNome.includes(n));
+      const pessoaSubstituida = pessoaPorNome(substituido);
+      const pessoaSubstituta = pessoaPorNome(substituto);
+      const pertenceEquipe = nomesEquipe.some(n => solNome.includes(n)) ||
+        nomesEquipe.some(n => solicNome.includes(n)) ||
+        cobreEquipeAtual(pessoaSubstituida) ||
+        cobreEquipeAtual(pessoaSubstituta);
       if (pertenceEquipe) {
         const jaConfirmada = mesmoDiaISO(fd.lro_confirmada, dataInicio);
-        resultados.push({ id: fl.id, tipo: 'troca' as const, substituido, substituto, dataSolicitada: fd.data_solicitada || '', dataFolga: fd.data_folga_solicitado || '', confirmada: jaConfirmada ? true : null });
+        resultados.push({
+          id: fl.id,
+          tipo: 'troca' as const,
+          substituido,
+          substituto,
+          dataSolicitada: fd.data_solicitada || '',
+          dataFolga: fd.data_folga_solicitado || '',
+          confirmada: jaConfirmada || trocaFillAprovada(fl, fd) ? true : null,
+        });
       }
     });
     // De todasSubstituicoes (substituições temporárias aprovadas) — filtra pela data
@@ -410,6 +469,23 @@ export function GerarLRO() {
       const dataSubstInicio = s.dataInicio || s.data_inicio || '';
       const dataSubstFim = s.dataFim || s.data_fim || dataSubstInicio;
       if (!estaNoPeriodoISO(dataInicio, dataSubstInicio, dataSubstFim)) return;
+
+      if (s.tipo === 'Afastamento') {
+        const dataPlantao = parseDataLocalISO(dataInicio);
+        if (Number.isNaN(dataPlantao.getTime()) || !equipeEstaNoPlantao(equipe, dataPlantao)) return;
+        (s.cadeiaSubstituicao || s.cadeia_substituicao || []).forEach((elo: any) => {
+          if (elo.tipo !== 'extra') return;
+          if (!mesmoDiaISO(elo.dataPlantao || elo.data_plantao || '', dataInicio)) return;
+          const equipePlantao = elo.equipePlantao || elo.equipe_plantao || elo.funcionarioEquipe || elo.funcionario_equipe || '';
+          if (equipePlantao && equipePlantao !== equipe) return;
+          const nomeSubstituido = elo.funcionarioNome || elo.funcionario_nome || s.funcionarioNome || s.funcionario_nome || '';
+          const nomeSubstituto = elo.substitutoNome || elo.substituto_nome || elo.pessoaNome || elo.pessoa_nome || s.substitutoNome || s.substituto_nome || '';
+          if (!nomeSubstituido && !nomeSubstituto) return;
+          resultados.push({ id: `${s.id}-${elo.dataPlantao || dataInicio}`, tipo: 'substituicao' as const, substituido: nomeSubstituido, substituto: nomeSubstituto, confirmada: null });
+        });
+        return;
+      }
+
       const nomeSubstituido = s.funcionarioNome || s.funcionario_nome || '';
       const nomeSubstituto = s.substitutoNome || s.substituto_nome || '';
       if (!nomeSubstituido && !nomeSubstituto) return;
@@ -421,7 +497,7 @@ export function GerarLRO() {
       }
     });
     setSubstituicoesDetectadas(resultados);
-  }, [dataInicio, equipe, trocaFills, todasSubstituicoes, bombeiros]);
+  }, [dataInicio, equipe, trocaFills, todasSubstituicoes, bombeiros, vigencias]);
 
   const equipeInversa: Record<string, string> = { Alfa: 'Charlie', Charlie: 'Alfa', Bravo: 'Delta', Delta: 'Bravo' };
 
@@ -505,6 +581,14 @@ export function GerarLRO() {
     if (!descricaoLimpa) return '';
     const cabecalho = [horaCurta(hora), textoInline(tipo)].filter(Boolean).join(' - ');
     return cabecalho ? `${cabecalho}\n${descricaoLimpa}` : descricaoLimpa;
+  }
+
+  function linhaBonaLRO(registro: Ocorrencia): string {
+    const identificacao = [
+      textoInline(registro.numero),
+      textoInline(registro.titulo || registro.bonaDados?.tipoOcorrencia || 'BONA'),
+    ].filter(Boolean).join(' - ');
+    return linhaLRO(registro.data, registro.hora, registro.equipe, identificacao, registro.descricao);
   }
 
   function lancamentosParaTexto(valor: unknown): string {
@@ -626,9 +710,9 @@ export function GerarLRO() {
         registroNoPlantao(registro.data, registro.hora, registro.equipe)
       )
       .sort((a, b) => `${dataISO(a.data)} ${horaCurta(a.hora)}`.localeCompare(`${dataISO(b.data)} ${horaCurta(b.hora)}`))
-      .map(registro => linhaLRO(registro.data, registro.hora, '', '', registro.descricao))
+      .map(linhaBonaLRO)
       .filter(Boolean)
-      .join('\n');
+      .join('\n\n');
   }, [ocorrenciasOperacionais, equipe, dataInicio, dataFim, horarioBase.turno, horarioPlantao.inicio, horarioPlantao.fim]);
 
   const reaAutomaticas = useMemo(() => {
@@ -709,37 +793,55 @@ export function GerarLRO() {
     return aviso?.nivel !== 'bloqueado';
   }
 
-  const jaTemManual = trocasManuais.length > 0;
+  function trocaFillVisivelNoLRO(fill: any): boolean {
+    const status = String(fill?.status || '');
+    if (!STATUS_TROCA_ENTRA_LRO.has(status)) return false;
+    const fd = fill?.filled_data || {};
+    return !!(fd.nome_solicitante || fd.nome_solicitado);
+  }
+
+  function trocaFillAprovada(fill: any, filledData: Record<string, any>): boolean {
+    return fill?.status === 'signed' ||
+      filledData.deferido_indeferido === 'DEFERIDO' ||
+      filledData.check_deferido === 'V';
+  }
+
   const substituicoesMap = useMemo(() => {
     if (!dataInicio) return {};
-    const map: Record<string, { substitutoNome: string; substitutoId: string; tipo: 'troca' | 'substituicao'; cargoExercido?: string }> = {};
-    // De trocaFills (documento Troca de Serviço) — filtra pela data solicitada / folga do solicitado (data exata)
-    trocaFills.forEach((fl: any) => {
-      const fd = fl.filled_data || {};
-      const nomeSol = fd.nome_solicitante || '';
-      const nomeSolic = fd.nome_solicitado || '';
-      const pessoaSol = bombeiros.find((b: any) => b.nomeCompleto === nomeSol || b.nomeGuerra === nomeSol);
-      const pessoaSolic = bombeiros.find((b: any) => b.nomeCompleto === nomeSolic || b.nomeGuerra === nomeSolic);
-      if (!pessoaSol || !pessoaSolic) return;
-      if (mesmoDiaISO(fd.data_solicitada, dataInicio)) {
-        map[pessoaSol.id] = { substitutoNome: nomeSolic, substitutoId: pessoaSolic.id, tipo: 'troca' };
-      }
-      if (mesmoDiaISO(fd.data_folga_solicitado, dataInicio)) {
-        map[pessoaSolic.id] = { substitutoNome: nomeSol, substitutoId: pessoaSol.id, tipo: 'troca' };
-      }
-    });
+    const map: Record<string, SubstituicaoInfo> = {};
+    const registrar = (
+      ausente: Bombeiro | undefined,
+      substituto: Bombeiro | undefined,
+      tipo: 'troca' | 'substituicao',
+      cargoExercido?: string,
+      substituidoEfetivo?: Partial<Pick<SubstituicaoInfo, 'substituidoId' | 'substituidoNome' | 'cargoSubstituido' | 'equipeSubstituido'>>,
+    ) => {
+      if (!ausente || !substituto || ausente.id === substituto.id) return;
+      map[ausente.id] = {
+        substitutoNome: substituto.nomeGuerra || substituto.nomeCompleto,
+        substitutoId: substituto.id,
+        tipo,
+        substituidoId: substituidoEfetivo?.substituidoId || ausente.id,
+        substituidoNome: substituidoEfetivo?.substituidoNome || ausente.nomeGuerra || ausente.nomeCompleto,
+        cargoSubstituido: substituidoEfetivo?.cargoSubstituido || ausente.cargo,
+        equipeSubstituido: substituidoEfetivo?.equipeSubstituido || ausente.equipe,
+        cargoExercido: cargoExercido || substituidoEfetivo?.cargoSubstituido || ausente.cargo,
+      };
+    };
+
     // De vigências (férias/cascata/substituições salvas) — original ausente -> substituto presente
     vigencias.forEach(v => {
       if (!v.ativa || !v.substitutoId || v.substitutoId === v.funcionarioOriginalId) return;
       if (!estaNoPeriodoISO(dataInicio, v.dataInicio, v.dataFim)) return;
       const original = bombeiros.find((b: any) => b.id === v.funcionarioOriginalId);
+      const substituto = bombeiros.find((b: any) => b.id === v.substitutoId || b.nomeGuerra === v.substitutoNome || b.nomeCompleto === v.substitutoNome);
       if ((original?.equipe || v.equipe) !== equipe) return;
-      map[v.funcionarioOriginalId] = {
-        substitutoNome: v.substitutoNome,
-        substitutoId: v.substitutoId,
-        tipo: 'substituicao',
-        cargoExercido: v.cargoExercido,
-      };
+      registrar(original, substituto, 'substituicao', v.cargoExercido, {
+        substituidoId: v.funcionarioOriginalId,
+        substituidoNome: v.funcionarioOriginalNome,
+        cargoSubstituido: v.cargoOriginalFuncionario,
+        equipeSubstituido: original?.equipe || v.equipe,
+      });
     });
     // De todasSubstituicoes (substituições temporárias) — filtra pelo período do plantão
     todasSubstituicoes.forEach((s: any) => {
@@ -747,23 +849,78 @@ export function GerarLRO() {
       const dataSubstInicio = s.dataInicio || s.data_inicio || '';
       const dataSubstFim = s.dataFim || s.data_fim || dataSubstInicio;
       if (!estaNoPeriodoISO(dataInicio, dataSubstInicio, dataSubstFim)) return;
-      const nomeSubstituto = s.substitutoNome || s.substituto_nome || '';
+
+      if (s.tipo === 'Afastamento') {
+        const dataPlantao = parseDataLocalISO(dataInicio);
+        if (Number.isNaN(dataPlantao.getTime()) || !equipeEstaNoPlantao(equipe, dataPlantao)) return;
+        (s.cadeiaSubstituicao || s.cadeia_substituicao || []).forEach((elo: any) => {
+          if (elo.tipo !== 'extra') return;
+          if (!mesmoDiaISO(elo.dataPlantao || elo.data_plantao || '', dataInicio)) return;
+          const equipePlantao = elo.equipePlantao || elo.equipe_plantao || elo.funcionarioEquipe || elo.funcionario_equipe || '';
+          if (equipePlantao && equipePlantao !== equipe) return;
+          const idSubstituido = elo.funcionarioId || elo.funcionario_id || s.funcionarioId || s.funcionario_id || '';
+          const idSubstituto = elo.substitutoId || elo.substituto_id || elo.pessoaId || elo.pessoa_id || s.substitutoId || s.substituto_id || '';
+          const ausente = bombeiros.find((b: any) => b.id === idSubstituido);
+          const substituto = bombeiros.find((b: any) =>
+            b.id === idSubstituto ||
+            b.nomeGuerra === (elo.substitutoNome || elo.substituto_nome || elo.pessoaNome || elo.pessoa_nome) ||
+            b.nomeCompleto === (elo.substitutoNome || elo.substituto_nome || elo.pessoaNome || elo.pessoa_nome)
+          );
+          registrar(ausente, substituto, 'substituicao', elo.cargoExercido || elo.cargo_exercido || elo.cargoVacante || elo.cargo_vacante || s.funcionarioCargo || s.funcionario_cargo || ausente?.cargo, {
+            substituidoId: ausente?.id,
+            substituidoNome: ausente?.nomeGuerra || ausente?.nomeCompleto,
+            cargoSubstituido: elo.funcionarioCargo || elo.funcionario_cargo || s.funcionarioCargo || s.funcionario_cargo || ausente?.cargo,
+            equipeSubstituido: equipePlantao || ausente?.equipe,
+          });
+        });
+        return;
+      }
+
       const idSubstituido = s.funcionarioId || s.funcionario_id || '';
       const idSubstituto = s.substitutoId || s.substituto_id || '';
-      if (idSubstituido && nomeSubstituto) {
-        map[idSubstituido] = { substitutoNome: nomeSubstituto, substitutoId: idSubstituto, tipo: 'substituicao' };
-      }
+      const ausente = bombeiros.find((b: any) => b.id === idSubstituido);
+      if (ausente?.equipe !== equipe) return;
+      const substituto = bombeiros.find((b: any) =>
+        b.id === idSubstituto ||
+        b.nomeGuerra === (s.substitutoNome || s.substituto_nome) ||
+        b.nomeCompleto === (s.substitutoNome || s.substituto_nome)
+      );
+      registrar(ausente, substituto, 'substituicao', s.funcionarioCargo || s.funcionario_cargo || ausente?.cargo);
+    });
+    // De trocas detectadas (aprovadas ou pendentes no LRO) — solicitante/solicitado alternam conforme a data
+    substituicoesDetectadas
+      .filter(s => s.tipo === 'troca' && s.confirmada !== false)
+      .forEach(s => {
+        const ausente = buscarBombeiroPorNome(s.substituido);
+        const substituto = buscarBombeiroPorNome(s.substituto);
+        const coberturaAnterior = ausente
+          ? Object.values(map).find(info => info.substitutoId === ausente.id)
+          : undefined;
+        const equipeEfetivaAusente = coberturaAnterior?.equipeSubstituido || ausente?.equipe;
+        if (equipeEfetivaAusente !== equipe) return;
+        registrar(ausente, substituto, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || ausente?.cargo, coberturaAnterior);
     });
     // De trocasManuais (troca emergencial) — solicitante sai, solicitado entra
     trocasManuais.forEach(tm => {
-      const solicitante = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante);
-      const solicitado = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado);
-      if (solicitante && solicitado) {
-        map[solicitante.id] = { substitutoNome: tm.solicitado, substitutoId: solicitado.id, tipo: 'troca' };
-      }
+      const solicitante = buscarBombeiroPorNome(tm.solicitante);
+      const solicitado = buscarBombeiroPorNome(tm.solicitado);
+      const coberturaAnterior = solicitante
+        ? Object.values(map).find(info => info.substitutoId === solicitante.id)
+        : undefined;
+      const equipeEfetivaSolicitante = coberturaAnterior?.equipeSubstituido || solicitante?.equipe;
+      if (equipeEfetivaSolicitante !== equipe) return;
+      registrar(solicitante, solicitado, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || solicitante?.cargo, coberturaAnterior);
     });
     return map;
-  }, [dataInicio, trocaFills, vigencias, todasSubstituicoes, trocasManuais, bombeiros, equipe]);
+  }, [dataInicio, vigencias, todasSubstituicoes, substituicoesDetectadas, trocasManuais, bombeiros, equipe]);
+
+  const substituicoesPorSubstituto = useMemo(() => {
+    const map: Record<string, SubstituicaoInfo> = {};
+    Object.values(substituicoesMap).forEach(info => {
+      if (info.substitutoId) map[info.substitutoId] = info;
+    });
+    return map;
+  }, [substituicoesMap]);
 
   const disponiveis = useMemo(() => {
     const feriasIds = new Set(emFerias.map(f => f.funcionarioId));
@@ -776,10 +933,13 @@ export function GerarLRO() {
     });
     Object.entries(substituicoesMap).forEach(([ausenteId, sub]) => {
       if (idsAdicionados.has(ausenteId)) return;
-      // Só adiciona o substituto se o ausente for da equipe atual
-      const ausente = bombeiros.find((b: any) => b.id === ausenteId);
-      if (ausente?.equipe !== equipe) return;
-      const substituto = bombeiros.find((b: any) => b.nomeGuerra === sub.substitutoNome || b.nomeCompleto === sub.substitutoNome);
+      if (substituidoIds.has(sub.substitutoId)) return;
+      if ((sub.equipeSubstituido || '') !== equipe) return;
+      const substituto = bombeiros.find((b: any) =>
+        b.id === sub.substitutoId ||
+        b.nomeGuerra === sub.substitutoNome ||
+        b.nomeCompleto === sub.substitutoNome
+      );
       if (substituto && !idsAdicionados.has(substituto.id)) {
         presentes.push(substituto);
         idsAdicionados.add(substituto.id);
@@ -818,14 +978,25 @@ export function GerarLRO() {
     const parada = completa?.paradas.find(p => mesmoDiaISO(p.data, dataInicio)) || completa?.paradas[0];
     const pessoas = configEscala?.pessoas || completa?.config?.pessoas || [];
 
-    const resolvePessoa = (id: string | undefined, nomeGuerra: string | undefined): string => {
-      if (!nomeGuerra) return '';
-      const b = bombeiros.find((x: any) => x.id === id || x.nomeGuerra === nomeGuerra || x.nomeCompleto?.includes(nomeGuerra));
+    const resolvePessoa = (id: string | undefined, nomeGuerra: string | undefined, visitados = new Set<string>()): string => {
+      const b = bombeiros.find((x: any) =>
+        (!!id && x.id === id) ||
+        (!!nomeGuerra && (x.nomeGuerra === nomeGuerra || x.nomeCompleto?.includes(nomeGuerra)))
+      );
       if (!b) return nomeGuerra || '';
+      if (visitados.has(b.id)) return b.nomeGuerra || nomeGuerra || '';
       const sub = substituicoesMap[b.id];
       if (sub) {
-        const substituto = bombeiros.find((x: any) => x.nomeGuerra === sub.substitutoNome || x.nomeCompleto === sub.substitutoNome);
-        return substituto?.nomeGuerra || sub.substitutoNome;
+        const substituto = bombeiros.find((x: any) =>
+          x.id === sub.substitutoId ||
+          x.nomeGuerra === sub.substitutoNome ||
+          x.nomeCompleto === sub.substitutoNome
+        );
+        const proximosVisitados = new Set(visitados);
+        proximosVisitados.add(b.id);
+        return substituto
+          ? resolvePessoa(substituto.id, substituto.nomeGuerra, proximosVisitados)
+          : sub.substitutoNome;
       }
       return b.nomeGuerra || '';
     };
@@ -846,20 +1017,17 @@ export function GerarLRO() {
       return designadoDisponivel ? resolvePessoa(designado.id, designado.nomeGuerra) : '';
     })();
     const chefeAtual = buscarBombeiroPorNome(chefeEquipe);
-    const chefeAtualInvalido = !!chefeEquipe && (!chefeAtual || !podeSerChefeEquipe(chefeAtual));
-    if (!chefeEquipe || chefeAtualInvalido) {
-      const candidato = [nomeChefeDaEscala, nomeChefeDesignado]
-        .map(nome => buscarBombeiroPorNome(nome))
-        .find(b => podeSerChefeEquipe(b));
-      if (candidato && candidato.nomeGuerra !== chefeEquipe) {
-        setChefeEquipe(candidato.nomeGuerra);
-      } else if (chefeAtualInvalido) {
-        setChefeEquipe('');
-      }
+    const chefeAtualSaiu = !!chefeAtual && !!substituicoesMap[chefeAtual.id];
+    const chefeAtualPresente = !!chefeAtual && disponiveis.some(b => b.id === chefeAtual.id);
+    const candidatoChefe = [nomeChefeDaEscala, nomeChefeDesignado].find(Boolean) || '';
+    if (candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente) && candidatoChefe !== chefeEquipe) {
+      setChefeEquipe(candidatoChefe);
     }
 
     // 1.2 Comunicação BA-OC — comunicante do plantão (rádio fixo da parada do dia)
-    if (!comunicacao && parada?.radio) {
+    const comunicacaoAtual = buscarBombeiroPorNome(comunicacao);
+    const comunicacaoAtualSaiu = !!comunicacaoAtual && !!substituicoesMap[comunicacaoAtual.id];
+    if ((!comunicacao || comunicacaoAtualSaiu) && parada?.radio) {
       const comunicante = parada.radio.find(r => r.fixo)?.pessoaNomeGuerra || parada.radio[0]?.pessoaNomeGuerra || '';
       if (comunicante && comunicante !== '-') {
         const nomeReal = resolvePessoa(undefined, comunicante);
@@ -868,8 +1036,7 @@ export function GerarLRO() {
     }
 
     // 1.3 Equipagem dos CCI — pessoas da escala (CCI F2, CCI F3, CRS), aplicando trocas
-    const jaPreenchida = Object.values(equipagemCCI).some(Boolean) || Object.values(equipagemCCIRT).some(Boolean) || Object.values(equipagemCRS).some(Boolean);
-    if (jaPreenchida || !pessoas.length) return;
+    if (!pessoas.length) return;
 
     const slotPorFuncao: Record<string, Record<string, string>> = {
       cciF2: { BaCe: 'BA-CE_0', BaMc: 'BA-MC_1', Ba2: 'BA-2_2' },
@@ -879,19 +1046,48 @@ export function GerarLRO() {
     const novoCCI: Record<string, string> = {};
     const novoCCIRT: Record<string, string> = {};
     const novoCRS: Record<string, string> = {};
+    const originalCCI: Record<string, string> = {};
+    const originalCCIRT: Record<string, string> = {};
+    const originalCRS: Record<string, string> = {};
     const alvo: Record<string, Record<string, string>> = { cciF2: novoCCI, cciF3: novoCCIRT, crs: novoCRS };
+    const originais: Record<string, Record<string, string>> = { cciF2: originalCCI, cciF3: originalCCIRT, crs: originalCRS };
 
     pessoas.forEach(p => {
       const slotKey = slotPorFuncao[p.veiculo]?.[p.funcaoNoVeiculo];
       if (!slotKey) return;
+      originais[p.veiculo][slotKey] = p.nomeGuerra;
       const nomeFinal = resolvePessoa(p.id, p.nomeGuerra);
-      if (slotKey === 'BA-CE_0' && !podeSerChefeEquipe(buscarBombeiroPorNome(nomeFinal))) return;
       if (nomeFinal) alvo[p.veiculo][slotKey] = nomeFinal;
     });
 
-    setEquipagemCCI(novoCCI);
-    setEquipagemCCIRT(novoCCIRT);
-    setEquipagemCRS(novoCRS);
+    const mesclarAuto = (
+      atual: Record<string, string>,
+      novo: Record<string, string>,
+      original: Record<string, string>,
+    ) => {
+      const next = { ...atual };
+      Object.entries(novo).forEach(([key, nomeFinal]) => {
+        const valorAtual = next[key] || '';
+        const bombeiroAtual = buscarBombeiroPorNome(valorAtual);
+        const atualSaiu = !!bombeiroAtual && !!substituicoesMap[bombeiroAtual.id];
+        if (!valorAtual || valorAtual === original[key] || atualSaiu || !bombeiroAtual) {
+          next[key] = nomeFinal;
+        }
+      });
+      return next;
+    };
+
+    const registrosIguais = (a: Record<string, string>, b: Record<string, string>) => {
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      return Array.from(keys).every(key => (a[key] || '') === (b[key] || ''));
+    };
+
+    const nextCCI = mesclarAuto(equipagemCCI, novoCCI, originalCCI);
+    const nextCCIRT = mesclarAuto(equipagemCCIRT, novoCCIRT, originalCCIRT);
+    const nextCRS = mesclarAuto(equipagemCRS, novoCRS, originalCRS);
+    if (!registrosIguais(nextCCI, equipagemCCI)) setEquipagemCCI(nextCCI);
+    if (!registrosIguais(nextCCIRT, equipagemCCIRT)) setEquipagemCCIRT(nextCCIRT);
+    if (!registrosIguais(nextCRS, equipagemCRS)) setEquipagemCRS(nextCRS);
   }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
 
   async function handleSalvarRascunho() {
@@ -1638,14 +1834,14 @@ export function GerarLRO() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Equipe *</label>
-                <select value={equipe} onChange={e => setEquipe(e.target.value as EquipeOpcao)} disabled={!canEscolherEquipe} className={inputClass}>
+                <select value={equipe} onChange={e => { setEquipe(e.target.value as EquipeOpcao); limparCamposAutomaticosPlantao(); }} disabled={!canEscolherEquipe} className={inputClass}>
                   <option value="">Selecione a equipe</option>
                   {equipesFormulario.map(eq => <option key={eq} value={eq}>{eq}</option>)}
                 </select>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Data Início *</label>
-                <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className={inputClass} />
+                <input type="date" value={dataInicio} onChange={e => { setDataInicio(e.target.value); limparCamposAutomaticosPlantao(); }} className={inputClass} />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Data Fim</label>
@@ -1669,10 +1865,12 @@ export function GerarLRO() {
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
               {[...disponiveis].sort((a, b) => {
                 const hierarquia: Record<string, number> = { 'BA-CE': 1, 'BA-LR': 2, 'BA-MC': 3, 'BA-RE': 4, 'BA-2': 5, 'OC': 6, 'GS': 7 };
-                return (hierarquia[a.cargo] || 99) - (hierarquia[b.cargo] || 99);
+                const cargoA = substituicoesPorSubstituto[a.id]?.cargoExercido || substituicoesPorSubstituto[a.id]?.cargoSubstituido || a.cargo;
+                const cargoB = substituicoesPorSubstituto[b.id]?.cargoExercido || substituicoesPorSubstituto[b.id]?.cargoSubstituido || b.cargo;
+                return (hierarquia[cargoA] || 99) - (hierarquia[cargoB] || 99);
               }).map(b => {
-                const sub = substituicoesMap[b.id];
-                const cargoAusente = sub ? (() => { const ba = bombeiros.find((x: any) => x.nomeGuerra === sub.substitutoNome || x.nomeCompleto === sub.substitutoNome); return ba?.cargo || ''; })() : '';
+                const sub = substituicoesPorSubstituto[b.id];
+                const cargoExercido = sub?.cargoExercido || sub?.cargoSubstituido || b.cargo;
                 return (
                   <div key={b.id} className={`group relative rounded-xl border p-2 transition-all ${sub ? (sub.tipo === 'troca' ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/10' : 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/10') : 'border-graphite-100 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-hover/30'}`}>
                     {sub ? (
@@ -1682,14 +1880,14 @@ export function GerarLRO() {
                             {sub.tipo === 'troca' ? '↔ TROCA' : '↔ SUBSTITUIÇÃO'}
                           </span>
                           <p className={`text-xs font-bold ${sub.tipo === 'troca' ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'}`}>{b.nomeGuerra}</p>
-                          <p className={`text-[9px] ${sub.tipo === 'troca' ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>como {b.cargo}</p>
+                          <p className={`text-[9px] ${sub.tipo === 'troca' ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>como {cargoExercido}</p>
                         </div>
                         <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:scale-100 scale-90">
                           <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-bold mb-0.5 ${sub.tipo === 'troca' ? 'bg-amber-100 text-amber-700 dark:bg-amber-800/30 dark:text-amber-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-800/30 dark:text-blue-300'}`}>
-                            {sub.tipo === 'troca' ? '↔ TROCADO' : '↔ SUBSTITUÍDO'}
+                            SUBSTITUI
                           </span>
-                          <p className={`text-xs font-bold ${sub.tipo === 'troca' ? 'text-graphite-600 dark:text-graphite-400' : 'text-graphite-600 dark:text-graphite-400'}`}>{getNomeGuerra(sub.substitutoNome)}</p>
-                          <p className="text-[9px] text-graphite-500">{cargoAusente}</p>
+                          <p className="text-xs font-bold text-graphite-600 dark:text-graphite-400">{getNomeGuerra(sub.substituidoNome)}</p>
+                          <p className="text-[9px] text-graphite-500">{sub.cargoSubstituido || cargoExercido}</p>
                         </div>
                       </div>
                     ) : (
@@ -1993,10 +2191,18 @@ export function GerarLRO() {
               // Criar documentos para trocas manuais
               if (trocasManuais.length > 0 && trocaDocId) {
                 try {
-                  for (const tm of trocasManuais) {
+                  const usuarioBombeiro = bombeiros.find((b: any) =>
+                    b.id === user?.pessoa?.id ||
+                    b.nomeGuerra === user?.pessoa?.nomeGuerra
+                  );
+                  const criadorNome = usuarioBombeiro?.nomeCompleto || user?.name || user?.pessoa?.nomeGuerra || username || '';
+                  const criadorCargo = usuarioBombeiro?.cargo || user?.pessoa?.funcao || '';
+                  const criadoPor = criadorCargo ? `${criadorCargo} ${criadorNome}` : criadorNome;
+                  const trocasPersistidas = await Promise.all(trocasManuais.map(async tm => {
+                    if (tm.documentoFillId) return tm;
                     const bSol = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante || b.nomeCompleto === tm.solicitante);
                     const bSolic = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado || b.nomeCompleto === tm.solicitado);
-                    await criarPreenchimento({
+                    const created = await criarPreenchimento({
                       document_id: trocaDocId,
                       filled_by: username,
                       filled_data: {
@@ -2005,22 +2211,30 @@ export function GerarLRO() {
                         funcao_solicitante: bSol?.cargo || '',
                         nome_solicitado: tm.solicitado,
                         cpf_solicitado: bSolic?.cpf || '',
+                        funcao_solicitado: bSolic?.cargo || '',
                         data_solicitada: dataInicio,
                         data_folga_solicitado: tm.dataFolga || '',
                         motivo_troca: tm.motivo || '',
                         troca_emergencial: 'SIM',
                         justificativa_emergencial: tm.motivo || '',
+                        criada_no_lro: 'SIM',
                         check_troca_sim: 'V',
                         check_troca_nao: '',
                         deferido_indeferido: 'DEFERIDO',
                         check_deferido: 'V',
                         check_indeferido: '',
+                        criado_por: criadoPor,
+                        autorizado_por: 'Embaixador',
+                        data_autorizacao: hojeLocalISO(),
+                        lro_confirmada: dataInicio,
                       },
-                      status: 'draft',
+                      status: 'signed',
                       autentique_document_id: null,
                       autentique_link: null,
                     });
-                  }
+                    return { ...tm, documentoFillId: created.id };
+                  }));
+                  setTrocasManuais(trocasPersistidas);
                 } catch (err) {
                   console.error('Erro ao criar documento de troca:', err);
                 }
@@ -2046,8 +2260,8 @@ export function GerarLRO() {
                   onChange={setChefeEquipe}
                   options={(() => {
                     const opcoes = new Map<string, { value: string; label: string }>();
-                    const adicionarOpcao = (bombeiro?: Bombeiro) => {
-                      if (!bombeiro || !podeSerChefeEquipe(bombeiro)) return;
+                    const adicionarOpcao = (bombeiro?: Bombeiro, forcar = false) => {
+                      if (!bombeiro || (!forcar && !podeSerChefeEquipe(bombeiro))) return;
                       opcoes.set(bombeiro.nomeGuerra, {
                         value: bombeiro.nomeGuerra,
                         label: `${bombeiro.nomeGuerra} - ${bombeiro.nomeCompleto} (${bombeiro.cargo})`,
@@ -2056,7 +2270,7 @@ export function GerarLRO() {
 
                     disponiveis
                       .filter(b => b.cargo === 'BA-CE' || b.cursoChefeEquipe)
-                      .forEach(adicionarOpcao);
+                      .forEach(b => adicionarOpcao(b));
 
                     Object.entries(substituicoesMap).forEach(([ausenteId, sub]) => {
                       const ausente = bombeiros.find((b: any) => b.id === ausenteId);
@@ -2066,10 +2280,10 @@ export function GerarLRO() {
                         b.nomeGuerra === sub.substitutoNome ||
                         b.nomeCompleto === sub.substitutoNome
                       );
-                      adicionarOpcao(substituto);
+                      adicionarOpcao(substituto, true);
                     });
 
-                    adicionarOpcao(buscarBombeiroPorNome(chefeEquipe));
+                    adicionarOpcao(buscarBombeiroPorNome(chefeEquipe), true);
                     return Array.from(opcoes.values());
                   })()}
                   placeholder="Chefe de equipe"
@@ -2121,10 +2335,15 @@ export function GerarLRO() {
                         ...Object.values(equipagemCCIRT),
                         ...Object.values(equipagemCRS),
                       ].filter(Boolean));
-                      const opts = disponiveis
+                      const optsMap = new Map<string, { value: string; label: string }>();
+                      disponiveis
                         .filter(b => b.cargo === cargoFiltro && (!selectedInOtherSlots.has(b.nomeGuerra) || selected === b.nomeGuerra))
-                        .map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto}` }));
-                      const selB = bombeiros.find((b: any) => b.nomeGuerra === selected);
+                        .forEach(b => optsMap.set(b.nomeGuerra, { value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto}` }));
+                      const selB = buscarBombeiroPorNome(selected);
+                      if (selB) {
+                        optsMap.set(selB.nomeGuerra, { value: selB.nomeGuerra, label: `${selB.nomeGuerra} - ${selB.nomeCompleto}` });
+                      }
+                      const opts = Array.from(optsMap.values());
                       const cargoValidacao = ['BA-CE', 'BA-LR', 'BA-MC'].includes(cargo) ? cargo as 'BA-CE' | 'BA-LR' | 'BA-MC' : null;
                       const aviso = selB && cargoValidacao ? validarCursoParaFuncao(selB, cargoValidacao, cargoValidacao === 'BA-MC' ? section.veiculo : undefined) : null;
                       return (

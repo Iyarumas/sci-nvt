@@ -549,7 +549,7 @@ GET com filtro `ativa=true`. ✅ OK
   "substitutoNome": "string",
   "substitutoCargo": "string",
   "tipo": "Substituição | Extra | Afastamento",
-  "motivo": "Atestado Medico | Falecimento Conjuge | ... | Outro",
+  "motivo": "Atestado Medico | INSS | INSS Indeterminado | Falecimento Conjuge | ... | Outro",
   "motivoOutro": "string",
   "plantaoExtra": "Sim | Nao | ''",
   "dataInicio": "string (ISO date)",
@@ -563,23 +563,38 @@ GET com filtro `ativa=true`. ✅ OK
   "aprovadoPorNome": "string",
   "aprovadoEm": "string (ISO datetime)",
   "cadeiaSubstituicao": [{
+    "tipo": "cadeia | extra",
     "pessoaId": "string",
     "pessoaNome": "string",
     "pessoaCargo": "string",
     "pessoaEquipe": "string",
     "cargoOriginal": "string",
     "cargoVacante": "string",
-    "substituindoNome": "string"
+    "substituindoNome": "string",
+    "dataPlantao": "string opcional (ISO date, apenas extra)",
+    "funcionarioId": "string opcional (apenas extra)",
+    "funcionarioNome": "string opcional (apenas extra)",
+    "funcionarioCargo": "string opcional (apenas extra)",
+    "funcionarioEquipe": "string opcional (apenas extra)",
+    "equipePlantao": "string opcional (apenas extra)",
+    "substituindoId": "string opcional (apenas extra, quando o afastado estava cobrindo férias)",
+    "substituindoCargo": "string opcional (apenas extra, quando o afastado estava cobrindo férias)",
+    "substituindoCoberturaNome": "string opcional (apenas extra, quando o afastado estava cobrindo férias)",
+    "substitutoId": "string opcional (apenas extra)",
+    "substitutoNome": "string opcional (apenas extra)",
+    "substitutoCargo": "string opcional (apenas extra)",
+    "cargoExercido": "string opcional (apenas extra)",
+    "plantaoExtra": "boolean opcional"
   }],
   "createdAt": "string (ISO datetime)",
   "updatedAt": "string (ISO datetime)"
 }]
 ```
 
-### criarSubstituicaoTemporaria / aprovar / rejeitar / excluir
+### criarSubstituicaoTemporaria / atualizar / aprovar / rejeitar / excluir
 
 ✅ OK  
-**Regras:** criação e aprovação bloqueiam mesma pessoa como substituto, datas/dias inválidos, motivo `Outro` sem descrição, `Extra` sem resposta de plantão extra e sobreposição com substituições pendentes/aprovadas. `plantaoExtra` é exibido na UI como `Sim | Nao | ''`, mas persiste em `plantao_extra` como `BOOLEAN` (`Sim` → `true`; `Nao`/vazio → `false`). `Substituição` aprovada gera vigência direta em `vigencia_substituicoes` com origem `substituicao`, fazendo o substituto herdar cargo/equipe do substituído durante o período. `Afastamento` usa `cadeia_substituicao` (`JSONB`) para persistir a corrente até Ferista; ao aprovar, gera vigências em `vigencia_substituicoes` com origem `afastamento`, e a tela de funcionários deriva o status `Afastado` de afastamentos aprovados e vigentes.
+**Regras:** criação e aprovação bloqueiam mesma pessoa como substituto, datas/dias inválidos, motivo `Outro` sem descrição, motivos de afastamento/atestado `Atestado Medico`, `INSS` e `INSS Indeterminado` sem descrição, `Extra` legado sem resposta de plantão extra e sobreposição com substituições pendentes/aprovadas. Ao editar uma movimentação aprovada, ela volta para `Pendente`, limpa os dados de aprovação e desativa vigências antigas até nova aprovação. `Atestado Medico` inicia com o prazo padrão sugerido, mas permite alterar a quantidade de dias e pode incluir CID opcional gravado em `motivoOutro`; o CID nunca é obrigatório. `plantaoExtra` é exibido na UI como `Sim | Nao | ''`, mas persiste em `plantao_extra` como `BOOLEAN` (`Sim` → `true`; `Nao`/vazio → `false`). A tela de criação não oferece mais o tipo `Extra`: plantões extras de atestado são registrados dentro de `Afastamento/Atestados`, com cada dia em `cadeia_substituicao` como `{ tipo: "extra", dataPlantao, funcionarioId, substitutoId, cargoExercido, equipePlantao }`, descrição em `motivoOutro` e `plantaoExtra = Sim`. Se a pessoa afastada estiver cobrindo férias por uma vigência ativa, `equipePlantao` e `cargoExercido` usam a equipe/função efetiva do dia; isso cobre feristas atuando em outras equipes. `INSS Indeterminado` usa `dataFim = 9999-12-31` como sentinela técnica e o campo `dias` representa a janela inicial de extras cadastrada pelo usuário. `Substituição` aprovada gera vigência direta em `vigencia_substituicoes` com origem `substituicao`, fazendo o substituto herdar cargo/equipe do substituído durante o período. `Afastamento/Atestados` com extras não gera corrente nem vigência automática; a tela de funcionários deriva o status `Afastado` de afastamentos aprovados e vigentes, e a Escala Diária aplica os extras por data e equipe efetiva.
 
 ---
 
@@ -614,12 +629,25 @@ GET com filtro `ativa=true`. ✅ OK
     "cci03": { "baMc": "string", "ba2_1": "string", "ba2_2": "string" },
     "crs": { "baMc": "string", "baLr": "string", "baRe1": "string", "baRe2": "string" }
   },
-  "bds": { "funcao": "string", "nomeGuerra": "string" },
-  "ptr1": { "funcao": "string", "nomeGuerra": "string" },
-  "ptr2": { "funcao": "string", "nomeGuerra": "string" },
-  "ptr3": { "funcao": "string", "nomeGuerra": "string" },
+  "bds": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
+  "ptr1": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
+  "ptr2": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
+  "ptr3": { "funcao": "string", "nomeGuerra": "string", "assunto": "string opcional" },
   "atestados": ["string"],
   "trocas": [{ "funcaoSaindo": "string", "nomeSaindo": "string", "funcaoEntrando": "string", "nomeEntrando": "string" }],
+  "extras": [{
+    "dataPlantao": "string (ISO date)",
+    "equipePlantao": "string opcional",
+    "funcionarioId": "string opcional",
+    "substitutoId": "string opcional",
+    "funcaoSaindo": "string",
+    "nomeSaindo": "string",
+    "nomeSaindoCompleto": "string opcional",
+    "funcaoEntrando": "string",
+    "nomeEntrando": "string",
+    "nomeEntrandoCompleto": "string opcional",
+    "cargoOriginalEntrando": "string opcional"
+  }],
   "radio": [{ "funcao": "string", "nomeGuerra": "string", "horarioInicio": "string", "horarioFim": "string" }]
 }]
 ```
@@ -627,7 +655,7 @@ GET com filtro `ativa=true`. ✅ OK
 ### criarEscala / atualizarEscala / excluirEscala
 
 ✅ OK  
-**Regras:** criação é idempotente por `equipe + dataPlantao`; criação/edição validam se a equipe está prevista para o dia pelo helper `equipesNoDia`, bloqueiam duplicidade de escala diária e impedem a mesma pessoa em múltiplos slots operacionais incompatíveis. A escala diária possui quatro slots de instrução: `bds`, `ptr1`, `ptr2` e `ptr3`.
+**Regras:** criação é idempotente por `equipe + dataPlantao`; criação/edição validam se a equipe está prevista para o dia pelo helper `equipesNoDia`, bloqueiam duplicidade de escala diária e impedem a mesma pessoa em múltiplos slots operacionais incompatíveis. A escala diária possui quatro slots de instrução: `bds`, `ptr1`, `ptr2` e `ptr3`; os slots `ptr1`/`ptr2`/`ptr3` podem guardar o `assunto` selecionado da lista padrão do PTR-BA para aparecer nos detalhes e na impressão. `atestados` e `extras` são preenchidos automaticamente a partir de `Afastamento/Atestados` aprovados no dia, usando a equipe efetiva do extra/vigência quando a pessoa afastada estiver cobrindo férias em outra equipe; `extras` também substitui o afastado nas guarnições pelo nome de guerra de quem fará o plantão extra.
 
 ---
 
@@ -949,7 +977,7 @@ GET com filtro `ativa=true`. ✅ OK
 **Fluxo BONA:** registros BONA ficam com `status = "Aberta"` após salvar e viram `status = "Fechada"` somente quando aprovados nos detalhes do documento; após aprovado, a tela bloqueia alteração do conteúdo, mantém a visualização do documento e libera a impressão somente para BONA finalizado. Apenas administrador do sistema pode excluir BONA aprovado e editar seu número para reaproveitar uma sequência.
 **Numeração BONA:** a UI inicia a sequência nova em `BONA-064/{ano}` porque os números 1 a 63 foram emitidos em sistema anterior; quando houver BONA maior no ano corrente, usa o maior número cadastrado + 1. No PDF MMS.BR.BA.FOR.003 aparece somente o número curto da ocorrência.
 **Campos BONA:** `bona_dados` guarda os campos específicos do formulário oficial MMS.BR.BA.FOR.003. O service mantém compatibilidade preenchendo `local` com `areaEvento`, `titulo` com `tipoOcorrencia`, `categoria` com a categoria correspondente quando existir (senão `Outros`), `envolvidos` a partir da tabela de bombeiros, `acoes_tomadas` com `descricaoAtuacaoEquipe` e `descricao` com `descricaoOcorrencia`. A tela do BONA não exibe upload de fotos e preenche os bombeiros com o efetivo operacional da equipe/data, considerando trocas, férias e substituições.
-**Uso no LRO:** BONA com `numero` iniciado por `BONA` fica listado em BONA/REA e alimenta IX. Ocorrências Não Aeronáuticas com `data - hora - descrição`; não aparece na tela LRO/Ocorrências. Registros criados em LRO/Ocorrências usam `numero` vazio, `titulo` como tipo, `local` como data do turno e alimentam XII. Outras Ocorrências com `data - hora - equipe - tipo - descrição`. Ao marcar um LRO como `finalizado`, as ocorrências operacionais incluídas no texto final do LRO são atualizadas para `status = "Fechada"` e ficam bloqueadas para edição/exclusão na tela LRO/Ocorrências. Ao excluir um LRO finalizado/assinado/arquivado, as ocorrências vinculadas a ele voltam para `status = "Aberta"`, exceto quando ainda estão vinculadas a outro LRO finalizado/assinado/arquivado.
+**Uso no LRO:** BONA com `numero` iniciado por `BONA` fica listado em BONA/REA e alimenta IX. Ocorrências Não Aeronáuticas com `hora - número BONA - tipo - descrição`; não aparece na tela LRO/Ocorrências. Registros criados em LRO/Ocorrências usam `numero` vazio, `titulo` como tipo, `local` como data do turno e alimentam XII. Outras Ocorrências com `data - hora - equipe - tipo - descrição`. Ao marcar um LRO como `finalizado`, as ocorrências operacionais incluídas no texto final do LRO são atualizadas para `status = "Fechada"` e ficam bloqueadas para edição/exclusão na tela LRO/Ocorrências. Ao excluir um LRO finalizado/assinado/arquivado, as ocorrências vinculadas a ele voltam para `status = "Aberta"`, exceto quando ainda estão vinculadas a outro LRO finalizado/assinado/arquivado.
 
 **`listarOcorrencias` — Query Params adicionais:** `numeroPrefixo?: string` — filtra por `numero like 'prefixo%'` (ex: `'BONA'` traz só BONAs, excluindo registros do LRO/Ocorrências que usam `numero` vazio). **REST equivalência:** `GET /rest/v1/ocorrencias_operacionais?select=*&numero=like.BONA%25&order=data.desc`
 

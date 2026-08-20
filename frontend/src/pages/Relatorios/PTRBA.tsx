@@ -312,7 +312,7 @@ function imprimirHTMLEfetivo(titulo: string, allAssuntos: string[], equipes: { e
 }
 
 export function PTRBA() {
-  const { canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
+  const { canVisualizarRelatoriosPtrBa, loadingContexto } = useContextoOperacional();
   const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
   const [bombeiros, setBombeiros] = useState<Map<string, { nomeGuerra: string; cargo: string; equipe: string }>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -342,7 +342,7 @@ export function PTRBA() {
   const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
 
   function carregarDados() {
-    if (!canVisualizarRelatorios) {
+    if (!canVisualizarRelatoriosPtrBa) {
       setLoading(false);
       return;
     }
@@ -372,14 +372,14 @@ export function PTRBA() {
   useEffect(() => {
     if (loadingContexto) return;
     carregarDados();
-  }, [canVisualizarRelatorios, loadingContexto]);
+  }, [canVisualizarRelatoriosPtrBa, loadingContexto]);
 
   useEffect(() => {
-    if (loadingContexto || !canVisualizarRelatorios) return;
+    if (loadingContexto || !canVisualizarRelatoriosPtrBa) return;
     const onFocus = () => carregarDados();
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [canVisualizarRelatorios, loadingContexto]);
+  }, [canVisualizarRelatoriosPtrBa, loadingContexto]);
 
   function applyPeriodFilter(lista: PTRB[]): PTRB[] {
     if (filterMode === 'mes-ano') {
@@ -976,13 +976,13 @@ ${opts.legenda ? `<div class="legenda">
     );
   }
 
-  if (!canVisualizarRelatorios) {
+  if (!canVisualizarRelatoriosPtrBa) {
     return (
       <PageContainer>
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white p-12 text-center dark:border-border-dark dark:bg-surface-card">
           <Lock className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Acesso restrito</h3>
-          <p className="text-sm text-graphite-400 dark:text-graphite-500">A tela de relatórios está disponível apenas para GS e administradores do sistema.</p>
+          <p className="text-sm text-graphite-400 dark:text-graphite-500">O relatório PTR-BA está disponível para Admin, GS, BA-CE, BA-LR e equipe Embaixador.</p>
         </div>
       </PageContainer>
     );

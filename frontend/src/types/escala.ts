@@ -20,6 +20,7 @@ export interface GuarnicaoCRS {
 export interface FuncaoSlot {
   funcao: string;
   nomeGuerra: string;
+  assunto?: string;
 }
 
 export interface TrocaSlot {
@@ -27,6 +28,20 @@ export interface TrocaSlot {
   nomeSaindo: string;
   funcaoEntrando: string;
   nomeEntrando: string;
+}
+
+export interface ExtraSlot {
+  dataPlantao: string;
+  equipePlantao?: string;
+  funcionarioId?: string;
+  substitutoId?: string;
+  funcaoSaindo: string;
+  nomeSaindo: string;
+  nomeSaindoCompleto?: string;
+  funcaoEntrando: string;
+  nomeEntrando: string;
+  nomeEntrandoCompleto?: string;
+  cargoOriginalEntrando?: string;
 }
 
 export interface RadioSlot {
@@ -58,6 +73,7 @@ export interface EscalaDiaria {
   ptr3: FuncaoSlot;
   atestados: string[];
   trocas: TrocaSlot[];
+  extras: ExtraSlot[];
   radio: RadioSlot[];
 }
 

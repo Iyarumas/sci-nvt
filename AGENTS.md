@@ -205,7 +205,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 |------|------|-----------|
 | `/documentos` | Documentos | Listagem geral de documentos |
 | `/documentos/trocas` | Trocas de Serviço | Formulário de Permuta de Serviço |
-| `/checklists` | Checklists | Criação e aplicação de checklists operacionais |
+| `/checklists` | Checklists | Criação e aplicação de checklists operacionais, incluindo modelo quinzenal CHECK LIST TOTAL e modelos personalizados com colunas/linhas editáveis |
 | `/escalas` | Escalas | Gestão de escalas de trabalho |
 | `/relatorios/ordem-servico` | Ordens de Serviço | Controlo de ordens de serviço |
 

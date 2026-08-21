@@ -1,9 +1,9 @@
 # API Endpoints — SESCINC Manager
 
 > **Data:** 2026-07-31
-> **Total de serviços:** 44 ficheiros em `src/services/`
-> **Comunicação com Supabase:** 33 ficheiros
-> **Total de funções:** ~198
+> **Total de serviços:** 45 ficheiros em `src/services/`
+> **Comunicação com Supabase:** 34 ficheiros
+> **Total de funções:** ~202
 > **Serviços externos:** 1 (Autentique GraphQL)  
 > **Cálculo puro:** 8 (escalaMensalGenerator, lroGenerator, pdfService, htmlPdfService, reaPdfService, ptrbaCompletoPdfService, tpeprPdfService, tempoRespostaPdfService)
 > **Dead code (localStorage):** 10 ficheiros RTK store + notificacaoService (parcial)
@@ -59,6 +59,7 @@ Base URL local: `http://localhost:3333/api`
 | 15.1 | agenteExtintorService | `agentes_extintores` | 4 | ✅ |
 | 16 | hidranteService | `hidrantes` | 4 | ✅ |
 | 17 | conferenciaService | `conferencias` | 2 | ✅ |
+| 17.1 | checklistService | `checklists` | 4 | ✅ |
 | 18 | certificacaoService | `certificacoes_nr` | 4 | ⚠️ 1 sem err check |
 | 19 | certificacaoCursoService | `certificacoes_cursos` | 4 | ⚠️ 1 sem err check |
 | 20 | equipamentoService | `equipamentos_operacionais` | 4 | ⚠️ atualizar retorna void |
@@ -1468,6 +1469,71 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
 ```
 
 **Uso no LRO:** em registros de `Solicitação` e `Inspeção Operacional`, `itemNome` guarda o tipo informado no formulário e `dataProximaInspecao` guarda a data do turno. O gerador de LRO usa esses campos para preencher, respectivamente, XIII. Solicitações e X. Inspeções no formato `data - hora - equipe - tipo - descrição`.
+
+---
+
+# 17.1. Checklists — `checklistService.ts`
+
+**Tabela:** `checklists`
+**Ficheiro:** `src/services/checklistService.ts`
+**Tipo:** `src/types/checklist.ts` — `Checklist`
+
+---
+
+### listarChecklists / criarChecklist / atualizarChecklist / excluirChecklist
+
+✅ OK
+
+O front usa o adapter HTTP em `/data/checklists/*`. A tabela mantém os campos fixos `titulo`, `descricao`, `tipo`, `created_by`, `created_at` e `updated_at`; o conteúdo editável do checklist fica em `itens` como JSONB para permitir modelos quinzenais e personalizados sem migration a cada alteração.
+
+**Payload `Checklist`:**
+```json
+{
+  "id": "uuid",
+  "titulo": "string",
+  "descricao": "string",
+  "tipo": "quinzenal | personalizado",
+  "data": "string (ISO date)",
+  "equipe": "Alfa | Bravo | Charlie | Delta | Ferista",
+  "responsavel": "string",
+  "status": "pendente | concluido",
+  "payload": {
+    "mes": 8,
+    "ano": 2026,
+    "quinzena": "1 | 2",
+    "colunas": [
+      { "id": "dia-1", "label": "01", "type": "check", "dia": 1, "fixa": true }
+    ],
+    "linhas": [
+      {
+        "id": "modelo-1",
+        "secao": "ESTAÇÕES DE RÁDIO",
+        "quantidade": "1",
+        "item": "Rádio fixo",
+        "valores": { "dia-1": false }
+      }
+    ]
+  },
+  "createdBy": "string"
+}
+```
+
+**JSONB `itens` na tabela:**
+```json
+{
+  "meta": {
+    "data": "2026-08-01",
+    "equipe": "Delta",
+    "responsavel": "Alexandre",
+    "status": "pendente",
+    "mes": 8,
+    "ano": 2026,
+    "quinzena": "1"
+  },
+  "colunas": [],
+  "linhas": []
+}
+```
 
 ---
 

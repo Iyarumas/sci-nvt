@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -9,7 +9,7 @@ import { listarAtivos } from '../../services/bombeiroService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
-import { listarDocumentos, listarPreenchimentos, criarPreenchimento, atualizarPreenchimento, criarDocumento } from '../../services/documentoService';
+import { listarDocumentos, listarPreenchimentos, criarPreenchimento, criarDocumento } from '../../services/documentoService';
 import { listarViaturas } from '../../services/viaturaService';
 import { listarPTRBs } from '../../services/ptrbService';
 import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
@@ -82,6 +82,38 @@ function SearchSelect({ options, value, onChange, placeholder, label }: {
   );
 }
 
+function normalizarPessoaTexto(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function textoNormalizadoContemNome(textoNormalizado: string, nome: string | undefined): boolean {
+  const nomeNormalizado = normalizarPessoaTexto(nome);
+  return !!nomeNormalizado && ` ${textoNormalizado} `.includes(` ${nomeNormalizado} `);
+}
+
+function buscarBombeiroPorTexto(nome: string, pessoas: Bombeiro[]): Bombeiro | undefined {
+  const alvo = normalizarPessoaTexto(nome);
+  if (!alvo) return undefined;
+
+  const exato = pessoas.find(p =>
+    normalizarPessoaTexto(p.nomeGuerra) === alvo ||
+    normalizarPessoaTexto(p.nomeCompleto) === alvo
+  );
+  if (exato) return exato;
+
+  return [...pessoas]
+    .filter(p =>
+      textoNormalizadoContemNome(alvo, p.nomeCompleto) ||
+      textoNormalizadoContemNome(alvo, p.nomeGuerra)
+    )
+    .sort((a, b) => normalizarPessoaTexto(b.nomeCompleto).length - normalizarPessoaTexto(a.nomeCompleto).length)[0];
+}
+
 type EquipeOpcao = 'Alfa' | 'Bravo' | 'Charlie' | 'Delta';type Step = 'equipe' | 'trocas' | 'preencher' | 'revisar';
 type FrotaLinhaDados = {
   viaturaId: string;
@@ -101,6 +133,17 @@ type SubstituicaoDetectada = {
   dataFolga?: string;
   confirmada: boolean | null;
 };
+
+function chaveSubstituicaoDetectada(item: SubstituicaoDetectada): string {
+  return [
+    item.tipo,
+    item.id,
+    normalizarPessoaTexto(item.substituido),
+    normalizarPessoaTexto(item.substituto),
+    item.dataSolicitada || '',
+    item.dataFolga || '',
+  ].join('|');
+}
 type TrocaManualLRO = {
   solicitante: string;
   solicitado: string;
@@ -132,6 +175,17 @@ const EMPTY_FROTA_LINHA: FrotaLinhaDados = {
   situacao: '',
 };
 
+function normalizarPercentualCombustivel(value: unknown): string {
+  const raw = String(value ?? '').trim().replace(',', '.');
+  if (!raw) return '';
+  const numero = Number(raw);
+  if (!Number.isFinite(numero)) return '';
+  const limitado = Math.min(100, Math.max(0, numero));
+  return Number.isInteger(limitado)
+    ? String(limitado)
+    : String(Number(limitado.toFixed(1)));
+}
+
 const STATUS_CORES: Record<LRODraftStatus, string> = {
   rascunho: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20',
   aguardando: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20',
@@ -151,6 +205,7 @@ const STATUS_LABELS: Record<LRODraftStatus, string> = {
 };
 
 const STATUS_LRO_TRAVAM_OCORRENCIAS = new Set<LRODraftStatus>(['assinado', 'finalizado', 'arquivado']);
+const STATUS_LRO_EDITAVEIS_POR_ADMIN = new Set<LRODraftStatus>(['aguardando', 'assinado', 'finalizado']);
 const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);
 
 export function GerarLRO() {
@@ -177,6 +232,7 @@ export function GerarLRO() {
   const [drafts, setDrafts] = useState<LRODraft[]>([]);
   const [apocs, setApocs] = useState<any[]>([]);
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftEmEdicaoStatus, setDraftEmEdicaoStatus] = useState<LRODraftStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -247,6 +303,27 @@ export function GerarLRO() {
   const [filtroEquipeLista, setFiltroEquipeLista] = useState('');
   const [cloneOrigem, setCloneOrigem] = useState<LRODraft | null>(null);
   const [draftCountdowns, setDraftCountdowns] = useState<Record<string, string>>({});
+  const camposEquipeEditadosRef = useRef<Set<string>>(new Set());
+
+  function campoEquipeKey(grupo: string, key?: string): string {
+    return key ? `${grupo}.${key}` : grupo;
+  }
+
+  function marcarCampoEquipeEditado(grupo: string, key?: string) {
+    camposEquipeEditadosRef.current.add(campoEquipeKey(grupo, key));
+  }
+
+  function campoEquipeFoiEditado(grupo: string, key?: string): boolean {
+    return camposEquipeEditadosRef.current.has(campoEquipeKey(grupo, key));
+  }
+
+  function limparMarcacoesEquipeEditada() {
+    camposEquipeEditadosRef.current.clear();
+  }
+
+  function marcarEquipagemCarregada(grupo: string, valores: Record<string, unknown>) {
+    Object.keys(valores || {}).forEach(key => marcarCampoEquipeEditado(grupo, key));
+  }
 
   function canManageDraft(draft: LRODraft): boolean {
     const dados = draft.dados as Record<string, unknown>;
@@ -265,6 +342,7 @@ export function GerarLRO() {
   }
 
   function limparCamposAutomaticosPlantao() {
+    limparMarcacoesEquipeEditada();
     setChefeEquipe('');
     setComunicacao('');
     setEquipagemCCI({});
@@ -272,6 +350,40 @@ export function GerarLRO() {
     setEquipagemCRS({});
     setTrocasManuais([]);
     setSubstituicoesDetectadas([]);
+  }
+
+  function iniciarNovoLRO() {
+    setDraftId(null);
+    setDraftEmEdicaoStatus(null);
+    setEquipe('');
+    setDataInicio(hojeLocalISO());
+    setDataFim('');
+    setHouveTrocas(null);
+    setTrocaSolicitante('');
+    setTrocaSolicitado('');
+    setTrocaDataFolga('');
+    setTrocaMotivo('');
+    limparCamposAutomaticosPlantao();
+    setInstrucoes('');
+    setInstrucoesHorarios('');
+    setCentralFaisca('SEM ALTERAÇÕES');
+    setRadioComunicacao('SEM ALTERAÇÕES');
+    setTpTemAlteracao(false);
+    setTpTexto('');
+    setExtTemAlteracao(false);
+    setExtTexto('');
+    setEquipTemAlteracao(false);
+    setEquipTexto('');
+    setEdifTemAlteracao(false);
+    setEdifTexto('');
+    setEmergenciaXI('');
+    setOcorrenciasNA('');
+    setInspecoes('');
+    setOutrasOcorrencias('');
+    setSolicitacoesCCR('');
+    setStep('equipe');
+    setView('wizard');
+    setErroValidacao('');
   }
 
   useEffect(() => {
@@ -380,6 +492,11 @@ export function GerarLRO() {
             setEquipagemCCI(p.equipagemCCI || {});
             setEquipagemCCIRT(p.equipagemCCIRT || {});
             setEquipagemCRS(p.equipagemCRS || {});
+            marcarCampoEquipeEditado('chefeEquipe');
+            marcarCampoEquipeEditado('comunicacao');
+            marcarEquipagemCarregada('equipagemCCI', p.equipagemCCI || {});
+            marcarEquipagemCarregada('equipagemCCIRT', p.equipagemCCIRT || {});
+            marcarEquipagemCarregada('equipagemCRS', p.equipagemCRS || {});
             setInstrucoes(p.instrucoes || '');
             setInstrucoesHorarios(p.instrucoesHorarios || '');
             setFrotaDados(p.frotaDados || {});
@@ -403,6 +520,7 @@ export function GerarLRO() {
             if (p.trocasManuais) setTrocasManuais(p.trocasManuais);
             if (p.substituicoesDetectadas) setSubstituicoesDetectadas(p.substituicoesDetectadas);
             if (p.draftId) setDraftId(p.draftId);
+            setDraftEmEdicaoStatus(p.draftEmEdicaoStatus || null);
             setView('wizard');
           } catch { /* ignore restore errors */ }
         }
@@ -415,15 +533,8 @@ export function GerarLRO() {
   // Auto-detect trocas/substituições do dia e equipe selecionados
   useEffect(() => {
     if (!dataInicio) return;
-    const nomesEquipe = bombeiros.filter((b: any) => b.equipe === equipe).map((b: any) => b.nomeGuerra.toLowerCase());
     const pessoaPorNome = (nome: string) => {
-      const alvo = String(nome || '').trim().toLocaleLowerCase('pt-BR');
-      if (!alvo) return undefined;
-      return bombeiros.find((b: any) =>
-        String(b.nomeGuerra || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
-        String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
-        String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR').includes(alvo)
-      );
+      return buscarBombeiroPorTexto(nome, bombeiros);
     };
     const cobreEquipeAtual = (pessoa?: Bombeiro) => {
       if (!pessoa) return false;
@@ -434,6 +545,7 @@ export function GerarLRO() {
         return (original?.equipe || v.equipe) === equipe;
       });
     };
+    const pertenceEquipeAtual = (pessoa?: Bombeiro) => !!pessoa && (pessoa.equipe === equipe || cobreEquipeAtual(pessoa));
     const resultados: SubstituicaoDetectada[] = [];
     // De trocaFills (documento Troca de Serviço) — filtra pela data solicitada / folga do solicitado
     trocaFills.forEach((fl: any) => {
@@ -446,16 +558,10 @@ export function GerarLRO() {
       if (!naDataSolicitada && !naDataFolga) return;
       const substituido = naDataSolicitada ? nomeSol : nomeSolic;
       const substituto = naDataSolicitada ? nomeSolic : nomeSol;
-      const solNome = substituido.toLowerCase();
-      const solicNome = substituto.toLowerCase();
       const pessoaSubstituida = pessoaPorNome(substituido);
       const pessoaSubstituta = pessoaPorNome(substituto);
-      const pertenceEquipe = nomesEquipe.some(n => solNome.includes(n)) ||
-        nomesEquipe.some(n => solicNome.includes(n)) ||
-        cobreEquipeAtual(pessoaSubstituida) ||
-        cobreEquipeAtual(pessoaSubstituta);
+      const pertenceEquipe = pertenceEquipeAtual(pessoaSubstituida) || pertenceEquipeAtual(pessoaSubstituta);
       if (pertenceEquipe) {
-        const jaConfirmada = mesmoDiaISO(fd.lro_confirmada, dataInicio);
         resultados.push({
           id: fl.id,
           tipo: 'troca' as const,
@@ -463,7 +569,7 @@ export function GerarLRO() {
           substituto,
           dataSolicitada: fd.data_solicitada || '',
           dataFolga: fd.data_folga_solicitado || '',
-          confirmada: jaConfirmada || trocaFillAprovada(fl, fd) ? true : null,
+          confirmada: null,
         });
       }
     });
@@ -493,14 +599,22 @@ export function GerarLRO() {
       const nomeSubstituido = s.funcionarioNome || s.funcionario_nome || '';
       const nomeSubstituto = s.substitutoNome || s.substituto_nome || '';
       if (!nomeSubstituido && !nomeSubstituto) return;
-      const substNome = nomeSubstituido.toLowerCase();
-      const substNome2 = nomeSubstituto.toLowerCase();
-      const pertenceEquipe = nomesEquipe.some(n => substNome.includes(n)) || nomesEquipe.some(n => substNome2.includes(n));
+      const idSubstituido = s.funcionarioId || s.funcionario_id || '';
+      const idSubstituto = s.substitutoId || s.substituto_id || '';
+      const pessoaSubstituida = bombeiros.find((b: any) => b.id === idSubstituido) || pessoaPorNome(nomeSubstituido);
+      const pessoaSubstituta = bombeiros.find((b: any) => b.id === idSubstituto) || pessoaPorNome(nomeSubstituto);
+      const pertenceEquipe = pertenceEquipeAtual(pessoaSubstituida) || pertenceEquipeAtual(pessoaSubstituta);
       if (pertenceEquipe) {
         resultados.push({ id: s.id, tipo: 'substituicao' as const, substituido: nomeSubstituido, substituto: nomeSubstituto, confirmada: null });
       }
     });
-    setSubstituicoesDetectadas(resultados);
+    setSubstituicoesDetectadas(prev => {
+      const confirmacoesAnteriores = new Map(prev.map(item => [chaveSubstituicaoDetectada(item), item.confirmada]));
+      return resultados.map(item => {
+        const confirmada = confirmacoesAnteriores.get(chaveSubstituicaoDetectada(item));
+        return confirmada === undefined ? item : { ...item, confirmada };
+      });
+    });
   }, [dataInicio, equipe, trocaFills, todasSubstituicoes, bombeiros, vigencias]);
 
   const equipeInversa: Record<string, string> = { Alfa: 'Charlie', Charlie: 'Alfa', Bravo: 'Delta', Delta: 'Bravo' };
@@ -782,13 +896,7 @@ export function GerarLRO() {
   }
 
   function buscarBombeiroPorNome(nome: string): Bombeiro | undefined {
-    const alvo = String(nome || '').trim().toLocaleLowerCase('pt-BR');
-    if (!alvo) return undefined;
-    return bombeiros.find((b: any) =>
-      String(b.nomeGuerra || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
-      String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR') === alvo ||
-      String(b.nomeCompleto || '').trim().toLocaleLowerCase('pt-BR').includes(alvo)
-    );
+    return buscarBombeiroPorTexto(nome, bombeiros);
   }
 
   function trocaFillVisivelNoLRO(fill: any): boolean {
@@ -796,12 +904,6 @@ export function GerarLRO() {
     if (!STATUS_TROCA_ENTRA_LRO.has(status)) return false;
     const fd = fill?.filled_data || {};
     return !!(fd.nome_solicitante || fd.nome_solicitado);
-  }
-
-  function trocaFillAprovada(fill: any, filledData: Record<string, any>): boolean {
-    return fill?.status === 'signed' ||
-      filledData.deferido_indeferido === 'DEFERIDO' ||
-      filledData.check_deferido === 'V';
   }
 
   const substituicoesMap = useMemo(() => {
@@ -979,6 +1081,13 @@ export function GerarLRO() {
     };
   }, []);
 
+  const formatarOpcaoNomeEfetivo = useCallback((entry: EfetivoDisponivel): { value: string; label: string } => {
+    return {
+      value: entry.bombeiro.nomeGuerra,
+      label: `${entry.bombeiro.nomeGuerra} - ${entry.bombeiro.nomeCompleto}`,
+    };
+  }, []);
+
   const buscarEfetivoDisponivelPorNome = useCallback((nome: string): EfetivoDisponivel | undefined => {
     const bombeiro = buscarBombeiroPorNome(nome);
     return bombeiro
@@ -1029,10 +1138,8 @@ export function GerarLRO() {
     const pessoas = configEscala?.pessoas || completa?.config?.pessoas || [];
 
     const resolvePessoa = (id: string | undefined, nomeGuerra: string | undefined, visitados = new Set<string>()): string => {
-      const b = bombeiros.find((x: any) =>
-        (!!id && x.id === id) ||
-        (!!nomeGuerra && (x.nomeGuerra === nomeGuerra || x.nomeCompleto?.includes(nomeGuerra)))
-      );
+      const b = (id ? bombeiros.find((x: any) => x.id === id) : undefined) ||
+        (nomeGuerra ? buscarBombeiroPorNome(nomeGuerra) : undefined);
       if (!b) return nomeGuerra || '';
       if (visitados.has(b.id)) return b.nomeGuerra || nomeGuerra || '';
       const sub = substituicoesMap[b.id];
@@ -1072,18 +1179,15 @@ export function GerarLRO() {
     const chefeAtual = buscarBombeiroPorNome(chefeEquipe);
     const chefeAtualSaiu = !!chefeAtual && !!substituicoesMap[chefeAtual.id];
     const chefeAtualPresente = !!chefeAtual && disponiveis.some(b => b.id === chefeAtual.id);
-    const chefeAtualExerceBACE = cargoExercidoNoPlantao(chefeAtual) === 'BA-CE';
     const candidatoChefe = [nomeChefeDaEscala, nomeChefeEfetivo].find(Boolean) || '';
-    if (candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente || !chefeAtualExerceBACE) && candidatoChefe !== chefeEquipe) {
+    if (!campoEquipeFoiEditado('chefeEquipe') && candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente) && candidatoChefe !== chefeEquipe) {
       setChefeEquipe(candidatoChefe);
     }
 
     // 1.2 Comunicação BA-OC — comunicante do plantão (rádio fixo da parada do dia)
     const comunicacaoAtual = buscarBombeiroPorNome(comunicacao);
     const comunicacaoAtualSaiu = !!comunicacaoAtual && !!substituicoesMap[comunicacaoAtual.id];
-    const comunicacaoAtualEntry = comunicacaoAtual ? buscarEfetivoDisponivelPorNome(comunicacao) : undefined;
-    const comunicacaoAtualCargoInvalido = !!comunicacaoAtualEntry && !podeAtuarComoComunicacao(comunicacaoAtualEntry);
-    if ((!comunicacao || comunicacaoAtualSaiu || comunicacaoAtualCargoInvalido) && parada?.radio) {
+    if (!campoEquipeFoiEditado('comunicacao') && (!comunicacao || comunicacaoAtualSaiu) && parada?.radio) {
       const radioOrdenada = [
         ...parada.radio.filter(r => r.fixo),
         ...parada.radio.filter(r => !r.fixo),
@@ -1155,20 +1259,19 @@ export function GerarLRO() {
       atual: Record<string, string>,
       novo: Record<string, string>,
       original: Record<string, string>,
+      grupo: string,
     ) => {
       const next = { ...atual };
       const keys = new Set([...Object.keys(novo), ...Object.keys(original), ...Object.keys(atual)]);
       keys.forEach(key => {
+        if (campoEquipeFoiEditado(grupo, key)) return;
         const nomeFinal = novo[key] || '';
         const valorAtual = next[key] || '';
         const bombeiroAtual = buscarBombeiroPorNome(valorAtual);
         const atualSaiu = !!bombeiroAtual && !!substituicoesMap[bombeiroAtual.id];
-        const cargoEsperado = cargoEsperadoPorSlot(key);
-        const entryAtual = valorAtual ? buscarEfetivoDisponivelPorNome(valorAtual) : undefined;
-        const atualCargoInvalido = !!valorAtual && (!entryAtual || entryAtual.cargoExercido !== cargoEsperado);
-        if (nomeFinal && (!valorAtual || valorAtual === original[key] || atualSaiu || !bombeiroAtual || atualCargoInvalido)) {
+        if (nomeFinal && (!valorAtual || valorAtual === original[key] || atualSaiu || !bombeiroAtual)) {
           next[key] = nomeFinal;
-        } else if (!nomeFinal && (atualSaiu || atualCargoInvalido)) {
+        } else if (!nomeFinal && atualSaiu) {
           next[key] = '';
         }
       });
@@ -1180,9 +1283,9 @@ export function GerarLRO() {
       return Array.from(keys).every(key => (a[key] || '') === (b[key] || ''));
     };
 
-    const nextCCI = mesclarAuto(equipagemCCI, novoCCI, originalCCI);
-    const nextCCIRT = mesclarAuto(equipagemCCIRT, novoCCIRT, originalCCIRT);
-    const nextCRS = mesclarAuto(equipagemCRS, novoCRS, originalCRS);
+    const nextCCI = mesclarAuto(equipagemCCI, novoCCI, originalCCI, 'equipagemCCI');
+    const nextCCIRT = mesclarAuto(equipagemCCIRT, novoCCIRT, originalCCIRT, 'equipagemCCIRT');
+    const nextCRS = mesclarAuto(equipagemCRS, novoCRS, originalCRS, 'equipagemCRS');
     if (!registrosIguais(nextCCI, equipagemCCI)) setEquipagemCCI(nextCCI);
     if (!registrosIguais(nextCCIRT, equipagemCCIRT)) setEquipagemCCIRT(nextCCIRT);
     if (!registrosIguais(nextCRS, equipagemCRS)) setEquipagemCRS(nextCRS);
@@ -1190,10 +1293,7 @@ export function GerarLRO() {
 
   function montarSubstituicoesLRO() {
     const cargoNoPlantao = (pessoa?: Bombeiro) => pessoa ? (cargoExercidoNoPlantao(pessoa) || pessoa.cargo) : 'BA-2';
-    const porTexto = (texto: string) => bombeiros.find((b: any) =>
-      texto.includes(b.nomeCompleto) ||
-      texto.includes(b.nomeGuerra)
-    );
+    const porTexto = (texto: string) => buscarBombeiroPorNome(texto);
     const porNomeSelecionado = (nome: string) => bombeiros.find((b: any) =>
       b.nomeGuerra === nome ||
       b.nomeCompleto === nome
@@ -1227,7 +1327,7 @@ export function GerarLRO() {
           const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
           const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
           const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: d.combIni || '', combFim: d.combFim || '', situacao: d.situacao || '' };
+          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
         }),
         centralFaisca, radioComunicacao,
         tpTemAlteracao, tpTexto,
@@ -1253,6 +1353,10 @@ export function GerarLRO() {
       };
       const saved = await salvarDraft(dados, equipe, dataInicio, username, draftId || undefined);
       setDraftId(saved.id);
+      if (draftEmEdicaoStatus && draftEmEdicaoStatus !== 'rascunho') {
+        await atualizarStatus(saved.id, 'rascunho');
+        setDraftEmEdicaoStatus('rascunho');
+      }
       const updated = await listarDrafts('').catch(() => []);
       setDrafts(updated);
       setView('lista');
@@ -1277,7 +1381,7 @@ export function GerarLRO() {
           const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
           const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
           const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: d.combIni || '', combFim: d.combFim || '', situacao: d.situacao || '' };
+          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
         }),
         instrucoes: Array.isArray(instrucoes) ? instrucoes : (typeof instrucoes === 'string' ? instrucoes.split('\n').filter(Boolean) : []),
         instrucoesHorarios: Array.isArray(instrucoesHorarios) ? instrucoesHorarios : (typeof instrucoesHorarios === 'string' ? instrucoesHorarios.split('\n').filter(Boolean) : []),
@@ -1325,7 +1429,7 @@ export function GerarLRO() {
       ocorrenciasNA, inspecoes,
       emergenciaXI, outrasOcorrencias, solicitacoesCCR,
       trocasManuais,
-      substituicoesDetectadas, draftId,
+      substituicoesDetectadas, draftId, draftEmEdicaoStatus,
     }));
     const dados = {
       equipeNome: equipe, dataInicio, dataFim, chefeEquipe, comunicacao,
@@ -1333,7 +1437,7 @@ export function GerarLRO() {
         const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
         const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
         const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-        return { viatura: sel?.prefixo || sel?.nome || '—', viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: d.combIni || '', combFim: d.combFim || '', situacao: d.situacao || '' };
+        return { viatura: sel?.prefixo || sel?.nome || '—', viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
       }),
       instrucoes: Array.isArray(instrucoes) ? instrucoes : (typeof instrucoes === 'string' ? instrucoes.split('\n').filter(Boolean) : []),
       instrucoesHorarios: Array.isArray(instrucoesHorarios) ? instrucoesHorarios : (typeof instrucoesHorarios === 'string' ? instrucoesHorarios.split('\n').filter(Boolean) : []),
@@ -1374,7 +1478,7 @@ export function GerarLRO() {
           const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
           const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
           const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: d.combIni || '', combFim: d.combFim || '', situacao: d.situacao || '' };
+          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
         }),
         instrucoes: Array.isArray(instrucoes) ? instrucoes : (typeof instrucoes === 'string' ? instrucoes.split('\n').filter(Boolean) : []),
         instrucoesHorarios: Array.isArray(instrucoesHorarios) ? instrucoesHorarios : (typeof instrucoesHorarios === 'string' ? instrucoesHorarios.split('\n').filter(Boolean) : []),
@@ -1406,9 +1510,10 @@ export function GerarLRO() {
       const saved = await salvarDraft(dados, equipe, dataInicio, username, draftId || undefined);
       setDraftId(saved.id);
       await atualizarStatus(saved.id, 'aguardando');
+      setDraftEmEdicaoStatus('aguardando');
       const updated = await listarDrafts('').catch(() => []);
       setDrafts(updated);
-      navigate('/registros-diarios/preview-lro', { state: { ...dados, draftId: saved.id } });
+      navigate('/registros-diarios/preview-lro', { state: { ...dados, draftId: saved.id, status: 'aguardando', _lroFinalizado: false } });
     } catch (err) {
       console.error('Erro ao finalizar LRO:', err);
       setErroValidacao(`Erro ao finalizar LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
@@ -1454,6 +1559,18 @@ export function GerarLRO() {
 
   function draftTravaOcorrencias(draft: LRODraft): boolean {
     return STATUS_LRO_TRAVAM_OCORRENCIAS.has(draft.status);
+  }
+
+  function handleVerDocumentoLRO(draft: LRODraft) {
+    const dados = (draft.dados as Record<string, unknown>) || {};
+    navigate('/registros-diarios/preview-lro', {
+      state: {
+        ...dados,
+        draftId: draft.id,
+        status: draft.status,
+        _lroFinalizado: draft.status === 'finalizado' || draft.status === 'arquivado',
+      },
+    });
   }
 
   function idsOcorrenciasTravadasPorOutrosLROs(draftAtual: LRODraft, ids: string[]): Set<string> {
@@ -1541,16 +1658,7 @@ export function GerarLRO() {
 
   function handleConfirmTrocaCorreta() {
     if (trocaConfirmadaIdx !== null) {
-      const alvo = substituicoesDetectadas[trocaConfirmadaIdx];
       setSubstituicoesDetectadas(prev => prev.map((s, i) => i === trocaConfirmadaIdx ? { ...s, confirmada: true } : s));
-      // Persiste a confirmação no preenchimento do documento de troca para não pedir de novo em novos LROs da mesma data
-      if (alvo?.id && dataInicio) {
-        const fill = trocaFills.find((fl: any) => fl.id === alvo.id);
-        if (fill) {
-          const fd = fill.filled_data || {};
-          atualizarPreenchimento(fill.id, { filled_data: { ...fd, lro_confirmada: dataInicio } }).catch(() => {});
-        }
-      }
     }
     setShowConfirmCorreta(false);
     setTrocaConfirmadaIdx(null);
@@ -1589,7 +1697,7 @@ export function GerarLRO() {
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 hover:shadow-xl hover:shadow-amber-500/30 active:scale-[0.98]">
                   <FileText className="h-4 w-4" /> Clonar LRO
                 </button>
-                <button onClick={() => { setDraftId(null); setEquipe(''); setStep('equipe'); setView('wizard'); }}
+                <button onClick={iniciarNovoLRO}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
                   <FileText className="h-4 w-4" /> Novo LRO
                 </button>
@@ -1628,6 +1736,8 @@ export function GerarLRO() {
             {filtradas.map(d => {
               const dotColor = d.status === 'assinado' ? 'bg-green-500' : d.status === 'aguardando' ? 'bg-blue-500' : d.status === 'cancelado' ? 'bg-red-500' : d.status === 'finalizado' ? 'bg-green-500' : d.status === 'arquivado' ? 'bg-graphite-400' : 'bg-yellow-500';
               const dd = d.dados as Record<string, any> || {};
+              const podeEditarDraft = canManageDraft(d) &&
+                (d.status === 'rascunho' || (contexto.isAdministradorSistema && STATUS_LRO_EDITAVEIS_POR_ADMIN.has(d.status)));
               return (
               <div key={d.id} className="rounded-xl border border-graphite-200 bg-white transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
                 <div className="flex items-center justify-between p-4">
@@ -1659,18 +1769,34 @@ export function GerarLRO() {
                         <FileText className="h-4 w-4" />
                       </button>
                     )}
-                    {d.status === 'rascunho' && canManageDraft(d) ? (
+                    {(d.status === 'finalizado' || d.status === 'arquivado') && (
+                      <button onClick={() => handleVerDocumentoLRO(d)} title="Ver documento"
+                        className="rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-all hover:bg-aviation-100 dark:bg-aviation-900/20 dark:text-aviation-300">
+                        <Eye className="h-3.5 w-3.5 inline-block mr-1" /> Ver documento
+                      </button>
+                    )}
+                    {podeEditarDraft ? (
                       <button onClick={() => {
                         setDraftId(d.id);
+                        setDraftEmEdicaoStatus(d.status);
                         setStep('preencher');
                         setEquipe((dd.equipeNome || d.equipe || 'Alfa') as EquipeOpcao);
                         setDataInicio(dd.dataInicio || d.data_plantao || hojeLocalISO());
                         setDataFim(dd.dataFim || '');
                         setChefeEquipe(dd.chefeEquipe || '');
                         setComunicacao(dd.comunicacao || '');
-                        setEquipagemCCI(dd.cci2 ? Object.fromEntries((dd.cci2 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {});
-                        setEquipagemCCIRT(dd.cci3 ? Object.fromEntries((dd.cci3 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {});
-                        setEquipagemCRS(dd.crs ? Object.fromEntries((dd.crs as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {});
+                        const equipagemCCICarregada = dd.cci2 ? Object.fromEntries((dd.cci2 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
+                        const equipagemCCIRTCarregada = dd.cci3 ? Object.fromEntries((dd.cci3 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
+                        const equipagemCRSCarregada = dd.crs ? Object.fromEntries((dd.crs as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
+                        setEquipagemCCI(equipagemCCICarregada);
+                        setEquipagemCCIRT(equipagemCCIRTCarregada);
+                        setEquipagemCRS(equipagemCRSCarregada);
+                        limparMarcacoesEquipeEditada();
+                        marcarCampoEquipeEditado('chefeEquipe');
+                        marcarCampoEquipeEditado('comunicacao');
+                        marcarEquipagemCarregada('equipagemCCI', equipagemCCICarregada);
+                        marcarEquipagemCarregada('equipagemCCIRT', equipagemCCIRTCarregada);
+                        marcarEquipagemCarregada('equipagemCRS', equipagemCRSCarregada);
                         setInstrucoes(Array.isArray(dd.instrucoes) ? dd.instrucoes.join('\n') : (dd.instrucoes || ''));
                         setInstrucoesHorarios(dd.instrucoesHorarios || '');
                         if (dd.frota) {
@@ -1680,7 +1806,7 @@ export function GerarLRO() {
                             const match = f.viaturaId
                               ? frotaLista.find((vv: any) => vv.id === f.viaturaId)
                               : frotaLista.find((vv: any) => (vv.prefixo || vv.nome) === f.viatura);
-                            fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: f.combIni || '', combFim: f.combFim || '', situacao: f.situacao || '' };
+                            fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), situacao: f.situacao || '' };
                           });
                           setFrotaDados(fDados);
                         }
@@ -1699,15 +1825,12 @@ export function GerarLRO() {
                         setEmergenciaXI(dd.emergenciaXI || '');
                         setOutrasOcorrencias(lancamentosParaTexto(dd.ocorrenciasXII));
                         setSolicitacoesCCR(lancamentosParaTexto(dd.solicitacoes));
-                        if (dd._trocasManuais) setTrocasManuais(dd._trocasManuais);
-                        if (dd._substituicoesDetectadas) {
-                          const manuais = (dd._substituicoesDetectadas as any[]).filter((s: any) => s.tipo === 'troca' && s.confirmada !== false);
-                          if (manuais.length > 0) setSubstituicoesDetectadas(manuais);
-                        }
+                        setTrocasManuais(Array.isArray(dd._trocasManuais) ? dd._trocasManuais : []);
+                        setSubstituicoesDetectadas(Array.isArray(dd._substituicoesDetectadas) ? dd._substituicoesDetectadas : []);
                         setView('wizard');
                       }}
                         className="rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-all hover:bg-aviation-100 dark:bg-aviation-900/20 dark:text-aviation-300">
-                        Continuar
+                        {d.status === 'rascunho' ? 'Continuar' : 'Editar'}
                       </button>
                     ) : null}
                     {contexto.isAdministradorSistema && d.status === 'aguardando' && (
@@ -1817,7 +1940,7 @@ export function GerarLRO() {
                   const frota = dd.frota as Array<Record<string, string>> | undefined;
                   const frotaClone = frota?.map(f => ({
                     ...f,
-                    combIni: f.combFim || '',
+                    combIni: normalizarPercentualCombustivel(f.combFim),
                     kmIni: f.kmFim || '',
                     kmFim: '', combFim: '', situacao: '',
                   })) || [];
@@ -1827,7 +1950,7 @@ export function GerarLRO() {
                     const match = f.viaturaId
                       ? frotaLista.find((vv: any) => vv.id === f.viaturaId)
                       : frotaLista.find((vv: any) => (vv.prefixo || vv.nome) === f.viatura);
-                    fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: f.combIni || '', combFim: f.combFim || '', situacao: f.situacao || '' };
+                    fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), situacao: f.situacao || '' };
                   });
 
                   // IV. Central Faísca
@@ -1845,6 +1968,7 @@ export function GerarLRO() {
                   setEdifTexto(dd.edifTexto || '');
 
                   // Reset dos campos puxados automaticamente (nova data/equipe)
+                  limparMarcacoesEquipeEditada();
                   setChefeEquipe('');
                   setComunicacao('');
                   setEquipagemCCI({});
@@ -1862,6 +1986,7 @@ export function GerarLRO() {
 
                   setFrotaDados(fDados);
                   setDraftId(null);
+                  setDraftEmEdicaoStatus(null);
                   setEquipe(selEquipe as EquipeOpcao);
                   setDataInicio(selData);
                   setDataFim(dataSaidaPlantao(selEquipe, selData));
@@ -2035,10 +2160,7 @@ export function GerarLRO() {
               </div>
               <div className="space-y-3">
                 {substituicoesDetectadas.filter(s => s.tipo === 'substituicao').map(sub => {
-                  const findB = (nome: string) => {
-                    const n = (nome || '').toLowerCase().trim();
-                    return bombeiros.find((x: any) => n.includes(x.nomeGuerra.toLowerCase().trim()) || n.includes(x.nomeCompleto.toLowerCase().trim().split(' ')[0]));
-                  };
+                  const findB = (nome: string) => buscarBombeiroPorNome(nome);
                   const bSubdo = findB(sub.substituido);
                   const bSub = findB(sub.substituto);
                   return (
@@ -2084,10 +2206,7 @@ export function GerarLRO() {
               </div>
               <div className="space-y-3">
                 {substituicoesDetectadas.filter(s => s.tipo === 'troca').map((sub, idx) => {
-                  const findB = (nome: string) => {
-                    const n = (nome || '').toLowerCase().trim();
-                    return bombeiros.find((x: any) => n.includes(x.nomeGuerra.toLowerCase().trim()) || n.includes(x.nomeCompleto.toLowerCase().trim().split(' ')[0]));
-                  };
+                  const findB = (nome: string) => buscarBombeiroPorNome(nome);
                   const bSubdo = findB(sub.substituido);
                   const bSub = findB(sub.substituto);
                   const getTurno = (e: string) => e === 'Alfa' || e === 'Charlie' ? 'DIURNO' : e === 'Bravo' || e === 'Delta' ? 'NOTURNO' : '';
@@ -2217,10 +2336,7 @@ export function GerarLRO() {
               <div className="mt-6 space-y-3">
                 <h4 className="text-sm font-bold text-graphite-700 dark:text-graphite-300">Trocas adicionadas ({trocasManuais.length})</h4>
                 {trocasManuais.map((tm, i) => {
-                  const findB = (nome: string) => {
-                    const n = (nome || '').toLowerCase().trim();
-                    return bombeiros.find((x: any) => n.includes(x.nomeGuerra.toLowerCase().trim()) || n.includes(x.nomeCompleto.toLowerCase().trim().split(' ')[0]));
-                  };
+                  const findB = (nome: string) => buscarBombeiroPorNome(nome);
                   const bSol = findB(tm.solicitante);
                   const bSolic = findB(tm.solicitado);
                   return (
@@ -2305,7 +2421,6 @@ export function GerarLRO() {
                         criado_por: criadoPor,
                         autorizado_por: 'Embaixador',
                         data_autorizacao: hojeLocalISO(),
-                        lro_confirmada: dataInicio,
                       },
                       status: 'signed',
                       autentique_document_id: null,
@@ -2336,7 +2451,10 @@ export function GerarLRO() {
                 <SearchSelect
                   label="1.1 Chefe de Equipe *"
                   value={chefeEquipe}
-                  onChange={setChefeEquipe}
+                  onChange={value => {
+                    marcarCampoEquipeEditado('chefeEquipe');
+                    setChefeEquipe(value);
+                  }}
                   options={(() => {
                     const opcoes = new Map<string, { value: string; label: string }>();
                     const adicionarOpcao = (entry?: EfetivoDisponivel, forcar = false) => {
@@ -2353,7 +2471,7 @@ export function GerarLRO() {
                     const chefeAtualEntry = chefeAtual
                       ? efetivoDisponivel.find(entry => entry.bombeiro.id === chefeAtual.id)
                       : undefined;
-                    if (chefeAtualEntry) adicionarOpcao(chefeAtualEntry, true);
+                    if (chefeAtualEntry) adicionarOpcao(chefeAtualEntry);
                     return Array.from(opcoes.values());
                   })()}
                   placeholder="Chefe de equipe"
@@ -2374,7 +2492,10 @@ export function GerarLRO() {
               <SearchSelect
                 label="1.2 Comunicação BA-OC *"
                 value={comunicacao}
-                onChange={setComunicacao}
+                onChange={value => {
+                  marcarCampoEquipeEditado('comunicacao');
+                  setComunicacao(value);
+                }}
                 options={[
                   ...efetivoDisponivel.filter(podeAtuarComoComunicacao).map(formatarOpcaoEfetivo),
                   ...apocs.map((a: any) => ({ value: a.nomeGuerra, label: `${a.nomeGuerra} - ${a.nomeCompleto} (APOC)` })),
@@ -2406,11 +2527,13 @@ export function GerarLRO() {
                         ...Object.values(equipagemCRS),
                       ].filter(Boolean));
                       const optsMap = new Map<string, { value: string; label: string }>();
-                      efetivoDisponivel
-                        .filter(entry => entry.cargoExercido === cargoFiltro && (!selectedInOtherSlots.has(entry.bombeiro.nomeGuerra) || selected === entry.bombeiro.nomeGuerra))
-                        .forEach(entry => optsMap.set(entry.bombeiro.nomeGuerra, formatarOpcaoEfetivo(entry)));
+                      [...efetivoDisponivel]
+                        .filter(entry => entry.cargoExercido === cargoFiltro)
+                        .sort((a, b) => a.bombeiro.nomeGuerra.localeCompare(b.bombeiro.nomeGuerra, 'pt-BR'))
+                        .filter(entry => !selectedInOtherSlots.has(entry.bombeiro.nomeGuerra) || selected === entry.bombeiro.nomeGuerra)
+                        .forEach(entry => optsMap.set(entry.bombeiro.nomeGuerra, formatarOpcaoNomeEfetivo(entry)));
                       const selB = buscarBombeiroPorNome(selected);
-                      if (selB) {
+                      if (selB && cargoExercidoNoPlantao(selB) === cargoFiltro) {
                         optsMap.set(selB.nomeGuerra, { value: selB.nomeGuerra, label: `${selB.nomeGuerra} - ${selB.nomeCompleto}` });
                       }
                       const opts = Array.from(optsMap.values());
@@ -2422,7 +2545,15 @@ export function GerarLRO() {
                             <span className="w-14 shrink-0 text-[10px] font-bold uppercase text-graphite-500 dark:text-graphite-400">{cargo}</span>
                             <select
                               value={selected}
-                              onChange={e => section.setState(prev => ({ ...prev, [key]: e.target.value }))}
+                              onChange={e => {
+                                const grupo = section.label === 'CCI 2'
+                                  ? 'equipagemCCI'
+                                  : section.label === 'CCI 3'
+                                    ? 'equipagemCCIRT'
+                                    : 'equipagemCRS';
+                                marcarCampoEquipeEditado(grupo, key);
+                                section.setState(prev => ({ ...prev, [key]: e.target.value }));
+                              }}
                               className="flex-1 rounded-lg border border-graphite-200 px-2 py-1.5 text-xs dark:border-border-dark dark:bg-surface-card"
                             >
                               <option value="">Selecionar...</option>
@@ -2458,10 +2589,7 @@ export function GerarLRO() {
               </label>
             </div>
             {substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(sub => {
-              const findB = (nome: string) => {
-                const n = (nome || '').toLowerCase().trim();
-                return bombeiros.find((x: any) => n.includes(x.nomeGuerra.toLowerCase().trim()) || n.includes(x.nomeCompleto.toLowerCase().trim().split(' ')[0]));
-              };
+              const findB = (nome: string) => buscarBombeiroPorNome(nome);
               const p1 = findB(sub.substituido);
               const p2 = findB(sub.substituto);
               return (
@@ -2484,10 +2612,7 @@ export function GerarLRO() {
               );
             })}
             {trocasManuais.map((tm, i) => {
-              const findB = (nome: string) => {
-                const n = (nome || '').toLowerCase().trim();
-                return bombeiros.find((x: any) => n.includes(x.nomeGuerra.toLowerCase().trim()) || n.includes(x.nomeCompleto.toLowerCase().trim().split(' ')[0]));
-              };
+              const findB = (nome: string) => buscarBombeiroPorNome(nome);
               const p1 = findB(tm.solicitante);
               const p2 = findB(tm.solicitado);
               return (
@@ -2547,8 +2672,8 @@ export function GerarLRO() {
                     <th className="p-2 text-left font-semibold text-graphite-600">PREFIXO</th>
                     <th className="p-2 text-left font-semibold text-graphite-600">KM INICIAL</th>
                     <th className="p-2 text-left font-semibold text-graphite-600">KM FINAL</th>
-                    <th className="p-2 text-left font-semibold text-graphite-600">COMB. INICIAL</th>
-                    <th className="p-2 text-left font-semibold text-graphite-600">COMB. FINAL</th>
+                    <th className="p-2 text-left font-semibold text-graphite-600">COMB. INICIAL (%)</th>
+                    <th className="p-2 text-left font-semibold text-graphite-600">COMB. FINAL (%)</th>
                     <th className="p-2 text-left font-semibold text-graphite-600">SITUAÇÃO</th>
                   </tr>
                 </thead>
@@ -2582,8 +2707,32 @@ export function GerarLRO() {
                         <td className="p-2 font-semibold text-graphite-700 dark:text-graphite-300 text-xs">{d.prefixo}</td>
                         <td className="p-2"><input value={d.kmIni || ''} onChange={e => updateRow({ kmIni: e.target.value })} className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card" /></td>
                         <td className="p-2"><input value={d.kmFim || ''} onChange={e => updateRow({ kmFim: e.target.value })} className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card" /></td>
-                        <td className="p-2"><input value={d.combIni || ''} onChange={e => updateRow({ combIni: e.target.value })} className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card" /></td>
-                        <td className="p-2"><input value={d.combFim || ''} onChange={e => updateRow({ combFim: e.target.value })} className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card" /></td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            inputMode="decimal"
+                            value={normalizarPercentualCombustivel(d.combIni)}
+                            onChange={e => updateRow({ combIni: normalizarPercentualCombustivel(e.target.value) })}
+                            placeholder="%"
+                            className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            inputMode="decimal"
+                            value={normalizarPercentualCombustivel(d.combFim)}
+                            onChange={e => updateRow({ combFim: normalizarPercentualCombustivel(e.target.value) })}
+                            placeholder="%"
+                            className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card"
+                          />
+                        </td>
                         <td className="p-2">
                           <select value={d.situacao || ''} onChange={e => updateRow({ situacao: e.target.value })} className="rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card">
                             <option value="">Selecione</option>
@@ -2784,7 +2933,7 @@ export function GerarLRO() {
         title="Finalizar LRO"
         message={(
           <>
-            Ao finalizar, o LRO ficará <strong>aguardando</strong> e <strong>não será mais possível alterar</strong> os dados. O administrador poderá marcar como finalizado ou arquivar depois.
+            Ao finalizar, o LRO ficará <strong>aguardando aprovação</strong>. Depois de aprovado/finalizado, apenas administrador ou desenvolvedor poderá editar; qualquer edição voltará para aprovação.
           </>
         )}
         variant="success"

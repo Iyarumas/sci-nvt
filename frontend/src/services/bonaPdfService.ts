@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { criarBonaDadosVazios, normalizarFuncaoBona } from '../types/ocorrencia';
 import type { Ocorrencia } from '../types/ocorrencia';
 import { formatarDataBR } from '../utils/datas';
+import { nomeDocumentoOcorrencia } from '../utils/documentFileNames';
 import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 
 const PAGE_W = 210;
@@ -23,18 +24,8 @@ function upper(value: unknown): string {
   return texto(value).toLocaleUpperCase('pt-BR');
 }
 
-function safeFilePart(value: string): string {
-  return (value || 'BONA')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 export function nomeArquivoBonaPdf(registro: Ocorrencia): string {
-  const numero = safeFilePart(registro.numero || 'BONA');
-  const data = safeFilePart(formatarDataBR(registro.data).replace(/\//g, '-'));
-  return `${numero || 'BONA'}_${data || 'sem-data'}.pdf`;
+  return nomeDocumentoOcorrencia(registro.data, 'BONA', registro.numero, registro.equipe);
 }
 
 function setStroke(doc: jsPDF) {
@@ -341,6 +332,11 @@ function drawRodapeFormulario(doc: jsPDF, dados: ReturnType<typeof dadosBona>) {
 
 export async function gerarBonaPdf(registro: Ocorrencia): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  doc.setProperties({
+    title: nomeArquivoBonaPdf(registro).replace(/\.pdf$/i, ''),
+    subject: 'Boletim de Ocorrencia Nao Aeronautico',
+    creator: 'SESCINC Manager',
+  });
   const logo = await carregarMedGroupLogo();
   const dados = dadosBona(registro);
   const bombeiros = dados.bombeiros;

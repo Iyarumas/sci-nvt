@@ -25,6 +25,7 @@ import type { Bombeiro } from '../../types/bombeiro';
 import { CARGO_OPTIONS, EQUIPE_OPTIONS } from '../../types/bombeiro';
 import type { APOC } from '../../types/apoc';
 import { formatarDataBR, formatarDataHoraBR, hojeLocalISO } from '../../utils/datas';
+import { nomeArquivoTrocaServicoPdf } from '../../utils/documentFileNames';
 type SubView = 'list' | 'form';
 type ViewMode = 'list' | 'report';
 
@@ -49,6 +50,13 @@ function pdfPosition(xMm: number, yMm: number, widthMm: number, heightMm: number
     font_size: fontSize,
     text_align: textAlign,
   };
+}
+
+function abrirPdfNomeado(pdfBlob: Blob, nomeArquivo: string) {
+  const namedBlob = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
+  const url = URL.createObjectURL(namedBlob);
+  window.open(url, '_blank');
+  return url;
 }
 
 const TROCA_PDF_POSITION_OVERRIDES = new Map<string, ReturnType<typeof pdfPosition>>([
@@ -256,15 +264,9 @@ export function Trocas() {
   }, [fills, filterMonth, filterYear, filterEquipe]);
 
   const violationFillIds = useMemo(() => {
-    const pessoaFills: Record<string, { id: string; created_at: string }[]> = {};
     const ids = new Set<string>();
     filteredFills.forEach(f => {
       const fd = f.filled_data as Record<string, string>;
-      const nomes = new Set([fd.nome_solicitante, fd.nome_solicitado].filter(Boolean));
-      nomes.forEach(nome => {
-        if (!pessoaFills[nome]) pessoaFills[nome] = [];
-        pessoaFills[nome].push({ id: f.id, created_at: f.created_at });
-      });
       const p1 = getPessoaByNome(fd.nome_solicitante || '');
       const p2 = getPessoaByNome(fd.nome_solicitado || '');
       const cargo1 = p1?.cargo || (fd.funcao_solicitante || '').split(' - ')[0] || '';
@@ -273,42 +275,24 @@ export function Trocas() {
       if (p1?.turno && p2?.turno && !mesmoTurnoEfetivo(p1, p2)) ids.add(f.id);
       if (fd.troca_emergencial === 'SIM') ids.add(f.id);
     });
-    Object.values(pessoaFills).forEach(arr => arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
-    Object.values(pessoaFills).forEach(arr => {
-      arr.forEach((f, i) => {
-        if (i >= MAX_TROCAS_PER_MONTH) ids.add(f.id);
-      });
-    });
+    getExcessoLimiteFillIds(filteredFills).forEach(id => ids.add(id));
     return ids;
-  }, [filteredFills]);
+  }, [filteredFills, bombeirosList, apocsList]);
 
   const excessoLimiteIds = useMemo(() => {
-    const pessoaFills: Record<string, { id: string; created_at: string }[]> = {};
-    const ids = new Set<string>();
-    filteredFills.forEach(f => {
-      const fd = f.filled_data as Record<string, string>;
-      const nomes = new Set([fd.nome_solicitante, fd.nome_solicitado].filter(Boolean));
-      nomes.forEach(nome => {
-        if (!pessoaFills[nome]) pessoaFills[nome] = [];
-        pessoaFills[nome].push({ id: f.id, created_at: f.created_at });
-      });
-    });
-    Object.values(pessoaFills).forEach(arr => arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
-    Object.values(pessoaFills).forEach(arr => {
-      arr.forEach((f, i) => {
-        if (i >= MAX_TROCAS_PER_MONTH) ids.add(f.id);
-      });
-    });
-    return ids;
-  }, [filteredFills]);
+    return getExcessoLimiteFillIds(filteredFills);
+  }, [filteredFills, bombeirosList, apocsList]);
 
   const currentUserTrocasThisMonth = useMemo(() => {
     const now2 = new Date();
+    const currentKeys = getCurrentUserTrocaKeys();
     return fills.filter(fill => {
       const d = new Date(fill.created_at);
-      return fill.filled_by === user?.username && d.getMonth() === now2.getMonth() && d.getFullYear() === now2.getFullYear();
+      if (d.getMonth() !== now2.getMonth() || d.getFullYear() !== now2.getFullYear()) return false;
+      if (currentKeys.size === 0) return fill.filled_by === user?.username;
+      return getPessoasTrocaDoFill(fill).some(pessoa => currentKeys.has(pessoa.key));
     }).length;
-  }, [fills, user]);
+  }, [fills, user, bombeirosList, apocsList]);
 
   useEffect(() => {
     if (isRelatorioRoute && loadingContexto) return;
@@ -473,6 +457,78 @@ export function Trocas() {
     return { cargo: match._raw.funcao || 'APOC', nomeGuerra: match._raw.nomeGuerra || match.label, nomeCompleto: match._raw.nomeCompleto || match.label, equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
   }
 
+  function normalizarChavePessoaTroca(value: string): string {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLocaleLowerCase('pt-BR')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  function getPessoaTrocaInfo(nome: string, funcaoFallback = ''): { key: string; label: string } | null {
+    if (!nome) return null;
+    const pessoa = getPessoaByNome(nome);
+    const cargo = pessoa?.cargo || String(funcaoFallback || '').split(' - ')[0] || '';
+    const nomeCompleto = pessoa?.nomeCompleto || nome;
+    const nomeGuerra = pessoa?.nomeGuerra || nomeCompleto;
+    const keyBase = pessoa
+      ? `${pessoa.cargo}|${pessoa.nomeCompleto || nomeGuerra}|${nomeGuerra}`
+      : `${cargo}|${nomeCompleto}`;
+    const key = normalizarChavePessoaTroca(keyBase);
+    if (!key) return null;
+    return {
+      key,
+      label: [cargo, nomeCompleto].filter(Boolean).join(' '),
+    };
+  }
+
+  function getPessoasTrocaDoFill(fill: DocumentFill): { key: string; label: string; created_at: string; id: string }[] {
+    const data = fill.filled_data as Record<string, string>;
+    const pessoas = [
+      getPessoaTrocaInfo(data.nome_solicitante || '', data.funcao_solicitante || ''),
+      getPessoaTrocaInfo(data.nome_solicitado || '', data.funcao_solicitado || ''),
+    ].filter((p): p is { key: string; label: string } => !!p);
+    const vistos = new Set<string>();
+    return pessoas
+      .filter(pessoa => {
+        if (vistos.has(pessoa.key)) return false;
+        vistos.add(pessoa.key);
+        return true;
+      })
+      .map(pessoa => ({ ...pessoa, created_at: fill.created_at, id: fill.id }));
+  }
+
+  function getExcessoLimiteFillIds(sourceFills: DocumentFill[]): Set<string> {
+    const pessoaFills: Record<string, { id: string; created_at: string }[]> = {};
+    const ids = new Set<string>();
+    sourceFills.forEach(fill => {
+      getPessoasTrocaDoFill(fill).forEach(pessoa => {
+        if (!pessoaFills[pessoa.key]) pessoaFills[pessoa.key] = [];
+        pessoaFills[pessoa.key].push({ id: pessoa.id, created_at: pessoa.created_at });
+      });
+    });
+    Object.values(pessoaFills).forEach(arr => arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+    Object.values(pessoaFills).forEach(arr => {
+      arr.forEach((fill, index) => {
+        if (index >= MAX_TROCAS_PER_MONTH) ids.add(fill.id);
+      });
+    });
+    return ids;
+  }
+
+  function getCurrentUserTrocaKeys(): Set<string> {
+    const pessoaUsuario = user?.pessoa as { nomeCompleto?: string; nomeGuerra?: string } | undefined;
+    return new Set([
+      pessoaUsuario?.nomeCompleto,
+      pessoaUsuario?.nomeGuerra,
+      user?.name,
+      user?.username,
+    ]
+      .map(nome => getPessoaTrocaInfo(String(nome || ''))?.key || '')
+      .filter(Boolean));
+  }
+
   function getNomeCompletoRelatorio(nome: string): string {
     if (!nome) return '-';
     return getPessoaByNome(nome)?.nomeCompleto || nome;
@@ -522,13 +578,16 @@ export function Trocas() {
     const now = new Date();
     const sourceFills = existingFills || fills;
 
-    const nomes = [nomeSol, nomeSolic].filter(Boolean);
-    for (const nome of nomes) {
+    const pessoaKeys = new Set([
+      getPessoaTrocaInfo(nomeSol)?.key || '',
+      getPessoaTrocaInfo(nomeSolic)?.key || '',
+    ].filter(Boolean));
+    for (const key of pessoaKeys) {
       const count = sourceFills.filter(f => {
-        const fd = f.filled_data as Record<string, string>;
         const d = new Date(f.created_at);
-        return (fd.nome_solicitante === nome || fd.nome_solicitado === nome) &&
-          d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        return d.getMonth() === now.getMonth() &&
+          d.getFullYear() === now.getFullYear() &&
+          getPessoasTrocaDoFill(f).some(pessoa => pessoa.key === key);
       }).length;
       if (count >= MAX_TROCAS_PER_MONTH) return true;
     }
@@ -540,21 +599,23 @@ export function Trocas() {
     return false;
   }
 
-  const personExcessMap = useMemo(() => {
-    const countMap: Record<string, number> = {};
+  const personExcessList = useMemo(() => {
+    const countMap: Record<string, { label: string; count: number }> = {};
     filteredFills.forEach(fill => {
-      const data = fill.filled_data as Record<string, string>;
-      const nomeSol = data.nome_solicitante || '';
-      const nomeSolic = data.nome_solicitado || '';
-      if (nomeSol) countMap[nomeSol] = (countMap[nomeSol] || 0) + 1;
-      if (nomeSolic && nomeSolic !== nomeSol) countMap[nomeSolic] = (countMap[nomeSolic] || 0) + 1;
+      getPessoasTrocaDoFill(fill).forEach(pessoa => {
+        if (!countMap[pessoa.key]) countMap[pessoa.key] = { label: pessoa.label, count: 0 };
+        countMap[pessoa.key].count += 1;
+      });
     });
-    const excessMap: Record<string, number> = {};
-    Object.entries(countMap).forEach(([nome, count]) => {
-      if (count > MAX_TROCAS_PER_MONTH) excessMap[nome] = count - MAX_TROCAS_PER_MONTH;
-    });
-    return excessMap;
-  }, [filteredFills]);
+    return Object.entries(countMap)
+      .filter(([, pessoa]) => pessoa.count > MAX_TROCAS_PER_MONTH)
+      .map(([key, pessoa]) => ({
+        key,
+        label: pessoa.label,
+        excesso: pessoa.count - MAX_TROCAS_PER_MONTH,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+  }, [filteredFills, bombeirosList, apocsList]);
 
   function handleNameSelect(fieldName: string, value: string) {
     const all = getAllFuncionarios();
@@ -695,8 +756,7 @@ export function Trocas() {
         });
       }
 
-      const url = URL.createObjectURL(pdfBlob);
-      window.open(url, '_blank');
+      abrirPdfNomeado(pdfBlob, nomeArquivoTrocaServicoPdf(dadosAprovados));
 
       const docFills = await listarPreenchimentos(doc.id);
       setFills(docFills);
@@ -764,8 +824,7 @@ export function Trocas() {
       const data = fill.filled_data as Record<string, string>;
       const dadosStr = buildPdfData(data);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(templateDoc));
-      const url = URL.createObjectURL(pdfBlob);
-      window.open(url, '_blank');
+      abrirPdfNomeado(pdfBlob, nomeArquivoTrocaServicoPdf(data));
     } catch {
       setShowNotifPopup({ msg: 'Erro ao visualizar PDF.', type: 'error' });
     }
@@ -1360,7 +1419,7 @@ export function Trocas() {
         <span className="ml-auto text-xs text-graphite-500 dark:text-graphite-400">{filteredFills.length} troca(s) encontrada(s)</span>
       </div>
 
-      {!isRelatorioRoute && Object.keys(personExcessMap).length > 0 && (
+      {!isRelatorioRoute && personExcessList.length > 0 && (
         <div className="mb-4 rounded-xl border border-red-400 bg-red-50 px-5 py-4 shadow-sm dark:border-red-800 dark:bg-red-900/20">
           <div className="flex items-center gap-3 mb-2">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-200 dark:bg-red-800/50">
@@ -1372,9 +1431,9 @@ export function Trocas() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {Object.entries(personExcessMap).map(([nome, excesso]) => (
-              <span key={nome} className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                {nome} ({excesso} excedente)
+            {personExcessList.map(pessoa => (
+              <span key={pessoa.key} className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[10px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                {pessoa.label} ({pessoa.excesso} excedente)
               </span>
             ))}
           </div>
@@ -1390,14 +1449,14 @@ export function Trocas() {
           const p2 = getPessoaByNome(fd.nome_solicitado || '');
           const cargo1 = p1?.cargo || (fd.funcao_solicitante || '').split(' - ')[0] || '';
           const cargo2 = p2?.cargo || (fd.funcao_solicitado || '').split(' - ')[0] || '';
-          const nome1 = p1?.nomeGuerra || fd.nome_solicitante?.split(' ')[0] || '';
-          const nome2 = p2?.nomeGuerra || fd.nome_solicitado?.split(' ')[0] || '';
+          const label1 = getPessoaTrocaInfo(fd.nome_solicitante || '', fd.funcao_solicitante || '')?.label || [cargo1, fd.nome_solicitante].filter(Boolean).join(' ');
+          const label2 = getPessoaTrocaInfo(fd.nome_solicitado || '', fd.funcao_solicitado || '')?.label || [cargo2, fd.nome_solicitado].filter(Boolean).join(' ');
           if (p1?.turno && p2?.turno && !mesmoTurnoEfetivo(p1, p2)) {
-            const label = `${cargo1} ${nome1} x ${cargo2} ${nome2} (${p1.turno} x ${p2.turno})`;
+            const label = `${label1} x ${label2} (${p1.turno} x ${p2.turno})`;
             if (!turnWarnings.includes(label)) turnWarnings.push(label);
           }
           if (cargo1 && cargo2 && cargo1 !== cargo2) {
-            const label = `${cargo1} ${nome1} x ${cargo2} ${nome2}`;
+            const label = `${label1} x ${label2}`;
             if (!funcWarnings.includes(label)) funcWarnings.push(label);
           }
         });

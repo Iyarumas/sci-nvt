@@ -28,6 +28,12 @@ export interface PTRB {
 
 export const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'] as const;
 export const SITUACOES = ['A', 'INSTR', 'OC', 'P'] as const;
+export const SITUACAO_DESCRICOES: Record<string, string> = {
+  A: 'Ausente',
+  INSTR: 'Instrutor',
+  OC: 'Operador de Comunicações',
+  P: 'Presente',
+};
 export const ASSUNTOS = [
   '01. FAMILIARIZAÇÃO COM AERÓDROMO',
   '02. FAMILIARIZAÇÃO COM AS AERONAVES QUE OPERAM COM REGULARIDADE NO AERÓDROMO',

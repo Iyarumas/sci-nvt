@@ -20,13 +20,16 @@ import type { FeriasGozo } from '../../types/ferias';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import type { APOC } from '../../types/apoc';
 import type { PTRB, PTRBParticipante } from '../../types/ptrb';
-import { EQUIPES, SITUACOES, ASSUNTOS } from '../../types/ptrb';
+import { EQUIPES, SITUACOES, ASSUNTOS, SITUACAO_DESCRICOES } from '../../types/ptrb';
 import { horarioPlantaoPorEquipe } from '../../utils/equipes';
 import { formatarDataArquivo, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
 import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
+const SITUACOES_TOOLTIP = SITUACOES
+  .map(situacao => `${situacao} = ${SITUACAO_DESCRICOES[situacao] || situacao}`)
+  .join('\n');
 
 function formatDate(d: string) {
   return formatarDataBR(d);
@@ -333,8 +336,15 @@ function PTRBAForm({
               </div>
               <div className="min-w-0 flex-1 sm:min-w-28">
                 <label className={label}>Situação</label>
-                <select value={p.situacao} onChange={e => updateParticipante(i, 'situacao', e.target.value)} className={input}>
-                  {SITUACOES.map(s => <option key={s} value={s}>{s}</option>)}
+                <select
+                  value={p.situacao}
+                  onChange={e => updateParticipante(i, 'situacao', e.target.value)}
+                  className={input}
+                  title={SITUACOES_TOOLTIP}
+                >
+                  {SITUACOES.map(s => (
+                    <option key={s} value={s} title={SITUACAO_DESCRICOES[s] || s}>{s}</option>
+                  ))}
                 </select>
               </div>
               {i >= HIERARQUIA_EQUIPE.length && (

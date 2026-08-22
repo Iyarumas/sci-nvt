@@ -41,6 +41,7 @@ import {
   PTRBA_COMPLETO_EVIDENCIA_PARES,
   PTRBA_COMPLETO_EQUIPES,
   PTRBA_COMPLETO_FUNCOES,
+  PTRBA_COMPLETO_SITUACAO_DESCRICOES,
   PTRBA_COMPLETO_SITUACOES,
 } from '../../types/ptrbaCompleto';
 import type {
@@ -59,6 +60,9 @@ const EVIDENCIA_VAZIA: PTRBACompletoEvidencia = {
   imagem: '',
   descricao: '',
 };
+const SITUACOES_TOOLTIP = PTRBA_COMPLETO_SITUACOES
+  .map(situacao => `${situacao} = ${PTRBA_COMPLETO_SITUACAO_DESCRICOES[situacao] || situacao}`)
+  .join('\n');
 type CampoCompartilhadoEvidencia = Exclude<keyof PTRBACompletoEvidencia, 'imagem'>;
 type InstrucaoPTRNumero = 1 | 2 | 3;
 type InstrucaoPTRDaEscala = {
@@ -150,6 +154,7 @@ function situacaoInstrutor(numeros: InstrucaoPTRNumero[]): string {
   const unicos = Array.from(new Set(numeros)).sort((a, b) => a - b);
   if (unicos.length === 0) return 'P';
   if (unicos.length === 1) return `INSTR. ${unicos[0]}`;
+  if (unicos.length === 3) return 'INSTR. 1-2-3';
   if (unicos.includes(1) && unicos.includes(3)) return 'INSTR. 1-3';
   return `INSTR. ${unicos.join('-')}`;
 }
@@ -570,9 +575,22 @@ function PTRBACompletoForm({
               </div>
               <div>
                 <label className={label}>Situação</label>
-                <select value={participante.situacao} onChange={e => updateParticipante(index, 'situacao', e.target.value)} className={input}>
-                  <option value="">Selecione</option>
-                  {PTRBA_COMPLETO_SITUACOES.map(situacao => <option key={situacao} value={situacao}>{situacao}</option>)}
+                <select
+                  value={participante.situacao}
+                  onChange={e => updateParticipante(index, 'situacao', e.target.value)}
+                  className={input}
+                  title={SITUACOES_TOOLTIP}
+                >
+                  <option value="" title={SITUACOES_TOOLTIP}>Selecione</option>
+                  {PTRBA_COMPLETO_SITUACOES.map(situacao => (
+                    <option
+                      key={situacao}
+                      value={situacao}
+                      title={PTRBA_COMPLETO_SITUACAO_DESCRICOES[situacao] || situacao}
+                    >
+                      {situacao}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>

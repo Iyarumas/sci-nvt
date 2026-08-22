@@ -75,6 +75,7 @@ export function PreviewLRO() {
   }, [location.state]);
 
   const isSample = !location.state || Object.keys(location.state).length <= 3;
+  const podeExportar = dados._lroFinalizado === true || dados.status === 'finalizado' || dados.status === 'arquivado';
 
   const html = useMemo(() => montarHTML(dados), [dados]);
 
@@ -121,14 +122,16 @@ export function PreviewLRO() {
               )}
             </div>
           </div>
-           <div className="flex gap-3">
-            <button onClick={handleImprimir} className="flex items-center gap-2 rounded-xl border border-graphite-300 bg-white px-4 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
-              <Printer className="h-4 w-4" /> Imprimir
-            </button>
-            <button onClick={handleBaixarPDF} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
-              <Download className="h-4 w-4" /> Baixar PDF
-            </button>
-          </div>
+          {podeExportar && (
+            <div className="flex gap-3">
+              <button onClick={handleImprimir} className="flex items-center gap-2 rounded-xl border border-graphite-300 bg-white px-4 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                <Printer className="h-4 w-4" /> Imprimir
+              </button>
+              <button onClick={handleBaixarPDF} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
+                <Download className="h-4 w-4" /> Baixar PDF
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

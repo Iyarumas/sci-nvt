@@ -147,7 +147,7 @@ export default function Posicionamento() {
   }
 
   function canUsarPdf(registro: ExercicioPosicionamento) {
-    return registroAprovado(registro) || isAdminSistema;
+    return registroAprovado(registro);
   }
 
   function canAlterarRegistro(registro: ExercicioPosicionamento) {

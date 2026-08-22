@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { downloadPdf } from './pdfService';
 import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 import type { TreinamentoTempoResposta } from '../types/tempoResposta';
+import { nomeDocumentoOperacional } from '../utils/documentFileNames';
 
 const PAGE_W = 210;
 const M = 3;
@@ -25,21 +26,6 @@ function formatDate(value: string): string {
   const [year, month, day] = value.split('-');
   if (!year || !month || !day) return value;
   return `${day}/${month}/${year}`;
-}
-
-function formatFileDate(value: string): string {
-  if (!value) return 'sem-data';
-  const [year, month, day] = value.split('-');
-  if (!year || !month || !day) return value.replace(/\//g, '-');
-  return `${day}-${month}-${year}`;
-}
-
-function safeFilePart(value: string): string {
-  return (value || 'tempo-resposta')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
 }
 
 function upper(value: string): string {
@@ -315,7 +301,7 @@ export async function gerarTempoRespostaPdf(registro: TreinamentoTempoResposta):
   const logoDataUrl = await carregarMedGroupLogo();
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
-    title: `Tempo Resposta - ${registro.equipe} - ${formatDate(registro.data)}`,
+    title: nomeDocumentoOperacional(registro.data, 'TEMPO RESPOSTA', registro.equipe, ''),
     subject: 'Formulário para Aferição de Tempo Resposta',
     creator: 'SESCINC Manager',
   });
@@ -336,6 +322,6 @@ export async function gerarTempoRespostaPdf(registro: TreinamentoTempoResposta):
 
 export async function baixarTempoRespostaPdf(registro: TreinamentoTempoResposta): Promise<void> {
   const blob = await gerarTempoRespostaPdf(registro);
-  const nome = `${formatFileDate(registro.data)} NVT TEMPO RESPOSTA ${safeFilePart(upper(registro.equipe))}.pdf`;
+  const nome = nomeDocumentoOperacional(registro.data, 'TEMPO RESPOSTA', registro.equipe);
   downloadPdf(blob, nome);
 }

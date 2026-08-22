@@ -62,13 +62,15 @@ export function ReaCard({
             <p className="mt-3 text-sm text-graphite-700 dark:text-graphite-300">{rea.dados.descricaoEmergencia}</p>
           )}
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button
-              onClick={onDownload}
-              disabled={downloading}
-              className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50"
-            >
-              <Download className="h-3.5 w-3.5" /> {downloading ? 'Gerando...' : 'Download'}
-            </button>
+            {rea.status === 'Fechada' && (
+              <button
+                onClick={onDownload}
+                disabled={downloading}
+                className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50"
+              >
+                <Download className="h-3.5 w-3.5" /> {downloading ? 'Gerando...' : 'PDF'}
+              </button>
+            )}
             {canEdit && (
               <>
                 <button onClick={onEdit} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
@@ -85,4 +87,3 @@ export function ReaCard({
     </div>
   );
 }
-

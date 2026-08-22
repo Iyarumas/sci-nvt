@@ -12,7 +12,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { turnoAutoPorEquipe } from '../../types/bombeiro';
 import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorrencia } from '../../services/ocorrenciaService';
 import { atualizarRea, criarRea, excluirRea, listarReas, obterRea } from '../../services/reaService';
-import { gerarReaPdf } from '../../services/reaPdfService';
+import { gerarReaPdf, nomeArquivoReaPdf } from '../../services/reaPdfService';
 import { gerarBonaPdf } from '../../services/bonaPdfService';
 import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { downloadPdf } from '../../services/pdfService';
@@ -872,13 +872,15 @@ function OcorrenciaCard({
           {bonaDados.bombeiros.length > 0 && <p className="mb-1 text-xs text-graphite-500 dark:text-graphite-400"><strong>Bombeiros:</strong> {bonaDados.bombeiros.map(b => b.nome).filter(Boolean).join(', ')}</p>}
           {bonaDados.descricaoAtuacaoEquipe && <p className="mb-2 text-xs text-graphite-500 dark:text-graphite-400 whitespace-pre-wrap"><strong>Atuação:</strong> {bonaDados.descricaoAtuacaoEquipe}</p>}
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <button onClick={onPreviewDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
-              <Eye className="h-3.5 w-3.5" /> {processingPdf ? 'Gerando...' : 'Ver documento'}
-            </button>
             {isFechada && (
-              <button onClick={onPrintDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
-                <Printer className="h-3.5 w-3.5" /> Imprimir
-              </button>
+              <>
+                <button onClick={onPreviewDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
+                  <Eye className="h-3.5 w-3.5" /> {processingPdf ? 'Gerando...' : 'Ver documento'}
+                </button>
+                <button onClick={onPrintDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
+                  <Printer className="h-3.5 w-3.5" /> Imprimir
+                </button>
+              </>
             )}
             <button onClick={onView} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
               <FileText className="h-3.5 w-3.5" /> Dados
@@ -1122,8 +1124,12 @@ export function Ocorrencias() {
     try {
       const rea = await obterRea(id);
       if (!rea) throw new Error('REA nao encontrado.');
+      if (rea.status !== 'Fechada') {
+        alert('O PDF do REA fica disponível depois de finalizado.');
+        return;
+      }
       const pdf = await gerarReaPdf(rea);
-      downloadPdf(pdf, `${rea.numero.replace(/[^\w-]+/g, '_') || 'REA'}.pdf`);
+      downloadPdf(pdf, nomeArquivoReaPdf(rea));
     } finally {
       setDownloadingReaId(null);
     }
@@ -1135,6 +1141,10 @@ export function Ocorrencias() {
   }
 
   async function handlePreviewBona(ocorrencia: Ocorrencia) {
+    if (ocorrencia.status !== 'Fechada') {
+      alert('O documento BONA fica disponível depois de aprovado.');
+      return;
+    }
     setProcessingBonaPdfId(ocorrencia.id);
     try {
       closeBonaPreview();

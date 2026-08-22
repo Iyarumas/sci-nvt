@@ -43,7 +43,22 @@ export const PTRBA_COMPLETO_SITUACOES = [
   'INSTR. 1-2',
   'INSTR. 2-3',
   'INSTR. 1-3',
+  'INSTR. 1-2-3',
 ] as const;
+
+export const PTRBA_COMPLETO_SITUACAO_DESCRICOES: Record<string, string> = {
+  P: 'Presente',
+  A: 'Ausente',
+  EO: 'Equipe Operacional',
+  OC: 'Operador de Comunicações',
+  'INSTR. 1': 'Instrutor da instrução/evidência 1',
+  'INSTR. 2': 'Instrutor da instrução/evidência 2',
+  'INSTR. 3': 'Instrutor da instrução/evidência 3',
+  'INSTR. 1-2': 'Instrutor das instruções/evidências 1 e 2',
+  'INSTR. 2-3': 'Instrutor das instruções/evidências 2 e 3',
+  'INSTR. 1-3': 'Instrutor das instruções/evidências 1 e 3',
+  'INSTR. 1-2-3': 'Instrutor das instruções/evidências 1, 2 e 3',
+};
 
 export const PTRBA_COMPLETO_FUNCOES = ['BA-CE', 'BA-LR', 'BA-MC', 'BA-2', 'BA-RE', 'GS', 'OC', 'APOC'] as const;
 

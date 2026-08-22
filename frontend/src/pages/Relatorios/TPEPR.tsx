@@ -298,7 +298,7 @@ export function TPEPR() {
   }
 
   function canGerarPdf(registro: TreinamentoTPEPR) {
-    return isAdminSistema || registroAprovado(registro);
+    return registroAprovado(registro);
   }
 
   function resetForm() {
@@ -490,7 +490,7 @@ export function TPEPR() {
 
   async function handleDownload(registro: TreinamentoTPEPR) {
     if (!canGerarPdf(registro)) {
-      alert('Aprove este TP/EPR antes de gerar o PDF. Administradores e desenvolvedores podem gerar PDF sem aprovar.');
+      alert('Aprove este TP/EPR antes de gerar o PDF.');
       return;
     }
 
@@ -660,14 +660,16 @@ export function TPEPR() {
                     </button>
 
                     <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        onClick={() => handleDownload(registro)}
-                        disabled={downloadingId === registro.id || !podeGerarPdf}
-                        className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                        title={podeGerarPdf ? 'Baixar PDF' : 'Aprove o TP/EPR antes de gerar o PDF'}
-                      >
-                        <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando' : 'PDF'}
-                      </button>
+                      {podeGerarPdf && (
+                        <button
+                          onClick={() => handleDownload(registro)}
+                          disabled={downloadingId === registro.id}
+                          className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                          title="Baixar PDF"
+                        >
+                          <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando' : 'PDF'}
+                        </button>
+                      )}
                       {podeAlterar && (
                         <>
                         <button onClick={() => handleEditar(registro)} className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200" title="Editar">

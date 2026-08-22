@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import { toPng } from 'html-to-image';
 import { formatarDataBR } from '../utils/datas';
+import { nomeDocumentoOperacional } from '../utils/documentFileNames';
 
 function cb(checked: boolean) {
   const fill = checked ? '✓' : '';
@@ -169,7 +170,7 @@ ${substituicoesAtivas.map(s => `
   const frotaCombinada = frota.map(f => `${f.combIni || '—'}→${f.combFim || '—'}`).join(', ') || '';
 
   return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>${formatarDataBR(dataInicio, '')} NVT LRO ${equipeNome}</title>
+<html><head><meta charset="UTF-8"><title>${nomeDocumentoOperacional(dataInicio, 'LRO', equipeNome, '')}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   @page { size: A4; margin: 15mm 10mm; }

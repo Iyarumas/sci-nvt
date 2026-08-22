@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { downloadPdf } from './pdfService';
 import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 import type { ExercicioPosicionamento } from '../types/exercicioPosicionamento';
+import { nomeDocumentoOperacional } from '../utils/documentFileNames';
 
 const PAGE_W = 210;
 const M = 4;
@@ -27,21 +28,6 @@ function formatDate(value: string): string {
   const [year, month, day] = value.split('-');
   if (!year || !month || !day) return value;
   return `${day}/${month}/${year}`;
-}
-
-function formatFileDate(value: string): string {
-  if (!value) return 'sem-data';
-  const [year, month, day] = value.split('-');
-  if (!year || !month || !day) return value.replace(/\//g, '-');
-  return `${day}-${month}-${year}`;
-}
-
-function safeFilePart(value: string): string {
-  return (value || 'posicionamento')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
 }
 
 function upper(value: string): string {
@@ -297,7 +283,7 @@ export async function gerarExercicioPosicionamentoPdf(registro: ExercicioPosicio
   const logoDataUrl = await carregarMedGroupLogo();
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
-    title: `Exercício de Posicionamento - ${registro.equipe} - ${formatDate(registro.data)}`,
+    title: nomeDocumentoOperacional(registro.data, 'EXERCICIO DE POSICIONAMENTO', registro.equipe, ''),
     subject: 'Formulário para Aferição de Posicionamento para Intervenção',
     creator: 'SESCINC Manager',
   });
@@ -316,6 +302,6 @@ export async function gerarExercicioPosicionamentoPdf(registro: ExercicioPosicio
 
 export async function baixarExercicioPosicionamentoPdf(registro: ExercicioPosicionamento): Promise<void> {
   const blob = await gerarExercicioPosicionamentoPdf(registro);
-  const nome = `${formatFileDate(registro.data)} NVT EXERCICIO DE POSICIONAMENTO ${safeFilePart(upper(registro.equipe))}.pdf`;
+  const nome = nomeDocumentoOperacional(registro.data, 'EXERCICIO DE POSICIONAMENTO', registro.equipe);
   downloadPdf(blob, nome);
 }

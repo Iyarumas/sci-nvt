@@ -6,6 +6,7 @@ import {
   recursoReaKey,
 } from '../types/rea';
 import type { ReaRegistro } from '../types/rea';
+import { nomeDocumentoOcorrencia } from '../utils/documentFileNames';
 
 const TEMPLATE_URL = '/templates/rea-template.pdf';
 const TEXT_COLOR = rgb(0, 0, 0);
@@ -46,6 +47,10 @@ function formatDate(value: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const [year, month, day] = value.split('-');
   return `${day}/${month}/${year}`;
+}
+
+export function nomeArquivoReaPdf(rea: ReaRegistro): string {
+  return nomeDocumentoOcorrencia(rea.dataAcidente, 'REA', rea.numero, rea.equipe);
 }
 
 function isMarked(value: string | undefined): boolean {
@@ -328,6 +333,9 @@ export async function gerarReaPdf(rea: ReaRegistro): Promise<Blob> {
 
   const templateBytes = await response.arrayBuffer();
   const pdfDoc = await PDFDocument.load(templateBytes);
+  pdfDoc.setTitle(nomeArquivoReaPdf(rea).replace(/\.pdf$/i, ''));
+  pdfDoc.setSubject('Relatorio de Registro de Emergencias Aeronauticas');
+  pdfDoc.setCreator('SESCINC Manager');
   const pages = pdfDoc.getPages();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 

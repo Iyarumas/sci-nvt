@@ -159,7 +159,7 @@ export default function TempoResposta() {
   }
 
   function canUsarPdf(registro: TreinamentoTempoResposta) {
-    return registroAprovado(registro) || isAdminSistema;
+    return registroAprovado(registro);
   }
 
   function canAlterarRegistro(registro: TreinamentoTempoResposta) {

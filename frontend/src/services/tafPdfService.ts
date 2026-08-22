@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { downloadPdf } from './pdfService';
 import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 import type { TreinamentoTAF } from '../types/taf';
+import { nomeDocumentoOperacional } from '../utils/documentFileNames';
 
 const PAGE_W = 297;
 const M = 6;
@@ -36,23 +37,8 @@ function formatDate(value: string): string {
   return `${day}/${month}/${year}`;
 }
 
-function formatFileDate(value: string): string {
-  if (!value) return 'sem-data';
-  const [year, month, day] = value.split('-');
-  if (!year || !month || !day) return value.replace(/\//g, '-');
-  return `${day}-${month}-${year}`;
-}
-
 function upper(value: string): string {
   return (value || '').toLocaleUpperCase('pt-BR');
-}
-
-function safeFilePart(value: string): string {
-  return (value || 'TAF')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
 }
 
 function toLines(doc: jsPDF, text: string, maxWidth: number): string[] {
@@ -244,14 +230,14 @@ function drawAssinaturas(doc: jsPDF) {
 }
 
 export function nomeArquivoTAFPdf(registro: TreinamentoTAF): string {
-  return `${formatFileDate(registro.data)} NVT TAF ${safeFilePart(upper(registro.equipe))}.pdf`;
+  return nomeDocumentoOperacional(registro.data, 'TAF', registro.equipe);
 }
 
 export async function gerarTAFPdf(registro: TreinamentoTAF): Promise<Blob> {
   const logoDataUrl = await carregarMedGroupLogo();
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
-    title: `TAF - ${registro.equipe} - ${formatDate(registro.data)}`,
+    title: nomeArquivoTAFPdf(registro).replace(/\.pdf$/i, ''),
     subject: 'Teste de Aptidao Fisica',
     creator: 'SESCINC Manager',
   });

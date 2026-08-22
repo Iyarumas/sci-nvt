@@ -124,8 +124,9 @@ function drawEquipagemCell(doc: jsPDF, x: number, y: number, w: number, h: numbe
 }
 
 function drawLogo(doc: jsPDF, logoDataUrl: string | null, x: number, y: number, w: number, h: number) {
+  const sideInset = 0.3;
   drawCell(doc, x, y, w, h);
-  drawMedGroupLogo(doc, logoDataUrl, x, y, w, h, false);
+  drawMedGroupLogo(doc, logoDataUrl, x + sideInset, y, w - sideInset * 2, h, false);
   doc.setTextColor(0, 0, 0);
 }
 

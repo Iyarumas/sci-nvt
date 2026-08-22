@@ -2,17 +2,18 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Target,
   AlertTriangle, Users, Lock, Download, ChevronDown, ChevronUp,
-  CheckCircle2,
+  CheckCircle2, Eye,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
+import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarAtivos } from '../../services/bombeiroService';
 import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { listarTAFs, criarTAF, atualizarTAF, excluirTAF, obterProximoNumero } from '../../services/tafService';
-import { baixarTAFPdf } from '../../services/tafPdfService';
+import { baixarTAFPdf, gerarTAFPdf, nomeArquivoTAFPdf } from '../../services/tafPdfService';
 import type { TAFInput, TreinamentoTAF } from '../../types/taf';
 import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
@@ -172,6 +173,9 @@ export function TAF() {
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
+  const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [expandidoId, setExpandidoId] = useState<string | null>(null);
   const [opcoesParticipantes, setOpcoesParticipantes] = useState<AtivoItem[]>([]);
 
@@ -412,16 +416,39 @@ export function TAF() {
 
     try {
       setDownloadingId(registro.id);
-      const registroComNomesCompletos = { ...registro } as TreinamentoTAF;
-      pessoasDoRegistro(registro, bombeiros).forEach((pessoa, index) => {
-        (registroComNomesCompletos as any)[`p${index + 1}Nome`] = pessoa.nome;
-        (registroComNomesCompletos as any)[`p${index + 1}Idade`] = pessoa.idade;
-      });
-      await baixarTAFPdf(registroComNomesCompletos);
+      await baixarTAFPdf(prepararRegistroPdf(registro));
     } catch (err) {
       alert('Erro ao gerar PDF do TAF: ' + mensagemErro(err));
     } finally {
       setDownloadingId(null);
+    }
+  }
+
+  function prepararRegistroPdf(registro: TreinamentoTAF) {
+    const registroComNomesCompletos = { ...registro } as TreinamentoTAF;
+    pessoasDoRegistro(registro, bombeiros).forEach((pessoa, index) => {
+      (registroComNomesCompletos as any)[`p${index + 1}Nome`] = pessoa.nome;
+      (registroComNomesCompletos as any)[`p${index + 1}Idade`] = pessoa.idade;
+    });
+    return registroComNomesCompletos;
+  }
+
+  async function handlePreviewPdf(registro: TreinamentoTAF) {
+    if (!canGerarPdf(registro)) {
+      alert('Aprove este TAF antes de visualizar o PDF.');
+      return;
+    }
+
+    try {
+      setPreviewingId(registro.id);
+      const registroPdf = prepararRegistroPdf(registro);
+      const pdf = await gerarTAFPdf(registroPdf);
+      setPreviewPdfData(await pdf.arrayBuffer());
+      setPreviewPdfTitle(nomeArquivoTAFPdf(registroPdf).replace(/\.pdf$/i, ''));
+    } catch (err) {
+      alert('Erro ao visualizar PDF do TAF: ' + mensagemErro(err));
+    } finally {
+      setPreviewingId(null);
     }
   }
 
@@ -510,14 +537,24 @@ export function TAF() {
                 </button>
                 <div className="flex items-center gap-2 shrink-0">
                   {podeGerarPdf && (
-                    <button
-                      onClick={() => handleDownload(r)}
-                      disabled={downloadingId === r.id}
-                      className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                      title="Baixar PDF"
-                    >
-                      <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando' : 'PDF'}
-                    </button>
+                    <>
+                      <button
+                        onClick={() => void handlePreviewPdf(r)}
+                        disabled={previewingId === r.id}
+                        className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                        title="Ver documento"
+                      >
+                        <Eye className="h-4 w-4" /> {previewingId === r.id ? 'Gerando' : 'Ver documento'}
+                      </button>
+                      <button
+                        onClick={() => handleDownload(r)}
+                        disabled={downloadingId === r.id}
+                        className="flex items-center gap-1 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                        title="Baixar PDF"
+                      >
+                        <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando' : 'PDF'}
+                      </button>
+                    </>
                   )}
                   {podeAlterar && (
                     <>
@@ -677,6 +714,27 @@ export function TAF() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {previewPdfData && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-surface-card">
+          <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3 dark:border-border-dark">
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-bold text-graphite-900 dark:text-graphite-100">{previewPdfTitle || 'TAF'}</h3>
+              <p className="text-xs font-semibold text-graphite-500 dark:text-graphite-400">Visualização do documento</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setPreviewPdfData(null); setPreviewPdfTitle(''); }}
+              className="rounded-xl p-2 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto bg-graphite-100 p-4 dark:bg-graphite-950">
+            <PdfPreview pdfData={previewPdfData} fields={[]} />
           </div>
         </div>
       )}

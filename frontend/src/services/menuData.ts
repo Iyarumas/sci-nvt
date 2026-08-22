@@ -412,6 +412,13 @@ export const menuItems: MenuItem[] = [
         relatoriosOnly: true,
       },
       {
+        label: 'Substituições',
+        icon: ArrowLeftRight,
+        path: '/relatorios/substituicoes',
+        description: 'Relatório mensal de substituições, afastamentos e extras.',
+        relatoriosOnly: true,
+      },
+      {
         label: 'Trocas',
         icon: RefreshCw,
         path: '/relatorios/trocas',

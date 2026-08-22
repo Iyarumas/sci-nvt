@@ -67,7 +67,7 @@ function linhasLancamento(blocos: string[]): string {
 export function montarHTML(dados: Record<string, unknown>, showMarkers = false, isPdf = false): string {
   const e = (k: string, fallback = '') => String(dados[k] ?? fallback);
 
-  const logoUrl = e('logoUrl', '/LOGOLRO.jpeg');
+  const logoUrl = e('logoUrl', '/assets/med-group-logo.png');
   const equipeNome = e('equipeNome').toUpperCase();
   const dataInicio = e('dataInicio');
   const dataFim = e('dataFim');
@@ -198,7 +198,7 @@ ${substituicoesAtivas.map(s => `
   <table style="margin-bottom:3px;">
     <tr>
       <td rowspan="4" style="width:3cm; text-align:center; vertical-align:middle; padding:2px 2px;">
-        <img src="${logoUrl}" style="width:100%; height:auto; display:block; margin:0 auto;" alt="SCI NVT" />
+        <img src="${logoUrl}" style="width:100%; height:100%; max-height:2cm; object-fit:contain; display:block; margin:0 auto;" alt="med+ Group" />
       </td>
       <td style="width:70%; padding:2px 2px; text-align:center; vertical-align:middle;">
         <div style="font-size:8px; font-weight:bold;">FORMULÁRIO (FOR)</div>

@@ -8,6 +8,7 @@ import {
   Clock,
   ClipboardList,
   Download,
+  Eye,
   Lock,
   Pencil,
   Plus,
@@ -20,6 +21,7 @@ import {
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { SearchSelect } from '../../components/ui/SearchSelect';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarAtivos } from '../../services/bombeiroService';
@@ -31,7 +33,7 @@ import {
   listarTPEPRs,
   obterProximoNumeroTPEPR,
 } from '../../services/tpeprService';
-import { baixarTPEPRPdf } from '../../services/tpeprPdfService';
+import { baixarTPEPRPdf, gerarTPEPRPdf, nomeArquivoTPEPRPdf } from '../../services/tpeprPdfService';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import {
@@ -121,6 +123,9 @@ export function TPEPR() {
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
+  const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [erro, setErro] = useState('');
 
   const [fEquipe, setFEquipe] = useState('');
@@ -504,6 +509,24 @@ export function TPEPR() {
     }
   }
 
+  async function handlePreviewPdf(registro: TreinamentoTPEPR) {
+    if (!canGerarPdf(registro)) {
+      alert('Aprove este TP/EPR antes de visualizar o PDF.');
+      return;
+    }
+
+    try {
+      setPreviewingId(registro.id);
+      const pdf = await gerarTPEPRPdf(registro);
+      setPreviewPdfData(await pdf.arrayBuffer());
+      setPreviewPdfTitle(nomeArquivoTPEPRPdf(registro).replace(/\.pdf$/i, ''));
+    } catch (err) {
+      alert('Erro ao visualizar PDF: ' + mensagemErro(err));
+    } finally {
+      setPreviewingId(null);
+    }
+  }
+
   function renderParticipanteLinha(index: number) {
     const slot = TPEPR_PARTICIPANTE_SLOTS[index];
     const participante = fParticipantes[index] || criarParticipantesTPEPRVazios()[index];
@@ -661,14 +684,24 @@ export function TPEPR() {
 
                     <div className="flex shrink-0 items-center gap-2">
                       {podeGerarPdf && (
-                        <button
-                          onClick={() => handleDownload(registro)}
-                          disabled={downloadingId === registro.id}
-                          className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                          title="Baixar PDF"
-                        >
-                          <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando' : 'PDF'}
-                        </button>
+                        <>
+                          <button
+                            onClick={() => void handlePreviewPdf(registro)}
+                            disabled={previewingId === registro.id}
+                            className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                            title="Ver documento"
+                          >
+                            <Eye className="h-4 w-4" /> {previewingId === registro.id ? 'Gerando' : 'Ver documento'}
+                          </button>
+                          <button
+                            onClick={() => handleDownload(registro)}
+                            disabled={downloadingId === registro.id}
+                            className="flex items-center gap-1 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                            title="Baixar PDF"
+                          >
+                            <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando' : 'PDF'}
+                          </button>
+                        </>
                       )}
                       {podeAlterar && (
                         <>
@@ -825,6 +858,27 @@ export function TPEPR() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {previewPdfData && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-surface-card">
+          <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3 dark:border-border-dark">
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-bold text-graphite-900 dark:text-graphite-100">{previewPdfTitle || 'TP/EPR'}</h3>
+              <p className="text-xs font-semibold text-graphite-500 dark:text-graphite-400">Visualização do documento</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setPreviewPdfData(null); setPreviewPdfTitle(''); }}
+              className="rounded-xl p-2 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto bg-graphite-100 p-4 dark:bg-graphite-950">
+            <PdfPreview pdfData={previewPdfData} fields={[]} />
           </div>
         </div>
       )}

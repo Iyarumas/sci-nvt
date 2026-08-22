@@ -4,7 +4,7 @@ import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { montarHTML } from '../../services/lroGenerator';
 
 const SAMPLE_DATA: Record<string, unknown> = {
-  logoUrl: '/LOGOLRO.jpeg',
+  logoUrl: '/assets/med-group-logo.png',
   equipeNome: 'Alfa',
   dataInicio: '2026-07-15',
   dataFim: '2026-07-16',

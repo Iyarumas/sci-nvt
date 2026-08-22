@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileBarChart, FileSpreadsheet, FileCheck, FileText, ClipboardList,
-  Activity, Target, Award, ArrowRight, TrendingUp, Lock,
+  Activity, Target, Award, ArrowRight, ArrowLeftRight, TrendingUp, Lock,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -79,6 +79,12 @@ export function Relatorios() {
       description: 'Gerenciamento de ordens de serviço e solicitações',
       icon: ClipboardList, path: '/relatorios/ordem-servico', color: 'from-cyan-500 to-cyan-700',
       stats: [{ label: 'Abertas', value: '—' }, { label: 'Concluídas', value: '—' }],
+    },
+    {
+      title: 'Substituições',
+      description: 'Relatório mensal de substituições, afastamentos e extras',
+      icon: ArrowLeftRight, path: '/relatorios/substituicoes', color: 'from-indigo-500 to-indigo-700',
+      stats: [{ label: 'Mensal', value: '✓' }, { label: 'Impressão', value: '✓' }],
     },
     {
       title: 'Trocas de Serviço',

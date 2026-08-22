@@ -53,9 +53,9 @@ export function drawMedGroupLogo(
     return;
   }
 
-  const logoRatio = 151 / 68;
-  const paddingX = withBorder ? 4 : 1;
-  const paddingY = withBorder ? 3 : 1;
+  const logoRatio = 325 / 156;
+  const paddingX = withBorder ? 0.8 : 0;
+  const paddingY = withBorder ? 0.6 : 0;
   const maxW = Math.max(1, w - paddingX * 2);
   const maxH = Math.max(1, h - paddingY * 2);
   const drawW = Math.min(maxW, maxH * logoRatio);

@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   RefreshCw, Plus, ArrowLeft, FileText, Loader2,
-  Save, ChevronDown, ChevronUp, Filter,
+  Save, ChevronDown, ChevronUp, Filter, Printer,
   AlertTriangle, AlertCircle, Edit, Trash2, Eye, CheckCircle, X, ArrowRight, Archive, Lock,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { Autocomplete } from '../../components/documentos/Autocomplete';
+import { PdfPreview } from '../../components/documentos/PdfPreview';
 import {
   listarDocumentos, buscarDocumento, criarDocumento,
   criarCamposEmLote, criarSignatario,
@@ -52,30 +53,23 @@ function pdfPosition(xMm: number, yMm: number, widthMm: number, heightMm: number
   };
 }
 
-function abrirPdfNomeado(pdfBlob: Blob, nomeArquivo: string) {
-  const namedBlob = new File([pdfBlob], nomeArquivo, { type: 'application/pdf' });
-  const url = URL.createObjectURL(namedBlob);
-  window.open(url, '_blank');
-  return url;
-}
-
 const TROCA_PDF_POSITION_OVERRIDES = new Map<string, ReturnType<typeof pdfPosition>>([
   ['nome_solicitante', pdfPosition(18, 31.4, 101, 7, 11)],
-  ['cpf_solicitante', pdfPosition(158, 31.4, 36, 7, 10.5)],
-  ['data_solicitada', pdfPosition(118, 40, 42, 7, 10.5)],
-  ['funcao_solicitante', pdfPosition(114, 48.6, 44, 7, 11)],
+  ['cpf_solicitante', pdfPosition(149, 32.1, 52, 7, 10.5, 'center')],
+  ['data_solicitada', pdfPosition(111, 40, 50, 7, 10.5, 'center')],
+  ['funcao_solicitante', pdfPosition(111, 48.6, 48, 7, 11, 'center')],
   ['motivo_troca', pdfPosition(10, 57.7, 180, 14.5, 10.5)],
   ['nome_solicitado', pdfPosition(10, 82.5, 93, 7, 11)],
-  ['cpf_solicitado', pdfPosition(120, 82.5, 57, 7, 10.5)],
-  ['data_folga_solicitado', pdfPosition(152.5, 99.45, 36, 7, 10.5)],
-  ['check_troca_sim', pdfPosition(49.1, 220.6, 4, 4, 16)],
-  ['check_troca_nao', pdfPosition(72.8, 220.6, 4, 4, 16)],
-  ['justificativa_emergencial', pdfPosition(12, 235, 182, 15, 10.5)],
+  ['cpf_solicitado', pdfPosition(123, 82.65, 54, 7, 10.5, 'center')],
+  ['data_folga_solicitado', pdfPosition(144, 99.8, 49, 7, 10.5, 'center')],
+  ['check_troca_sim', pdfPosition(49.1, 225.3, 3.3, 3.3, 16)],
+  ['check_troca_nao', pdfPosition(72.8, 225.3, 3.3, 3.3, 16)],
+  ['justificativa_emergencial', pdfPosition(74, 232.1, 113, 7, 10.5)],
   ['data_autentique_1', pdfPosition(42, 153.1, 30, 7, 10.5)],
   ['data_autentique_2', pdfPosition(141, 153.1, 30, 7, 10.5)],
   ['data_autentique_3', pdfPosition(76, 240, 30, 7, 10.5)],
-  ['check_deferido', pdfPosition(11.9, 250.6, 4, 4, 16)],
-  ['check_indeferido', pdfPosition(11.9, 256.7, 4, 4, 16)],
+  ['check_deferido', pdfPosition(11.9, 255.8, 3.3, 3.3, 16)],
+  ['check_indeferido', pdfPosition(11.9, 261.9, 3.3, 3.3, 16)],
   ['assinatura_solicitante', pdfPosition(22, 147, 65, 5)],
   ['assinatura_solicitado', pdfPosition(117, 147, 65, 5)],
   ['assinatura_chefe_solicitante', pdfPosition(22, 188, 65, 5)],
@@ -89,9 +83,31 @@ const CHECK_FIELD_OVERRIDES = new Map<string, { font_size: number; width: number
     .map(f => [f.field_name, { font_size: f.font_size, width: f.width, height: f.height }])
 );
 
-type TrocaPdfExtraPosition = ReturnType<typeof pdfPosition> & { field_name: string };
+type TrocaPdfExtraPosition = ReturnType<typeof pdfPosition> & {
+  field_name: string;
+  field_type?: string;
+  image_padding?: number;
+  image_border?: boolean;
+  checkbox_mode?: 'mark-only' | 'clean-box';
+};
 
-const TROCA_PDF_EXTRA_POSITIONS: TrocaPdfExtraPosition[] = [];
+const TROCA_PDF_EXTRA_POSITIONS: TrocaPdfExtraPosition[] = [
+  {
+    ...pdfPosition(6.8, 8.7, 34.2, 17.2),
+    field_name: 'logo_med_group',
+    field_type: 'image',
+    image_padding: 1.3,
+    image_border: false,
+  },
+  {
+    ...pdfPosition(152.7, 99.8, 4, 7, 10.5),
+    field_name: 'data_folga_prefixo_a',
+  },
+  {
+    ...pdfPosition(114.3, 82.65, 10, 7, 10.5),
+    field_name: 'cpf_solicitado_prefixo',
+  },
+];
 
 function fieldPositionsFromDoc(doc: DocumentWithFields) {
   const fields = doc.document_fields.map(f => {
@@ -99,7 +115,7 @@ function fieldPositionsFromDoc(doc: DocumentWithFields) {
     const field = fallback
       ? { ...f, ...fallback }
       : f;
-    const override = CHECK_FIELD_OVERRIDES.get(f.field_name);
+    const override = fallback ? undefined : CHECK_FIELD_OVERRIDES.get(f.field_name);
     return {
       field_name: field.field_name,
       x: field.x,
@@ -111,6 +127,7 @@ function fieldPositionsFromDoc(doc: DocumentWithFields) {
       field_type: field.field_type,
       page: field.page,
       text_align: fallback?.text_align,
+      checkbox_mode: field.field_name.startsWith('check_') ? 'clean-box' as const : undefined,
     };
   });
   return [...fields, ...TROCA_PDF_EXTRA_POSITIONS];
@@ -163,6 +180,7 @@ function normalizeTrocaDocument(doc: DocumentWithFields | null): DocumentWithFie
 
 async function getTrocaPdfBlob(doc: DocumentWithFields): Promise<Blob | null> {
   const primaryPath = doc.template_pdf_url || TROCA_TEMPLATE_PDF_URL;
+  if (!primaryPath.startsWith('/')) return getPdfBlob(TROCA_TEMPLATE_PDF_URL);
   const primaryBlob = await getPdfBlob(primaryPath);
   if (primaryBlob || primaryPath === TROCA_TEMPLATE_PDF_URL) return primaryBlob;
   return getPdfBlob(TROCA_TEMPLATE_PDF_URL);
@@ -215,6 +233,9 @@ export function Trocas() {
   const [showPreviewInfo, setShowPreviewInfo] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState('');
+  const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
+  const [previewPdfName, setPreviewPdfName] = useState('');
+  const [previewAllowDownload, setPreviewAllowDownload] = useState(false);
   const [showAutorizacaoAviso, setShowAutorizacaoAviso] = useState(false);
   const [bombeirosList, setBombeirosList] = useState<Bombeiro[]>([]);
   const [apocsList, setApocsList] = useState<APOC[]>([]);
@@ -226,6 +247,123 @@ export function Trocas() {
   const FIELD_LABEL_OVERRIDES: Record<string, string> = {
     deferido_indeferido: 'Parecer do Embaixador',
   };
+
+  function closePdfPreview() {
+    if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
+    setShowPdfPreview(false);
+    setPreviewPdfUrl('');
+    setPreviewPdfData(null);
+    setPreviewPdfName('');
+    setPreviewAllowDownload(false);
+  }
+
+  function abrirPdfPreview(pdfBlob: Blob, nomeArquivo: string, allowDownload: boolean) {
+    if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
+    const url = URL.createObjectURL(pdfBlob);
+    setPreviewPdfUrl(url);
+    pdfBlob.arrayBuffer().then(setPreviewPdfData).catch(() => setPreviewPdfData(null));
+    setPreviewPdfName(nomeArquivo);
+    setPreviewAllowDownload(allowDownload);
+    setShowPdfPreview(true);
+  }
+
+  async function getDocumentForFill(fill: DocumentFill): Promise<DocumentWithFields | null> {
+    if (templateDoc?.id === fill.document_id) return templateDoc;
+    try {
+      const full = await buscarDocumento(fill.document_id);
+      const normalized = normalizeTrocaDocument(full);
+      if (normalized) setTemplateDoc(normalized);
+      return normalized;
+    } catch {
+      return templateDoc || null;
+    }
+  }
+
+  function baixarPreviewPdf() {
+    if (!previewPdfUrl || !previewPdfName) return;
+    const link = document.createElement('a');
+    link.href = previewPdfUrl;
+    link.download = previewPdfName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function imprimirPreviewPdf() {
+    if (!previewPdfUrl) return;
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.src = previewPdfUrl;
+    document.body.appendChild(iframe);
+    iframe.onload = () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      window.setTimeout(() => iframe.remove(), 1000);
+    };
+  }
+
+  function renderPdfPreviewModal() {
+    if (!showPdfPreview) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-graphite-100 dark:bg-graphite-900">
+        <div className="sticky top-0 z-40 border-b border-graphite-200 bg-white/95 backdrop-blur dark:border-border-dark dark:bg-surface-card/95">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
+            <div className="min-w-0">
+              <button onClick={closePdfPreview} className="mb-1 flex items-center gap-1 text-sm text-graphite-500 hover:text-graphite-700 dark:hover:text-graphite-300">
+                <ArrowLeft className="h-4 w-4" /> Voltar
+              </button>
+              <h2 className="truncate text-lg font-semibold text-graphite-900 dark:text-graphite-100">Visualizar Documento</h2>
+              {previewPdfName && (
+                <p className="truncate text-xs font-medium text-graphite-500 dark:text-graphite-400">{previewPdfName}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {previewAllowDownload && (
+                <>
+                  <button
+                    type="button"
+                    onClick={imprimirPreviewPdf}
+                    disabled={!previewPdfUrl}
+                    className="flex items-center gap-2 rounded-xl border border-graphite-300 bg-white px-4 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200"
+                  >
+                    <Printer className="h-4 w-4" /> Imprimir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={baixarPreviewPdf}
+                    disabled={!previewPdfUrl}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-50"
+                  >
+                    <FileText className="h-4 w-4" /> Baixar PDF
+                  </button>
+                </>
+              )}
+              <button onClick={closePdfPreview}
+                className="rounded-xl border border-graphite-200 p-2 text-graphite-600 hover:bg-graphite-50 dark:border-graphite-600 dark:text-graphite-300 dark:hover:bg-graphite-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-1 justify-center overflow-auto bg-graphite-100 px-4 py-8 dark:bg-graphite-900">
+          <div className="w-full max-w-[960px]">
+            {previewPdfData ? (
+              <PdfPreview pdfData={previewPdfData} fields={[]} />
+            ) : (
+              <div className="flex h-[70vh] items-center justify-center rounded-2xl bg-white text-sm text-graphite-500 shadow-2xl dark:bg-surface-card">
+                Carregando documento...
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const displayFields = useMemo(() => {
     const base = templateDoc ? templateDoc.document_fields : templateFieldsToDocFields(template.fields);
@@ -479,7 +617,7 @@ export function Trocas() {
     if (!key) return null;
     return {
       key,
-      label: [cargo, nomeCompleto].filter(Boolean).join(' '),
+      label: [cargo, nomeGuerra].filter(Boolean).join(' '),
     };
   }
 
@@ -558,10 +696,17 @@ export function Trocas() {
     return equipes.some(eq => canManageEquipe(eq));
   }
 
-  function displayNomeGuerra(nome: string): string {
+  function displayNomeTroca(nome: string): string {
     const p = getPessoaByNome(nome);
-    if (!p) return nome || 'Sem nome';
-    return `${p.cargo} ${p.nomeGuerra}`;
+    return p?.nomeCompleto || nome || 'Sem nome';
+  }
+
+  function nomeArquivoTroca(data: Record<string, string>): string {
+    return nomeArquivoTrocaServicoPdf({
+      ...data,
+      nome_solicitante: getPessoaByNome(data.nome_solicitante || '')?.nomeGuerra || data.nome_solicitante || '',
+      nome_solicitado: getPessoaByNome(data.nome_solicitado || '')?.nomeGuerra || data.nome_solicitado || '',
+    });
   }
 
   function mesmoTurnoEfetivo(p1: { turno: string; equipe: string }, p2: { turno: string; equipe: string }): boolean {
@@ -691,9 +836,10 @@ export function Trocas() {
 
     if (dadosStr.data_folga_solicitado) {
       const dateValue = dadosStr.data_folga_solicitado;
-      const formattedDate = formatarDataBR(dateValue, dateValue);
-      dadosStr.data_folga_solicitado = `a ${formattedDate}`;
+      dadosStr.data_folga_solicitado = formatarDataBR(dateValue, dateValue);
     }
+    dadosStr.cpf_solicitado_prefixo = dadosStr.cpf_solicitado ? 'nº:' : '';
+    dadosStr.data_folga_prefixo_a = dadosStr.data_folga_solicitado ? 'a' : '';
 
     dadosStr.check_troca_sim = data.troca_emergencial === 'SIM' ? 'V' : '';
     dadosStr.check_troca_nao = data.troca_emergencial === 'NAO' ? 'V' : '';
@@ -702,6 +848,7 @@ export function Trocas() {
       : '';
     dadosStr.check_deferido = 'V';
     dadosStr.check_indeferido = '';
+    dadosStr.logo_med_group = '/assets/med-group-logo.png';
 
     return dadosStr;
   }
@@ -756,7 +903,7 @@ export function Trocas() {
         });
       }
 
-      abrirPdfNomeado(pdfBlob, nomeArquivoTrocaServicoPdf(dadosAprovados));
+      abrirPdfPreview(pdfBlob, nomeArquivoTroca(dadosAprovados), true);
 
       const docFills = await listarPreenchimentos(doc.id);
       setFills(docFills);
@@ -791,9 +938,7 @@ export function Trocas() {
       const pdfBytes = await blob.arrayBuffer();
       const dadosStr = buildPdfData(formData);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
-      const url = URL.createObjectURL(pdfBlob);
-      setPreviewPdfUrl(url);
-      setShowPdfPreview(true);
+      abrirPdfPreview(pdfBlob, 'PRE-VISUALIZACAO TROCA DE SERVICO.pdf', false);
     } catch (err) {
       console.error('Erro ao gerar visualizacao:', err);
       setShowNotifPopup({ msg: 'Erro ao gerar visualizacao. Contate o administrador.', type: 'error' });
@@ -816,17 +961,37 @@ export function Trocas() {
   }
 
   async function handleVisualizarPdf(fill: DocumentFill) {
-    if (!templateDoc) return;
+    if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
+    setPreviewPdfUrl('');
+    setPreviewPdfData(null);
+    setPreviewPdfName('Gerando documento...');
+    setPreviewAllowDownload(false);
+    setShowPdfPreview(true);
     try {
-      const blob = await getTrocaPdfBlob(templateDoc);
-      if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
+      setSaving(true);
+      const doc = await getDocumentForFill(fill);
+      if (!doc) {
+        closePdfPreview();
+        setShowNotifPopup({ msg: 'Documento da troca não encontrado.', type: 'error' });
+        return;
+      }
+      const blob = await getTrocaPdfBlob(doc);
+      if (!blob) {
+        closePdfPreview();
+        setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' });
+        return;
+      }
       const pdfBytes = await blob.arrayBuffer();
       const data = fill.filled_data as Record<string, string>;
       const dadosStr = buildPdfData(data);
-      const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(templateDoc));
-      abrirPdfNomeado(pdfBlob, nomeArquivoTrocaServicoPdf(data));
-    } catch {
+      const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
+      abrirPdfPreview(pdfBlob, nomeArquivoTroca(data), fill.status === 'signed');
+    } catch (err) {
+      closePdfPreview();
+      console.error('Erro ao visualizar PDF:', err);
       setShowNotifPopup({ msg: 'Erro ao visualizar PDF.', type: 'error' });
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -864,6 +1029,7 @@ export function Trocas() {
       setShowNotifPopup({ msg: 'Você só pode editar trocas vinculadas à sua equipe efetiva.', type: 'error' });
       return;
     }
+    closePdfPreview();
     const data = fill.filled_data as Record<string, string>;
     const initialData: Record<string, string> = {};
     displayFields.forEach(f => { initialData[f.field_name] = data[f.field_name] || ''; });
@@ -1279,22 +1445,7 @@ export function Trocas() {
           </div>
         )}
 
-        {showPdfPreview && previewPdfUrl && (
-          <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-graphite-900">
-            <div className="flex items-center justify-between border-b border-graphite-200 px-6 py-3 dark:border-graphite-700">
-              <h2 className="text-lg font-semibold text-graphite-900 dark:text-graphite-100">
-                Visualizar Documento
-              </h2>
-              <button onClick={() => { setShowPdfPreview(false); URL.revokeObjectURL(previewPdfUrl); setPreviewPdfUrl(''); }}
-                className="rounded-lg border border-graphite-200 p-2 text-graphite-600 hover:bg-graphite-50 dark:border-graphite-600 dark:text-graphite-300 dark:hover:bg-graphite-700">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="flex-1 bg-graphite-100 dark:bg-graphite-800">
-              <iframe src={previewPdfUrl} className="h-full w-full" />
-            </div>
-          </div>
-        )}
+        {renderPdfPreviewModal()}
 
         {showValidationPopup && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowValidationPopup(null)}>
@@ -1658,38 +1809,36 @@ export function Trocas() {
               dotLabel = 'Cancelado';
             }
 
-            const displaySol = displayNomeGuerra(nomeSol);
-            const displaySolic = displayNomeGuerra(nomeSolic);
+            const displaySol = displayNomeTroca(nomeSol);
+            const displaySolic = displayNomeTroca(nomeSolic);
             const cargoSolAbr = pessoaSol?.cargo || (data.funcao_solicitante || '').split(' - ')[0] || '';
             const cargoSolicAbr = pessoaSolic?.cargo || (data.funcao_solicitado || '').split(' - ')[0] || '';
-            const cargoSolBadge = getCargoLabel(cargoSolAbr);
-            const cargoSolicBadge = getCargoLabel(cargoSolicAbr);
             const turnoSol = pessoaSol?.turno || bombeirosList.find((b: any) => nomeSol.includes(b.nomeGuerra))?.turno || '';
             const turnoSolic = pessoaSolic?.turno || bombeirosList.find((b: any) => nomeSolic.includes(b.nomeGuerra))?.turno || '';
             const isFerista = pessoaSol?.equipe === 'Ferista' || pessoaSolic?.equipe === 'Ferista' || bombeirosList.some((b: any) => (nomeSol.includes(b.nomeGuerra) || nomeSolic.includes(b.nomeGuerra)) && b.equipe === 'Ferista');
             const turnosDiferentes = !isFerista && turnoSol && turnoSolic && turnoSol !== turnoSolic;
             const funcoesDiferentes = cargoSolAbr && cargoSolicAbr && cargoSolAbr !== cargoSolicAbr;
 
+            const cardClass = isExcessoLimite || data.troca_emergencial === 'SIM'
+              ? 'rounded-xl border border-red-500 bg-white ring-1 ring-red-300 dark:border-red-500 dark:bg-graphite-800 dark:ring-red-600'
+              : turnosDiferentes
+                ? 'rounded-xl border border-orange-400 bg-white ring-1 ring-orange-200 dark:border-orange-500 dark:bg-graphite-800 dark:ring-orange-800/40'
+                : funcoesDiferentes
+                  ? 'rounded-xl border border-amber-400 bg-white ring-1 ring-amber-200 dark:border-amber-500 dark:bg-graphite-800 dark:ring-amber-800/40'
+                  : 'rounded-xl border border-graphite-200 bg-white dark:border-graphite-600 dark:bg-graphite-800';
+
             return (
-              <div key={fill.id} className={`rounded-xl border bg-white dark:bg-graphite-800 ${
-                isExcessoLimite
-                  ? 'border-red-500 ring-1 ring-red-300 dark:border-red-500 dark:ring-red-600'
-                  : turnosDiferentes
-                    ? 'border-orange-400 ring-1 ring-orange-200 dark:border-orange-500 dark:ring-orange-800/40'
-                    : funcoesDiferentes
-                      ? 'border-amber-400 ring-1 ring-amber-200 dark:border-amber-500 dark:ring-amber-800/40'
-                      : 'border-graphite-200 dark:border-graphite-600'
-              }`}>
+              <div key={fill.id} className={cardClass}>
                 <div className="flex items-center justify-between p-4">
                   <button onClick={() => setExpandedFill(isExpanded ? null : fill.id)} className="flex flex-1 items-center gap-3 text-left">
                     <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${dotColor}`} title={dotLabel} />
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-graphite-900 dark:text-graphite-100 flex items-center gap-1.5 flex-wrap">
                         <span className="rounded-md bg-aviation-100 px-1.5 py-0.5 text-[9px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{cargoSolAbr || '—'}</span>
-                        <span>{pessoaSol?.nomeCompleto || nomeSol}</span>
+                        <span>{displaySol}</span>
                         <span className="text-graphite-400 text-xs">{'\u2192'}</span>
                         <span className="rounded-md bg-aviation-100 px-1.5 py-0.5 text-[9px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{cargoSolicAbr || '—'}</span>
-                        <span>{pessoaSolic?.nomeCompleto || nomeSolic}</span>
+                        <span>{displaySolic}</span>
                         {isExcessoLimite && <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400"><AlertTriangle className="h-2.5 w-2.5" /> LIMITE</span>}
                         {data.troca_emergencial === 'SIM' && <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400"><AlertTriangle className="h-2.5 w-2.5" /> EMERG.</span>}
                         {turnosDiferentes && <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"><AlertTriangle className="h-2.5 w-2.5" /> TURNOS</span>}
@@ -1718,26 +1867,29 @@ export function Trocas() {
                         Exclui em: {formatCountdown(draftCountdowns[fill.id])}
                       </span>
                     )}
-                    <button onClick={() => setExpandedFill(isExpanded ? null : fill.id)} className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-graphite-700">
+                    <button onClick={(event) => { event.stopPropagation(); setExpandedFill(isExpanded ? null : fill.id); }} className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-graphite-700">
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     {canManageFill(fill) && fill.status === 'draft' && (
-                      <button onClick={() => handleEditFill(fill)} title="Editar" className="rounded p-1 text-graphite-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
+                      <button onClick={(event) => { event.stopPropagation(); handleEditFill(fill); }} title="Editar" className="rounded p-1 text-graphite-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
                         <Edit className="h-4 w-4" />
                       </button>
                     )}
-                    {templateDoc && (
-                      <button onClick={() => handleVisualizarPdf(fill)} title="Visualizar PDF" className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-aviation-600 dark:hover:bg-graphite-700 dark:hover:text-aviation-400">
-                        <Eye className="h-4 w-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={(event) => { event.stopPropagation(); handleVisualizarPdf(fill); }}
+                      disabled={saving}
+                      title="Visualizar PDF"
+                      className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-aviation-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-graphite-700 dark:hover:text-aviation-400"
+                    >
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    </button>
                     {canManageFill(fill) && (
-                      <button onClick={() => setArchiveConfirmFill(fill)} title="Arquivar" className="rounded p-1 text-graphite-400 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400">
+                      <button onClick={(event) => { event.stopPropagation(); setArchiveConfirmFill(fill); }} title="Arquivar" className="rounded p-1 text-graphite-400 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400">
                         <Archive className="h-4 w-4" />
                       </button>
                     )}
                     {canManageFill(fill) && (
-                      <button onClick={() => handleDeleteFill(fill.id)} title="Excluir" className="rounded p-1 text-graphite-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400">
+                      <button onClick={(event) => { event.stopPropagation(); handleDeleteFill(fill.id); }} title="Excluir" className="rounded p-1 text-graphite-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
@@ -1785,7 +1937,7 @@ export function Trocas() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Solicitante</span>
                         <div className="mt-1 flex items-center gap-2">
                           <span className="rounded-md bg-aviation-100 px-2 py-0.5 text-[10px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{cargoSolAbr || '—'}</span>
-                          <span className="text-sm font-bold uppercase text-graphite-900 dark:text-graphite-100">{pessoaSol?.nomeCompleto || nomeSol || '—'}</span>
+                          <span className="text-sm font-bold uppercase text-graphite-900 dark:text-graphite-100">{displaySol || '—'}</span>
                         </div>
                         <p className="mt-1 text-xs text-graphite-500">{pessoaSol?.equipe ? `Equipe ${pessoaSol.equipe}` : (() => { const b = bombeirosList.find((x: any) => nomeSol.includes(x.nomeGuerra)); return b?.equipe ? `Equipe ${b.equipe}` : ''; })()}</p>
                         <p className="mt-1.5 text-[10px] text-graphite-400">Vai tirar o plantão como: <span className="font-semibold text-graphite-700 dark:text-graphite-300">{cargoSolicAbr || '—'}</span></p>
@@ -1794,7 +1946,7 @@ export function Trocas() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Solicitado</span>
                         <div className="mt-1 flex items-center gap-2">
                           <span className="rounded-md bg-aviation-100 px-2 py-0.5 text-[10px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{cargoSolicAbr || '—'}</span>
-                          <span className="text-sm font-bold uppercase text-graphite-900 dark:text-graphite-100">{pessoaSolic?.nomeCompleto || nomeSolic || '—'}</span>
+                          <span className="text-sm font-bold uppercase text-graphite-900 dark:text-graphite-100">{displaySolic || '—'}</span>
                         </div>
                         <p className="mt-1 text-xs text-graphite-500">{pessoaSolic?.equipe ? `Equipe ${pessoaSolic.equipe}` : (() => { const b = bombeirosList.find((x: any) => nomeSolic.includes(x.nomeGuerra)); return b?.equipe ? `Equipe ${b.equipe}` : ''; })()}</p>
                         <p className="mt-1.5 text-[10px] text-graphite-400">Vai tirar o plantão como: <span className="font-semibold text-graphite-700 dark:text-graphite-300">{cargoSolAbr || '—'}</span></p>
@@ -1862,6 +2014,8 @@ export function Trocas() {
           })}
         </div>
       )}
+
+      {renderPdfPreviewModal()}
 
       {showJustificativaPopup && (() => {
         const fill = filteredFills.find(f => f.id === showJustificativaPopup);

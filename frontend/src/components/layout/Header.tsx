@@ -246,6 +246,7 @@ function getPageTitle(pathname: string): string {
     'relatorios/exercicios/taf': 'TAF',
     'relatorios/exercicios/tp-epr': 'TP/EPR',
     'relatorios/ordem-servico': 'Ordem de Serviço',
+    'relatorios/substituicoes': 'Substituições',
     'relatorios/trocas': 'Trocas',
     'registros-diarios/ptr-ba': 'PTR-BA por Instrução',
     'registros-diarios/ptr-ba-completo': 'PTR-BA Completo',

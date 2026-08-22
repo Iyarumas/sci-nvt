@@ -192,8 +192,11 @@ export async function gerarTPEPRPdf(registro: TreinamentoTPEPR): Promise<Blob> {
   return doc.output('blob');
 }
 
+export function nomeArquivoTPEPRPdf(registro: TreinamentoTPEPR): string {
+  return nomeDocumentoOperacional(registro.data, 'TP EPR', registro.equipe);
+}
+
 export async function baixarTPEPRPdf(registro: TreinamentoTPEPR): Promise<void> {
   const blob = await gerarTPEPRPdf(registro);
-  const nome = nomeDocumentoOperacional(registro.data, 'TP EPR', registro.equipe);
-  downloadPdf(blob, nome);
+  downloadPdf(blob, nomeArquivoTPEPRPdf(registro));
 }

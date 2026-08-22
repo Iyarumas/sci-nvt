@@ -231,6 +231,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | `/relatorios/exercicios` | Exercícios | Relatório de exercícios gerais |
 | `/relatorios/exercicios/taf` | TAF | Relatório de TAF |
 | `/relatorios/exercicios/tp-epr` | TP/EPR | Relatório de TP/EPR |
+| `/relatorios/substituicoes` | Substituições | Relatório mensal de substituições, afastamentos e extras |
 | `/relatorios/trocas` | Trocas | Registos de trocas de serviço |
 
 ### Arquivo (Admin/GS gerem; BA-CE/BA-LR visualizam)
@@ -498,7 +499,7 @@ Referência: **21/07/2026** = Alfa + Bravo
 | Registos Diários (PTR-BA Completo, PTR-BA por Instrução, Gerar LRO) | Todos visualizam todas as equipes; criar/editar/excluir em qualquer equipe: apenas Admin/dev e `BA-CE`/`BA-LR` (trocas de plantão); `BA-CE`/`BA-LR` só alteram/excluem o que criaram (e o `BA-LR` também o que o `BA-CE` da equipe criou); GS apenas visualiza; finalizar/arquivar LRO: apenas Admin/dev |
 | Viaturas CCI | Todos visualizam |
 | Documentos > Trocas | Todos visualizam; editar/excluir/arquivar/enviar: apenas quando a troca envolve a equipe efetiva, exceto Admin/GS |
-| Documentos > Checklists | Todos visualizam e imprimem; criar/editar/excluir: apenas Admin/GS |
+| Documentos > Checklists | Todos visualizam e imprimem; modelo quinzenal/CHECK LIST TOTAL é alterado apenas por Admin/desenvolvedor; usuários podem criar e alterar seus próprios checklists personalizados |
 | Documentos > Escalas | Todos visualizam; editar/excluir/salvar: apenas a equipe efetiva, exceto Admin/GS |
 | Documentos > Ordens de Serviço | Todos visualizam; criar/editar/excluir: apenas a equipe efetiva, exceto Admin/GS |
 | Treinamentos | Todos visualizam; registros com equipe podem ser criados/editados/excluídos apenas pela equipe efetiva, exceto Admin/GS; registros locais sem equipe usam `createdBy` e legados sem dono só são editáveis por Admin/GS |

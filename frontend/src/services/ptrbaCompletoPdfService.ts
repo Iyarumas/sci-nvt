@@ -7,6 +7,7 @@ import {
 } from '../types/ptrbaCompleto';
 import { downloadPdf } from './pdfService';
 import { nomeDocumentoOperacional } from '../utils/documentFileNames';
+import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 
 const PAGE_H = 297;
 const M = 10;
@@ -68,20 +69,9 @@ function drawTextFit(doc: jsPDF, text: string, x: number, y: number, maxW: numbe
   doc.text(out, x, y, { align: options?.align || 'left' });
 }
 
-function drawHeader(doc: jsPDF) {
+function drawHeader(doc: jsPDF, logoDataUrl: string | null) {
   doc.setLineWidth(0.25);
-  drawCell(doc, M, 7, 34, 14);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(150, 150, 150);
-  doc.text('Group', M + 4, 11);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(205, 31, 47);
-  doc.text('med', M + 4, 19);
-  doc.setTextColor(64, 168, 92);
-  doc.text('+', M + 27, 19);
-  doc.setTextColor(0, 0, 0);
+  drawMedGroupLogo(doc, logoDataUrl, M, 7, 34, 14, true);
 
   drawCell(doc, M + 34, 7, 112, 14, 'RELATÓRIO DE REGISTRO PTR-BA', {
     bold: true,
@@ -256,7 +246,8 @@ export async function gerarPTRBACompletoPdf(registro: PTRBACompleto): Promise<Bl
     subject: 'Relatório de Registro PTR-BA',
     creator: 'SESCINC Manager',
   });
-  drawHeader(doc);
+  const logoDataUrl = await carregarMedGroupLogo();
+  drawHeader(doc, logoDataUrl);
   drawEquipeLinha(doc, registro);
   const participantesBottom = drawParticipantes(doc, registro.participantes);
   const observacoesY = Math.min(participantesBottom + 1.5, 144);

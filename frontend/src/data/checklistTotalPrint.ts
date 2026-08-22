@@ -395,6 +395,10 @@ export const CHECKLIST_TOTAL_PRINT_DOCUMENTS: ChecklistTotalPrintDocument[] = [
           {
             "quantidade": "36",
             "item": "Triângulo de sinalização"
+          },
+          {
+            "quantidade": "37",
+            "item": "Guincho completo com controle"
           }
         ]
       },

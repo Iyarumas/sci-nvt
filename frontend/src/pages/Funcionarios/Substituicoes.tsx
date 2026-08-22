@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ArrowLeftRight, ArrowRight, Plus, Search, Trash2, AlertCircle, AlertTriangle, X, Check, Clock, DollarSign, RefreshCw, ShieldOff, Pencil, Printer } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -192,6 +193,8 @@ function TipoBadge({ tipo }: { tipo: TipoSubstituicao }) {
 
 export function Substituicoes() {
   const { user, effectiveRole } = useAuth();
+  const location = useLocation();
+  const isRelatorioRoute = location.pathname.startsWith('/relatorios');
   const canApprove = effectiveRole === 'desenvolvedor' || effectiveRole === 'admin' || effectiveRole === 'gerente';
 
   const [tab, setTab] = useState<Tab>('lista');
@@ -399,7 +402,7 @@ export function Substituicoes() {
         !bloqueadoPorHierarquia
       );
 
-  const filtered = subs.filter(s => {
+  const filteredOperacional = subs.filter(s => {
     const matchTermo = !debouncedTermo ||
       s.funcionarioNome.toLowerCase().includes(debouncedTermo.toLowerCase()) ||
       s.substitutoNome.toLowerCase().includes(debouncedTermo.toLowerCase()) ||
@@ -421,6 +424,8 @@ export function Substituicoes() {
       )
       .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio) || a.funcionarioNome.localeCompare(b.funcionarioNome));
   }, [relatorioAno, relatorioMes, subs]);
+
+  const filtered = isRelatorioRoute ? relatorioMensal : filteredOperacional;
 
   function extrasDaSub(sub: SubstituicaoTemporaria): EloCadeiaSubstituicaoTemporaria[] {
     return (sub.cadeiaSubstituicao || []).filter(elo => elo.tipo === 'extra');
@@ -817,14 +822,16 @@ export function Substituicoes() {
   return (
     <PageContainer>
       <div className="mb-6 flex items-center justify-between">
-        <PageTitle icon={ArrowLeftRight} title="Substituições Temporárias" />
-        <button onClick={abrirNovaMovimentacao}
-          className="flex items-center gap-2 rounded-xl bg-aviation-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-aviation-700 dark:bg-aviation-500 dark:hover:bg-aviation-600">
-          <Plus className="h-4 w-4" /> Nova Movimentação
-        </button>
+        <PageTitle icon={ArrowLeftRight} title={isRelatorioRoute ? 'Relatório de Substituições' : 'Substituições Temporárias'} />
+        {!isRelatorioRoute && (
+          <button onClick={abrirNovaMovimentacao}
+            className="flex items-center gap-2 rounded-xl bg-aviation-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-aviation-700 dark:bg-aviation-500 dark:hover:bg-aviation-600">
+            <Plus className="h-4 w-4" /> Nova Movimentação
+          </button>
+        )}
       </div>
 
-      {canApprove && (
+      {!isRelatorioRoute && canApprove && (
         <div className="mb-6 flex items-center gap-1 rounded-xl border border-graphite-200/60 bg-graphite-50/80 p-1 dark:border-border-dark dark:bg-surface-card/50">
           {([
             { key: 'lista' as Tab, label: 'Todas', count: subs.length },
@@ -851,23 +858,25 @@ export function Substituicoes() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
-          <input type="text" value={termo} onChange={e => setTermo(e.target.value)}
-            placeholder="Buscar por nome ou tipo..."
-            className="w-full rounded-xl border border-graphite-300/60 bg-white/70 py-2.5 pl-10 pr-4 text-sm text-graphite-900 placeholder-graphite-400 outline-none transition-all dark:border-graphite-600 dark:bg-graphite-800 dark:text-graphite-100 dark:focus:border-aviation-400/50" />
+      {!isRelatorioRoute && (
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
+            <input type="text" value={termo} onChange={e => setTermo(e.target.value)}
+              placeholder="Buscar por nome ou tipo..."
+              className="w-full rounded-xl border border-graphite-300/60 bg-white/70 py-2.5 pl-10 pr-4 text-sm text-graphite-900 placeholder-graphite-400 outline-none transition-all dark:border-graphite-600 dark:bg-graphite-800 dark:text-graphite-100 dark:focus:border-aviation-400/50" />
+          </div>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+            className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm text-graphite-700 outline-none dark:border-graphite-600 dark:bg-graphite-800 dark:text-graphite-200">
+            <option value="">Todos os Status</option>
+            <option value="Pendente">Pendente</option>
+            <option value="Aprovada">Aprovada</option>
+            <option value="Rejeitada">Rejeitada</option>
+          </select>
         </div>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm text-graphite-700 outline-none dark:border-graphite-600 dark:bg-graphite-800 dark:text-graphite-200">
-          <option value="">Todos os Status</option>
-          <option value="Pendente">Pendente</option>
-          <option value="Aprovada">Aprovada</option>
-          <option value="Rejeitada">Rejeitada</option>
-        </select>
-      </div>
+      )}
 
-      {canPrintRelatorios && (
+      {isRelatorioRoute && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-graphite-200/60 bg-white/70 p-3 dark:border-border-dark dark:bg-surface-card">
           <div className="flex items-center gap-2">
             <select value={relatorioMes} onChange={e => setRelatorioMes(e.target.value)}
@@ -883,7 +892,7 @@ export function Substituicoes() {
               ))}
             </select>
           </div>
-          <button type="button" onClick={iniciarImpressaoMensal}
+          <button type="button" onClick={iniciarImpressaoMensal} disabled={!canPrintRelatorios}
             className="flex items-center gap-2 rounded-xl bg-aviation-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-aviation-700 dark:bg-aviation-500 dark:hover:bg-aviation-600">
             <Printer className="h-4 w-4" /> Imprimir relatório mensal
           </button>
@@ -897,7 +906,11 @@ export function Substituicoes() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300/60 bg-white/50 p-12 text-center dark:border-border-dark dark:bg-surface-card">
           <ArrowLeftRight className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhuma movimentação encontrada</h3>
-          <p className="text-sm text-graphite-400">Clique em "Nova Movimentação" para criar.</p>
+          <p className="text-sm text-graphite-400">
+            {isRelatorioRoute
+              ? 'Nenhum afastamento/atestado aprovado para o período selecionado.'
+              : 'Clique em "Nova Movimentação" para criar.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -946,14 +959,14 @@ export function Substituicoes() {
                     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_SUBSTITUICAO_CORES[sub.status] || ''}`}>
                       {sub.status}
                     </span>
-                    {canPrintRelatorios && sub.tipo === 'Afastamento' && (
+                    {isRelatorioRoute && canPrintRelatorios && sub.tipo === 'Afastamento' && (
                       <button onClick={event => { event.stopPropagation(); iniciarImpressaoIndividual(sub); }}
                         className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-aviation-50 hover:text-aviation-600 dark:hover:bg-aviation-900/20 dark:hover:text-aviation-300"
                         title="Imprimir relatório individual">
                         <Printer className="h-4 w-4" />
                       </button>
                     )}
-                    {sub.status === 'Pendente' && canApprove && (
+                    {!isRelatorioRoute && sub.status === 'Pendente' && canApprove && (
                       <>
                         <button onClick={event => { event.stopPropagation(); handleAprovar(sub.id); }} disabled={!!approvingId}
                           className="rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-green-900/20 dark:text-green-400">
@@ -965,7 +978,7 @@ export function Substituicoes() {
                         </button>
                       </>
                     )}
-                    {canApprove && (
+                    {!isRelatorioRoute && canApprove && (
                       <>
                         <button onClick={event => { event.stopPropagation(); abrirEdicao(sub); }}
                           className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-aviation-50 hover:text-aviation-600 dark:hover:bg-aviation-900/20 dark:hover:text-aviation-300"
@@ -1028,7 +1041,7 @@ export function Substituicoes() {
         </div>
       )}
 
-      {canPrintRelatorios && (
+      {isRelatorioRoute && canPrintRelatorios && (
         <div className="substituicoes-print-area">
           {(printingMonthly || printingSub) && (
             <div className="space-y-3">

@@ -57,6 +57,8 @@ type ChecklistPrintData = ChecklistDraft & {
 };
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
+const CHECKLIST_TOTAL_MODEL_TEAM = 'MODELO FIXO';
+const CHECKLIST_TOTAL_MODEL_RESPONSAVEL_PREFIX = 'MODELO:';
 const MESES = [
   'Janeiro',
   'Fevereiro',
@@ -76,6 +78,8 @@ const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 const iconButtonCls = 'inline-flex h-9 w-9 items-center justify-center rounded-xl border border-graphite-200 bg-white text-graphite-500 transition-all hover:border-graphite-300 hover:bg-graphite-50 hover:text-graphite-800 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300 dark:hover:bg-surface-hover';
 const PRINT_ROWS_PER_PAGE = 31;
+const PRINT_LAST_PAGE_ROWS = 22;
+const PRINT_FOOTER_BLANK_ROWS = 5;
 
 function uid(prefix: string) {
   const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -147,22 +151,13 @@ function payloadQuinzenal(
 }
 
 function payloadPersonalizado(mes: number, ano: number): ChecklistPayload {
-  const colunas: ChecklistColumn[] = [
-    { id: uid('col'), label: 'OK', type: 'check' },
-    { id: uid('col'), label: 'Observação', type: 'texto' },
-  ];
+  const colunas: ChecklistColumn[] = [];
   return {
     mes,
     ano,
     quinzena: '1',
     colunas,
-    linhas: [{
-      id: uid('linha'),
-      secao: 'GERAL',
-      quantidade: '1',
-      item: '',
-      valores: valoresIniciais(colunas),
-    }],
+    linhas: [],
   };
 }
 
@@ -171,11 +166,22 @@ function dataReferencia(mes: number, ano: number, quinzena: ChecklistQuinzena) {
   return `${ano}-${String(mes).padStart(2, '0')}-${dia}`;
 }
 
-function novoDraft(): ChecklistDraft {
+function novoDraft(tipo: ChecklistTipo = 'personalizado'): ChecklistDraft {
   const hoje = new Date();
   const mes = hoje.getMonth() + 1;
   const ano = hoje.getFullYear();
   const quinzena: ChecklistQuinzena = hoje.getDate() <= 15 ? '1' : '2';
+  if (tipo === 'personalizado') {
+    return {
+      titulo: '',
+      descricao: '',
+      tipo,
+      data: dataReferencia(mes, ano, quinzena),
+      equipe: '',
+      responsavel: '',
+      payload: payloadPersonalizado(mes, ano),
+    };
+  }
   const template = CHECKLIST_TOTAL_TEMPLATES[0];
   const payload = payloadQuinzenal(mes, ano, quinzena, template.rows);
   return {
@@ -189,7 +195,106 @@ function novoDraft(): ChecklistDraft {
   };
 }
 
-function documentoOriginalParaImpressao(documento: ChecklistTotalPrintDocument, mes: number, ano: number, quinzena: ChecklistQuinzena): ChecklistPrintData {
+function checklistTotalModelKey(documentoId: string) {
+  return `${CHECKLIST_TOTAL_MODEL_RESPONSAVEL_PREFIX}${documentoId}`;
+}
+
+function isChecklistTotalModel(checklist: Checklist) {
+  return checklist.equipe === CHECKLIST_TOTAL_MODEL_TEAM && checklist.responsavel.startsWith(CHECKLIST_TOTAL_MODEL_RESPONSAVEL_PREFIX);
+}
+
+function documentoParaLinhasEditaveis(documento: ChecklistTotalPrintDocument): ChecklistRow[] {
+  const linhas: ChecklistRow[] = [];
+  let secaoAtual = 'GERAL';
+  documento.pages.forEach(page => {
+    page.rows.forEach(row => {
+      if (row.secao && !row.item) {
+        secaoAtual = row.secao;
+        return;
+      }
+      linhas.push({
+        id: uid('linha'),
+        secao: secaoAtual,
+        quantidade: row.quantidade || row.exig || '',
+        item: row.item || '',
+        valores: {},
+      });
+    });
+  });
+  return linhas;
+}
+
+function documentoParaDraft(documento: ChecklistTotalPrintDocument, mes: number, ano: number, quinzena: ChecklistQuinzena, modelo?: Checklist): ChecklistDraft {
+  if (modelo) {
+    const colunas = colunasDaQuinzena(mes, ano, quinzena);
+    return {
+      titulo: modelo.titulo,
+      descricao: modelo.descricao,
+      tipo: modelo.tipo,
+      data: dataReferencia(mes, ano, quinzena),
+      equipe: modelo.equipe,
+      responsavel: modelo.responsavel,
+      payload: {
+        ...modelo.payload,
+        mes,
+        ano,
+        quinzena,
+        colunas,
+        linhas: modelo.payload.linhas
+          .filter(linha => linha.item.trim() || linha.quantidade.trim())
+          .map(linha => alinharValores(linha, colunas)),
+      },
+    };
+  }
+  const colunas = colunasDaQuinzena(mes, ano, quinzena);
+  return {
+    titulo: documento.titulo,
+    descricao: documento.identificacaoValor,
+    tipo: 'quinzenal',
+    data: dataReferencia(mes, ano, quinzena),
+    equipe: CHECKLIST_TOTAL_MODEL_TEAM,
+    responsavel: checklistTotalModelKey(documento.id),
+    payload: {
+      mes,
+      ano,
+      quinzena,
+      colunas,
+      linhas: documentoParaLinhasEditaveis(documento).map(linha => alinharValores(linha, colunas)),
+    },
+  };
+}
+
+function documentoOriginalParaImpressao(
+  documento: ChecklistTotalPrintDocument,
+  mes: number,
+  ano: number,
+  quinzena: ChecklistQuinzena,
+  modelo?: Checklist,
+): ChecklistPrintData {
+  if (modelo) {
+    const colunas = colunasDaQuinzena(mes, ano, quinzena);
+    return {
+      titulo: modelo.titulo,
+      descricao: modelo.descricao,
+      tipo: modelo.tipo,
+      data: dataReferencia(mes, ano, quinzena),
+      equipe: '',
+      responsavel: '',
+      payload: {
+        ...modelo.payload,
+        mes,
+        ano,
+        quinzena,
+        colunas,
+        linhas: modelo.payload.linhas
+          .filter(linha => linha.item.trim() || linha.quantidade.trim())
+          .map(linha => alinharValores(linha, colunas)),
+      },
+      identificacaoLabel: documento.identificacaoLabel,
+      identificacaoValor: modelo.descricao || documento.identificacaoValor,
+      printLayout: documento.layout,
+    };
+  }
   return {
     titulo: documento.titulo,
     descricao: documento.identificacaoValor,
@@ -207,9 +312,15 @@ function documentoOriginalParaImpressao(documento: ChecklistTotalPrintDocument, 
 
 function dividirLinhas(linhas: ChecklistRow[]) {
   const paginas: ChecklistRow[][] = [];
-  for (let index = 0; index < linhas.length; index += PRINT_ROWS_PER_PAGE) {
-    paginas.push(linhas.slice(index, index + PRINT_ROWS_PER_PAGE));
+  let index = 0;
+  let restantes = linhas.length;
+  while (restantes > PRINT_LAST_PAGE_ROWS) {
+    const tamanhoPagina = Math.min(PRINT_ROWS_PER_PAGE, restantes - PRINT_LAST_PAGE_ROWS);
+    paginas.push(linhas.slice(index, index + tamanhoPagina));
+    index += tamanhoPagina;
+    restantes -= tamanhoPagina;
   }
+  paginas.push(linhas.slice(index));
   return paginas;
 }
 
@@ -221,6 +332,7 @@ function linhasParaImpressao(linhas: ChecklistRow[]): ChecklistTotalPrintRow[] {
       result.push({ secao: linha.secao });
       secaoAtual = linha.secao;
     }
+    if (!linha.quantidade.trim() && !linha.item.trim()) return;
     result.push({ quantidade: linha.quantidade, item: linha.item });
   });
   return result;
@@ -233,6 +345,19 @@ function dividirLinhasImpressao(checklist: ChecklistPrintData) {
 
 function mesAnoLabel(payload: ChecklistPayload) {
   return `${MESES[payload.mes - 1] || payload.mes}/${payload.ano}`;
+}
+
+function colunaEditorLabel(coluna: ChecklistColumn) {
+  if (coluna.fixa && coluna.equipe) return `${coluna.label} ${coluna.equipe}`;
+  return coluna.label;
+}
+
+function totalDiasDoPayload(payload: ChecklistPayload) {
+  const dias = payload.colunas
+    .filter(coluna => coluna.fixa && coluna.dia)
+    .map(coluna => coluna.dia);
+  if (dias.length) return new Set(dias).size;
+  return payload.colunas.length;
 }
 
 function agruparColunasPorDia(colunas: ChecklistColumn[]) {
@@ -267,17 +392,18 @@ function ChecklistPrintLayout({ checklists }: { checklists: ChecklistPrintData[]
         const layout = checklist.printLayout || 'padrao';
         const fixedColumns = layout === 'equipamentos' ? 3 : 2;
         const totalColumns = fixedColumns + colunas.length;
-        const footerLegendColumns = 12;
-        const footerTextColumns = totalColumns - footerLegendColumns;
+        const showLegendFooter = totalColumns >= 14;
+        const footerLegendColumns = showLegendFooter ? 12 : 0;
+        const footerTextColumns = showLegendFooter ? totalColumns - footerLegendColumns : totalColumns;
         const quantityHeader = checklist.identificacaoValor?.includes('EQUIPAMENTOS') ? 'Quant.' : 'Item';
         return paginas.map((pagina, pageIndex) => {
           const isLastPage = pageIndex === paginas.length - 1;
+          const footerBlankRows = isLastPage ? PRINT_FOOTER_BLANK_ROWS : 0;
           return (
             <section key={`${checklistIndex}-${pageIndex}`} className="checklist-print-page">
               <header className="checklist-print-header">
                 <div className="checklist-print-logo">
-                  <span className="logo-group">Group</span>
-                  <span className="logo-med">med</span><span className="logo-plus">+</span>
+                  <img src="/assets/med-group-logo.png" alt="med+ Group" />
                 </div>
                 <div className="checklist-print-title">
                   <div className="checklist-print-org">FORMULÁRIO (FOR)</div>
@@ -311,25 +437,20 @@ function ChecklistPrintLayout({ checklists }: { checklists: ChecklistPrintData[]
                   <tr>
                     {layout === 'equipamentos' ? (
                       <>
-                        <th className="print-exig" rowSpan={2}>Exig</th>
-                        <th className="print-disp" rowSpan={2}>Disp</th>
-                        <th className="print-item print-item-equipment" rowSpan={2}>Item a inspecionar</th>
+                        <th className="print-exig">Exig</th>
+                        <th className="print-disp">Disp</th>
+                        <th className="print-item print-item-equipment">Item a inspecionar</th>
                       </>
                     ) : (
                       <>
-                        <th className="print-qtd" rowSpan={2}>{quantityHeader}</th>
-                        <th className="print-item" rowSpan={2}>Item a inspecionar</th>
+                        <th className="print-qtd">{quantityHeader}</th>
+                        <th className="print-item">Item a inspecionar</th>
                       </>
                     )}
                     {gruposColunas.map(grupo => (
                       <th key={`${grupo.label}-${grupo.colunas.map(coluna => coluna.id).join('-')}`} className="print-day-group" colSpan={grupo.colunas.length}>
                         {grupo.label}
                       </th>
-                    ))}
-                  </tr>
-                  <tr>
-                    {colunas.map(coluna => (
-                      <th key={coluna.id} className="print-team">&nbsp;</th>
                     ))}
                   </tr>
                 </thead>
@@ -372,15 +493,22 @@ function ChecklistPrintLayout({ checklists }: { checklists: ChecklistPrintData[]
                     </tr>
                     <tr className="print-alert-row">
                       <td className="print-alert-main" colSpan={footerTextColumns}>Em caso de encontrar alguma não conformidade ou falha no equipamento:</td>
-                      <td className="print-legend-title" colSpan={footerLegendColumns}>Legenda:</td>
+                      {showLegendFooter && <td className="print-legend-title" colSpan={footerLegendColumns}>Legenda:</td>}
                     </tr>
                     <tr className="print-note-row">
-                      <td className="print-note-main" colSpan={footerTextColumns}>Favor anotar as anomalias/ falhas abaixo deste Check list com o máximo de detalhes (item / data / horário etc.) e no caso de vazamentos sempre que houver indicar o local.</td>
-                      <td className="print-legend-value" colSpan={4}>B - BOM</td>
-                      <td className="print-legend-value" colSpan={4}>I - IRREGULAR</td>
-                      <td className="print-legend-value" colSpan={4}>IN - INEXISTENTE</td>
+                      <td className="print-note-main" colSpan={footerTextColumns}>
+                        Favor anotar as anomalias/ falhas abaixo deste Check list com o máximo de detalhes (item / data / horário etc.) e no caso de vazamentos sempre que houver indicar o local.
+                        {!showLegendFooter && ' Legenda: B - BOM | I - IRREGULAR | IN - INEXISTENTE.'}
+                      </td>
+                      {showLegendFooter && (
+                        <>
+                          <td className="print-legend-value" colSpan={4}>B - BOM</td>
+                          <td className="print-legend-value" colSpan={4}>I - IRREGULAR</td>
+                          <td className="print-legend-value" colSpan={4}>IN - INEXISTENTE</td>
+                        </>
+                      )}
                     </tr>
-                    {Array.from({ length: 5 }, (_, index) => (
+                    {Array.from({ length: footerBlankRows }, (_, index) => (
                       <tr key={`linha-extra-${index}`}>
                         <td className="print-footer-blank" colSpan={totalColumns}>&nbsp;</td>
                       </tr>
@@ -398,19 +526,24 @@ function ChecklistPrintLayout({ checklists }: { checklists: ChecklistPrintData[]
 
 function ChecklistForm({
   editando,
+  initialDraft,
   saving,
+  allowQuinzenal,
   onCancel,
   onSave,
   onPrint,
 }: {
   editando: Checklist | null;
+  initialDraft?: ChecklistDraft;
   saving: boolean;
+  allowQuinzenal: boolean;
   onCancel: () => void;
   onSave: (draft: ChecklistDraft) => void;
   onPrint: (draft: ChecklistPrintData) => void;
 }) {
   const [draft, setDraft] = useState<ChecklistDraft>(() => {
-    if (!editando) return novoDraft();
+    if (initialDraft) return initialDraft;
+    if (!editando) return novoDraft('personalizado');
     return {
       titulo: editando.titulo,
       descricao: editando.descricao,
@@ -428,6 +561,12 @@ function ChecklistForm({
     const atual = new Date().getFullYear();
     return Array.from({ length: 7 }, (_, index) => atual - 2 + index);
   }, []);
+  const equipesDisponiveis = useMemo(() => {
+    if (draft.equipe && !EQUIPES.includes(draft.equipe)) return [draft.equipe, ...EQUIPES];
+    return EQUIPES;
+  }, [draft.equipe]);
+  const isModeloQuinzenal = draft.tipo === 'quinzenal';
+  const editorColunas = isModeloQuinzenal ? [] : draft.payload.colunas;
 
   function setCampo<K extends keyof ChecklistDraft>(campo: K, valor: ChecklistDraft[K]) {
     setDraft(prev => ({ ...prev, [campo]: valor }));
@@ -448,6 +587,7 @@ function ChecklistForm({
   }
 
   function alterarTipo(tipo: ChecklistTipo) {
+    if (tipo === 'quinzenal' && !allowQuinzenal) return;
     setDraft(prev => {
       if (tipo === prev.tipo) return prev;
       const { mes, ano, quinzena } = prev.payload;
@@ -465,7 +605,7 @@ function ChecklistForm({
       return {
         ...prev,
         tipo,
-        titulo: prev.titulo.trim() ? prev.titulo : 'Checklist Personalizado',
+        titulo: tipo === 'personalizado' ? prev.titulo : prev.titulo.trim() ? prev.titulo : 'Checklist Personalizado',
         payload: payloadPersonalizado(mes, ano),
       };
     });
@@ -542,6 +682,25 @@ function ChecklistForm({
     }));
   }
 
+  function adicionarSecao() {
+    setDraft(prev => ({
+      ...prev,
+      payload: {
+        ...prev.payload,
+        linhas: [
+          ...prev.payload.linhas,
+          {
+            id: uid('secao'),
+            secao: 'NOVA SEÇÃO',
+            quantidade: '',
+            item: '',
+            valores: valoresIniciais(prev.payload.colunas),
+          },
+        ],
+      },
+    }));
+  }
+
   function removerLinha(id: string) {
     setDraft(prev => ({
       ...prev,
@@ -564,6 +723,7 @@ function ChecklistForm({
 
   function salvar() {
     if (!draft.titulo.trim() || !draft.equipe.trim() || !draft.responsavel.trim()) return;
+    if (draft.tipo === 'quinzenal' && !allowQuinzenal) return;
     onSave({
       ...draft,
       titulo: draft.titulo.trim(),
@@ -623,23 +783,29 @@ function ChecklistForm({
             </div>
             <div>
               <label className={labelCls}>Tipo</label>
-              <div className="grid grid-cols-2 rounded-xl border border-graphite-200 bg-graphite-50 p-1 dark:border-border-dark dark:bg-surface-card">
-                {(['quinzenal', 'personalizado'] as ChecklistTipo[]).map(tipo => (
-                  <button
-                    key={tipo}
-                    onClick={() => alterarTipo(tipo)}
-                    className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all ${draft.tipo === tipo ? 'bg-aviation-700 text-white shadow-sm' : 'text-graphite-600 hover:bg-white dark:text-graphite-300 dark:hover:bg-surface-hover'}`}
-                  >
-                    {tipo === 'quinzenal' ? 'Quinzenal' : 'Personalizado'}
-                  </button>
-                ))}
-              </div>
+              {allowQuinzenal ? (
+                <div className="grid grid-cols-2 rounded-xl border border-graphite-200 bg-graphite-50 p-1 dark:border-border-dark dark:bg-surface-card">
+                  {(['quinzenal', 'personalizado'] as ChecklistTipo[]).map(tipo => (
+                    <button
+                      key={tipo}
+                      onClick={() => alterarTipo(tipo)}
+                      className={`rounded-lg px-3 py-2 text-sm font-semibold transition-all ${draft.tipo === tipo ? 'bg-aviation-700 text-white shadow-sm' : 'text-graphite-600 hover:bg-white dark:text-graphite-300 dark:hover:bg-surface-hover'}`}
+                    >
+                      {tipo === 'quinzenal' ? 'Quinzenal' : 'Personalizado'}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-graphite-200 bg-graphite-50 px-3 py-2.5 text-sm font-semibold text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                  Personalizado
+                </div>
+              )}
             </div>
             <div>
               <label className={labelCls}>Equipe *</label>
               <select value={draft.equipe} onChange={e => setCampo('equipe', e.target.value)} className={inputCls}>
                 <option value="">Selecionar equipe</option>
-                {EQUIPES.map(equipe => <option key={equipe} value={equipe}>{equipe}</option>)}
+                {equipesDisponiveis.map(equipe => <option key={equipe} value={equipe}>{equipe}</option>)}
               </select>
             </div>
             <div>
@@ -648,7 +814,7 @@ function ChecklistForm({
             </div>
           </div>
 
-          {draft.tipo === 'quinzenal' && (
+          {draft.tipo === 'quinzenal' && allowQuinzenal && (
             <div>
               <label className={labelCls}>Modelo base</label>
               <select
@@ -702,54 +868,44 @@ function ChecklistForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
-            <div className="rounded-2xl border border-graphite-200 bg-white p-4 dark:border-border-dark dark:bg-surface-card">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
-                  <Columns3 className="h-4 w-4 text-aviation-500" />
-                  Colunas
+          <div className={`grid grid-cols-1 gap-4 ${isModeloQuinzenal ? '' : 'xl:grid-cols-[1fr_1fr]'}`}>
+            {!isModeloQuinzenal && (
+              <div className="rounded-2xl border border-graphite-200 bg-white p-4 dark:border-border-dark dark:bg-surface-card">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
+                    <Columns3 className="h-4 w-4 text-aviation-500" />
+                    Colunas
+                  </div>
                 </div>
-                {draft.tipo === 'quinzenal' && (
-                  <button onClick={restaurarModelo} className="inline-flex items-center gap-2 rounded-xl border border-aviation-200 px-3 py-2 text-xs font-semibold text-aviation-700 hover:bg-aviation-50 dark:border-aviation-800 dark:text-aviation-300 dark:hover:bg-aviation-900/20">
-                    <RefreshCcw className="h-3.5 w-3.5" />
-                    Recarregar modelo
+                <div className="mb-3 grid grid-cols-[1fr_130px_auto] gap-2">
+                  <input value={novaColuna} onChange={e => setNovaColuna(e.target.value)} placeholder="Nova coluna" className={inputCls} />
+                  <select value={novoTipoColuna} onChange={e => setNovoTipoColuna(e.target.value as ChecklistColumn['type'])} className={inputCls}>
+                    <option value="check">Marcação</option>
+                    <option value="texto">Texto</option>
+                  </select>
+                  <button onClick={adicionarColuna} className={iconButtonCls} title="Adicionar coluna">
+                    <Plus className="h-4 w-4" />
                   </button>
-                )}
-              </div>
-              <div className="mb-3 grid grid-cols-[1fr_130px_auto] gap-2">
-                <input value={novaColuna} onChange={e => setNovaColuna(e.target.value)} placeholder="Nova coluna" className={inputCls} />
-                <select value={novoTipoColuna} onChange={e => setNovoTipoColuna(e.target.value as ChecklistColumn['type'])} className={inputCls}>
-                  <option value="check">Marcação</option>
-                  <option value="texto">Texto</option>
-                </select>
-                <button onClick={adicionarColuna} className={iconButtonCls} title="Adicionar coluna">
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
-                {draft.payload.colunas.map(coluna => (
-                  <div key={coluna.id} className="flex items-center gap-1 rounded-xl border border-graphite-200 bg-graphite-50 px-2 py-1 dark:border-border-dark dark:bg-surface-hover">
-                    {coluna.fixa ? (
-                      <span className="text-xs font-semibold text-graphite-700 dark:text-graphite-200">{coluna.label}</span>
-                    ) : (
+                </div>
+                <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {draft.payload.colunas.map(coluna => (
+                    <div key={coluna.id} className="flex items-center gap-1 rounded-xl border border-graphite-200 bg-graphite-50 px-2 py-1 dark:border-border-dark dark:bg-surface-hover">
                       <input
                         value={coluna.label}
                         onChange={e => atualizarColuna(coluna.id, { label: e.target.value })}
                         className="w-24 bg-transparent text-xs font-semibold text-graphite-700 outline-none dark:text-graphite-200"
                       />
-                    )}
-                    <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-bold uppercase text-graphite-400 dark:bg-surface-card">
-                      {coluna.type === 'check' ? 'OK' : 'TXT'}
-                    </span>
-                    {!coluna.fixa && (
+                      <span className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-bold uppercase text-graphite-400 dark:bg-surface-card">
+                        {coluna.type === 'check' ? 'OK' : 'TXT'}
+                      </span>
                       <button onClick={() => removerColuna(coluna.id)} className="text-red-500 hover:text-red-700" title="Remover coluna">
                         <X className="h-3.5 w-3.5" />
                       </button>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="rounded-2xl border border-graphite-200 bg-white p-4 dark:border-border-dark dark:bg-surface-card">
               <div className="mb-3 flex items-center justify-between gap-2">
@@ -757,22 +913,36 @@ function ChecklistForm({
                   <Rows3 className="h-4 w-4 text-aviation-500" />
                   Linhas
                 </div>
-                <button onClick={adicionarLinha} className="inline-flex items-center gap-2 rounded-xl bg-aviation-700 px-3 py-2 text-xs font-semibold text-white hover:bg-aviation-800">
-                  <Plus className="h-3.5 w-3.5" />
-                  Adicionar linha
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isModeloQuinzenal && allowQuinzenal && (
+                    <button onClick={restaurarModelo} className="inline-flex items-center gap-2 rounded-xl border border-aviation-200 px-3 py-2 text-xs font-semibold text-aviation-700 hover:bg-aviation-50 dark:border-aviation-800 dark:text-aviation-300 dark:hover:bg-aviation-900/20">
+                      <RefreshCcw className="h-3.5 w-3.5" />
+                      Recarregar modelo
+                    </button>
+                  )}
+                  <button onClick={adicionarSecao} className="inline-flex items-center gap-2 rounded-xl border border-aviation-200 px-3 py-2 text-xs font-semibold text-aviation-700 hover:bg-aviation-50 dark:border-aviation-800 dark:text-aviation-300 dark:hover:bg-aviation-900/20">
+                    <Plus className="h-3.5 w-3.5" />
+                    Seção
+                  </button>
+                  <button onClick={adicionarLinha} className="inline-flex items-center gap-2 rounded-xl bg-aviation-700 px-3 py-2 text-xs font-semibold text-white hover:bg-aviation-800">
+                    <Plus className="h-3.5 w-3.5" />
+                    Linha
+                  </button>
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className={`grid gap-2 text-center ${isModeloQuinzenal ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 <div className="rounded-xl bg-graphite-50 p-3 dark:bg-surface-hover">
                   <p className="text-xl font-black text-graphite-900 dark:text-graphite-100">{draft.payload.linhas.length}</p>
                   <p className="text-[10px] font-bold uppercase text-graphite-400">Itens</p>
                 </div>
-                <div className="rounded-xl bg-aviation-50 p-3 dark:bg-aviation-900/20">
-                  <p className="text-xl font-black text-aviation-700 dark:text-aviation-300">{draft.payload.colunas.length}</p>
-                  <p className="text-[10px] font-bold uppercase text-aviation-500">Colunas</p>
-                </div>
+                {!isModeloQuinzenal && (
+                  <div className="rounded-xl bg-aviation-50 p-3 dark:bg-aviation-900/20">
+                    <p className="text-xl font-black text-aviation-700 dark:text-aviation-300">{draft.payload.colunas.length}</p>
+                    <p className="text-[10px] font-bold uppercase text-aviation-500">Colunas</p>
+                  </div>
+                )}
                 <div className="rounded-xl bg-green-50 p-3 dark:bg-green-900/20">
-                  <p className="text-xl font-black text-green-700 dark:text-green-300">{draft.payload.colunas.filter(coluna => coluna.type === 'check').length}</p>
+                  <p className="text-xl font-black text-green-700 dark:text-green-300">{totalDiasDoPayload(draft.payload)}</p>
                   <p className="text-[10px] font-bold uppercase text-green-500">Dias</p>
                 </div>
               </div>
@@ -794,23 +964,25 @@ function ChecklistForm({
                   <tr>
                     <th className="sticky left-0 z-20 w-28 border-b border-r border-graphite-200 bg-graphite-100 px-3 py-2 dark:border-border-dark dark:bg-surface-elevated">Qtd.</th>
                     <th className="sticky left-28 z-20 min-w-[280px] border-b border-r border-graphite-200 bg-graphite-100 px-3 py-2 dark:border-border-dark dark:bg-surface-elevated">Item</th>
-                    {draft.payload.colunas.map(coluna => (
+                    {editorColunas.map(coluna => (
                       <th key={coluna.id} className="min-w-16 border-b border-r border-graphite-200 px-2 py-2 text-center dark:border-border-dark">
-                        <span className="block">{coluna.label}</span>
+                        <span className="block">{colunaEditorLabel(coluna)}</span>
                       </th>
                     ))}
                     <th className="w-14 border-b border-graphite-200 px-2 py-2 text-center dark:border-border-dark">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {draft.payload.linhas.map((linha, index) => {
-                    const secaoAnterior = draft.payload.linhas[index - 1]?.secao;
+                  {draft.payload.linhas
+                    .filter(linha => linha.item.trim() || linha.quantidade.trim())
+                    .map((linha, index, linhasVisiveis) => {
+                    const secaoAnterior = linhasVisiveis[index - 1]?.secao;
                     const mostrarSecao = index === 0 || secaoAnterior !== linha.secao;
                     return (
                       <Fragment key={linha.id}>
                         {mostrarSecao && (
                           <tr>
-                            <td colSpan={draft.payload.colunas.length + 3} className="bg-aviation-900 px-3 py-2 text-xs font-black uppercase tracking-wide text-white">
+                            <td colSpan={editorColunas.length + 3} className="bg-aviation-900 px-3 py-2 text-xs font-black uppercase tracking-wide text-white">
                               {linha.secao || 'GERAL'}
                             </td>
                           </tr>
@@ -837,7 +1009,7 @@ function ChecklistForm({
                               />
                             </div>
                           </td>
-                          {draft.payload.colunas.map(coluna => (
+                          {editorColunas.map(coluna => (
                             <td key={coluna.id} className="border-r border-graphite-100 px-2 py-1.5 text-center dark:border-border-dark">
                               {coluna.type === 'check' ? (
                                 <span className="inline-flex h-4 w-4 rounded border border-graphite-300 bg-white dark:border-graphite-500 dark:bg-surface-elevated" />
@@ -880,7 +1052,7 @@ function ChecklistForm({
 }
 
 export function Checklists() {
-  const { canManageGlobal, user } = useContextoOperacional();
+  const { contexto, user } = useContextoOperacional();
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
@@ -895,6 +1067,9 @@ export function Checklists() {
   const [printAno, setPrintAno] = useState(hoje.getFullYear());
   const [printChecklists, setPrintChecklists] = useState<ChecklistPrintData[]>([]);
   const [imprimindoQuinzena, setImprimindoQuinzena] = useState<ChecklistQuinzena | null>(null);
+  const [selectedTotalDocumentId, setSelectedTotalDocumentId] = useState(CHECKLIST_TOTAL_PRINT_DOCUMENTS[0]?.id || '');
+  const [editingTotalDocument, setEditingTotalDocument] = useState<ChecklistTotalPrintDocument | null>(null);
+  const [initialDraft, setInitialDraft] = useState<ChecklistDraft | undefined>(undefined);
 
   async function carregar() {
     setLoading(true);
@@ -930,8 +1105,15 @@ export function Checklists() {
     };
   }, [printChecklists]);
 
+  const checklistTotalModels = useMemo(() => checklists.filter(isChecklistTotalModel), [checklists]);
+
+  function getChecklistTotalModel(documentoId: string) {
+    const key = checklistTotalModelKey(documentoId);
+    return checklistTotalModels.find(checklist => checklist.responsavel === key);
+  }
+
   const filtered = useMemo(() => {
-    let lista = checklists;
+    let lista = checklists.filter(checklist => !isChecklistTotalModel(checklist));
     if (filterTipo) lista = lista.filter(c => c.tipo === filterTipo);
     if (search.trim()) {
       const termo = search.trim().toLowerCase();
@@ -947,10 +1129,18 @@ export function Checklists() {
   }, [checklists, filterTipo, search]);
 
   const stats = useMemo(() => ({
-    total: checklists.length,
-    quinzenais: checklists.filter(c => c.tipo === 'quinzenal').length,
-    personalizados: checklists.filter(c => c.tipo === 'personalizado').length,
+    total: checklists.filter(c => !isChecklistTotalModel(c)).length,
+    quinzenais: checklists.filter(c => !isChecklistTotalModel(c) && c.tipo === 'quinzenal').length,
+    personalizados: checklists.filter(c => !isChecklistTotalModel(c) && c.tipo === 'personalizado').length,
   }), [checklists]);
+
+  const canManageFixedChecklists = contexto.isAdministradorSistema;
+  const currentUsername = user?.username || user?.name || '';
+
+  function canEditChecklist(checklist: Checklist) {
+    if (canManageFixedChecklists) return true;
+    return checklist.tipo === 'personalizado' && checklist.createdBy === currentUsername;
+  }
 
   function handlePrint(data: ChecklistPrintData) {
     const template = CHECKLIST_TOTAL_TEMPLATES.find(item => item.titulo === data.titulo && item.identificacaoValor === data.descricao);
@@ -961,15 +1151,32 @@ export function Checklists() {
     }]);
   }
 
-function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
+  function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
     setImprimindoQuinzena(quinzena);
     setError('');
-    setPrintChecklists(CHECKLIST_TOTAL_PRINT_DOCUMENTS.map(documento => documentoOriginalParaImpressao(documento, printMes, printAno, quinzena)));
+    setPrintChecklists(CHECKLIST_TOTAL_PRINT_DOCUMENTS.map(documento => (
+      documentoOriginalParaImpressao(documento, printMes, printAno, quinzena, getChecklistTotalModel(documento.id))
+    )));
+  }
+
+  function handleEditarChecklistTotal() {
+    if (!canManageFixedChecklists) return;
+    const documento = CHECKLIST_TOTAL_PRINT_DOCUMENTS.find(item => item.id === selectedTotalDocumentId);
+    if (!documento) return;
+    const modelo = getChecklistTotalModel(documento.id);
+    setEditingTotalDocument(documento);
+    setEditando(modelo || null);
+    setInitialDraft(documentoParaDraft(documento, printMes, printAno, '1', modelo));
+    setFormOpen(true);
   }
 
   async function handleSave(draft: ChecklistDraft) {
-    if (!canManageGlobal) {
-      setError('Apenas administradores e GS podem alterar checklists.');
+    if (draft.tipo === 'quinzenal' && !canManageFixedChecklists) {
+      setError('Apenas administradores e desenvolvedores podem alterar o modelo fixo.');
+      return;
+    }
+    if (editando && !canEditChecklist(editando)) {
+      setError('Você só pode alterar checklists personalizados criados por você.');
       return;
     }
 
@@ -978,8 +1185,17 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
     try {
       const payload = {
         ...draft,
+        ...(editingTotalDocument
+          ? {
+              titulo: editingTotalDocument.titulo,
+              descricao: draft.descricao || editingTotalDocument.identificacaoValor,
+              tipo: 'quinzenal' as const,
+              equipe: CHECKLIST_TOTAL_MODEL_TEAM,
+              responsavel: checklistTotalModelKey(editingTotalDocument.id),
+            }
+          : {}),
         status: 'pendente' as const,
-        createdBy: editando?.createdBy || user?.username || '',
+        createdBy: editando?.createdBy || currentUsername,
       };
       const salvo = editando
         ? await atualizarChecklist(editando.id, payload)
@@ -991,6 +1207,8 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
       });
       setFormOpen(false);
       setEditando(null);
+      setEditingTotalDocument(null);
+      setInitialDraft(undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar checklist.');
     } finally {
@@ -1000,8 +1218,10 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
 
   async function handleDelete() {
     if (!confirmDelete) return;
-    if (!canManageGlobal) {
-      setError('Apenas administradores e GS podem excluir checklists.');
+    if (!canEditChecklist(confirmDelete)) {
+      setError(confirmDelete.tipo === 'quinzenal'
+        ? 'Apenas administradores e desenvolvedores podem excluir o modelo fixo.'
+        : 'Você só pode excluir checklists personalizados criados por você.');
       setConfirmDelete(null);
       return;
     }
@@ -1047,7 +1267,8 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
       <div className="mb-5 rounded-2xl border border-graphite-200 bg-white p-4 dark:border-border-dark dark:bg-surface-card">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold text-graphite-900 dark:text-graphite-100">Arquivos para impressão</h2>
+            <h2 className="text-base font-bold text-graphite-900 dark:text-graphite-100">CHECK LIST TOTAL</h2>
+            <p className="text-xs font-medium text-graphite-500 dark:text-graphite-400">Modelo fixo do sistema</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <select value={printMes} onChange={e => setPrintMes(Number(e.target.value))} className={`${inputCls} w-auto min-w-36`}>
@@ -1081,6 +1302,34 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
             </button>
           ))}
         </div>
+        {canManageFixedChecklists && (
+          <div className="mt-4 rounded-xl border border-graphite-200 bg-graphite-50 p-3 dark:border-border-dark dark:bg-surface-hover/60">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[260px] flex-1">
+                <label className={labelCls}>Editar documento do CHECK LIST TOTAL</label>
+                <select
+                  value={selectedTotalDocumentId}
+                  onChange={e => setSelectedTotalDocumentId(e.target.value)}
+                  className={inputCls}
+                >
+                  {CHECKLIST_TOTAL_PRINT_DOCUMENTS.map(documento => (
+                    <option key={documento.id} value={documento.id}>
+                      {documento.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={handleEditarChecklistTotal}
+                className="inline-flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+              >
+                <Pencil className="h-4 w-4" />
+                Editar modelo
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -1093,15 +1342,18 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
           <option value="quinzenal">Quinzenais</option>
           <option value="personalizado">Personalizados</option>
         </select>
-        {canManageGlobal && (
-          <button
-            onClick={() => { setEditando(null); setFormOpen(true); }}
-            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]"
-          >
-            <Plus className="h-4 w-4" />
-            Novo Checklist
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setEditando(null);
+            setEditingTotalDocument(null);
+            setInitialDraft(undefined);
+            setFormOpen(true);
+          }}
+          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]"
+        >
+          <Plus className="h-4 w-4" />
+          Novo Checklist
+        </button>
       </div>
 
       {loading ? (
@@ -1117,6 +1369,7 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
       ) : (
         <div className="space-y-3">
           {filtered.map(checklist => {
+            const canEdit = canEditChecklist(checklist);
             return (
               <div key={checklist.id} className="rounded-2xl border border-graphite-200 bg-white p-4 shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
                 <div className="flex flex-wrap items-center gap-4">
@@ -1124,8 +1377,15 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
                     <ClipboardCheck className="h-5 w-5" />
                   </div>
                   <button
-                    onClick={() => { setEditando(checklist); setFormOpen(true); }}
-                    className="min-w-0 flex-1 text-left"
+                    onClick={() => {
+                      if (canEdit) {
+                        setEditingTotalDocument(null);
+                        setInitialDraft(undefined);
+                        setEditando(checklist);
+                        setFormOpen(true);
+                      }
+                    }}
+                    className={`min-w-0 flex-1 text-left ${canEdit ? '' : 'cursor-default'}`}
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{checklist.titulo}</p>
@@ -1141,9 +1401,14 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
                     <button onClick={() => handlePrint(checklist)} className={iconButtonCls} title="Imprimir">
                       <Printer className="h-4 w-4" />
                     </button>
-                    {canManageGlobal && (
+                    {canEdit && (
                       <>
-                        <button onClick={() => { setEditando(checklist); setFormOpen(true); }} className={iconButtonCls} title="Editar">
+                        <button onClick={() => {
+                          setEditingTotalDocument(null);
+                          setInitialDraft(undefined);
+                          setEditando(checklist);
+                          setFormOpen(true);
+                        }} className={iconButtonCls} title="Editar">
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button onClick={() => setConfirmDelete(checklist)} className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600 transition-all hover:bg-red-100 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-300" title="Excluir">
@@ -1162,8 +1427,15 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
       {formOpen && (
         <ChecklistForm
           editando={editando}
+          initialDraft={initialDraft}
           saving={saving}
-          onCancel={() => { setFormOpen(false); setEditando(null); }}
+          allowQuinzenal={canManageFixedChecklists}
+          onCancel={() => {
+            setFormOpen(false);
+            setEditando(null);
+            setEditingTotalDocument(null);
+            setInitialDraft(undefined);
+          }}
           onSave={handleSave}
           onPrint={handlePrint}
         />
@@ -1178,7 +1450,7 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
         @media print {
           @page {
             size: A4 landscape;
-            margin: 7mm;
+            margin: 15mm;
           }
 
           body.printing-checklist {
@@ -1207,8 +1479,8 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
           .checklist-print-page {
             break-after: page;
             page-break-after: always;
+            min-height: 180mm;
             background: #ffffff;
-            min-height: 195mm;
           }
 
           .checklist-print-page:last-child {
@@ -1227,31 +1499,18 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
           .checklist-print-logo {
             display: flex;
             min-height: 16mm;
-            flex-direction: column;
+            align-items: center;
             justify-content: center;
             border-right: 1px solid #111827;
-            padding-left: 5mm;
-            line-height: 0.75;
+            padding: 0.8mm;
           }
 
-          .logo-group {
-            font-size: 6pt;
-            color: #9ca3af;
-            font-weight: 700;
-          }
-
-          .logo-med {
-            font-size: 23pt;
-            color: #c21f3a;
-            font-weight: 900;
-            letter-spacing: 0.02em;
-          }
-
-          .logo-plus {
-            margin-left: 1px;
-            font-size: 25pt;
-            color: #4fb56a;
-            font-weight: 900;
+          .checklist-print-logo img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            max-height: 14.4mm;
+            object-fit: contain;
           }
 
           .checklist-print-title {
@@ -1274,7 +1533,7 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
             justify-content: center;
             margin: 0;
             padding: 0 3mm;
-            font-size: 12pt;
+            font-size: 12.6pt;
             font-weight: 800;
             text-transform: uppercase;
           }
@@ -1326,7 +1585,7 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
             grid-template-columns: 45% 27% 14% 14%;
             border: 1px solid #111827;
             border-bottom: 0;
-            font-size: 7pt;
+            font-size: 7.8pt;
             text-align: center;
           }
 
@@ -1351,14 +1610,14 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
             width: 100%;
             table-layout: fixed;
             border-collapse: collapse;
-            font-size: 4.8pt;
+            font-size: 5.6pt;
             line-height: 1;
           }
 
           .checklist-print-table th,
           .checklist-print-table td {
             border: 1px solid #111827;
-            padding: 0.45mm 0.6mm;
+            padding: 0.7mm 0.7mm;
             vertical-align: middle;
           }
 
@@ -1367,6 +1626,10 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
             font-weight: 800;
             text-transform: uppercase;
             text-align: center;
+          }
+
+          .checklist-print-table tbody td {
+            height: 3.6mm;
           }
 
           .checklist-print-table .print-qtd {
@@ -1393,15 +1656,8 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
 
           .checklist-print-table .print-day-group {
             text-align: center;
-            font-size: 5pt;
-            padding: 0.25mm 0;
-          }
-
-          .checklist-print-table .print-team {
-            width: 3.6mm;
-            text-align: center;
-            font-size: 4.6pt;
-            padding: 0;
+            font-size: 5.8pt;
+            padding: 0.65mm 0;
           }
 
           .checklist-print-table .print-day {
@@ -1412,24 +1668,24 @@ function handleImprimirQuinzena(quinzena: ChecklistQuinzena) {
 
           .checklist-print-table .print-section {
             background: #ffffff !important;
-            padding: 0.3mm 1mm;
-            font-size: 5.4pt;
+            padding: 0.55mm 1mm;
+            font-size: 6.2pt;
             font-weight: 900;
             text-transform: uppercase;
             text-align: center;
           }
 
           .checklist-print-table tfoot td {
-            font-size: 6.2pt;
+            font-size: 7.2pt;
             font-weight: 800;
           }
 
           .print-signature-row td {
-            height: 18mm;
+            height: 32mm;
           }
 
           .print-signature-label {
-            padding: 2mm;
+            padding: 3mm;
             text-align: center;
             vertical-align: middle;
           }

@@ -13,6 +13,64 @@ interface PdfFieldPosition {
   field_type?: string;
   page?: number;
   text_align?: TextAlign;
+  image_padding?: number;
+  image_border?: boolean;
+  checkbox_mode?: 'mark-only' | 'clean-box';
+}
+
+async function drawImageField(
+  pdfDoc: PDFDocument,
+  page: PDFPage,
+  value: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  padding = 0,
+  border = false,
+) {
+  const response = await fetch(value);
+  if (!response.ok) return;
+  const bytes = await response.arrayBuffer();
+  const contentType = response.headers.get('content-type') || value;
+  const image = /jpe?g/i.test(contentType)
+    ? await pdfDoc.embedJpg(bytes)
+    : await pdfDoc.embedPng(bytes);
+
+  page.drawRectangle({
+    x,
+    y,
+    width,
+    height,
+    color: rgb(1, 1, 1),
+  });
+  if (border) {
+    page.drawRectangle({
+      x,
+      y,
+      width,
+      height,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 0.7,
+    });
+  }
+
+  const maxW = Math.max(1, width - padding * 2);
+  const maxH = Math.max(1, height - padding * 2);
+  const ratio = image.width / image.height;
+  let drawW = maxW;
+  let drawH = drawW / ratio;
+  if (drawH > maxH) {
+    drawH = maxH;
+    drawW = drawH * ratio;
+  }
+
+  page.drawImage(image, {
+    x: x + (width - drawW) / 2,
+    y: y + (height - drawH) / 2,
+    width: drawW,
+    height: drawH,
+  });
 }
 
 function splitLongWord(font: PDFFont, word: string, size: number, maxWidth: number): string[] {
@@ -145,6 +203,60 @@ function drawCleanCheckbox(page: PDFPage, x: number, y: number, size: number, ch
   });
 }
 
+function drawCheckboxMarkOnly(page: PDFPage, x: number, y: number, width: number, height: number, checked: boolean) {
+  if (!checked) return;
+  const boxSize = Math.max(7, Math.min(width, height));
+  const boxX = x + (width - boxSize) / 2;
+  const boxY = y + (height - boxSize) / 2;
+  page.drawLine({
+    start: { x: boxX + boxSize * 0.22, y: boxY + boxSize * 0.48 },
+    end: { x: boxX + boxSize * 0.42, y: boxY + boxSize * 0.27 },
+    thickness: 1,
+    color: rgb(0, 0, 0),
+  });
+  page.drawLine({
+    start: { x: boxX + boxSize * 0.42, y: boxY + boxSize * 0.27 },
+    end: { x: boxX + boxSize * 0.8, y: boxY + boxSize * 0.72 },
+    thickness: 1,
+    color: rgb(0, 0, 0),
+  });
+}
+
+function drawCheckboxCleanBox(page: PDFPage, x: number, y: number, width: number, height: number, checked: boolean) {
+  const boxSize = Math.max(8, Math.min(width, height));
+  const boxX = x + (width - boxSize) / 2;
+  const boxY = y + (height - boxSize) / 2;
+  const coverPad = 3;
+  page.drawRectangle({
+    x: boxX - coverPad,
+    y: boxY - coverPad,
+    width: boxSize + coverPad * 2,
+    height: boxSize + coverPad * 2,
+    color: rgb(1, 1, 1),
+  });
+  page.drawRectangle({
+    x: boxX,
+    y: boxY,
+    width: boxSize,
+    height: boxSize,
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 0.9,
+  });
+  if (!checked) return;
+  page.drawLine({
+    start: { x: boxX + boxSize * 0.2, y: boxY + boxSize * 0.5 },
+    end: { x: boxX + boxSize * 0.4, y: boxY + boxSize * 0.28 },
+    thickness: 1.2,
+    color: rgb(0, 0, 0),
+  });
+  page.drawLine({
+    start: { x: boxX + boxSize * 0.4, y: boxY + boxSize * 0.28 },
+    end: { x: boxX + boxSize * 0.82, y: boxY + boxSize * 0.76 },
+    thickness: 1.2,
+    color: rgb(0, 0, 0),
+  });
+}
+
 export async function lerCamposPdf(pdfBytes: ArrayBuffer): Promise<string[]> {
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const form = pdfDoc.getForm();
@@ -209,7 +321,37 @@ export async function preencherPdf(
       const pdfH = pos.height / VIEWPORT_SCALE;
       const pdfY = pageHeight - (pos.y / VIEWPORT_SCALE) - fontSize - 2;
 
-      if (isCheckField) {
+      if (pos.field_type === 'image') {
+        await drawImageField(
+          pdfDoc,
+          page,
+          value,
+          pdfX,
+          pageHeight - (pos.y / VIEWPORT_SCALE) - pdfH,
+          pdfW,
+          pdfH,
+          pos.image_padding || 0,
+          !!pos.image_border,
+        );
+      } else if (isCheckField && pos.checkbox_mode === 'mark-only') {
+        drawCheckboxMarkOnly(
+          page,
+          pdfX,
+          pageHeight - (pos.y / VIEWPORT_SCALE) - pdfH,
+          pdfW,
+          pdfH,
+          value === 'V',
+        );
+      } else if (isCheckField && pos.checkbox_mode === 'clean-box') {
+        drawCheckboxCleanBox(
+          page,
+          pdfX,
+          pageHeight - (pos.y / VIEWPORT_SCALE) - pdfH,
+          pdfW,
+          pdfH,
+          value === 'V',
+        );
+      } else if (isCheckField) {
         drawCleanCheckbox(page, pdfX, pdfY, fontSize, value === 'V');
       } else {
         drawTextFit(page, font, value, pdfX, pdfY, pdfW, pdfH, fontSize, pos.text_align);

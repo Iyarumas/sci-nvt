@@ -89,6 +89,7 @@ export const router = createBrowserRouter([
       { path: 'relatorios/exercicios/taf', element: lazyPage(() => import('../pages/Relatorios/TAF')) },
       { path: 'relatorios/exercicios/tp-epr', element: lazyPage(() => import('../pages/Relatorios/TPEPR')) },
       { path: 'relatorios/ordem-servico', element: lazyPage(() => import('../pages/Relatorios/OrdemServico').then(m => ({ default: m.OrdemServico }))) },
+      { path: 'relatorios/substituicoes', element: lazyPage(() => import('../pages/Funcionarios/Substituicoes')) },
       { path: 'relatorios/trocas', element: lazyPage(() => import('../pages/Relatorios/Trocas')) },
       { path: 'arquivo/:tipo?', element: lazyPage(() => import('../pages/Arquivo/Arquivo')) },
       { path: 'configuracoes', element: lazyPage(() => import('../pages/Configuracoes/Configuracoes')) },

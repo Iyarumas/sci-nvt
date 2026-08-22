@@ -618,13 +618,25 @@ export default function Posicionamento() {
                         </p>
                       </div>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setExpandidoId(expandido ? null : ex.id)}
-                      className="flex shrink-0 items-center gap-1 rounded-xl border border-graphite-200 bg-white px-3 py-1.5 text-xs font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-200"
-                    >
-                      Detalhes {expandido ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </button>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      {podeUsarPdf && (
+                        <button
+                          type="button"
+                          onClick={() => void handlePreviewPdf(ex)}
+                          disabled={processing}
+                          className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                        >
+                          <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setExpandidoId(expandido ? null : ex.id)}
+                        className="flex items-center gap-1 rounded-xl border border-graphite-200 bg-white px-3 py-1.5 text-xs font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-200"
+                      >
+                        Detalhes {expandido ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </div>
 
                   {expandido && (

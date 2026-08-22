@@ -75,6 +75,7 @@ Base URL local: `http://localhost:3333/api`
 | 29 | tafService | `treinamentos_taf` | 6 | ✅ |
 | 30 | tpeprService | `treinamentos_tpepr` | 6 | ✅ |
 | 30.1 | tpeprPdfService | — | 2 | ✅ |
+| 31 | ordemServicoService | `ordens_servico` | 5 | ✅ |
 | 25 | autentiqueService | — (API externa) | 9 | ✅ |
 | 26 | notificacaoService | — (computed + localStorage) | 4 | ⚠️ cache local |
 | — | store/api/* (10 ficheiros) | — | ~50 | ❌ DEAD CODE (fakeBaseQuery localStorage) |
@@ -2348,6 +2349,26 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 ```
 
 **Regras:** participantes são normalizados e exibidos em ordem hierárquica `BA-CE → BA-LR → BA-MC → BA-2`. A quarta tomada é calculada pelo frontend antes de salvar: `(3ª tomada - 2ª tomada) + 20%`.
+
+---
+
+# 31. Ordens de Serviço — `ordemServicoService.ts`
+
+**Tabela:** `ordens_servico`  
+**Ficheiro:** `src/services/ordemServicoService.ts`  
+**Tipo:** `src/types/ordemServico.ts` — `OrdemServico`, `OrdemServicoInput`  
+**Migration:** `backend/database/migrations/048_ordens_servico.sql` + `backend/database/migrations/049_ordens_servico_empresa_pessoa.sql`
+
+**Funções:** `listarOrdensServico`, `obterOrdemServico`, `criarOrdemServico`, `atualizarOrdemServico`, `excluirOrdemServico` — todas ✅ OK
+
+**REST equivalência:**
+- `GET /rest/v1/ordens_servico?select=*&order=created_at.desc`
+- `GET /rest/v1/ordens_servico?select=*&id=eq.{id}`
+- `POST /rest/v1/ordens_servico`
+- `PATCH /rest/v1/ordens_servico?id=eq.{id}`
+- `DELETE /rest/v1/ordens_servico?id=eq.{id}`
+
+**Mapping snake_case ↔ camelCase:** ✅ Completo para emissão, manutenção, cancelamento, finalização e observações.
 
 ---
 

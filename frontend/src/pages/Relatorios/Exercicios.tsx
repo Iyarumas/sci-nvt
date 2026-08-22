@@ -84,13 +84,21 @@ export function Exercicios() {
           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:shadow-xl active:scale-[0.98]">
           <Activity className="h-4 w-4" /> Gerenciar Treinamentos
         </button>
-        <button onClick={() => navigate('/treinamentos/taf')}
+        <button onClick={() => navigate('/relatorios/exercicios/taf')}
           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:shadow-xl active:scale-[0.98]">
           <Target className="h-4 w-4" /> TAF
         </button>
-        <button onClick={() => navigate('/treinamentos/tp-epr')}
+        <button onClick={() => navigate('/relatorios/exercicios/tp-epr')}
           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-purple-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:shadow-xl active:scale-[0.98]">
           <Award className="h-4 w-4" /> TP/EPR
+        </button>
+        <button onClick={() => navigate('/relatorios/exercicios/posicionamento')}
+          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:shadow-xl active:scale-[0.98]">
+          <Target className="h-4 w-4" /> Posicionamento
+        </button>
+        <button onClick={() => navigate('/relatorios/exercicios/tempo-resposta')}
+          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-violet-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg transition-all hover:shadow-xl active:scale-[0.98]">
+          <Timer className="h-4 w-4" /> Tempo Resposta
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Plus, Search, Trash2, Save, X, Target,
-  AlertTriangle, Shield, Eye, Printer, CheckCircle2, ChevronDown, ChevronUp,
+  Plus, Search, Trash2, Save, X, Target, Pencil,
+  AlertTriangle, Shield, Eye, Printer, CheckCircle2,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -456,10 +456,6 @@ export default function Posicionamento() {
   }
 
   async function handlePreviewPdf(exercicio: ExercicioPosicionamento) {
-    if (!canUsarPdf(exercicio)) {
-      alert('O PDF fica disponível depois da aprovação.');
-      return;
-    }
     setProcessingPdfId(exercicio.id);
     try {
       closePreviewPdf();
@@ -618,25 +614,6 @@ export default function Posicionamento() {
                         </p>
                       </div>
                     </button>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      {podeUsarPdf && (
-                        <button
-                          type="button"
-                          onClick={() => void handlePreviewPdf(ex)}
-                          disabled={processing}
-                          className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                        >
-                          <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setExpandidoId(expandido ? null : ex.id)}
-                        className="flex items-center gap-1 rounded-xl border border-graphite-200 bg-white px-3 py-1.5 text-xs font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-200"
-                      >
-                        Detalhes {expandido ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </button>
-                    </div>
                   </div>
 
                   {expandido && (
@@ -697,16 +674,15 @@ export default function Posicionamento() {
                             <CheckCircle2 className="h-4 w-4" /> {approvingId === ex.id ? 'Aprovando...' : 'Aprovar'}
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => void handlePreviewPdf(ex)}
+                          disabled={processing}
+                          className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                        >
+                          <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
+                        </button>
                         {podeUsarPdf && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void handlePreviewPdf(ex)}
-                              disabled={processing}
-                              className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                            >
-                              <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
-                            </button>
                             <button
                               type="button"
                               onClick={() => void handlePrintPdf(ex)}
@@ -715,25 +691,24 @@ export default function Posicionamento() {
                             >
                               <Printer className="h-4 w-4" /> Imprimir
                             </button>
-                          </>
                         )}
                         {podeAlterar && (
                           <>
                             <button
                               type="button"
                               onClick={() => handleEditar(ex)}
-                              className="rounded-xl p-2 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
+                              className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover"
                               title="Editar"
                             >
-                              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                              <Pencil className="h-4 w-4" /> Editar
                             </button>
                             <button
                               type="button"
                               onClick={() => setDeleteConfirm(ex.id)}
-                              className="rounded-xl p-2 text-red-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                              className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
                               title="Excluir"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-4 w-4" /> Excluir
                             </button>
                           </>
                         )}

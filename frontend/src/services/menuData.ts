@@ -402,6 +402,20 @@ export const menuItems: MenuItem[] = [
             description: 'Teste de Progressão / Exame de Progressão.',
             relatoriosOnly: true,
           },
+          {
+            label: 'Posicionamento',
+            icon: Target,
+            path: '/relatorios/exercicios/posicionamento',
+            description: 'Exercício de posicionamento para intervenção.',
+            relatoriosOnly: true,
+          },
+          {
+            label: 'Tempo Resposta',
+            icon: Timer,
+            path: '/relatorios/exercicios/tempo-resposta',
+            description: 'Exercício de aferição de tempo resposta.',
+            relatoriosOnly: true,
+          },
         ],
       },
       {

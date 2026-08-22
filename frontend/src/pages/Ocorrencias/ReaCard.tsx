@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Download, Pencil, Trash2 } from 'lucide-react';
+import { CheckCircle, ChevronDown, ChevronUp, Download, Eye, Pencil, Trash2 } from 'lucide-react';
 import type { ReaRegistro } from '../../types/rea';
 
 function fmtDate(value: string): string {
@@ -12,15 +12,23 @@ export function ReaCard({
   rea,
   canEdit,
   downloading,
+  processing,
+  approving,
   onEdit,
   onDelete,
+  onPreview,
+  onApprove,
   onDownload,
 }: {
   rea: ReaRegistro;
   canEdit: boolean;
   downloading: boolean;
+  processing: boolean;
+  approving: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onPreview: () => void;
+  onApprove: () => void;
   onDownload: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -28,6 +36,16 @@ export function ReaCard({
     Aberta: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
     Fechada: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
   };
+  const isFechada = rea.status === 'Fechada';
+  const cardCls = 'rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/70';
+  const labelCls = 'text-[10px] font-black uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+  const valueCls = 'mt-1 text-sm font-semibold text-graphite-900 dark:text-graphite-100';
+  const detalhe = (label: string, value?: string) => (
+    <div className={cardCls}>
+      <p className={labelCls}>{label}</p>
+      <p className={valueCls}>{value || '-'}</p>
+    </div>
+  );
 
   return (
     <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -50,34 +68,68 @@ export function ReaCard({
       </button>
 
       {expanded && (
-        <div className="border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
-          <p className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-300">Relatorio de Registro de Emergencias Aeronauticas</p>
-          <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-4">
-            <div><span className="font-semibold text-graphite-500">Aerodromo:</span> <span className="text-graphite-700 dark:text-graphite-200">{rea.aerodromo || '-'}</span></div>
-            <div><span className="font-semibold text-graphite-500">Cidade:</span> <span className="text-graphite-700 dark:text-graphite-200">{rea.cidade || '-'}</span></div>
-            <div><span className="font-semibold text-graphite-500">Empresa:</span> <span className="text-graphite-700 dark:text-graphite-200">{rea.empresa || '-'}</span></div>
-            <div><span className="font-semibold text-graphite-500">Equipe:</span> <span className="text-graphite-700 dark:text-graphite-200">{rea.equipe || '-'}</span></div>
+        <div className="space-y-4 border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
+          <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
+            {detalhe('Data', fmtDate(rea.dataAcidente))}
+            {detalhe('Hora', rea.horaAcidente)}
+            {detalhe('Aerodromo', rea.aerodromo)}
+            {detalhe('Cidade', rea.cidade)}
+            {detalhe('Empresa', rea.empresa)}
+            {detalhe('Matricula', rea.matricula)}
+            {detalhe('Equipe', rea.equipe)}
+            {detalhe('Status', rea.status)}
           </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {detalhe('Tipo da aeronave', rea.dados.tipoAeronave)}
+            {detalhe('Fase da operacao', rea.dados.faseOperacao)}
+            {detalhe('Periodo', rea.dados.acidentePeriodo)}
+            {detalhe('Visibilidade', rea.dados.visibilidade)}
+            {detalhe('Teto', rea.dados.teto)}
+            {detalhe('Vento', [rea.dados.direcaoVento, rea.dados.velocidadeVento].filter(Boolean).join(' / '))}
+          </div>
+
           {rea.dados.descricaoEmergencia && (
-            <p className="mt-3 text-sm text-graphite-700 dark:text-graphite-300">{rea.dados.descricaoEmergencia}</p>
+            <div className={cardCls}>
+              <p className={labelCls}>Descricao da emergencia</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-graphite-800 dark:text-graphite-100">{rea.dados.descricaoEmergencia}</p>
+            </div>
           )}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {rea.status === 'Fechada' && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
+            {!isFechada && canEdit && (
+              <button
+                type="button"
+                onClick={onApprove}
+                disabled={approving}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <CheckCircle className="h-4 w-4" /> {approving ? 'Aprovando...' : 'Aprovar'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onPreview}
+              disabled={processing}
+              className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+            >
+              <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
+            </button>
+            {isFechada && (
               <button
                 onClick={onDownload}
                 disabled={downloading}
-                className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50"
+                className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
               >
-                <Download className="h-3.5 w-3.5" /> {downloading ? 'Gerando...' : 'PDF'}
+                <Download className="h-4 w-4" /> {downloading ? 'Gerando...' : 'PDF'}
               </button>
             )}
             {canEdit && (
               <>
-                <button onClick={onEdit} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
-                  <Pencil className="h-3.5 w-3.5" /> Editar
+                <button onClick={onEdit} className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
+                  <Pencil className="h-4 w-4" /> Editar
                 </button>
-                <button onClick={onDelete} className="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
-                  <Trash2 className="h-3.5 w-3.5" /> Excluir
+                <button onClick={onDelete} className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
+                  <Trash2 className="h-4 w-4" /> Excluir
                 </button>
               </>
             )}

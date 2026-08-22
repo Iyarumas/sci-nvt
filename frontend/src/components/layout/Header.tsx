@@ -245,6 +245,8 @@ function getPageTitle(pathname: string): string {
     'relatorios/exercicios': 'Exercícios',
     'relatorios/exercicios/taf': 'TAF',
     'relatorios/exercicios/tp-epr': 'TP/EPR',
+    'relatorios/exercicios/posicionamento': 'Posicionamento',
+    'relatorios/exercicios/tempo-resposta': 'Tempo Resposta',
     'relatorios/ordem-servico': 'Ordem de Serviço',
     'relatorios/substituicoes': 'Substituições',
     'relatorios/trocas': 'Trocas',

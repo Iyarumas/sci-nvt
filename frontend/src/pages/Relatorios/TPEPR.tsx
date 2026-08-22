@@ -3,8 +3,6 @@ import {
   AlertTriangle,
   Calculator,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Clock,
   ClipboardList,
   Download,
@@ -124,6 +122,7 @@ export function TPEPR() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [erro, setErro] = useState('');
@@ -493,6 +492,32 @@ export function TPEPR() {
     }
   }
 
+  async function handleAprovarRegistro(registro: TreinamentoTPEPR) {
+    if (!canAlterarRegistro(registro)) {
+      alert(mensagemBloqueioRegistro(registro));
+      return;
+    }
+    if (!canManageEquipe(registro.equipe)) {
+      alert('Voce so pode aprovar TP/EPR da sua equipe efetiva.');
+      return;
+    }
+
+    setApprovingId(registro.id);
+    try {
+      await atualizarTPEPR(registro.id, {
+        status: 'Aprovado',
+        aprovadoPor: currentUsername,
+        aprovadoPorNome: currentName,
+        aprovadoEm: new Date().toISOString(),
+      });
+      await carregar();
+    } catch (err) {
+      alert('Erro ao aprovar TP/EPR: ' + mensagemErro(err));
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
   async function handleDownload(registro: TreinamentoTPEPR) {
     if (!canGerarPdf(registro)) {
       alert('Aprove este TP/EPR antes de gerar o PDF.');
@@ -510,11 +535,6 @@ export function TPEPR() {
   }
 
   async function handlePreviewPdf(registro: TreinamentoTPEPR) {
-    if (!canGerarPdf(registro)) {
-      alert('Aprove este TP/EPR antes de visualizar o PDF.');
-      return;
-    }
-
     try {
       setPreviewingId(registro.id);
       const pdf = await gerarTPEPRPdf(registro);
@@ -681,47 +701,6 @@ export function TPEPR() {
                         </p>
                       </div>
                     </button>
-
-                    <div className="flex shrink-0 items-center gap-2">
-                      {podeGerarPdf && (
-                        <>
-                          <button
-                            onClick={() => void handlePreviewPdf(registro)}
-                            disabled={previewingId === registro.id}
-                            className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                            title="Ver documento"
-                          >
-                            <Eye className="h-4 w-4" /> {previewingId === registro.id ? 'Gerando' : 'Ver documento'}
-                          </button>
-                          <button
-                            onClick={() => handleDownload(registro)}
-                            disabled={downloadingId === registro.id}
-                            className="flex items-center gap-1 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                            title="Baixar PDF"
-                          >
-                            <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando' : 'PDF'}
-                          </button>
-                        </>
-                      )}
-                      {podeAlterar && (
-                        <>
-                        <button onClick={() => handleEditar(registro)} className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200" title="Editar">
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button onClick={() => setDeleteConfirm(registro.id)} className="rounded-xl p-1.5 text-red-400 transition-all hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" title="Excluir">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                        </>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setExpandidoId(expandido ? null : registro.id)}
-                        className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
-                        title={expandido ? 'Fechar detalhes' : 'Abrir detalhes'}
-                      >
-                        {expandido ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </button>
-                    </div>
                   </div>
 
                   {expandido && (
@@ -742,6 +721,58 @@ export function TPEPR() {
                           </div>
                         ))
                       )}
+                      <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
+                        {!aprovado && podeAlterar && (
+                          <button
+                            type="button"
+                            onClick={() => void handleAprovarRegistro(registro)}
+                            disabled={approvingId === registro.id}
+                            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <CheckCircle2 className="h-4 w-4" /> {approvingId === registro.id ? 'Aprovando...' : 'Aprovar'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handlePreviewPdf(registro)}
+                          disabled={previewingId === registro.id}
+                          className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                          title="Ver documento"
+                        >
+                          <Eye className="h-4 w-4" /> {previewingId === registro.id ? 'Gerando...' : 'Ver documento'}
+                        </button>
+                        {podeGerarPdf && (
+                          <button
+                            type="button"
+                            onClick={() => handleDownload(registro)}
+                            disabled={downloadingId === registro.id}
+                            className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                            title="Baixar PDF"
+                          >
+                            <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando...' : 'PDF'}
+                          </button>
+                        )}
+                        {podeAlterar && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleEditar(registro)}
+                              className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover"
+                              title="Editar"
+                            >
+                              <Pencil className="h-4 w-4" /> Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirm(registro.id)}
+                              className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
+                              title="Excluir"
+                            >
+                              <Trash2 className="h-4 w-4" /> Excluir
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

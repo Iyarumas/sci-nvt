@@ -88,6 +88,8 @@ export const router = createBrowserRouter([
       { path: 'relatorios/exercicios', element: lazyPage(() => import('../pages/Relatorios/Exercicios')) },
       { path: 'relatorios/exercicios/taf', element: lazyPage(() => import('../pages/Relatorios/TAF')) },
       { path: 'relatorios/exercicios/tp-epr', element: lazyPage(() => import('../pages/Relatorios/TPEPR')) },
+      { path: 'relatorios/exercicios/posicionamento', element: lazyPage(() => import('../pages/Treinamentos/Posicionamento')) },
+      { path: 'relatorios/exercicios/tempo-resposta', element: lazyPage(() => import('../pages/Treinamentos/TempoResposta')) },
       { path: 'relatorios/ordem-servico', element: lazyPage(() => import('../pages/Relatorios/OrdemServico').then(m => ({ default: m.OrdemServico }))) },
       { path: 'relatorios/substituicoes', element: lazyPage(() => import('../pages/Funcionarios/Substituicoes')) },
       { path: 'relatorios/trocas', element: lazyPage(() => import('../pages/Relatorios/Trocas')) },

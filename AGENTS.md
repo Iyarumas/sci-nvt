@@ -231,6 +231,8 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | `/relatorios/exercicios` | Exercícios | Relatório de exercícios gerais |
 | `/relatorios/exercicios/taf` | TAF | Relatório de TAF |
 | `/relatorios/exercicios/tp-epr` | TP/EPR | Relatório de TP/EPR |
+| `/relatorios/exercicios/posicionamento` | Exercício de Posicionamento | Relatório de Exercício de Posicionamento |
+| `/relatorios/exercicios/tempo-resposta` | Tempo Resposta | Relatório de Tempo Resposta |
 | `/relatorios/substituicoes` | Substituições | Relatório mensal de substituições, afastamentos e extras |
 | `/relatorios/trocas` | Trocas | Registos de trocas de serviço |
 

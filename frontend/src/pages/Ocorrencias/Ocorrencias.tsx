@@ -840,6 +840,15 @@ function OcorrenciaCard({
   const canEdit = isFechada ? canEditApprovedNumber : canManage;
   const canDelete = isFechada ? canDeleteApproved : canManage;
   const canApprove = !isFechada && canManage;
+  const detailCardCls = 'rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/70';
+  const detailLabelCls = 'text-[10px] font-black uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+  const detailValueCls = 'mt-1 text-sm font-semibold text-graphite-900 dark:text-graphite-100';
+  const detailCard = (label: string, value?: string) => (
+    <div className={detailCardCls}>
+      <p className={detailLabelCls}>{label}</p>
+      <p className={detailValueCls}>{value || '—'}</p>
+    </div>
+  );
 
   return (
     <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -866,38 +875,84 @@ function OcorrenciaCard({
       </button>
 
       {expanded && (
-        <div className="border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
-          <p className="mb-2 text-sm font-semibold text-graphite-700 dark:text-graphite-300">{bonaDados.tipoOcorrencia || TIPO_DOCUMENTO[o.tipoDocumento]}</p>
-          {bonaDados.descricaoOcorrencia && <p className="mb-2 text-sm text-graphite-700 dark:text-graphite-300 whitespace-pre-wrap">{bonaDados.descricaoOcorrencia}</p>}
-          {bonaDados.bombeiros.length > 0 && <p className="mb-1 text-xs text-graphite-500 dark:text-graphite-400"><strong>Bombeiros:</strong> {bonaDados.bombeiros.map(b => b.nome).filter(Boolean).join(', ')}</p>}
-          {bonaDados.descricaoAtuacaoEquipe && <p className="mb-2 text-xs text-graphite-500 dark:text-graphite-400 whitespace-pre-wrap"><strong>Atuação:</strong> {bonaDados.descricaoAtuacaoEquipe}</p>}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {isFechada && (
-              <>
-                <button onClick={onPreviewDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
-                  <Eye className="h-3.5 w-3.5" /> {processingPdf ? 'Gerando...' : 'Ver documento'}
-                </button>
-                <button onClick={onPrintDocument} disabled={processingPdf} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
-                  <Printer className="h-3.5 w-3.5" /> Imprimir
-                </button>
-              </>
-            )}
-            <button onClick={onView} className="flex items-center gap-1 rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-colors hover:bg-aviation-100 dark:bg-aviation-900/30 dark:text-aviation-300 dark:hover:bg-aviation-900/50">
-              <FileText className="h-3.5 w-3.5" /> Dados
-            </button>
+        <div className="space-y-4 border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
+          <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
+            {detailCard('Data', o.data)}
+            {detailCard('Hora', o.hora)}
+            {detailCard('Equipe', o.equipe)}
+            {detailCard('Turno', o.turno)}
+            {detailCard('Tipo', bonaDados.tipoOcorrencia || o.categoria)}
+            {detailCard('Área', bonaDados.areaEvento)}
+            {detailCard('Local', o.local)}
+            {detailCard('Tempo gasto', bonaDados.tempoGastoAtendimento || calcularTempoAtendimento(bonaDados.acionamento, bonaDados.retornoSci))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {detailCard('Vítimas fatais', bonaDados.vitimasFatais || '0')}
+            {detailCard('Vítimas feridas', bonaDados.vitimasFeridas || '0')}
+            {detailCard('Status', o.status)}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            {detailCard('Acionamento', bonaDados.acionamento)}
+            {detailCard('Saída', bonaDados.saida)}
+            {detailCard('Chegada', bonaDados.chegadaLocal)}
+            {detailCard('Término', bonaDados.terminoOcorrencia)}
+            {detailCard('Retorno SCI', bonaDados.retornoSci)}
+          </div>
+
+          {bonaDados.bombeiros.length > 0 && (
+            <div className={detailCardCls}>
+              <p className={detailLabelCls}>Bombeiros envolvidos</p>
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                {bonaDados.bombeiros.map((bombeiro, index) => (
+                  <div key={index} className="rounded-lg bg-white/80 px-3 py-2 text-xs dark:bg-surface-card">
+                    <p className="font-semibold text-graphite-900 dark:text-graphite-100">{bombeiro.nome || '—'}</p>
+                    <p className="mt-0.5 text-graphite-500 dark:text-graphite-400">{bombeiro.funcao || '—'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {bonaDados.descricaoOcorrencia && (
+            <div className={detailCardCls}>
+              <p className={detailLabelCls}>Descrição da ocorrência / acionamento</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-graphite-800 dark:text-graphite-100">{bonaDados.descricaoOcorrencia}</p>
+            </div>
+          )}
+          {bonaDados.descricaoAtuacaoEquipe && (
+            <div className={detailCardCls}>
+              <p className={detailLabelCls}>Atuação da equipe</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-graphite-800 dark:text-graphite-100">{bonaDados.descricaoAtuacaoEquipe}</p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
             {canApprove && (
-              <button onClick={onApprove} disabled={approving} className="flex items-center gap-1 rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-green-900/20 dark:text-green-300 dark:hover:bg-green-900/30">
-                <CheckCircle className="h-3.5 w-3.5" /> {approving ? 'Aprovando...' : 'Aprovar'}
+              <button onClick={onApprove} disabled={approving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60">
+                <CheckCircle className="h-4 w-4" /> {approving ? 'Aprovando...' : 'Aprovar'}
               </button>
             )}
+            <button onClick={onPreviewDocument} disabled={processingPdf} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+              <Eye className="h-4 w-4" /> {processingPdf ? 'Gerando...' : 'Ver documento'}
+            </button>
+            {isFechada && (
+              <button onClick={onPrintDocument} disabled={processingPdf} className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
+                <Printer className="h-4 w-4" /> Imprimir
+              </button>
+            )}
+            <button onClick={onView} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+              <FileText className="h-4 w-4" /> Dados
+            </button>
             {canEdit && (
-              <button onClick={onEdit} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
-                <Pencil className="h-3.5 w-3.5" /> {isFechada ? 'Editar número' : 'Editar'}
+              <button onClick={onEdit} className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
+                <Pencil className="h-4 w-4" /> {isFechada ? 'Editar número' : 'Editar'}
               </button>
             )}
             {canDelete && (
-              <button onClick={onDelete} className="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
-                <Trash2 className="h-3.5 w-3.5" /> Excluir
+              <button onClick={onDelete} className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
+                <Trash2 className="h-4 w-4" /> Excluir
               </button>
             )}
           </div>
@@ -1135,16 +1190,44 @@ export function Ocorrencias() {
     }
   }
 
+  async function handlePreviewRea(id: string) {
+    setProcessingBonaPdfId(id);
+    try {
+      closeBonaPreview();
+      const rea = await obterRea(id);
+      if (!rea) throw new Error('REA nao encontrado.');
+      const pdf = await gerarReaPdf(rea);
+      setPreviewPdfData(await pdf.arrayBuffer());
+      setPreviewPdfTitle(`${rea.numero || 'REA'} - ${TIPO_DOCUMENTO.REA}`);
+    } finally {
+      setProcessingBonaPdfId(null);
+    }
+  }
+
+  async function handleApproveRea(registro: ReaRegistro) {
+    if (!canManageEquipe(registro.equipe)) {
+      alert('Você só pode aprovar REA da sua equipe efetiva.');
+      return;
+    }
+    if (registro.status === 'Fechada') return;
+
+    setApprovingBonaId(registro.id);
+    try {
+      const updated = await atualizarRea(registro.id, { status: 'Fechada' });
+      if (updated) setReas(prev => prev.map(r => r.id === updated.id ? updated : r));
+      else await carregar();
+      setSuccessMsg('REA aprovado e finalizado.');
+    } finally {
+      setApprovingBonaId(null);
+    }
+  }
+
   function closeBonaPreview() {
     setPreviewPdfData(null);
     setPreviewPdfTitle('');
   }
 
   async function handlePreviewBona(ocorrencia: Ocorrencia) {
-    if (ocorrencia.status !== 'Fechada') {
-      alert('O documento BONA fica disponível depois de aprovado.');
-      return;
-    }
     setProcessingBonaPdfId(ocorrencia.id);
     try {
       closeBonaPreview();
@@ -1321,8 +1404,12 @@ export function Ocorrencias() {
           ) : (
             <ReaCard key={`rea-${doc.item.id}`} rea={doc.item} canEdit={canManageEquipe(doc.item.equipe)}
               downloading={downloadingReaId === doc.item.id}
+              processing={processingBonaPdfId === doc.item.id}
+              approving={approvingBonaId === doc.item.id}
               onEdit={() => openReaForm(doc.item)}
               onDelete={() => setConfirmDeleteRea(doc.item.id)}
+              onPreview={() => handlePreviewRea(doc.item.id)}
+              onApprove={() => handleApproveRea(doc.item)}
               onDownload={() => handleDownloadRea(doc.item.id)}
             />
           ))}

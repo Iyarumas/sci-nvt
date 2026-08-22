@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw } from 'lucide-react';
+import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { AlertModal } from '../../components/ui/AlertModal';
@@ -303,6 +303,7 @@ export function GerarLRO() {
   const [filtroEquipeLista, setFiltroEquipeLista] = useState('');
   const [cloneOrigem, setCloneOrigem] = useState<LRODraft | null>(null);
   const [draftCountdowns, setDraftCountdowns] = useState<Record<string, string>>({});
+  const [lroExpandidoId, setLroExpandidoId] = useState<string | null>(null);
   const camposEquipeEditadosRef = useRef<Set<string>>(new Set());
 
   function campoEquipeKey(grupo: string, key?: string): string {
@@ -1573,6 +1574,152 @@ export function GerarLRO() {
     });
   }
 
+  function abrirDraftParaEdicao(draft: LRODraft) {
+    const dd = draft.dados as Record<string, any> || {};
+    setDraftId(draft.id);
+    setDraftEmEdicaoStatus(draft.status);
+    setStep('preencher');
+    setEquipe((dd.equipeNome || draft.equipe || 'Alfa') as EquipeOpcao);
+    setDataInicio(dd.dataInicio || draft.data_plantao || hojeLocalISO());
+    setDataFim(dd.dataFim || '');
+    setChefeEquipe(dd.chefeEquipe || '');
+    setComunicacao(dd.comunicacao || '');
+    const equipagemCCICarregada = dd.cci2 ? Object.fromEntries((dd.cci2 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
+    const equipagemCCIRTCarregada = dd.cci3 ? Object.fromEntries((dd.cci3 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
+    const equipagemCRSCarregada = dd.crs ? Object.fromEntries((dd.crs as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
+    setEquipagemCCI(equipagemCCICarregada);
+    setEquipagemCCIRT(equipagemCCIRTCarregada);
+    setEquipagemCRS(equipagemCRSCarregada);
+    limparMarcacoesEquipeEditada();
+    marcarCampoEquipeEditado('chefeEquipe');
+    marcarCampoEquipeEditado('comunicacao');
+    marcarEquipagemCarregada('equipagemCCI', equipagemCCICarregada);
+    marcarEquipagemCarregada('equipagemCCIRT', equipagemCCIRTCarregada);
+    marcarEquipagemCarregada('equipagemCRS', equipagemCRSCarregada);
+    setInstrucoes(Array.isArray(dd.instrucoes) ? dd.instrucoes.join('\n') : (dd.instrucoes || ''));
+    setInstrucoesHorarios(dd.instrucoesHorarios || '');
+    if (dd.frota) {
+      const fDados: Record<string, any> = {};
+      (dd.frota as any[]).forEach((f: any, i: number) => {
+        const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
+        const match = f.viaturaId
+          ? frotaLista.find((vv: any) => vv.id === f.viaturaId)
+          : frotaLista.find((vv: any) => (vv.prefixo || vv.nome) === f.viatura);
+        fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), situacao: f.situacao || '' };
+      });
+      setFrotaDados(fDados);
+    }
+    setCentralFaisca(dd.centralFaisca || 'SEM ALTERAÇÕES');
+    setRadioComunicacao(dd.radioComunicacao || 'SEM ALTERAÇÕES');
+    setTpTemAlteracao(!!dd.tpTemAlteracao);
+    setTpTexto(dd.tpTexto || '');
+    setExtTemAlteracao(!!dd.extTemAlteracao);
+    setExtTexto(dd.extTexto || '');
+    setEquipTemAlteracao(!!dd.equipTemAlteracao);
+    setEquipTexto(dd.equipTexto || '');
+    setEdifTemAlteracao(!!dd.edifTemAlteracao);
+    setEdifTexto(dd.edifTexto || '');
+    setOcorrenciasNA(dd.ocorrenciasNA || '');
+    setInspecoes(dd.inspecoes || '');
+    setEmergenciaXI(dd.emergenciaXI || '');
+    setOutrasOcorrencias(lancamentosParaTexto(dd.ocorrenciasXII));
+    setSolicitacoesCCR(lancamentosParaTexto(dd.solicitacoes));
+    setTrocasManuais(Array.isArray(dd._trocasManuais) ? dd._trocasManuais : []);
+    setSubstituicoesDetectadas(Array.isArray(dd._substituicoesDetectadas) ? dd._substituicoesDetectadas : []);
+    setView('wizard');
+  }
+
+  function countDraftArray(dados: Record<string, any>, key: string): number {
+    return Array.isArray(dados[key]) ? dados[key].length : 0;
+  }
+
+  function countDraftTextLines(value: unknown): number {
+    if (Array.isArray(value)) return value.filter(Boolean).length;
+    return String(value || '').split('\n').map(line => line.trim()).filter(Boolean).length;
+  }
+
+  function draftLines(value: unknown): string[] {
+    if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+    return String(value || '').split('\n').map(line => line.trim()).filter(Boolean);
+  }
+
+  function formatarEquipagemDraft(value: unknown): string {
+    if (!Array.isArray(value) || value.length === 0) return '';
+    return value
+      .map((item: any) => [item.funcao, item.nome].filter(Boolean).join(' - '))
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function formatarFrotaDraft(value: unknown): string {
+    if (!Array.isArray(value) || value.length === 0) return '';
+    return value
+      .map((item: any) => {
+        const partes = [
+          item.viatura || item.prefixo || '',
+          item.kmIni || item.kmFim ? `KM ${item.kmIni || '-'} -> ${item.kmFim || '-'}` : '',
+          item.combIni || item.combFim ? `Comb. ${item.combIni || '-'}% -> ${item.combFim || '-'}%` : '',
+          item.situacao || '',
+        ].filter(Boolean);
+        return partes.join(' | ');
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function formatarTrocasDraft(value: unknown): string {
+    if (!Array.isArray(value) || value.length === 0) return '';
+    return value
+      .map((item: Partial<TrocaManualLRO>) => {
+        const nomes = [item.solicitante, item.solicitado].filter(Boolean).join(' x ');
+        const detalhes = [item.dataFolga ? `Folga: ${item.dataFolga}` : '', item.motivo].filter(Boolean).join(' | ');
+        return [nomes, detalhes].filter(Boolean).join(' - ');
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function formatarSubstituicoesDraft(value: unknown): string {
+    if (!Array.isArray(value) || value.length === 0) return '';
+    return value
+      .map((item: Partial<SubstituicaoInfo>) => {
+        const nomes = [item.substituidoNome, item.substitutoNome].filter(Boolean).join(' -> ');
+        const detalhes = [item.cargoSubstituido, item.cargoExercido, item.equipeSubstituido].filter(Boolean).join(' / ');
+        return [nomes, detalhes].filter(Boolean).join(' - ');
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  function resumoAlteracoesLRO(dados: Record<string, any>): string {
+    const itens = [
+      dados.tpTemAlteracao ? 'TP' : '',
+      dados.extTemAlteracao ? 'Extintores' : '',
+      dados.equipTemAlteracao ? 'Equipamentos' : '',
+      dados.edifTemAlteracao ? 'Edificações' : '',
+    ].filter(Boolean);
+    return itens.length ? itens.join(', ') : 'Sem alterações';
+  }
+
+  function lroDetailCard(label: string, value: ReactNode) {
+    return (
+      <div className="rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/70">
+        <p className="text-[10px] font-black uppercase tracking-wider text-graphite-500 dark:text-graphite-400">{label}</p>
+        <div className="mt-1 text-sm font-semibold text-graphite-900 dark:text-graphite-100">{value || '—'}</div>
+      </div>
+    );
+  }
+
+  function lroTextCard(label: string, value: unknown, className = '') {
+    const texto = draftLines(value).join('\n');
+    return (
+      <div className={`rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/70 ${className}`}>
+        <p className="text-[10px] font-black uppercase tracking-wider text-graphite-500 dark:text-graphite-400">{label}</p>
+        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-graphite-900 dark:text-graphite-100">{texto || '—'}</p>
+      </div>
+    );
+  }
+
   function idsOcorrenciasTravadasPorOutrosLROs(draftAtual: LRODraft, ids: string[]): Set<string> {
     const idsAlvo = new Set(ids);
     const travadas = new Set<string>();
@@ -1736,12 +1883,17 @@ export function GerarLRO() {
             {filtradas.map(d => {
               const dotColor = d.status === 'assinado' ? 'bg-green-500' : d.status === 'aguardando' ? 'bg-blue-500' : d.status === 'cancelado' ? 'bg-red-500' : d.status === 'finalizado' ? 'bg-green-500' : d.status === 'arquivado' ? 'bg-graphite-400' : 'bg-yellow-500';
               const dd = d.dados as Record<string, any> || {};
+              const expanded = lroExpandidoId === d.id;
               const podeEditarDraft = canManageDraft(d) &&
                 (d.status === 'rascunho' || (contexto.isAdministradorSistema && STATUS_LRO_EDITAVEIS_POR_ADMIN.has(d.status)));
               return (
               <div key={d.id} className="rounded-xl border border-graphite-200 bg-white transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
-                <div className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div className="flex items-center justify-between gap-3 p-4">
+                  <button
+                    type="button"
+                    onClick={() => setLroExpandidoId(expanded ? null : d.id)}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
                     <span className={`h-2.5 w-2.5 flex-shrink-0 rounded-full ${dotColor}`} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap text-sm font-medium text-graphite-900 dark:text-graphite-100">
@@ -1753,7 +1905,8 @@ export function GerarLRO() {
                         {' · '}Criado em {formatarDataBR(d.created_at)}
                       </div>
                     </div>
-                  </div>
+                    {expanded ? <ChevronUp className="h-4 w-4 shrink-0 text-graphite-400" /> : <ChevronDown className="h-4 w-4 shrink-0 text-graphite-400" />}
+                  </button>
                   <div className="flex items-center gap-2">
                     <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CORES[d.status] || STATUS_CORES.rascunho}`}>
                       {STATUS_LABELS[d.status] || d.status}
@@ -1763,123 +1916,136 @@ export function GerarLRO() {
                         Exclui em: {draftCountdowns[d.id]}
                       </span>
                     )}
-                    {canCreate && (
-                      <button onClick={() => setCloneOrigem(d)} title="Clonar LRO"
-                        className="rounded-lg p-1.5 text-graphite-400 transition-all hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20">
-                        <FileText className="h-4 w-4" />
-                      </button>
-                    )}
-                    {(d.status === 'finalizado' || d.status === 'arquivado') && (
-                      <button onClick={() => handleVerDocumentoLRO(d)} title="Ver documento"
-                        className="rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-all hover:bg-aviation-100 dark:bg-aviation-900/20 dark:text-aviation-300">
-                        <Eye className="h-3.5 w-3.5 inline-block mr-1" /> Ver documento
-                      </button>
-                    )}
-                    {podeEditarDraft ? (
-                      <button onClick={() => {
-                        setDraftId(d.id);
-                        setDraftEmEdicaoStatus(d.status);
-                        setStep('preencher');
-                        setEquipe((dd.equipeNome || d.equipe || 'Alfa') as EquipeOpcao);
-                        setDataInicio(dd.dataInicio || d.data_plantao || hojeLocalISO());
-                        setDataFim(dd.dataFim || '');
-                        setChefeEquipe(dd.chefeEquipe || '');
-                        setComunicacao(dd.comunicacao || '');
-                        const equipagemCCICarregada = dd.cci2 ? Object.fromEntries((dd.cci2 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
-                        const equipagemCCIRTCarregada = dd.cci3 ? Object.fromEntries((dd.cci3 as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
-                        const equipagemCRSCarregada = dd.crs ? Object.fromEntries((dd.crs as any[]).map((c: any, i: number) => [`${c.funcao}_${i}`, c.nome])) : {};
-                        setEquipagemCCI(equipagemCCICarregada);
-                        setEquipagemCCIRT(equipagemCCIRTCarregada);
-                        setEquipagemCRS(equipagemCRSCarregada);
-                        limparMarcacoesEquipeEditada();
-                        marcarCampoEquipeEditado('chefeEquipe');
-                        marcarCampoEquipeEditado('comunicacao');
-                        marcarEquipagemCarregada('equipagemCCI', equipagemCCICarregada);
-                        marcarEquipagemCarregada('equipagemCCIRT', equipagemCCIRTCarregada);
-                        marcarEquipagemCarregada('equipagemCRS', equipagemCRSCarregada);
-                        setInstrucoes(Array.isArray(dd.instrucoes) ? dd.instrucoes.join('\n') : (dd.instrucoes || ''));
-                        setInstrucoesHorarios(dd.instrucoesHorarios || '');
-                        if (dd.frota) {
-                          const fDados: Record<string, any> = {};
-                          (dd.frota as any[]).forEach((f: any, i: number) => {
-                            const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
-                            const match = f.viaturaId
-                              ? frotaLista.find((vv: any) => vv.id === f.viaturaId)
-                              : frotaLista.find((vv: any) => (vv.prefixo || vv.nome) === f.viatura);
-                            fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), situacao: f.situacao || '' };
-                          });
-                          setFrotaDados(fDados);
-                        }
-                        setCentralFaisca(dd.centralFaisca || 'SEM ALTERAÇÕES');
-                        setRadioComunicacao(dd.radioComunicacao || 'SEM ALTERAÇÕES');
-                        setTpTemAlteracao(!!dd.tpTemAlteracao);
-                        setTpTexto(dd.tpTexto || '');
-                        setExtTemAlteracao(!!dd.extTemAlteracao);
-                        setExtTexto(dd.extTexto || '');
-                        setEquipTemAlteracao(!!dd.equipTemAlteracao);
-                        setEquipTexto(dd.equipTexto || '');
-                        setEdifTemAlteracao(!!dd.edifTemAlteracao);
-                        setEdifTexto(dd.edifTexto || '');
-                        setOcorrenciasNA(dd.ocorrenciasNA || '');
-                        setInspecoes(dd.inspecoes || '');
-                        setEmergenciaXI(dd.emergenciaXI || '');
-                        setOutrasOcorrencias(lancamentosParaTexto(dd.ocorrenciasXII));
-                        setSolicitacoesCCR(lancamentosParaTexto(dd.solicitacoes));
-                        setTrocasManuais(Array.isArray(dd._trocasManuais) ? dd._trocasManuais : []);
-                        setSubstituicoesDetectadas(Array.isArray(dd._substituicoesDetectadas) ? dd._substituicoesDetectadas : []);
-                        setView('wizard');
-                      }}
-                        className="rounded-lg bg-aviation-50 px-3 py-1.5 text-xs font-medium text-aviation-700 transition-all hover:bg-aviation-100 dark:bg-aviation-900/20 dark:text-aviation-300">
-                        {d.status === 'rascunho' ? 'Continuar' : 'Editar'}
-                      </button>
-                    ) : null}
-                    {contexto.isAdministradorSistema && d.status === 'aguardando' && (
-                      <button onClick={async () => {
-                        try {
-                          await finalizarDraftComOcorrencias(d);
-                        } catch (err) {
-                          setErroValidacao(`Erro ao finalizar LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-                        }
-                      }} title="Marcar como finalizado"
-                        className="rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition-all hover:bg-green-100 dark:bg-green-900/20 dark:text-green-300">
-                        <Check className="h-3.5 w-3.5 inline-block mr-1" /> Finalizar
-                      </button>
-                    )}
-                    {contexto.isAdministradorSistema && d.status !== 'arquivado' && d.status !== 'rascunho' && (
-                      <button onClick={async () => {
-                        await arquivarDraftComoDocumento(d);
-                        setDrafts(prev => prev.map(x => x.id === d.id ? { ...x, status: 'arquivado' } : x));
-                      }} title="Arquivar"
-                        className="rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-all hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300">
-                        <Archive className="h-3.5 w-3.5 inline-block mr-1" /> Arquivar
-                      </button>
-                    )}
-                    {contexto.isAdministradorSistema && d.status === 'arquivado' && (
-                      <button onClick={async () => {
-                        try {
-                          await finalizarDraftComOcorrencias(d);
-                        } catch (err) {
-                          setErroValidacao(`Erro ao desarquivar LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-                        }
-                      }} title="Desarquivar"
-                        className="rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-all hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300">
-                        <RefreshCw className="h-3.5 w-3.5 inline-block mr-1" /> Desarquivar
-                      </button>
-                    )}
-                    {canManageDraft(d) && (d.status === 'rascunho' || contexto.isAdministradorSistema) && (
-                      <button onClick={async () => {
-                        try {
-                          await excluirDraftComOcorrencias(d);
-                        } catch (err) {
-                          setErroValidacao(`Erro ao excluir LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
-                        }
-                      }}
-                        className="rounded-lg p-1.5 text-alert-red transition-all hover:bg-red-50 dark:hover:bg-red-900/20">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
+                {expanded && (
+                  <div className="space-y-4 border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
+                    <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
+                      {lroDetailCard('Data do plantão', formatarDataBR(d.data_plantao))}
+                      {lroDetailCard('Equipe', d.equipe || dd.equipeNome || '—')}
+                      {lroDetailCard('Chefe da equipe', dd.chefeEquipe || '—')}
+                      {lroDetailCard('Comunicação BA-OC', dd.comunicacao || '—')}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      {lroDetailCard('CCI 2', `${countDraftArray(dd, 'cci2')} integrante(s)`)}
+                      {lroDetailCard('CCI 3', `${countDraftArray(dd, 'cci3')} integrante(s)`)}
+                      {lroDetailCard('CRS', `${countDraftArray(dd, 'crs')} integrante(s)`)}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                      {lroDetailCard('Instruções', `${countDraftTextLines(dd.instrucoes)} lançamento(s)`)}
+                      {lroDetailCard('Frota', `${countDraftArray(dd, 'frota')} viatura(s)`)}
+                      {lroDetailCard('Trocas', `${countDraftArray(dd, '_trocasManuais')} manual(is)`)}
+                      {lroDetailCard('Substituições', `${countDraftArray(dd, '_substituicoesDetectadas')} detectada(s)`)}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                      {lroDetailCard('Ocorrências/BONA', `${countDraftTextLines(dd.ocorrenciasNA)} lançamento(s)`)}
+                      {lroDetailCard('REA', `${countDraftTextLines(dd.emergenciaXI)} lançamento(s)`)}
+                      {lroDetailCard('Inspeções', `${countDraftTextLines(dd.inspecoes)} lançamento(s)`)}
+                      {lroDetailCard('Solicitações CCR', `${countDraftTextLines(dd.solicitacoes)} lançamento(s)`)}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      {lroDetailCard('Central Faísca', dd.centralFaisca || 'SEM ALTERAÇÕES')}
+                      {lroDetailCard('Rádio Comunicação', dd.radioComunicacao || 'SEM ALTERAÇÕES')}
+                      {lroDetailCard('Alterações', resumoAlteracoesLRO(dd))}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      {lroTextCard('CCI 2 - Equipagem', formatarEquipagemDraft(dd.cci2))}
+                      {lroTextCard('CCI 3 - Equipagem', formatarEquipagemDraft(dd.cci3))}
+                      {lroTextCard('CRS - Equipagem', formatarEquipagemDraft(dd.crs))}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {lroTextCard('Instruções', dd.instrucoes)}
+                      {lroTextCard('Frota', formatarFrotaDraft(dd.frota))}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {lroTextCard('Ocorrências/BONA', dd.ocorrenciasNA)}
+                      {lroTextCard('REA', dd.emergenciaXI)}
+                      {lroTextCard('Inspeções', dd.inspecoes)}
+                      {lroTextCard('Outras Ocorrências', dd.ocorrenciasXII)}
+                      {lroTextCard('Solicitações CCR', dd.solicitacoes)}
+                      {lroTextCard('Trocas Manuais', formatarTrocasDraft(dd._trocasManuais))}
+                      {lroTextCard('Substituições', formatarSubstituicoesDraft(dd._substituicoesDetectadas))}
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {dd.tpTemAlteracao && lroTextCard('TP/EPR - Alterações', dd.tpTexto)}
+                      {dd.extTemAlteracao && lroTextCard('Agentes Extintores - Alterações', dd.extTexto)}
+                      {dd.equipTemAlteracao && lroTextCard('Equipamentos - Alterações', dd.equipTexto)}
+                      {dd.edifTemAlteracao && lroTextCard('Edificações - Alterações', dd.edifTexto)}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
+                      <button onClick={() => handleVerDocumentoLRO(d)}
+                        className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+                        <Eye className="h-4 w-4" /> Ver documento
+                      </button>
+                      {canCreate && (
+                        <button onClick={() => setCloneOrigem(d)} title="Clonar LRO"
+                          className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300">
+                          <FileText className="h-4 w-4" /> Clonar
+                        </button>
+                      )}
+                      {podeEditarDraft && (
+                        <button onClick={() => abrirDraftParaEdicao(d)}
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
+                          <FileText className="h-4 w-4" /> {d.status === 'rascunho' ? 'Continuar' : 'Editar'}
+                        </button>
+                      )}
+                      {contexto.isAdministradorSistema && d.status === 'aguardando' && (
+                        <button onClick={async () => {
+                          try {
+                            await finalizarDraftComOcorrencias(d);
+                          } catch (err) {
+                            setErroValidacao(`Erro ao finalizar LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                          }
+                        }} title="Marcar como finalizado"
+                          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl">
+                          <Check className="h-4 w-4" /> Finalizar
+                        </button>
+                      )}
+                      {contexto.isAdministradorSistema && d.status !== 'arquivado' && d.status !== 'rascunho' && (
+                        <button onClick={async () => {
+                          await arquivarDraftComoDocumento(d);
+                          setDrafts(prev => prev.map(x => x.id === d.id ? { ...x, status: 'arquivado' } : x));
+                        }} title="Arquivar"
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300">
+                          <Archive className="h-4 w-4" /> Arquivar
+                        </button>
+                      )}
+                      {contexto.isAdministradorSistema && d.status === 'arquivado' && (
+                        <button onClick={async () => {
+                          try {
+                            await finalizarDraftComOcorrencias(d);
+                          } catch (err) {
+                            setErroValidacao(`Erro ao desarquivar LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                          }
+                        }} title="Desarquivar"
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300">
+                          <RefreshCw className="h-4 w-4" /> Desarquivar
+                        </button>
+                      )}
+                      {canManageDraft(d) && (d.status === 'rascunho' || contexto.isAdministradorSistema) && (
+                        <button onClick={async () => {
+                          try {
+                            await excluirDraftComOcorrencias(d);
+                          } catch (err) {
+                            setErroValidacao(`Erro ao excluir LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+                          }
+                        }}
+                          className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
+                          <Trash2 className="h-4 w-4" /> Excluir
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               );
             })}

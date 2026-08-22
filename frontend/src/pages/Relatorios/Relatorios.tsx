@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileBarChart, FileSpreadsheet, FileCheck, FileText, ClipboardList,
-  Activity, Target, Award, ArrowRight, ArrowLeftRight, TrendingUp, Lock,
+  Activity, Target, Award, ArrowRight, ArrowLeftRight, TrendingUp, Lock, Timer,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -73,6 +73,18 @@ export function Relatorios() {
       description: 'Teste de Progressão / Equipamento de Proteção Respiratória',
       icon: Award, path: '/relatorios/exercicios/tp-epr', color: 'from-purple-500 to-purple-700',
       stats: [{ label: 'Registros', value: '—' }, { label: 'Vencidos', value: '—' }],
+    },
+    {
+      title: 'Posicionamento',
+      description: 'Exercício de posicionamento para intervenção',
+      icon: Target, path: '/relatorios/exercicios/posicionamento', color: 'from-cyan-500 to-cyan-700',
+      stats: [{ label: 'Registros', value: '—' }, { label: 'Documento', value: '✓' }],
+    },
+    {
+      title: 'Tempo Resposta',
+      description: 'Exercício de aferição de tempo resposta',
+      icon: Timer, path: '/relatorios/exercicios/tempo-resposta', color: 'from-violet-500 to-violet-700',
+      stats: [{ label: 'Registros', value: '—' }, { label: 'Documento', value: '✓' }],
     },
     {
       title: 'Ordens de Serviço',

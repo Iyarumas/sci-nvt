@@ -21,6 +21,8 @@ export function Breadcrumb() {
     exercicios: 'Exercícios',
     taf: 'TAF',
     'tp-epr': 'TP/EPR',
+    posicionamento: 'Posicionamento',
+    'tempo-resposta': 'Tempo Resposta',
     'ordem-servico': 'Ordem de Serviço',
     trocas: 'Trocas',
     'registros-diarios': 'Registros Diários',

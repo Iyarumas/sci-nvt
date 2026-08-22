@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Target,
-  AlertTriangle, Users, Lock, Download, ChevronDown, ChevronUp,
-  CheckCircle2, Eye,
+  AlertTriangle, Users, Lock, Download,
+  CheckCircle2, Eye, Pencil,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -174,6 +174,7 @@ export function TAF() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [expandidoId, setExpandidoId] = useState<string | null>(null);
@@ -408,6 +409,32 @@ export function TAF() {
     setDeleteConfirm(null);
   }
 
+  async function handleAprovarRegistro(registro: TreinamentoTAF) {
+    if (!canAlterarRegistro(registro)) {
+      alert(mensagemBloqueioRegistro(registro));
+      return;
+    }
+    if (!canManageEquipe(registro.equipe)) {
+      alert('Voce so pode aprovar treinamentos da sua equipe efetiva.');
+      return;
+    }
+
+    setApprovingId(registro.id);
+    try {
+      await atualizarTAF(registro.id, {
+        status: 'Aprovado',
+        aprovadoPor: currentUsername,
+        aprovadoPorNome: currentName,
+        aprovadoEm: new Date().toISOString(),
+      });
+      await carregar();
+    } catch (err) {
+      alert('Erro ao aprovar TAF: ' + (err instanceof Error ? err.message : 'Erro'));
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
   async function handleDownload(registro: TreinamentoTAF) {
     if (!canGerarPdf(registro)) {
       alert('Aprove este TAF antes de gerar o PDF.');
@@ -434,11 +461,6 @@ export function TAF() {
   }
 
   async function handlePreviewPdf(registro: TreinamentoTAF) {
-    if (!canGerarPdf(registro)) {
-      alert('Aprove este TAF antes de visualizar o PDF.');
-      return;
-    }
-
     try {
       setPreviewingId(registro.id);
       const registroPdf = prepararRegistroPdf(registro);
@@ -535,44 +557,6 @@ export function TAF() {
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
                   </div>
                 </button>
-                <div className="flex items-center gap-2 shrink-0">
-                  {podeGerarPdf && (
-                    <>
-                      <button
-                        onClick={() => void handlePreviewPdf(r)}
-                        disabled={previewingId === r.id}
-                        className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-1.5 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                        title="Ver documento"
-                      >
-                        <Eye className="h-4 w-4" /> {previewingId === r.id ? 'Gerando' : 'Ver documento'}
-                      </button>
-                      <button
-                        onClick={() => handleDownload(r)}
-                        disabled={downloadingId === r.id}
-                        className="flex items-center gap-1 rounded-xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                        title="Baixar PDF"
-                      >
-                        <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando' : 'PDF'}
-                      </button>
-                    </>
-                  )}
-                  {podeAlterar && (
-                    <>
-                    <button onClick={() => handleEditar(r)} className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover">
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button onClick={() => setDeleteConfirm(r.id)} className="rounded-xl p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"><Trash2 className="h-4 w-4" /></button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setExpandidoId(expandido ? null : r.id)}
-                    className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
-                    title={expandido ? 'Fechar detalhes' : 'Abrir detalhes'}
-                  >
-                    {expandido ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                </div>
               </div>
 
               {expandido && (
@@ -594,6 +578,58 @@ export function TAF() {
                       ))}
                     </div>
                   )}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
+                    {!aprovado && podeAlterar && (
+                      <button
+                        type="button"
+                        onClick={() => void handleAprovarRegistro(r)}
+                        disabled={approvingId === r.id}
+                        className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="h-4 w-4" /> {approvingId === r.id ? 'Aprovando...' : 'Aprovar'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handlePreviewPdf(r)}
+                      disabled={previewingId === r.id}
+                      className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
+                      title="Ver documento"
+                    >
+                      <Eye className="h-4 w-4" /> {previewingId === r.id ? 'Gerando...' : 'Ver documento'}
+                    </button>
+                    {podeGerarPdf && (
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(r)}
+                        disabled={downloadingId === r.id}
+                        className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                        title="Baixar PDF"
+                      >
+                        <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando...' : 'PDF'}
+                      </button>
+                    )}
+                    {podeAlterar && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleEditar(r)}
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover"
+                          title="Editar"
+                        >
+                          <Pencil className="h-4 w-4" /> Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirm(r.id)}
+                          className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
+                          title="Excluir"
+                        >
+                          <Trash2 className="h-4 w-4" /> Excluir
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
                 </div>

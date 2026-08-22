@@ -118,6 +118,10 @@ type SubstituicaoInfo = {
   equipeSubstituido?: string;
   cargoExercido?: string;
 };
+type EfetivoDisponivel = {
+  bombeiro: Bombeiro;
+  cargoExercido: string;
+};
 const EMPTY_FROTA_LINHA: FrotaLinhaDados = {
   viaturaId: '',
   prefixo: '',
@@ -787,12 +791,6 @@ export function GerarLRO() {
     );
   }
 
-  function podeSerChefeEquipe(bombeiro?: Bombeiro): boolean {
-    if (!bombeiro) return false;
-    const aviso = validarCursoParaFuncao(bombeiro, 'BA-CE');
-    return aviso?.nivel !== 'bloqueado';
-  }
-
   function trocaFillVisivelNoLRO(fill: any): boolean {
     const status = String(fill?.status || '');
     if (!STATUS_TROCA_ENTRA_LRO.has(status)) return false;
@@ -948,6 +946,39 @@ export function GerarLRO() {
     return presentes;
   }, [membrosEquipe, emFerias, substituicoesMap, bombeiros, equipe]);
 
+  const efetivoDisponivel = useMemo<EfetivoDisponivel[]>(() => {
+    return disponiveis.map(bombeiro => {
+      const substituicao = substituicoesPorSubstituto[bombeiro.id];
+      return {
+        bombeiro,
+        cargoExercido: substituicao?.cargoExercido || substituicao?.cargoSubstituido || bombeiro.cargo,
+      };
+    });
+  }, [disponiveis, substituicoesPorSubstituto]);
+
+  const cargoExercidoPorId = useMemo(() => {
+    return new Map(efetivoDisponivel.map(entry => [entry.bombeiro.id, entry.cargoExercido]));
+  }, [efetivoDisponivel]);
+
+  const cargoExercidoNoPlantao = useCallback((bombeiro?: Bombeiro): string => {
+    if (!bombeiro) return '';
+    return cargoExercidoPorId.get(bombeiro.id) ||
+      substituicoesPorSubstituto[bombeiro.id]?.cargoExercido ||
+      substituicoesPorSubstituto[bombeiro.id]?.cargoSubstituido ||
+      bombeiro.cargo;
+  }, [cargoExercidoPorId, substituicoesPorSubstituto]);
+
+  const formatarOpcaoEfetivo = useCallback((entry: EfetivoDisponivel): { value: string; label: string } => {
+    const { bombeiro, cargoExercido } = entry;
+    const cargoLabel = cargoExercido && cargoExercido !== bombeiro.cargo
+      ? `${bombeiro.cargo} -> ${cargoExercido}`
+      : cargoExercido || bombeiro.cargo;
+    return {
+      value: bombeiro.nomeGuerra,
+      label: `${bombeiro.nomeGuerra} - ${bombeiro.nomeCompleto} (${cargoLabel})`,
+    };
+  }, []);
+
   const substituicoesAtivas = useMemo(() => {
     const bombeiroPorId = new Map(bombeiros.map(b => [b.id, b]));
     return vigencias.filter(v => {
@@ -1001,26 +1032,30 @@ export function GerarLRO() {
       return b.nomeGuerra || '';
     };
 
-    // 1.1 Chefe de Equipe — procura o slot real de chefe/BA-CE, não a primeira pessoa da escala.
+    const nomeSeExerceChefe = (id: string | undefined, nomeGuerra: string | undefined): string => {
+      const nomeFinal = resolvePessoa(id, nomeGuerra);
+      const bombeiroFinal = buscarBombeiroPorNome(nomeFinal);
+      const entryFinal = bombeiroFinal
+        ? efetivoDisponivel.find(entry => entry.bombeiro.id === bombeiroFinal.id)
+        : undefined;
+      return entryFinal?.cargoExercido === 'BA-CE' ? nomeFinal : '';
+    };
+
+    // 1.1 Chefe de Equipe — usa apenas quem está exercendo BA-CE no plantão.
     const nomeChefeDaEscala = (() => {
       const slotChefe = pessoas.find(p =>
         p.funcao === 'chefe' ||
         (p.veiculo === 'cciF2' && p.funcaoNoVeiculo === 'BaCe')
       );
-      return slotChefe?.nomeGuerra ? resolvePessoa(slotChefe.id, slotChefe.nomeGuerra) : '';
+      return slotChefe?.nomeGuerra ? nomeSeExerceChefe(slotChefe.id, slotChefe.nomeGuerra) : '';
     })();
-    const nomeChefeDesignado = (() => {
-      const designado = bombeiros.find((b: any) => b.cargo === 'BA-CE' && b.equipe === equipe && !b.dataDesligamento);
-      if (!designado) return '';
-      const designadoTemSubstituto = !!substituicoesMap[designado.id];
-      const designadoDisponivel = designadoTemSubstituto || disponiveis.some(b => b.id === designado.id);
-      return designadoDisponivel ? resolvePessoa(designado.id, designado.nomeGuerra) : '';
-    })();
+    const nomeChefeEfetivo = efetivoDisponivel.find(entry => entry.cargoExercido === 'BA-CE')?.bombeiro.nomeGuerra || '';
     const chefeAtual = buscarBombeiroPorNome(chefeEquipe);
     const chefeAtualSaiu = !!chefeAtual && !!substituicoesMap[chefeAtual.id];
     const chefeAtualPresente = !!chefeAtual && disponiveis.some(b => b.id === chefeAtual.id);
-    const candidatoChefe = [nomeChefeDaEscala, nomeChefeDesignado].find(Boolean) || '';
-    if (candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente) && candidatoChefe !== chefeEquipe) {
+    const chefeAtualExerceBACE = cargoExercidoNoPlantao(chefeAtual) === 'BA-CE';
+    const candidatoChefe = [nomeChefeDaEscala, nomeChefeEfetivo].find(Boolean) || '';
+    if (candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente || !chefeAtualExerceBACE) && candidatoChefe !== chefeEquipe) {
       setChefeEquipe(candidatoChefe);
     }
 
@@ -1088,7 +1123,7 @@ export function GerarLRO() {
     if (!registrosIguais(nextCCI, equipagemCCI)) setEquipagemCCI(nextCCI);
     if (!registrosIguais(nextCCIRT, equipagemCCIRT)) setEquipagemCCIRT(nextCCIRT);
     if (!registrosIguais(nextCRS, equipagemCRS)) setEquipagemCRS(nextCRS);
-  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
+  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, efetivoDisponivel, cargoExercidoNoPlantao, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
 
   async function handleSalvarRascunho() {
     if (bloquearEquipeAtual('salvar')) return;
@@ -2260,30 +2295,21 @@ export function GerarLRO() {
                   onChange={setChefeEquipe}
                   options={(() => {
                     const opcoes = new Map<string, { value: string; label: string }>();
-                    const adicionarOpcao = (bombeiro?: Bombeiro, forcar = false) => {
-                      if (!bombeiro || (!forcar && !podeSerChefeEquipe(bombeiro))) return;
-                      opcoes.set(bombeiro.nomeGuerra, {
-                        value: bombeiro.nomeGuerra,
-                        label: `${bombeiro.nomeGuerra} - ${bombeiro.nomeCompleto} (${bombeiro.cargo})`,
-                      });
+                    const adicionarOpcao = (entry?: EfetivoDisponivel, forcar = false) => {
+                      if (!entry) return;
+                      if (!forcar && entry.cargoExercido !== 'BA-CE') return;
+                      opcoes.set(entry.bombeiro.nomeGuerra, formatarOpcaoEfetivo(entry));
                     };
 
-                    disponiveis
-                      .filter(b => b.cargo === 'BA-CE' || b.cursoChefeEquipe)
-                      .forEach(b => adicionarOpcao(b));
+                    efetivoDisponivel
+                      .filter(entry => entry.cargoExercido === 'BA-CE')
+                      .forEach(entry => adicionarOpcao(entry));
 
-                    Object.entries(substituicoesMap).forEach(([ausenteId, sub]) => {
-                      const ausente = bombeiros.find((b: any) => b.id === ausenteId);
-                      if (ausente?.cargo !== 'BA-CE' && sub.cargoExercido !== 'BA-CE') return;
-                      const substituto = bombeiros.find((b: any) =>
-                        b.id === sub.substitutoId ||
-                        b.nomeGuerra === sub.substitutoNome ||
-                        b.nomeCompleto === sub.substitutoNome
-                      );
-                      adicionarOpcao(substituto, true);
-                    });
-
-                    adicionarOpcao(buscarBombeiroPorNome(chefeEquipe), true);
+                    const chefeAtual = buscarBombeiroPorNome(chefeEquipe);
+                    const chefeAtualEntry = chefeAtual
+                      ? efetivoDisponivel.find(entry => entry.bombeiro.id === chefeAtual.id)
+                      : undefined;
+                    if (chefeAtualEntry) adicionarOpcao(chefeAtualEntry, true);
                     return Array.from(opcoes.values());
                   })()}
                   placeholder="Chefe de equipe"
@@ -2336,9 +2362,9 @@ export function GerarLRO() {
                         ...Object.values(equipagemCRS),
                       ].filter(Boolean));
                       const optsMap = new Map<string, { value: string; label: string }>();
-                      disponiveis
-                        .filter(b => b.cargo === cargoFiltro && (!selectedInOtherSlots.has(b.nomeGuerra) || selected === b.nomeGuerra))
-                        .forEach(b => optsMap.set(b.nomeGuerra, { value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto}` }));
+                      efetivoDisponivel
+                        .filter(entry => entry.cargoExercido === cargoFiltro && (!selectedInOtherSlots.has(entry.bombeiro.nomeGuerra) || selected === entry.bombeiro.nomeGuerra))
+                        .forEach(entry => optsMap.set(entry.bombeiro.nomeGuerra, formatarOpcaoEfetivo(entry)));
                       const selB = buscarBombeiroPorNome(selected);
                       if (selB) {
                         optsMap.set(selB.nomeGuerra, { value: selB.nomeGuerra, label: `${selB.nomeGuerra} - ${selB.nomeCompleto}` });

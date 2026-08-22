@@ -979,6 +979,25 @@ export function GerarLRO() {
     };
   }, []);
 
+  const buscarEfetivoDisponivelPorNome = useCallback((nome: string): EfetivoDisponivel | undefined => {
+    const bombeiro = buscarBombeiroPorNome(nome);
+    return bombeiro
+      ? efetivoDisponivel.find(entry => entry.bombeiro.id === bombeiro.id)
+      : undefined;
+  }, [efetivoDisponivel, bombeiros]);
+
+  const labelCargoNoPlantao = useCallback((bombeiro?: Bombeiro): string => {
+    if (!bombeiro) return '';
+    const cargoExercido = cargoExercidoNoPlantao(bombeiro);
+    return cargoExercido && cargoExercido !== bombeiro.cargo
+      ? `${bombeiro.cargo} -> ${cargoExercido}`
+      : cargoExercido || bombeiro.cargo;
+  }, [cargoExercidoNoPlantao]);
+
+  const podeAtuarComoComunicacao = useCallback((entry: EfetivoDisponivel): boolean => {
+    return entry.cargoExercido !== 'BA-CE' && entry.cargoExercido !== 'BA-LR';
+  }, []);
+
   const substituicoesAtivas = useMemo(() => {
     const bombeiroPorId = new Map(bombeiros.map(b => [b.id, b]));
     return vigencias.filter(v => {
@@ -1062,11 +1081,26 @@ export function GerarLRO() {
     // 1.2 Comunicação BA-OC — comunicante do plantão (rádio fixo da parada do dia)
     const comunicacaoAtual = buscarBombeiroPorNome(comunicacao);
     const comunicacaoAtualSaiu = !!comunicacaoAtual && !!substituicoesMap[comunicacaoAtual.id];
-    if ((!comunicacao || comunicacaoAtualSaiu) && parada?.radio) {
-      const comunicante = parada.radio.find(r => r.fixo)?.pessoaNomeGuerra || parada.radio[0]?.pessoaNomeGuerra || '';
-      if (comunicante && comunicante !== '-') {
-        const nomeReal = resolvePessoa(undefined, comunicante);
-        if (nomeReal) setComunicacao(nomeReal);
+    const comunicacaoAtualEntry = comunicacaoAtual ? buscarEfetivoDisponivelPorNome(comunicacao) : undefined;
+    const comunicacaoAtualCargoInvalido = !!comunicacaoAtualEntry && !podeAtuarComoComunicacao(comunicacaoAtualEntry);
+    if ((!comunicacao || comunicacaoAtualSaiu || comunicacaoAtualCargoInvalido) && parada?.radio) {
+      const radioOrdenada = [
+        ...parada.radio.filter(r => r.fixo),
+        ...parada.radio.filter(r => !r.fixo),
+      ];
+      const comunicante = radioOrdenada.find(r => {
+        const nomeReal = resolvePessoa(undefined, r.pessoaNomeGuerra);
+        const entry = buscarEfetivoDisponivelPorNome(nomeReal);
+        return !!entry && podeAtuarComoComunicacao(entry);
+      });
+      if (comunicante?.pessoaNomeGuerra && comunicante.pessoaNomeGuerra !== '-') {
+        const nomeReal = resolvePessoa(undefined, comunicante.pessoaNomeGuerra);
+        if (nomeReal) {
+          setComunicacao(nomeReal);
+        }
+      } else {
+        const fallbackComunicacao = efetivoDisponivel.find(podeAtuarComoComunicacao);
+        if (fallbackComunicacao) setComunicacao(fallbackComunicacao.bombeiro.nomeGuerra);
       }
     }
 
@@ -1078,6 +1112,7 @@ export function GerarLRO() {
       cciF3: { BaMc: 'BA-MC_0', 'Ba2-1': 'BA-2_1', 'Ba2-2': 'BA-2_2' },
       crs: { BaLr: 'BA-LR_0', BaMc: 'BA-MC_1', 'Ba2-1': 'BA-RE_2', 'Ba2-2': 'BA-RE_3' },
     };
+    const cargoEsperadoPorSlot = (slotKey: string): string => slotKey.startsWith('BA-RE') ? 'BA-2' : slotKey.split('_')[0];
     const novoCCI: Record<string, string> = {};
     const novoCCIRT: Record<string, string> = {};
     const novoCRS: Record<string, string> = {};
@@ -1086,13 +1121,34 @@ export function GerarLRO() {
     const originalCRS: Record<string, string> = {};
     const alvo: Record<string, Record<string, string>> = { cciF2: novoCCI, cciF3: novoCCIRT, crs: novoCRS };
     const originais: Record<string, Record<string, string>> = { cciF2: originalCCI, cciF3: originalCCIRT, crs: originalCRS };
+    const nomesUsadosEquipagem = new Set<string>();
+
+    const preencherSlot = (veiculo: string, slotKey: string, entry?: EfetivoDisponivel): boolean => {
+      if (!entry || nomesUsadosEquipagem.has(entry.bombeiro.nomeGuerra)) return false;
+      if (entry.cargoExercido !== cargoEsperadoPorSlot(slotKey)) return false;
+      alvo[veiculo][slotKey] = entry.bombeiro.nomeGuerra;
+      nomesUsadosEquipagem.add(entry.bombeiro.nomeGuerra);
+      return true;
+    };
 
     pessoas.forEach(p => {
       const slotKey = slotPorFuncao[p.veiculo]?.[p.funcaoNoVeiculo];
       if (!slotKey) return;
       originais[p.veiculo][slotKey] = p.nomeGuerra;
       const nomeFinal = resolvePessoa(p.id, p.nomeGuerra);
-      if (nomeFinal) alvo[p.veiculo][slotKey] = nomeFinal;
+      preencherSlot(p.veiculo, slotKey, buscarEfetivoDisponivelPorNome(nomeFinal));
+    });
+
+    Object.entries(slotPorFuncao).forEach(([veiculo, slots]) => {
+      Object.values(slots).forEach(slotKey => {
+        if (alvo[veiculo][slotKey]) return;
+        const cargoEsperado = cargoEsperadoPorSlot(slotKey);
+        const candidato = efetivoDisponivel.find(entry =>
+          entry.cargoExercido === cargoEsperado &&
+          !nomesUsadosEquipagem.has(entry.bombeiro.nomeGuerra)
+        );
+        preencherSlot(veiculo, slotKey, candidato);
+      });
     });
 
     const mesclarAuto = (
@@ -1101,12 +1157,19 @@ export function GerarLRO() {
       original: Record<string, string>,
     ) => {
       const next = { ...atual };
-      Object.entries(novo).forEach(([key, nomeFinal]) => {
+      const keys = new Set([...Object.keys(novo), ...Object.keys(original), ...Object.keys(atual)]);
+      keys.forEach(key => {
+        const nomeFinal = novo[key] || '';
         const valorAtual = next[key] || '';
         const bombeiroAtual = buscarBombeiroPorNome(valorAtual);
         const atualSaiu = !!bombeiroAtual && !!substituicoesMap[bombeiroAtual.id];
-        if (!valorAtual || valorAtual === original[key] || atualSaiu || !bombeiroAtual) {
+        const cargoEsperado = cargoEsperadoPorSlot(key);
+        const entryAtual = valorAtual ? buscarEfetivoDisponivelPorNome(valorAtual) : undefined;
+        const atualCargoInvalido = !!valorAtual && (!entryAtual || entryAtual.cargoExercido !== cargoEsperado);
+        if (nomeFinal && (!valorAtual || valorAtual === original[key] || atualSaiu || !bombeiroAtual || atualCargoInvalido)) {
           next[key] = nomeFinal;
+        } else if (!nomeFinal && (atualSaiu || atualCargoInvalido)) {
+          next[key] = '';
         }
       });
       return next;
@@ -1123,7 +1186,32 @@ export function GerarLRO() {
     if (!registrosIguais(nextCCI, equipagemCCI)) setEquipagemCCI(nextCCI);
     if (!registrosIguais(nextCCIRT, equipagemCCIRT)) setEquipagemCCIRT(nextCCIRT);
     if (!registrosIguais(nextCRS, equipagemCRS)) setEquipagemCRS(nextCRS);
-  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, efetivoDisponivel, cargoExercidoNoPlantao, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
+  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, efetivoDisponivel, cargoExercidoNoPlantao, buscarEfetivoDisponivelPorNome, podeAtuarComoComunicacao, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
+
+  function montarSubstituicoesLRO() {
+    const cargoNoPlantao = (pessoa?: Bombeiro) => pessoa ? (cargoExercidoNoPlantao(pessoa) || pessoa.cargo) : 'BA-2';
+    const porTexto = (texto: string) => bombeiros.find((b: any) =>
+      texto.includes(b.nomeCompleto) ||
+      texto.includes(b.nomeGuerra)
+    );
+    const porNomeSelecionado = (nome: string) => bombeiros.find((b: any) =>
+      b.nomeGuerra === nome ||
+      b.nomeCompleto === nome
+    );
+
+    return [
+      ...substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(s => {
+        const p1 = porTexto(s.substituido);
+        const p2 = porTexto(s.substituto);
+        return { funcao1: cargoNoPlantao(p1), nome1: p1?.nomeCompleto || s.substituido, funcao2: cargoNoPlantao(p2), nome2: p2?.nomeCompleto || s.substituto };
+      }),
+      ...trocasManuais.filter(tm => tm.solicitante && tm.solicitado).map(tm => {
+        const p1 = porNomeSelecionado(tm.solicitante);
+        const p2 = porNomeSelecionado(tm.solicitado);
+        return { funcao1: cargoNoPlantao(p1), nome1: p1?.nomeCompleto || tm.solicitante, funcao2: cargoNoPlantao(p2), nome2: p2?.nomeCompleto || tm.solicitado };
+      }),
+    ];
+  }
 
   async function handleSalvarRascunho() {
     if (bloquearEquipeAtual('salvar')) return;
@@ -1150,18 +1238,7 @@ export function GerarLRO() {
         emergenciaXI,
         ocorrenciasXII: Array.isArray(outrasOcorrencias) ? outrasOcorrencias : dividirEmLancamentos(outrasOcorrencias || ''),
         solicitacoes: dividirEmLancamentos(solicitacoesCCR),
-        substituicao: [
-          ...substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(s => {
-            const p1 = bombeiros.find((b: any) => s.substituido.includes(b.nomeCompleto) || s.substituido.includes(b.nomeGuerra));
-            const p2 = bombeiros.find((b: any) => s.substituto.includes(b.nomeCompleto) || s.substituto.includes(b.nomeGuerra));
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || s.substituido, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || s.substituto };
-          }),
-          ...trocasManuais.filter(tm => tm.solicitante && tm.solicitado).map(tm => {
-            const p1 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante || b.nomeCompleto === tm.solicitante);
-            const p2 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado || b.nomeCompleto === tm.solicitado);
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || tm.solicitante, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || tm.solicitado };
-          }),
-        ],
+        substituicao: montarSubstituicoesLRO(),
         cci2: Object.entries(equipagemCCI).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
         cci3: Object.entries(equipagemCCIRT).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
         crs: Object.entries(equipagemCRS).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
@@ -1210,18 +1287,7 @@ export function GerarLRO() {
         emergenciaXI,
         ocorrenciasXII: Array.isArray(outrasOcorrencias) ? outrasOcorrencias : dividirEmLancamentos(outrasOcorrencias || ''),
         solicitacoes: dividirEmLancamentos(solicitacoesCCR),
-        substituicao: [
-          ...substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(s => {
-            const p1 = bombeiros.find((b: any) => s.substituido.includes(b.nomeCompleto) || s.substituido.includes(b.nomeGuerra));
-            const p2 = bombeiros.find((b: any) => s.substituto.includes(b.nomeCompleto) || s.substituto.includes(b.nomeGuerra));
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || s.substituido, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || s.substituto };
-          }),
-          ...trocasManuais.filter(tm => tm.solicitante && tm.solicitado).map(tm => {
-            const p1 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante || b.nomeCompleto === tm.solicitante);
-            const p2 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado || b.nomeCompleto === tm.solicitado);
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || tm.solicitante, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || tm.solicitado };
-          }),
-        ],
+        substituicao: montarSubstituicoesLRO(),
         cci2: Object.entries(equipagemCCI).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
         cci3: Object.entries(equipagemCCIRT).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
         crs: Object.entries(equipagemCRS).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
@@ -1281,18 +1347,7 @@ export function GerarLRO() {
       emergenciaXI,
       ocorrenciasXII: Array.isArray(outrasOcorrencias) ? outrasOcorrencias : dividirEmLancamentos(outrasOcorrencias || ''),
       solicitacoes: dividirEmLancamentos(solicitacoesCCR),
-      substituicao: [
-        ...substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(s => {
-          const p1 = bombeiros.find((b: any) => s.substituido.includes(b.nomeCompleto) || s.substituido.includes(b.nomeGuerra));
-          const p2 = bombeiros.find((b: any) => s.substituto.includes(b.nomeCompleto) || s.substituto.includes(b.nomeGuerra));
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || s.substituido, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || s.substituto };
-          }),
-          ...trocasManuais.filter(tm => tm.solicitante && tm.solicitado).map(tm => {
-            const p1 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante || b.nomeCompleto === tm.solicitante);
-            const p2 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado || b.nomeCompleto === tm.solicitado);
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || tm.solicitante, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || tm.solicitado };
-          }),
-        ],
+      substituicao: montarSubstituicoesLRO(),
         cci2: Object.entries(equipagemCCI).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
       cci3: Object.entries(equipagemCCIRT).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
       crs: Object.entries(equipagemCRS).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
@@ -1333,18 +1388,7 @@ export function GerarLRO() {
         emergenciaXI,
         ocorrenciasXII: Array.isArray(outrasOcorrencias) ? outrasOcorrencias : dividirEmLancamentos(outrasOcorrencias || ''),
         solicitacoes: dividirEmLancamentos(solicitacoesCCR),
-        substituicao: [
-          ...substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(s => {
-            const p1 = bombeiros.find((b: any) => s.substituido.includes(b.nomeCompleto) || s.substituido.includes(b.nomeGuerra));
-            const p2 = bombeiros.find((b: any) => s.substituto.includes(b.nomeCompleto) || s.substituto.includes(b.nomeGuerra));
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || s.substituido, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || s.substituto };
-          }),
-          ...trocasManuais.filter(tm => tm.solicitante && tm.solicitado).map(tm => {
-            const p1 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitante || b.nomeCompleto === tm.solicitante);
-            const p2 = bombeiros.find((b: any) => b.nomeGuerra === tm.solicitado || b.nomeCompleto === tm.solicitado);
-            return { funcao1: p1?.cargo || 'BA-2', nome1: p1?.nomeCompleto || tm.solicitante, funcao2: p2?.cargo || 'BA-2', nome2: p2?.nomeCompleto || tm.solicitado };
-          }),
-        ],
+        substituicao: montarSubstituicoesLRO(),
         cci2: Object.entries(equipagemCCI).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
         cci3: Object.entries(equipagemCCIRT).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
         crs: Object.entries(equipagemCRS).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
@@ -2007,13 +2051,13 @@ export function GerarLRO() {
                       <div className="flex items-start gap-4">
                         <div className="min-w-0 flex-1">
                           <p className="text-base font-bold text-graphite-800 dark:text-graphite-200">{sub.substituido || '—'}</p>
-                          {bSubdo && <p className="text-xs text-graphite-500 mt-0.5">{bSubdo.cargo} · EQ {bSubdo.equipe}</p>}
+                          {bSubdo && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSubdo)} · EQ {bSubdo.equipe}</p>}
                           {bSubdo?.nomeCompleto !== sub.substituido && <p className="text-xs text-graphite-400 truncate">{bSubdo?.nomeCompleto || ''}</p>}
                         </div>
                         <div className="text-graphite-400 text-sm font-bold shrink-0 pt-1">→</div>
                         <div className="text-left min-w-0 flex-1">
                           <p className="text-base font-bold text-blue-700 dark:text-blue-300">{sub.substituto || '—'}</p>
-                          {bSub && <p className="text-xs text-graphite-500 mt-0.5">{bSub.cargo} · EQ {bSub.equipe}</p>}
+                          {bSub && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSub)} · EQ {bSub.equipe}</p>}
                           {bSub?.nomeCompleto !== sub.substituto && <p className="text-xs text-graphite-400 truncate">{bSub?.nomeCompleto || ''}</p>}
                         </div>
                       </div>
@@ -2058,13 +2102,13 @@ export function GerarLRO() {
                     <div className="flex items-start gap-4">
                       <div className="min-w-0 flex-1">
                         <p className="text-base font-bold text-graphite-800 dark:text-graphite-200">{sub.substituido || '—'}</p>
-                        {bSubdo && <p className="text-xs text-graphite-500 mt-0.5">{bSubdo.cargo} · EQ {bSubdo.equipe}</p>}
+                        {bSubdo && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSubdo)} · EQ {bSubdo.equipe}</p>}
                         {bSubdo?.nomeCompleto !== sub.substituido && <p className="text-xs text-graphite-400 truncate">{bSubdo?.nomeCompleto || ''}</p>}
                       </div>
                       <div className="text-graphite-400 text-sm font-bold shrink-0 pt-1">↔</div>
                       <div className="text-left min-w-0 flex-1">
                         <p className="text-base font-bold text-amber-700 dark:text-amber-300">{sub.substituto || '—'}</p>
-                        {bSub && <p className="text-xs text-graphite-500 mt-0.5">{bSub.cargo} · EQ {bSub.equipe}</p>}
+                        {bSub && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSub)} · EQ {bSub.equipe}</p>}
                         {bSub?.nomeCompleto !== sub.substituto && <p className="text-xs text-graphite-400 truncate">{bSub?.nomeCompleto || ''}</p>}
                       </div>
                     </div>
@@ -2127,9 +2171,9 @@ export function GerarLRO() {
                   label="Solicitante (quem pediu a troca)"
                   value={trocaSolicitante}
                   onChange={setTrocaSolicitante}
-                  options={disponiveis
-                    .filter(b => b.nomeGuerra !== trocaSolicitado && !trocasManuais.some(t => t.solicitante === b.nomeGuerra || t.solicitado === b.nomeGuerra))
-                    .map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto} (${b.cargo})` }))}
+                  options={efetivoDisponivel
+                    .filter(entry => entry.bombeiro.nomeGuerra !== trocaSolicitado && !trocasManuais.some(t => t.solicitante === entry.bombeiro.nomeGuerra || t.solicitado === entry.bombeiro.nomeGuerra))
+                    .map(formatarOpcaoEfetivo)}
                   placeholder="Buscar solicitante..."
                 />
                 <SearchSelect
@@ -2142,8 +2186,8 @@ export function GerarLRO() {
                     const equipeInversaMembros = bombeiros.filter(b => b.equipe === inversa && !b.dataDesligamento && b.nomeGuerra !== trocaSolicitante && !nomesOcupados.has(b.nomeGuerra));
                     const outrosMembros = bombeiros.filter(b => b.equipe !== equipe && b.equipe !== inversa && !b.dataDesligamento && b.nomeGuerra !== trocaSolicitante && !nomesOcupados.has(b.nomeGuerra));
                     return [
-                      ...equipeInversaMembros.map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto} (${b.cargo}) [${b.equipe}]` })),
-                      ...outrosMembros.map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto} (${b.cargo}) [${b.equipe}]` })),
+                      ...equipeInversaMembros.map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto} (${labelCargoNoPlantao(b)}) [${b.equipe}]` })),
+                      ...outrosMembros.map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto} (${labelCargoNoPlantao(b)}) [${b.equipe}]` })),
                     ];
                   })()}
                   placeholder="Buscar substituto..."
@@ -2193,14 +2237,14 @@ export function GerarLRO() {
                     <div className="flex items-start gap-4">
                       <div className="min-w-0 flex-1">
                         <p className="text-base font-bold text-graphite-800 dark:text-graphite-200">{tm.solicitante}</p>
-                        {bSol && <p className="text-xs text-graphite-500 mt-0.5">{bSol.cargo} · EQ {bSol.equipe}</p>}
+                        {bSol && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSol)} · EQ {bSol.equipe}</p>}
                         {bSol?.nomeCompleto !== tm.solicitante && <p className="text-xs text-graphite-400 truncate">{bSol?.nomeCompleto || ''}</p>}
                         <p className="text-xs text-graphite-400 mt-1">📅 Plantão: {formatarDataBR(dataInicio)}</p>
                       </div>
                       <div className="text-graphite-400 text-sm font-bold shrink-0 pt-1">↔</div>
                       <div className="text-left min-w-0 flex-1">
                         <p className="text-base font-bold text-red-700 dark:text-red-300">{tm.solicitado}</p>
-                        {bSolic && <p className="text-xs text-graphite-500 mt-0.5">{bSolic.cargo} · EQ {bSolic.equipe}</p>}
+                        {bSolic && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSolic)} · EQ {bSolic.equipe}</p>}
                         {bSolic?.nomeCompleto !== tm.solicitado && <p className="text-xs text-graphite-400 truncate">{bSolic?.nomeCompleto || ''}</p>}
                         {tm.dataFolga && <p className="text-xs text-graphite-400 mt-1">📅 Folga: {formatarDataBR(tm.dataFolga)}</p>}
                       </div>
@@ -2231,7 +2275,7 @@ export function GerarLRO() {
                     b.nomeGuerra === user?.pessoa?.nomeGuerra
                   );
                   const criadorNome = usuarioBombeiro?.nomeCompleto || user?.name || user?.pessoa?.nomeGuerra || username || '';
-                  const criadorCargo = usuarioBombeiro?.cargo || user?.pessoa?.funcao || '';
+                  const criadorCargo = usuarioBombeiro ? cargoExercidoNoPlantao(usuarioBombeiro) : user?.pessoa?.funcao || '';
                   const criadoPor = criadorCargo ? `${criadorCargo} ${criadorNome}` : criadorNome;
                   const trocasPersistidas = await Promise.all(trocasManuais.map(async tm => {
                     if (tm.documentoFillId) return tm;
@@ -2243,10 +2287,10 @@ export function GerarLRO() {
                       filled_data: {
                         nome_solicitante: tm.solicitante,
                         cpf_solicitante: bSol?.cpf || '',
-                        funcao_solicitante: bSol?.cargo || '',
+                        funcao_solicitante: bSol ? cargoExercidoNoPlantao(bSol) : '',
                         nome_solicitado: tm.solicitado,
                         cpf_solicitado: bSolic?.cpf || '',
-                        funcao_solicitado: bSolic?.cargo || '',
+                        funcao_solicitado: bSolic ? cargoExercidoNoPlantao(bSolic) : '',
                         data_solicitada: dataInicio,
                         data_folga_solicitado: tm.dataFolga || '',
                         motivo_troca: tm.motivo || '',
@@ -2332,7 +2376,7 @@ export function GerarLRO() {
                 value={comunicacao}
                 onChange={setComunicacao}
                 options={[
-                  ...disponiveis.map(b => ({ value: b.nomeGuerra, label: `${b.nomeGuerra} - ${b.nomeCompleto} (${b.cargo})` })),
+                  ...efetivoDisponivel.filter(podeAtuarComoComunicacao).map(formatarOpcaoEfetivo),
                   ...apocs.map((a: any) => ({ value: a.nomeGuerra, label: `${a.nomeGuerra} - ${a.nomeCompleto} (APOC)` })),
                 ]}
                 placeholder="Buscar operador de comunicação..."
@@ -2425,13 +2469,13 @@ export function GerarLRO() {
                   <div className="flex items-start gap-4">
                     <div className="min-w-0 flex-1">
                       <p className="font-bold text-graphite-800 dark:text-graphite-200">{p1?.nomeGuerra || sub.substituido}</p>
-                      <p className="text-xs text-graphite-500">{p1?.cargo || 'BA-2'} · EQ {p1?.equipe || '—'}</p>
+                      <p className="text-xs text-graphite-500">{p1 ? labelCargoNoPlantao(p1) : 'BA-2'} · EQ {p1?.equipe || '—'}</p>
                       {p1?.nomeCompleto !== p1?.nomeGuerra && <p className="text-xs text-graphite-400 truncate">{p1?.nomeCompleto || ''}</p>}
                     </div>
                     <div className="text-graphite-400 text-xs font-bold shrink-0 pt-1">↔</div>
                     <div className="text-left min-w-0 flex-1">
                       <p className="font-bold text-graphite-800 dark:text-graphite-200">{p2?.nomeGuerra || sub.substituto}</p>
-                      <p className="text-xs text-graphite-500">{p2?.cargo || 'BA-2'} · EQ {p2?.equipe || '—'}</p>
+                      <p className="text-xs text-graphite-500">{p2 ? labelCargoNoPlantao(p2) : 'BA-2'} · EQ {p2?.equipe || '—'}</p>
                       {p2?.nomeCompleto !== p2?.nomeGuerra && <p className="text-xs text-graphite-400 truncate">{p2?.nomeCompleto || ''}</p>}
                     </div>
                   </div>
@@ -2451,14 +2495,14 @@ export function GerarLRO() {
                 <div className="flex items-start gap-4">
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-graphite-800 dark:text-graphite-200">{tm.solicitante}</p>
-                    {p1 && <p className="text-xs text-graphite-500">{p1.cargo} · EQ {p1.equipe}</p>}
+                    {p1 && <p className="text-xs text-graphite-500">{labelCargoNoPlantao(p1)} · EQ {p1.equipe}</p>}
                     {p1?.nomeCompleto !== tm.solicitante && <p className="text-xs text-graphite-400 truncate">{p1?.nomeCompleto || ''}</p>}
                     <p className="text-xs text-graphite-400 mt-0.5">📅 Plantão: {formatarDataBR(dataInicio)}</p>
                   </div>
                   <div className="text-graphite-400 text-xs font-bold shrink-0 pt-1">↔</div>
                   <div className="text-left min-w-0 flex-1">
                     <p className="font-bold text-red-700 dark:text-red-300">{tm.solicitado}</p>
-                    {p2 && <p className="text-xs text-graphite-500">{p2.cargo} · EQ {p2.equipe}</p>}
+                    {p2 && <p className="text-xs text-graphite-500">{labelCargoNoPlantao(p2)} · EQ {p2.equipe}</p>}
                     {p2?.nomeCompleto !== tm.solicitado && <p className="text-xs text-graphite-400 truncate">{p2?.nomeCompleto || ''}</p>}
                     {tm.dataFolga && <p className="text-xs text-graphite-400 mt-0.5">📅 Folga: {formatarDataBR(tm.dataFolga)}</p>}
                   </div>

@@ -1464,6 +1464,7 @@ export function GerarLRO() {
       uf: 'SC',
       _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
       substituicoesAtivas,
+      _lroExportavel: true,
     };
     navigate('/registros-diarios/preview-lro', { state: dados });
   }
@@ -1514,7 +1515,7 @@ export function GerarLRO() {
       setDraftEmEdicaoStatus('aguardando');
       const updated = await listarDrafts('').catch(() => []);
       setDrafts(updated);
-      navigate('/registros-diarios/preview-lro', { state: { ...dados, draftId: saved.id, status: 'aguardando', _lroFinalizado: false } });
+      navigate('/registros-diarios/preview-lro', { state: { ...dados, draftId: saved.id, status: 'aguardando', _lroFinalizado: false, _lroExportavel: true } });
     } catch (err) {
       console.error('Erro ao finalizar LRO:', err);
       setErroValidacao(`Erro ao finalizar LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
@@ -1570,6 +1571,7 @@ export function GerarLRO() {
         draftId: draft.id,
         status: draft.status,
         _lroFinalizado: draft.status === 'finalizado' || draft.status === 'arquivado',
+        _lroExportavel: draft.status !== 'rascunho' && draft.status !== 'cancelado',
       },
     });
   }

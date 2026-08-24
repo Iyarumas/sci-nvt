@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { montarHTML } from '../../services/lroGenerator';
 
+const STATUS_LRO_EXPORTAVEIS = new Set(['aguardando', 'assinado', 'finalizado', 'arquivado']);
+
 const SAMPLE_DATA: Record<string, unknown> = {
   logoUrl: '/assets/med-group-logo.png',
   equipeNome: 'Alfa',
@@ -64,6 +66,27 @@ const SAMPLE_DATA: Record<string, unknown> = {
   ],
 };
 
+function htmlComBase(html: string): string {
+  return html.replace(
+    '</head>',
+    `<base href="${window.location.origin}/">\n</head>`
+  );
+}
+
+function imagensProntas(win: Window): boolean {
+  const imgs = win.document.querySelectorAll('img');
+  return Array.from(imgs).every(img => img.complete && img.naturalWidth > 0);
+}
+
+function imprimirQuandoPronto(win: Window, tentativa = 0) {
+  if (imagensProntas(win) || tentativa >= 20) {
+    win.focus();
+    setTimeout(() => win.print(), 200);
+    return;
+  }
+  setTimeout(() => imprimirQuandoPronto(win, tentativa + 1), 300);
+}
+
 export function PreviewLRO() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -75,37 +98,29 @@ export function PreviewLRO() {
   }, [location.state]);
 
   const isSample = !location.state || Object.keys(location.state).length <= 3;
-  const podeExportar = dados._lroFinalizado === true || dados.status === 'finalizado' || dados.status === 'arquivado';
+  const status = String(dados.status || '');
+  const podeExportar = !isSample && (
+    dados._lroExportavel === true ||
+    dados._lroFinalizado === true ||
+    STATUS_LRO_EXPORTAVEIS.has(status)
+  );
 
   const html = useMemo(() => montarHTML(dados), [dados]);
 
-  const htmlWithStyles = html;
+  const htmlWithStyles = useMemo(() => htmlComBase(html), [html]);
 
   function handleBaixarPDF() {
-    const htmlLimpo = montarHTML(dados).replace(
-      '</head>',
-      `<base href="${window.location.origin}/">\n</head>`
-    );
     const win = window.open('', '_blank');
     if (win) {
-      win.document.write(htmlLimpo);
+      win.document.write(htmlWithStyles);
       win.document.close();
-      const checkReady = () => {
-        const imgs = win.document.querySelectorAll('img');
-        const loaded = Array.from(imgs).every(img => img.complete && img.naturalWidth > 0);
-        if (loaded) {
-          win.focus();
-          setTimeout(() => win.print(), 200);
-        } else {
-          setTimeout(checkReady, 300);
-        }
-      };
-      setTimeout(checkReady, 500);
+      setTimeout(() => imprimirQuandoPronto(win), 500);
     }
   }
 
   function handleImprimir() {
-    iframeRef.current?.contentWindow?.print();
+    const win = iframeRef.current?.contentWindow;
+    if (win) imprimirQuandoPronto(win);
   }
 
   return (
@@ -128,7 +143,7 @@ export function PreviewLRO() {
                 <Printer className="h-4 w-4" /> Imprimir
               </button>
               <button onClick={handleBaixarPDF} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
-                <Download className="h-4 w-4" /> Baixar PDF
+                <Download className="h-4 w-4" /> Salvar PDF
               </button>
             </div>
           )}

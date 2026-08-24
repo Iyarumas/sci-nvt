@@ -5,6 +5,40 @@ import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { formatarDataBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
+
+const EXERCICIOS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Relatório de exercícios',
+    body: 'Esta página resume exercícios e treinamentos registrados.',
+    detail: 'Ela também serve como central de acesso para relatórios específicos como TAF, TP/EPR, Posicionamento e Tempo Resposta.',
+  },
+  {
+    selector: 'main .mb-4.grid',
+    title: 'Totais',
+    body: 'Os cards mostram a quantidade total de exercícios e quantos tipos diferentes existem na lista.',
+    detail: 'Use para ter uma visão rápida antes de filtrar ou abrir um relatório específico.',
+  },
+  {
+    selector: 'main button',
+    title: 'Atalhos de relatórios',
+    body: 'Os botões levam para Gerenciar Treinamentos, TAF, TP/EPR, Posicionamento e Tempo Resposta.',
+    detail: 'Use esses atalhos quando quiser sair do resumo geral e trabalhar em um relatório específico.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Busca e tipo',
+    body: 'Pesquise por título ou instrutor e filtre por tipo de exercício.',
+    detail: 'O filtro separa principalmente posicionamento e tempo resposta quando os registros vêm do módulo de treinamentos.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Lista de exercícios',
+    body: 'Cada card mostra título, data, instrutor, carga horária e participantes.',
+    detail: 'Clique no card para expandir e ler a descrição do exercício.',
+  },
+];
 
 interface Treinamento {
   id: string; tipo: string; data: string; titulo: string;
@@ -145,6 +179,12 @@ export function Exercicios() {
           ))}
         </div>
       )}
+      <PageTour
+        steps={EXERCICIOS_TOUR_STEPS}
+        targetAttribute="data-exercicios-tour"
+        title="Abrir tutorial de Exercícios"
+        detailLabel="Relatório"
+      />
     </PageContainer>
   );
 }

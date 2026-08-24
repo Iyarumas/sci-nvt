@@ -8,6 +8,7 @@ import type { Conferencia } from '../../types/conferencia';
 import type { Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 const EQUIPES_INSPECAO = EQUIPE_OPTIONS.filter(eq => eq !== 'Ferista' && eq !== 'Embaixador');
 
@@ -17,6 +18,39 @@ const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', '
 const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
 
 const INPUT_CLASS = "w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark";
+
+const INSPECOES_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Inspeções operacionais',
+    body: 'Esta tela registra inspeções gerais do plantão, diferentes da inspeção rápida de extintor/hidrante.',
+    detail: 'Use para registrar verificações operacionais, condições encontradas, ações feitas e observações que devem ficar no histórico e podem alimentar o LRO.',
+  },
+  {
+    selector: 'main button',
+    title: 'Nova inspeção',
+    body: 'O botão Nova Inspeção abre o formulário.',
+    detail: 'Preencha data, data do turno, hora, equipe, tipo e uma descrição detalhada do que foi verificado.',
+  },
+  {
+    selector: 'main input, main select, main textarea',
+    title: 'Campos do formulário',
+    body: 'A data é o momento do registro e a data do turno indica em qual plantão a inspeção deve ser considerada.',
+    detail: 'A equipe fica limitada à equipe efetiva quando o usuário não tem permissão global. A descrição deve explicar o que foi inspecionado e o resultado.',
+  },
+  {
+    selector: 'main select, main input',
+    title: 'Filtros',
+    body: 'Na lista, filtre por mês/ano ou por período e por equipe.',
+    detail: 'Use os filtros para conferir inspeções de um fechamento de plantão, mês ou equipe específica.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Registros da lista',
+    body: 'Cada card mostra tipo, equipe, data/hora, turno e responsável.',
+    detail: 'Clique para expandir e ver a descrição completa. Usuários com permissão da equipe podem editar ou excluir.',
+  },
+];
 
 export function Inspecoes() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
@@ -360,6 +394,12 @@ export function Inspecoes() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={INSPECOES_TOUR_STEPS}
+        targetAttribute="data-inspecoes-tour"
+        title="Abrir tutorial de Inspeções"
+        detailLabel="Registro operacional"
+      />
     </PageContainer>
   );
 }

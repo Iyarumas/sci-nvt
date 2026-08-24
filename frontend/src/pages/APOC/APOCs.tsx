@@ -8,8 +8,42 @@ import { listarAPOCs, buscarAPOC, criarAPOC, atualizarAPOC, excluirAPOC } from '
 import type { APOC } from '../../types/apoc';
 import { useDebounce } from '../../hooks/useDebounce';
 import { AlertModal } from '../../components/ui/AlertModal';
+import { PageTour } from '../../components/ui/PageTour';
 import { capitalizarNome } from '../../utils/capitalize';
 import { podeVerCadastroCompletoBase, resolverContextoOperacional } from '../../utils/permissoes';
+
+const APOCS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Cadastro de APOC',
+    body: 'Esta página reúne o pessoal do Centro de Operações Aeroportuárias. No sistema, esses usuários aparecem como equipe MOTIVA e função APOC/MOTIVA.',
+    detail: 'Manter nome, e-mail, equipe e função corretos ajuda na identificação de responsáveis, documentos e vínculos com equipamentos quando o cadastro for usado em outras telas.',
+  },
+  {
+    selector: 'main p',
+    title: 'Aviso da função MOTIVA',
+    body: 'Este aviso lembra que os registros desta tela representam o pessoal do Centro de Operações Aeroportuárias.',
+    detail: 'Diferente dos bombeiros das equipes Alfa, Bravo, Charlie e Delta, o APOC não entra na escala operacional diária como BA, mas pode aparecer como pessoa vinculada ou referência administrativa.',
+  },
+  {
+    selector: 'main input',
+    title: 'Busca de APOC',
+    body: 'A busca filtra por nome ou e-mail para localizar rapidamente um membro do APOC.',
+    detail: 'Use quando precisar conferir se a pessoa já existe antes de criar um novo cadastro, evitando duplicidade de nomes ou e-mails.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo APOC',
+    body: 'O botão Novo APOC abre o formulário para cadastrar um membro do Centro de Operações Aeroportuárias.',
+    detail: 'O cadastro deve conter principalmente nome de guerra, nome completo, e-mail e função. Esses dados aparecem na tabela e podem ser usados em vínculos internos.',
+  },
+  {
+    selector: 'main table',
+    title: 'Tabela de APOCs',
+    body: 'A tabela mostra nome de guerra, nome completo, e-mail, equipe e função de cada APOC cadastrado.',
+    detail: 'Na coluna Ações, o lápis edita o registro e a lixeira exclui, quando o usuário atual tem permissão administrativa.',
+  },
+];
 
 export function APOCs() {
   const { user } = useAuth();
@@ -224,6 +258,12 @@ export function APOCs() {
         onConfirm={() => confirmDelete ? handleDelete(confirmDelete) : undefined}
       />
 
+      <PageTour
+        steps={APOCS_TOUR_STEPS}
+        targetAttribute="data-apocs-tour"
+        title="Abrir tutorial de APOC"
+        detailLabel="Uso no sistema"
+      />
     </PageContainer>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { UserCircle, Save, Link, Unlink, Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { useAuth, ROLE_LABELS, type UserRole } from '../../context/AuthContext';
 import { Autocomplete } from '../../components/documentos/Autocomplete';
 import { listarAtivos } from '../../services/bombeiroService';
@@ -13,6 +14,39 @@ import { CARGO_OPTIONS } from '../../types/bombeiro';
 import { FUNCAO_APOC_OPTIONS } from '../../types/apoc';
 
 const USERS_KEY = 'sescinc-users';
+
+const PERFIL_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Meu Perfil',
+    body: 'Esta página mostra os dados da sua conta e permite ajustar vínculo com cadastro e senha.',
+    detail: 'O perfil é individual. Ele ajuda a conferir qual usuário está logado, qual função aparece para essa conta e se ela está ligada ao bombeiro ou APOC correto.',
+  },
+  {
+    selector: 'main [class*="grid"] > div:first-child',
+    title: 'Dados da conta',
+    body: 'O primeiro bloco mostra usuário, nome, função e tipo de pessoa vinculada quando houver vínculo.',
+    detail: 'Se a função estiver errada, peça para um administrador ajustar em Usuários. A função influencia permissões, menus visíveis e ações que você pode fazer no sistema.',
+  },
+  {
+    selector: 'main input',
+    title: 'Vincular pessoa',
+    body: 'A área Vincular Pessoa permite buscar seu cadastro de bombeiro ou APOC e associar à conta.',
+    detail: 'Esse vínculo é importante para o sistema entender sua equipe, cargo e função efetiva. Ele afeta permissões por equipe e pode interferir em telas como escalas, trocas, arquivo e registros operacionais.',
+  },
+  {
+    selector: 'main button[title="Desvincular pessoa"], main button',
+    title: 'Salvar ou desvincular',
+    body: 'Depois de selecionar a pessoa correta, use Salvar Vínculo. Se estiver vinculado errado, use o botão de desvincular e salve novamente.',
+    detail: 'Confira bem antes de salvar, principalmente quando existirem pessoas com nomes parecidos. Um vínculo errado pode liberar ou bloquear telas de forma incorreta.',
+  },
+  {
+    selector: 'main form',
+    title: 'Alterar senha',
+    body: 'A seção Alterar Senha solicita senha atual, nova senha e confirmação.',
+    detail: 'A senha nova precisa atender a validação do sistema e os dois campos devem conferir. Os ícones de olho permitem visualizar temporariamente o que foi digitado.',
+  },
+];
 
 function getStoredUsers() {
   try { return JSON.parse(localStorage.getItem(USERS_KEY) || '{}'); } catch { return {}; }
@@ -372,6 +406,13 @@ export function Perfil() {
           </form>
         </div>
       </div>
+
+      <PageTour
+        steps={PERFIL_TOUR_STEPS}
+        targetAttribute="data-perfil-tour"
+        title="Abrir tutorial do Perfil"
+        detailLabel="Como usar esta página"
+      />
     </PageContainer>
   );
 }

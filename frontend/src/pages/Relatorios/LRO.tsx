@@ -6,6 +6,34 @@ import { listarLROs } from '../../services/lroService';
 import type { LRO } from '../../types/lro';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { formatarDataBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
+
+const RELATORIO_LRO_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Relatório LRO',
+    body: 'Esta página lista os LROs já gerados e salvos no sistema.',
+    detail: 'Use para consultar documentos finalizados por equipe, data de entrada, turno e chefe de equipe.',
+  },
+  {
+    selector: 'main .mb-4.grid',
+    title: 'Resumo por equipe',
+    body: 'Os cards mostram o total geral de LROs e a quantidade por equipe encontrada.',
+    detail: 'O resumo ajuda a perceber rapidamente se uma equipe já possui documentos no período carregado.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Pesquisa e equipe',
+    body: 'Pesquise por equipe, chefe ou data e filtre por equipe.',
+    detail: 'Use para localizar um LRO específico sem precisar abrir item por item.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Lista de LROs',
+    body: 'Cada card representa um LRO salvo. Clique no card para expandir os dados brutos do registro.',
+    detail: 'A emissão e edição principal do LRO continuam na tela Gerar LRO; aqui a ideia é conferência e consulta.',
+  },
+];
 
 function fmt(d: string) {
   return formatarDataBR(d);
@@ -117,6 +145,12 @@ export function LRO() {
           ))}
         </div>
       )}
+      <PageTour
+        steps={RELATORIO_LRO_TOUR_STEPS}
+        targetAttribute="data-relatorio-lro-tour"
+        title="Abrir tutorial do Relatório LRO"
+        detailLabel="Consulta"
+      />
     </PageContainer>
   );
 }

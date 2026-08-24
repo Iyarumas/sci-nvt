@@ -160,6 +160,11 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 |------|------|-----------|
 | `/` | Dashboard | Visão geral com KPIs e métricas operacionais |
 
+### Tutoriais
+| Rota | Tela | Descrição |
+|------|------|-----------|
+| `/tutorial/dia-a-dia` | Tutorial do Dia a Dia | Tutorial animado da rotina operacional do plantão, mostrando a sequência Escala Mensal → Escala Diária → PTR-BA → registros diários → Gerar LRO |
+
 ### Cadastro (Admin/Desenvolvedor)
 | Rota | Tela | Descrição |
 |------|------|-----------|
@@ -285,12 +290,13 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   ├── src/
 │   │   ├── App.tsx         # Provider hierarchy (Auth → Theme → Sidebar → Router)
 │   │   ├── main.tsx        # Entry point
-│   │   ├── components/     # chat, documentos, layout, ui
+│   │   ├── components/     # chat, documentos, layout, ui (inclui AnimatedPageTour/PageTour para tutoriais por tela e DailyOperationsTutorial para atalho da rotina do plantão)
 │   │   ├── context/        # Auth, GlobalAlert, Theme, Sidebar
 │   │   ├── data/           # Dados estáticos
 │   │   ├── hooks/          # Hooks compartilhados
 │   │   ├── lib/            # apiClient.ts + adapter HTTP supabase.ts + pdfjs
 │   │   ├── pages/          # Páginas por domínio
+│   │   │   └── Tutorial/   # Tutorial animado da rotina do plantão
 │   │   ├── routes/         # React Router
 │   │   ├── services/       # Services do front consumindo o adapter HTTP
 │   │   ├── types/          # Interfaces TypeScript

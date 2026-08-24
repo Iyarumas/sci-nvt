@@ -22,9 +22,43 @@ import { CARGO_OPTIONS } from '../../types/bombeiro';
 import { FUNCAO_APOC_OPTIONS } from '../../types/apoc';
 import { canGerenciarCadastroModulo, resolverContextoOperacional } from '../../utils/permissoes';
 import { formatarDataBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 const INPUT_CLASS = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100';
 const LABEL_CLASS = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+
+const EQUIPAMENTOS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Equipamentos operacionais',
+    body: 'Esta tela controla os equipamentos usados pelo Bombeiro de Aeródromo, como desencarcerador, LGE, PQS, materiais de trauma, serra, mangueiras e demais itens operacionais.',
+    detail: 'O objetivo é saber o que existe, onde está, quem é responsável, em qual estado se encontra e se há validade, vida útil, foto ou observação importante.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo equipamento',
+    body: 'O botão Novo Equipamento abre o cadastro do item operacional.',
+    detail: 'No formulário, preencha nome, categoria, marca, modelo, número de série, aquisição, validade, vida útil, localização, status, foto, observações e responsável quando aplicável.',
+  },
+  {
+    selector: 'main div.mb-4.flex.flex-wrap.gap-2',
+    title: 'Resumo por status',
+    body: 'As etiquetas mostram quantos equipamentos existem em cada status, como operacional, manutenção, baixado ou indisponível.',
+    detail: 'Use esse resumo para perceber rapidamente se há material fora de operação antes de montar conferências ou verificar prontidão da equipe.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Busca e filtros',
+    body: 'A busca localiza por nome, marca, modelo ou número de série. Os filtros separam por categoria e por status.',
+    detail: 'Quando a lista estiver grande, filtre por categoria para encontrar um tipo específico de equipamento ou por status para revisar itens em manutenção ou vencidos.',
+  },
+  {
+    selector: 'main .space-y-3',
+    title: 'Cards de equipamentos',
+    body: 'Cada card resume foto ou ícone, categoria, status, marca, modelo, série, localização, responsável e datas importantes.',
+    detail: 'Quando houver responsável vinculado, ele ajuda a rastrear quem cuida do item. Validade, aquisição e vida útil ajudam a planejar reposição, inspeção ou manutenção.',
+  },
+];
 
 const EMPTY: Omit<Equipamento, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> = {
   nome: '',
@@ -585,6 +619,12 @@ export function Equipamentos() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={EQUIPAMENTOS_TOUR_STEPS}
+        targetAttribute="data-equipamentos-tour"
+        title="Abrir tutorial de Equipamentos"
+        detailLabel="Controle operacional"
+      />
     </PageContainer>
   );
 }

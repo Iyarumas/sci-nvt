@@ -20,6 +20,7 @@ import type { TreinamentoTempoResposta, TreinamentoTempoRespostaInput } from '..
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { imprimirPdfBlob } from '../../utils/pdfPrint';
+import { PageTour } from '../../components/ui/PageTour';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const CCI_OPTIONS = ['319', '320', '333'];
@@ -28,6 +29,45 @@ const PERFORMANCE_OPTIONS = ['Satisfatório', 'Insatisfatório'];
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+
+const TEMPO_RESPOSTA_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Treinamento de tempo resposta',
+    body: 'Esta página registra exercícios de tempo resposta com Fumaça 2, Fumaça 3, viaturas, conceitos, performances e tempos T1/T2/T3.',
+    detail: 'O objetivo é documentar acionamento, deslocamento, procedimentos e avaliação do atendimento simulado.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo treino',
+    body: 'O botão abre o formulário de tempo resposta.',
+    detail: 'Preencha equipe, número/ano, data, hora, local, chefe, viaturas, bombeiros, tempos e avaliação.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Filtros',
+    body: 'Pesquise e filtre por equipe e ano para encontrar exercícios já registrados.',
+    detail: 'Use para acompanhar rascunhos, aprovações e documentos de uma equipe específica.',
+  },
+  {
+    selector: 'main .space-y-2, main .space-y-3',
+    title: 'Cards dos treinos',
+    body: 'Cada card mostra equipe, número, data, status e resumo do treino.',
+    detail: 'Ao expandir, aparecem ações para aprovar, visualizar, imprimir, editar ou excluir conforme permissão.',
+  },
+  {
+    selector: 'main [role="combobox"], main textarea',
+    title: 'Fumaça 2, Fumaça 3 e avaliação',
+    body: 'No formulário, preencha viatura, funções, tempos T1/T2/T3, conceito, performance e textos de avaliação.',
+    detail: 'Os campos de coordenação, acionamento, comunicação, deslocamento, tempo resposta e feedbacks formam o conteúdo técnico do documento.',
+  },
+  {
+    selector: 'main iframe, main canvas, main button',
+    title: 'PDF e aprovação',
+    body: 'Depois de revisar, aprove para fechar o registro e gere a visualização/PDF.',
+    detail: 'Antes de aprovar, confira tempos, viaturas, participantes e observações porque isso será usado no documento final.',
+  },
+];
 
 function fmt(d: string) {
   return formatarDataBR(d);
@@ -875,6 +915,12 @@ export default function TempoResposta() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={TEMPO_RESPOSTA_TOUR_STEPS}
+        targetAttribute="data-tempo-resposta-tour"
+        title="Abrir tutorial de Tempo Resposta"
+        detailLabel="Cronometragem"
+      />
     </PageContainer>
   );
 }

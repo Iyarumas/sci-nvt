@@ -9,9 +9,43 @@ import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorren
 import { STATUS_OCORRENCIA, EQUIPES } from '../../types/ocorrencia';
 import type { Ocorrencia } from '../../types/ocorrencia';
 import { hojeLocalISO } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 const MENSAGEM_OCORRENCIA_LRO_FINALIZADO = 'Esta ocorrência já foi incluída em um LRO finalizado e não pode ser alterada.';
 const MENSAGEM_EXCLUIR_OCORRENCIA_LRO_FINALIZADO = 'Esta ocorrência já foi incluída em um LRO finalizado e não pode ser excluída.';
+
+const LRO_OCORRENCIAS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'LRO/Ocorrências',
+    body: 'Esta tela registra ocorrências simples que entram na seção de ocorrências do LRO.',
+    detail: 'Use para informações do plantão que precisam aparecer no Livro de Registro Operacional, mas não são BONA/REA formais.',
+  },
+  {
+    selector: 'main select',
+    title: 'Filtros de período, equipe e status',
+    body: 'Filtre por ano, mês, status e equipe para localizar registros do plantão ou conferir o que já foi fechado.',
+    detail: 'Ocorrências fechadas por LRO finalizado ficam bloqueadas para edição e exclusão, preservando o documento já emitido.',
+  },
+  {
+    selector: 'main button',
+    title: 'Nova ocorrência',
+    body: 'O botão Nova Ocorrência abre o formulário de registro.',
+    detail: 'Informe data, data do turno, hora, equipe, tipo e descrição. A data do turno é importante para o LRO puxar o registro no plantão correto.',
+  },
+  {
+    selector: 'main .space-y-3',
+    title: 'Cards das ocorrências',
+    body: 'Os cards mostram tipo, data, hora, equipe, turno e status. Clique no card para expandir.',
+    detail: 'Ao expandir, você pode ver detalhes, editar ou excluir quando tem permissão e quando a ocorrência ainda não foi fechada por um LRO finalizado.',
+  },
+  {
+    selector: 'main textarea, main input',
+    title: 'Descrição do registro',
+    body: 'No formulário, descreva a ocorrência com linguagem clara e objetiva.',
+    detail: 'Evite deixar informação vaga: quem lê o LRO depois precisa entender o que aconteceu, quando aconteceu e qual equipe registrou.',
+  },
+];
 
 function ocorrenciaBloqueadaPorLRO(ocorrencia?: Pick<Ocorrencia, 'status'> | null): boolean {
   return ocorrencia?.status === 'Fechada';
@@ -342,6 +376,12 @@ export function LROOcorrencias() {
           onSave={handleSave}
           onCancel={() => { setMode('list'); setEditando(null); }}
         />
+        <PageTour
+          steps={LRO_OCORRENCIAS_TOUR_STEPS}
+          targetAttribute="data-lro-ocorrencias-tour"
+          title="Abrir tutorial de LRO/Ocorrências"
+          detailLabel="Entrada no LRO"
+        />
       </PageContainer>
     );
   }
@@ -351,6 +391,12 @@ export function LROOcorrencias() {
       <PageContainer>
         <PageTitle icon={AlertCircle} title="Ocorrência" />
         <OcorrenciaView ocorrencia={visualizando} onBack={() => setMode('list')} />
+        <PageTour
+          steps={LRO_OCORRENCIAS_TOUR_STEPS}
+          targetAttribute="data-lro-ocorrencias-tour"
+          title="Abrir tutorial de LRO/Ocorrências"
+          detailLabel="Entrada no LRO"
+        />
       </PageContainer>
     );
   }
@@ -419,6 +465,12 @@ export function LROOcorrencias() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={LRO_OCORRENCIAS_TOUR_STEPS}
+        targetAttribute="data-lro-ocorrencias-tour"
+        title="Abrir tutorial de LRO/Ocorrências"
+        detailLabel="Entrada no LRO"
+      />
     </PageContainer>
   );
 }

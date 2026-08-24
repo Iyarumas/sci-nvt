@@ -25,11 +25,51 @@ import { horarioPlantaoPorEquipe } from '../../utils/equipes';
 import { formatarDataArquivo, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
 import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
+import { PageTour } from '../../components/ui/PageTour';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
 const SITUACOES_TOOLTIP = SITUACOES
   .map(situacao => `${situacao} = ${SITUACAO_DESCRICOES[situacao] || situacao}`)
   .join('\n');
+
+const PTRBA_INSTRUCAO_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'PTR-BA por instrução',
+    body: 'Esta página registra um PTR-BA ligado a uma instrução específica do plantão.',
+    detail: 'Ele guarda data, horários, equipe, participantes, situações de presença, instrutor, assunto ministrado, descrição, informações complementares e fotos.',
+  },
+  {
+    selector: 'main select',
+    title: 'Filtros da lista',
+    body: 'Filtre por ano, mês e equipe para localizar registros antigos.',
+    detail: 'Use esses filtros antes de editar, clonar, imprimir ou excluir um PTR-BA já lançado.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo PTR-BA por instrução',
+    body: 'O botão abre o formulário para lançar uma nova instrução.',
+    detail: 'A equipe e o horário ajudam o sistema a puxar o efetivo correto. Férias, trocas, substituições temporárias e APOC entram conforme os dados existentes no sistema.',
+  },
+  {
+    selector: 'main .space-y-3',
+    title: 'Cards de registros',
+    body: 'Cada card mostra o resumo do PTR-BA por instrução e permite visualizar, editar, clonar, imprimir ou excluir conforme permissão.',
+    detail: 'Clonar reaproveita o registro para economizar tempo, mas revise data, equipe, participantes e fotos antes de salvar.',
+  },
+  {
+    selector: 'main input, main textarea, main [role="combobox"]',
+    title: 'Campos do formulário',
+    body: 'No formulário, preencha data, horário, equipe, instrutor, assunto, descrição, participantes e evidências.',
+    detail: 'As situações dos participantes indicam presença, ausência, férias, troca, substituição ou outras condições. Esse preenchimento influencia relatórios e conferência do dia.',
+  },
+  {
+    selector: 'main button',
+    title: 'Salvar e imprimir',
+    body: 'Depois de conferir tudo, salve o registro. Na visualização, use impressão quando precisar do documento físico ou PDF.',
+    detail: 'Antes de imprimir, confira se fotos e informações complementares representam corretamente a instrução realizada.',
+  },
+];
 
 function formatDate(d: string) {
   return formatarDataBR(d);
@@ -933,6 +973,12 @@ export function PTRBADiario() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={PTRBA_INSTRUCAO_TOUR_STEPS}
+        targetAttribute="data-ptrba-instrucao-tour"
+        title="Abrir tutorial de PTR-BA por Instrução"
+        detailLabel="Registro"
+      />
     </PageContainer>
   );
 }

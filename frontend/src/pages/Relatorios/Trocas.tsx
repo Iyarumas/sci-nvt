@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import {
   RefreshCw, Plus, ArrowLeft, FileText, Loader2,
   Save, ChevronDown, ChevronUp, Filter, Printer,
-  AlertTriangle, AlertCircle, Edit, Trash2, Eye, CheckCircle, X, ArrowRight, Archive, Lock,
+  AlertTriangle, AlertCircle, Edit, Trash2, Eye, CheckCircle, X, Archive, Lock, HelpCircle, MousePointer2,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -203,6 +203,289 @@ function formatCpf(v: string): string {
   return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
 }
 
+type TrocasTourStep = {
+  target: string;
+  subView: SubView;
+  viewMode?: ViewMode;
+  title: string;
+  body: string;
+  detail: string;
+};
+
+type TourRect = Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom' | 'width' | 'height'>;
+
+const TROCAS_TOUR_STEPS: TrocasTourStep[] = [
+  {
+    target: 'trocas-cabecalho',
+    subView: 'list',
+    viewMode: 'list',
+    title: 'Entenda o topo da tela',
+    body: 'A tela começa pela lista de trocas do mês. No topo ficam o nome da página, o Pré Relatório para conferência administrativa e o botão Criar Troca.',
+    detail: 'Use Criar Troca quando for registrar uma permuta nova. O Pré Relatório é uma visão de conferência, não o lugar principal para preencher a troca.',
+  },
+  {
+    target: 'trocas-filtros',
+    subView: 'list',
+    viewMode: 'list',
+    title: 'Filtre antes de procurar',
+    body: 'Aqui você escolhe mês, ano e equipe. O contador à direita mostra quantas trocas foram encontradas com esses filtros.',
+    detail: 'Esses filtros ajudam a conferir limite mensal, localizar rascunhos e revisar trocas aprovadas sem misturar plantões de períodos diferentes.',
+  },
+  {
+    target: 'trocas-lista',
+    subView: 'list',
+    viewMode: 'list',
+    title: 'Leia os cartões da lista',
+    body: 'Cada cartão mostra quem pediu a troca, quem foi chamado, status do documento e alertas de limite, emergência, turnos ou funções diferentes.',
+    detail: 'Ao abrir um cartão, você vê datas, motivo, autorização e ações como visualizar PDF, editar rascunho, arquivar ou excluir quando tiver permissão.',
+  },
+  {
+    target: 'trocas-criar',
+    subView: 'list',
+    viewMode: 'list',
+    title: 'Comece por Criar Troca',
+    body: 'Este botão abre o formulário da permuta. Antes de preencher, o sistema verifica sua permissão e acompanha o limite de trocas por pessoa no mês.',
+    detail: 'Quando uma troca for aprovada, ela passa a alimentar automaticamente a escala diária, o LRO e os demais fluxos que dependem do efetivo correto.',
+  },
+  {
+    target: 'trocas-formulario-topo',
+    subView: 'form',
+    title: 'Você entrou no formulário',
+    body: 'O botão Voltar retorna para a lista. O título mostra se você está criando uma nova troca ou editando um rascunho existente.',
+    detail: 'Os botões do lado direito só devem ser usados depois de conferir solicitante, solicitado, datas, motivo e necessidade de autorização.',
+  },
+  {
+    target: 'trocas-solicitante',
+    subView: 'form',
+    title: 'Preencha o solicitante',
+    body: 'Solicitante é a pessoa que pediu a troca e quer ser coberta em um plantão. Selecione o nome correto para o sistema completar CPF e função.',
+    detail: 'A data solicitada será a folga ou plantão que essa pessoa está entregando para o colega trabalhar no lugar dela.',
+  },
+  {
+    target: 'trocas-solicitado',
+    subView: 'form',
+    title: 'Informe quem foi chamado',
+    body: 'Solicitado é quem aceitou fazer a cobertura. A função precisa estar coerente, porque trocas entre funções diferentes exigem atenção extra.',
+    detail: 'Quando os dados das duas pessoas ficam corretos, a escala consegue inverter o efetivo do dia sem bagunçar cargo, turno e equipe.',
+  },
+  {
+    target: 'trocas-dados',
+    subView: 'form',
+    title: 'Revise as datas e o motivo',
+    body: 'Em Dados da Troca ficam a data em que o solicitante será coberto, a data de folga do solicitado, a marcação emergencial e o motivo.',
+    detail: 'Se marcar como emergencial, informe uma justificativa clara. Trocas emergenciais e casos fora da regra ficam destacados para revisão.',
+  },
+  {
+    target: 'trocas-assinaturas',
+    subView: 'form',
+    title: 'Confira as assinaturas',
+    body: 'Esta área indica os campos de assinatura do documento: solicitante, solicitado, chefias e gerente quando necessário.',
+    detail: 'O PDF final depende dessas posições para sair pronto para assinatura, aprovação, salvamento e impressão.',
+  },
+  {
+    target: 'trocas-acoes-form',
+    subView: 'form',
+    title: 'Finalize do jeito certo',
+    body: 'Visualizar mostra o PDF antes de aprovar. Aprovar gera o documento e confirma a troca. Salvar Rascunho guarda para continuar depois.',
+    detail: 'Só aprove quando tudo estiver certo, porque a troca aprovada passa a impactar escala, LRO e relatórios do período.',
+  },
+];
+
+function getTrocasTourTargetRect(target: string): DOMRect | null {
+  const element = document.querySelector(`[data-trocas-tour="${target}"]`) as HTMLElement | null;
+  return element ? element.getBoundingClientRect() : null;
+}
+
+function fallbackTrocasTourRect(): TourRect {
+  const width = Math.min(320, window.innerWidth - 32);
+  const height = 112;
+  const left = (window.innerWidth - width) / 2;
+  const top = Math.max(80, (window.innerHeight - height) / 2);
+  return { top, left, right: left + width, bottom: top + height, width, height };
+}
+
+function normalizeTrocasTourRect(rect: TourRect): TourRect {
+  const margin = 16;
+  const maxWidth = Math.max(80, window.innerWidth - margin * 2);
+  const maxHeight = Math.max(80, Math.min(window.innerHeight - margin * 2, 260));
+  const width = Math.min(Math.max(rect.width, 80), maxWidth);
+  const height = Math.min(Math.max(rect.height, 56), maxHeight);
+  const left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin));
+  const top = Math.max(margin, Math.min(rect.top, window.innerHeight - height - margin));
+
+  return { top, left, right: left + width, bottom: top + height, width, height };
+}
+
+function overlapArea(a: TourRect, b: TourRect): number {
+  const x = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+  const y = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  return x * y;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function trocasTourPanelStyle(rect: TourRect): CSSProperties {
+  const margin = 16;
+  const width = Math.min(window.innerWidth < 900 ? 390 : 430, window.innerWidth - margin * 2);
+  const estimatedHeight = Math.min(380, window.innerHeight - margin * 2);
+  const maxLeft = window.innerWidth - width - margin;
+  const maxTop = window.innerHeight - estimatedHeight - margin;
+
+  if (window.innerWidth < 700) {
+    return { left: margin, right: margin, bottom: margin, maxHeight: estimatedHeight };
+  }
+
+  const candidates = [
+    { left: rect.right + 20, top: rect.top },
+    { left: rect.left - width - 20, top: rect.top },
+    { left: rect.left, top: rect.bottom + 20 },
+    { left: rect.left, top: rect.top - estimatedHeight - 20 },
+    { left: window.innerWidth - width - margin, top: window.innerHeight - estimatedHeight - margin },
+  ].map(candidate => {
+    const left = clamp(candidate.left, margin, maxLeft);
+    const top = clamp(candidate.top, margin, Math.max(margin, maxTop));
+    const panelRect = { top, left, right: left + width, bottom: top + estimatedHeight, width, height: estimatedHeight };
+    return { left, top, overlap: overlapArea(panelRect, rect) };
+  });
+
+  const best = candidates.sort((a, b) => a.overlap - b.overlap)[0];
+  return { left: best.left, top: best.top, width, maxHeight: estimatedHeight };
+}
+
+function AnimatedTrocasTour({
+  open,
+  steps,
+  stepIndex,
+  onBack,
+  onNext,
+  onClose,
+}: {
+  open: boolean;
+  steps: TrocasTourStep[];
+  stepIndex: number;
+  onBack: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const step = steps[stepIndex] || steps[0];
+
+  useEffect(() => {
+    if (!open) return;
+
+    setRect(null);
+    const element = document.querySelector(`[data-trocas-tour="${step.target}"]`) as HTMLElement | null;
+    element?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+
+    const updateRect = () => setRect(getTrocasTourTargetRect(step.target));
+    const timers = [
+      window.setTimeout(updateRect, 80),
+      window.setTimeout(updateRect, 380),
+      window.setTimeout(updateRect, 720),
+    ];
+
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect, true);
+    updateRect();
+
+    return () => {
+      timers.forEach(timer => window.clearTimeout(timer));
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect, true);
+    };
+  }, [open, step.target]);
+
+  if (!open) return null;
+
+  const targetRect = normalizeTrocasTourRect(rect || fallbackTrocasTourRect());
+  const panelStyle = trocasTourPanelStyle(targetRect);
+  const spotlightPadding = 14;
+  const spotlightStyle: CSSProperties = {
+    top: targetRect.top - spotlightPadding,
+    left: targetRect.left - spotlightPadding,
+    width: targetRect.width + spotlightPadding * 2,
+    height: targetRect.height + spotlightPadding * 2,
+  };
+  const cursorStyle: CSSProperties = {
+    top: targetRect.top + targetRect.height / 2,
+    left: targetRect.left + targetRect.width / 2,
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 pointer-events-none">
+      <div
+        className="fixed rounded-2xl border-2 border-aviation-300 bg-white/5 shadow-[0_0_0_9999px_rgba(0,0,0,0.58),0_0_0_8px_rgba(14,116,144,0.16),0_18px_50px_rgba(14,116,144,0.35)] transition-all duration-700 ease-out"
+        style={spotlightStyle}
+      />
+      <span
+        className="fixed z-[61] h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-aviation-300 bg-aviation-400/20 opacity-70 animate-ping"
+        style={cursorStyle}
+      />
+      <MousePointer2
+        className="fixed z-[62] h-9 w-9 -translate-x-1 -translate-y-1 animate-bounce text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.65)] transition-all duration-700 ease-out"
+        style={cursorStyle}
+        fill="white"
+      />
+
+      <div
+        className="pointer-events-auto fixed z-[63] overflow-y-auto rounded-2xl border border-graphite-200 bg-white p-5 shadow-2xl shadow-black/25 dark:border-border-dark dark:bg-surface-card"
+        style={panelStyle}
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <span className="text-[11px] font-black uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
+              Passo {stepIndex + 1} de {steps.length}
+            </span>
+            <h3 className="mt-1 text-lg font-bold text-graphite-900 dark:text-graphite-100">{step.title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-2 text-graphite-400 transition-colors hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
+            title="Pular tutorial"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-sm leading-6 text-graphite-600 dark:text-graphite-300">{step.body}</p>
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+          <span className="font-bold">Como funciona: </span>{step.detail}
+        </div>
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-graphite-300 bg-white px-3 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover/50"
+          >
+            Pular
+          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={stepIndex === 0}
+              className="rounded-xl border border-graphite-300 bg-white px-3 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200"
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              className="rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600"
+            >
+              {stepIndex === steps.length - 1 ? 'Concluir' : 'Próximo'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Trocas() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
   const location = useLocation();
@@ -243,10 +526,76 @@ export function Trocas() {
   const [filterMonth, setFilterMonth] = useState<number>(now.getMonth());
   const [filterYear, setFilterYear] = useState<number>(now.getFullYear());
   const [filterEquipe, setFilterEquipe] = useState('');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const tutorialOrigemRef = useRef<{ subView: SubView; viewMode: ViewMode; scrollX: number; scrollY: number } | null>(null);
 
   const FIELD_LABEL_OVERRIDES: Record<string, string> = {
     deferido_indeferido: 'Parecer do Embaixador',
   };
+
+  function tutorialIndexInicial(): number {
+    const formIndex = TROCAS_TOUR_STEPS.findIndex(step => step.subView === 'form');
+    return subView === 'form' && formIndex >= 0 ? formIndex : 0;
+  }
+
+  function abrirTutorialTrocas() {
+    if (showTutorial || isRelatorioRoute || !canCreateTroca) return;
+    tutorialOrigemRef.current = {
+      subView,
+      viewMode,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    };
+    setTutorialStepIndex(tutorialIndexInicial());
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialTrocas() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    if (origem) {
+      setSubView(origem.subView);
+      setViewMode(origem.viewMode);
+      window.setTimeout(() => {
+        window.scrollTo({ left: origem.scrollX, top: origem.scrollY, behavior: 'smooth' });
+      }, 80);
+    }
+    tutorialOrigemRef.current = null;
+  }
+
+  function voltarTutorialTrocas() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorialTrocas() {
+    if (tutorialStepIndex >= TROCAS_TOUR_STEPS.length - 1) {
+      fecharTutorialTrocas();
+      return;
+    }
+    setTutorialStepIndex(tutorialStepIndex + 1);
+  }
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    const tourStep = TROCAS_TOUR_STEPS[tutorialStepIndex] || TROCAS_TOUR_STEPS[0];
+    if (subView !== tourStep.subView) setSubView(tourStep.subView);
+    if (tourStep.viewMode && viewMode !== tourStep.viewMode) setViewMode(tourStep.viewMode);
+  }, [showTutorial, tutorialStepIndex, subView, viewMode]);
+
+  function renderBotaoTutorialTrocas() {
+    if (showTutorial || isRelatorioRoute || !canCreateTroca) return null;
+    return (
+      <button
+        type="button"
+        onClick={abrirTutorialTrocas}
+        aria-label="Abrir tutorial animado de Trocas de Servico"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-aviation-500 to-aviation-700 text-white shadow-2xl shadow-aviation-500/30 ring-4 ring-white/70 transition-all hover:scale-105 hover:from-aviation-400 hover:to-aviation-600 dark:ring-graphite-900/80"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+    );
+  }
 
   function closePdfPreview() {
     if (previewPdfUrl) URL.revokeObjectURL(previewPdfUrl);
@@ -557,16 +906,6 @@ export function Trocas() {
         return { label: a.nomeCompleto, sublabel: `${funcaoLabel} - ${a.email}`, _type: 'apoc' as const, _raw: a };
       }),
     ];
-  }
-
-  function getFuncaoByNome(nome: string): string {
-    if (!nome) return '';
-    const all = getAllFuncionarios();
-    const match = all.find(f => f.label === nome);
-    if (!match) return '';
-    if (match._type === 'bombeiro') return match._raw.cargo || '';
-    if (match._type === 'apoc') return match._raw.funcao || 'APOC';
-    return '';
   }
 
   function getCargoLabel(cargo: string): string {
@@ -1251,12 +1590,13 @@ export function Trocas() {
 
     return (
       <PageContainer>
-        <div className="mb-4 flex items-center gap-3">
+        {renderBotaoTutorialTrocas()}
+        <div className="mb-4 flex flex-wrap items-center gap-3" data-trocas-tour="trocas-formulario-topo">
           <button onClick={() => setSubView('list')} className="rounded-lg border border-graphite-200 px-3 py-1.5 text-sm text-graphite-700 hover:bg-graphite-50 dark:border-graphite-600 dark:text-graphite-200 dark:hover:bg-graphite-700">
             <ArrowLeft className="inline h-4 w-4 mr-1" />Voltar
           </button>
           <PageTitle icon={RefreshCw} title={editingFillId ? 'Editar Troca de Servico' : 'Nova Troca de Servico'} />
-          <div className="ml-auto flex gap-3">
+          <div className="ml-auto flex flex-wrap justify-end gap-3" data-trocas-tour="trocas-acoes-form">
             <button onClick={handleVisualizar} disabled={saving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Visualizar
             </button>
@@ -1277,30 +1617,30 @@ export function Trocas() {
             </div>
           )}
           {fNomeSol && (
-            <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800">
+            <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800" data-trocas-tour="trocas-solicitante">
               <h4 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-200">Solicitante</h4>
-              <div className="flex gap-3">
-                <div className="w-[45%] shrink-0"><Label field={fNomeSol} />{renderField(fNomeSol)}</div>
-                {fCpfSol && <div className="w-[180px] shrink-0"><Label field={fCpfSol} />{renderField(fCpfSol)}</div>}
-                {fFuncaoSol && <div className="min-w-0 flex-1"><Label field={fFuncaoSol} />{renderField(fFuncaoSol)}</div>}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+                <div className="min-w-0 md:col-span-5"><Label field={fNomeSol} />{renderField(fNomeSol)}</div>
+                {fCpfSol && <div className="min-w-0 md:col-span-3"><Label field={fCpfSol} />{renderField(fCpfSol)}</div>}
+                {fFuncaoSol && <div className="min-w-0 md:col-span-4"><Label field={fFuncaoSol} />{renderField(fFuncaoSol)}</div>}
               </div>
             </div>
           )}
 
           {fNomeSolic && (
-            <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800">
+            <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800" data-trocas-tour="trocas-solicitado">
               <h4 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-200">Solicitado</h4>
-              <div className="flex gap-3">
-                <div className="w-[45%] shrink-0"><Label field={fNomeSolic} />{renderField(fNomeSolic)}</div>
-                {fCpfSolic && <div className="w-[180px] shrink-0"><Label field={fCpfSolic} />{renderField(fCpfSolic)}</div>}
-                {fFuncaoSolic && <div className="min-w-0 flex-1"><Label field={fFuncaoSolic} />{renderField(fFuncaoSolic)}</div>}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+                <div className="min-w-0 md:col-span-5"><Label field={fNomeSolic} />{renderField(fNomeSolic)}</div>
+                {fCpfSolic && <div className="min-w-0 md:col-span-3"><Label field={fCpfSolic} />{renderField(fCpfSolic)}</div>}
+                {fFuncaoSolic && <div className="min-w-0 md:col-span-4"><Label field={fFuncaoSolic} />{renderField(fFuncaoSolic)}</div>}
               </div>
             </div>
           )}
 
-          <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800">
+          <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800" data-trocas-tour="trocas-dados">
             <h4 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-200">Dados da Troca</h4>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-4">
               {fDataSol && <div><Label field={fDataSol} />{renderField(fDataSol)}</div>}
               {fDataFolga && <div><Label field={fDataFolga} />{renderField(fDataFolga)}</div>}
               {fTrocaEmerg && <div><Label field={fTrocaEmerg} />{renderField(fTrocaEmerg)}</div>}
@@ -1319,7 +1659,7 @@ export function Trocas() {
           </div>
 
           {signatureFields.length > 0 && (
-            <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800">
+            <div className="rounded-xl border border-graphite-400 bg-graphite-50 p-4 shadow dark:border-graphite-500 dark:bg-graphite-800" data-trocas-tour="trocas-assinaturas">
               <h4 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-200">Assinaturas</h4>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
                 {signatureFields.map(f => (
@@ -1522,13 +1862,22 @@ export function Trocas() {
             </div>
           </div>
         )}
+        <AnimatedTrocasTour
+          open={showTutorial}
+          steps={TROCAS_TOUR_STEPS}
+          stepIndex={tutorialStepIndex}
+          onBack={voltarTutorialTrocas}
+          onNext={avancarTutorialTrocas}
+          onClose={fecharTutorialTrocas}
+        />
       </PageContainer>
     );
   }
 
   return (
     <PageContainer>
-      <div className="flex items-center justify-between">
+      {renderBotaoTutorialTrocas()}
+      <div className="flex flex-wrap items-center justify-between gap-3" data-trocas-tour="trocas-cabecalho">
         <PageTitle icon={RefreshCw} title="Trocas de Servico" />
         <div className="flex items-center gap-2">
           {!isRelatorioRoute && canManageGlobal && (
@@ -1542,13 +1891,13 @@ export function Trocas() {
           </button>
           )}
           {canCreateTroca && (
-          <button onClick={startNewTroca} className="flex items-center gap-2 rounded-lg bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-700">
+          <button onClick={startNewTroca} data-trocas-tour="trocas-criar" className="flex items-center gap-2 rounded-lg bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-700">
             <Plus className="h-4 w-4" /> Criar Troca
           </button>
           )}
         </div>
       </div>
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-graphite-400 bg-white p-3 dark:border-graphite-500 dark:bg-graphite-800">
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-graphite-400 bg-white p-3 dark:border-graphite-500 dark:bg-graphite-800" data-trocas-tour="trocas-filtros">
         <Filter className="h-4 w-4 text-graphite-400 dark:text-graphite-500" />
         <select value={filterMonth} onChange={e => setFilterMonth(Number(e.target.value))} className="rounded-lg border border-graphite-400 bg-white px-3 py-1.5 text-sm text-graphite-700 dark:border-graphite-500 dark:bg-graphite-700 dark:text-graphite-200">
           {MONTH_NAMES.map((name, i) => (<option key={i} value={i}>{name}</option>))}
@@ -1780,13 +2129,13 @@ export function Trocas() {
           );
         })()
       ) : filteredFills.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-graphite-400 bg-graphite-50 py-12 text-center dark:border-graphite-500 dark:bg-graphite-800/50">
+        <div className="rounded-xl border border-dashed border-graphite-400 bg-graphite-50 py-12 text-center dark:border-graphite-500 dark:bg-graphite-800/50" data-trocas-tour="trocas-lista">
           <FileText className="mx-auto mb-3 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <p className="text-graphite-500 dark:text-graphite-400">Nenhuma troca em {MONTH_NAMES[filterMonth]} de {filterYear}</p>
           <p className="mt-1 text-sm text-graphite-400 dark:text-graphite-500">Clique em "Criar Troca" para registrar uma nova.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" data-trocas-tour="trocas-lista">
           {filteredFills.map(fill => {
             const isExpanded = expandedFill === fill.id;
             const data = fill.filled_data as Record<string, string>;
@@ -2106,11 +2455,19 @@ export function Trocas() {
                 Entendido
               </button>
             </div>
+            </div>
           </div>
-        </div>
-      )}
-    </PageContainer>
-  );
-}
+        )}
+      <AnimatedTrocasTour
+        open={showTutorial}
+        steps={TROCAS_TOUR_STEPS}
+        stepIndex={tutorialStepIndex}
+        onBack={voltarTutorialTrocas}
+        onNext={avancarTutorialTrocas}
+        onClose={fecharTutorialTrocas}
+      />
+      </PageContainer>
+    );
+  }
 
 export default Trocas;

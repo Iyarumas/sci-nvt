@@ -10,6 +10,7 @@ import { listarBombeiros } from '../../services/bombeiroService';
 import type { Bombeiro } from '../../types/bombeiro';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 interface Treinamento {
   id: string;
@@ -50,6 +51,45 @@ function fmt(d: string) {
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 placeholder-graphite-400 outline-none transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400';
 const labelCls = 'mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300';
+
+const TREINAMENTOS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Treinamentos',
+    body: 'Esta página registra treinamentos gerais, como posicionamento para intervenção e exercício de tempo resposta.',
+    detail: 'Os registros ficam disponíveis para consulta e também aparecem nos relatórios de exercícios.',
+  },
+  {
+    selector: 'main .space-y-6 .flex.items-center.gap-2',
+    title: 'Indicadores',
+    body: 'Os cards mostram o total de treinamentos e, na visão geral, quantos são de posicionamento e de tempo resposta.',
+    detail: 'Quando a tela é aberta por um tipo específico, o total fica focado naquele tipo.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo treinamento',
+    body: 'O botão Novo Treinamento abre o formulário.',
+    detail: 'Preencha tipo, data, título, descrição, carga horária, instrutor e participantes.',
+  },
+  {
+    selector: 'main input',
+    title: 'Pesquisa',
+    body: 'Pesquise por tipo, título ou instrutor.',
+    detail: 'Use para localizar treinamento já registrado antes de editar ou excluir.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Lista de treinamentos',
+    body: 'Cada card mostra título, tipo, descrição resumida, data, carga horária, instrutor e quantidade de participantes.',
+    detail: 'Quem criou o treinamento ou quem tem permissão global pode editar e excluir.',
+  },
+  {
+    selector: 'main textarea, main select',
+    title: 'Participantes e descrição',
+    body: 'No formulário, use a busca de bombeiro para adicionar participantes e descreva o conteúdo realizado.',
+    detail: 'A descrição deve ser clara porque é ela que aparece no histórico e nos relatórios.',
+  },
+];
 
 export function Treinamentos({ tipoPadrao }: { tipoPadrao?: string }) {
   const { user, canManageGlobal } = useContextoOperacional();
@@ -345,6 +385,12 @@ export function Treinamentos({ tipoPadrao }: { tipoPadrao?: string }) {
           </div>
         </div>
       )}
+      <PageTour
+        steps={TREINAMENTOS_TOUR_STEPS}
+        targetAttribute="data-treinamentos-tour"
+        title="Abrir tutorial de Treinamentos"
+        detailLabel="Histórico"
+      />
     </PageContainer>
   );
 }

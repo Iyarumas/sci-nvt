@@ -3,6 +3,7 @@ import { UserCog, Search, Plus, Pencil, Trash2, Lock, ShieldCheck, ShieldOff, Li
 import { criarConvite, listarConvites, type Convite } from '../../services/conviteService';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { useAuth } from '../../context/AuthContext';
 import { ROLE_LABELS, cargoParaUserRole, apocParaUserRole, type UserRole } from '../../context/AuthContext';
 import type { StoredUser } from '../../context/AuthContext';
@@ -22,6 +23,51 @@ import { CARGO_OPTIONS } from '../../types/bombeiro';
 import { FUNCAO_APOC_OPTIONS } from '../../types/apoc';
 import { podeVerCadastroCompletoBase, resolverContextoOperacional } from '../../utils/permissoes';
 import { formatarDataBR } from '../../utils/datas';
+
+const USUARIOS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Gerenciamento de usuários',
+    body: 'Esta tela controla quem consegue acessar o SCI NVT e qual função cada conta terá dentro do sistema.',
+    detail: 'Usuário não é a mesma coisa que cadastro de bombeiro/APOC. A conta permite entrar no sistema; o vínculo com bombeiro ou APOC define quem a pessoa é operacionalmente e quais permissões efetivas ela deve receber.',
+  },
+  {
+    selector: 'main input',
+    title: 'Pesquisar usuários',
+    body: 'Use a busca para encontrar uma conta por usuário, nome ou função.',
+    detail: 'Isso é útil quando alguém acabou de se cadastrar por convite e ainda aparece sem vínculo, ou quando você precisa localizar rapidamente uma conta para ajustar senha, função ou cadastro vinculado.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo usuário',
+    body: 'O botão Novo Usuário abre o formulário para criar uma conta manualmente.',
+    detail: 'Ao criar ou editar, confira usuário, nome, função e vínculo. Uma conta sem vínculo pode ficar aguardando liberação e não terá o mesmo comportamento de uma conta ligada a bombeiro ou APOC.',
+  },
+  {
+    selector: 'main table',
+    title: 'Tabela de contas',
+    body: 'A tabela mostra nome, usuário, função e ações disponíveis para cada conta cadastrada.',
+    detail: 'Quando aparecer Sem vínculo ou Não vinculado, significa que a conta ainda não foi associada a uma pessoa do cadastro. O ideal é vincular para que permissões por equipe, cargo e função funcionem corretamente.',
+  },
+  {
+    selector: 'main table button[title="Editar"], main button[title="Editar"]',
+    title: 'Editar vínculo e função',
+    body: 'O lápis permite editar a conta, ajustar função e associar a pessoa correta.',
+    detail: 'Esse passo é importante depois do cadastro por convite. O administrador deve conferir se o usuário corresponde ao bombeiro/APOC correto antes de liberar acesso operacional.',
+  },
+  {
+    selector: 'main table button[title*="Administrador"], main table button[title*="Remover"]',
+    title: 'Permissão administrativa',
+    body: 'Os botões de escudo promovem ou removem acesso administrativo, quando o perfil atual pode fazer isso.',
+    detail: 'Administração libera áreas sensíveis, então use apenas para quem realmente deve gerenciar cadastros, usuários, arquivo e rotinas restritas.',
+  },
+  {
+    selector: 'main [class*="purple"] button, main button',
+    title: 'Convites',
+    body: 'A seção Convites gera links para novos usuários criarem a própria conta.',
+    detail: 'Depois que a pessoa usar o convite, ela ainda pode precisar ser vinculada a um cadastro e receber a função correta. O temporizador mostra quanto tempo o convite ainda fica ativo.',
+  },
+];
 
 const ROLE_BADGE: Record<string, string> = {
   desenvolvedor: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
@@ -311,6 +357,12 @@ export function Usuarios() {
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Acesso Restrito</h3>
           <p className="text-sm text-graphite-400 dark:text-graphite-500">Apenas administradores podem gerenciar usuários.</p>
         </div>
+        <PageTour
+          steps={USUARIOS_TOUR_STEPS}
+          targetAttribute="data-usuarios-tour"
+          title="Abrir tutorial de Usuários"
+          detailLabel="Como usar esta página"
+        />
       </PageContainer>
     );
   }
@@ -619,6 +671,13 @@ export function Usuarios() {
           </div>
         </div>
       )}
+
+      <PageTour
+        steps={USUARIOS_TOUR_STEPS}
+        targetAttribute="data-usuarios-tour"
+        title="Abrir tutorial de Usuários"
+        detailLabel="Como usar esta página"
+      />
     </PageContainer>
   );
 }

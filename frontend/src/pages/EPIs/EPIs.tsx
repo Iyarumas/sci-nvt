@@ -29,12 +29,52 @@ import {
   resolverContextoOperacional,
 } from '../../utils/permissoes';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 type Tab = 'funcionarios' | 'epis';
 
 const DURACAO_PLANTAO_MS = 12 * 60 * 60 * 1000;
 const PLANTOES_PARA_NOTIFICAR = 3;
 const INTERVALO_NOTIFICACAO_MS = PLANTOES_PARA_NOTIFICAR * DURACAO_PLANTAO_MS;
+
+const EPIS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Controle de EPIs',
+    body: 'Esta tela controla os EPIs em estoque e os EPIs entregues aos funcionários.',
+    detail: 'O sistema acompanha CA, validade, estado de conservação, quantidade em estoque, pagamento ao bombeiro e devolução. Também avisa sobre vencidos e itens próximos ao vencimento.',
+  },
+  {
+    selector: 'main div.mb-4.flex.gap-1',
+    title: 'Abas Funcionários e EPIs',
+    body: 'A aba Funcionários mostra cada pessoa e os EPIs vinculados a ela. A aba EPIs mostra o estoque e a lista geral de itens entregues.',
+    detail: 'Use Funcionários para pagar ou devolver EPI por pessoa. Use EPIs para cadastrar estoque, editar quantidade, acompanhar validade e conferir todos os itens entregues.',
+  },
+  {
+    selector: 'main select, main input',
+    title: 'Filtros e pesquisa',
+    body: 'Na aba Funcionários, filtre por equipe, função e situação da validade. A busca localiza pessoas ou EPIs conforme a aba aberta.',
+    detail: 'Os filtros de vencido, crítico e atenção ajudam a encontrar rapidamente quem precisa trocar EPI antes do prazo ficar irregular.',
+  },
+  {
+    selector: 'main .space-y-2, main table',
+    title: 'Ficha por funcionário',
+    body: 'Na aba Funcionários, cada ficha mostra os EPIs ativos e vencimentos daquele bombeiro.',
+    detail: 'Use Pagar EPI para entregar um item do estoque e Devolver EPI para baixar o item da pessoa. Se o EPI estiver em bom estado, ele pode voltar ao estoque conforme a regra da tela.',
+  },
+  {
+    selector: 'main table',
+    title: 'Estoque e entregues',
+    body: 'Na aba EPIs, a primeira tabela acompanha o estoque e a segunda mostra EPIs entregues.',
+    detail: 'No estoque ficam CA, quantidade, tamanho, fabricação, validade e estado. Nos entregues ficam colaborador, responsável pela entrega, data de pagamento, validade, estado e status.',
+  },
+  {
+    selector: 'main button',
+    title: 'Cadastrar EPI no estoque',
+    body: 'Quando estiver na aba EPIs, o botão Cadastrar EPI no Estoque abre o formulário do item.',
+    detail: 'Cadastre nome, descrição, CA, categoria, fornecedor, fabricação, validade ou tempo de validade, quantidade, tamanho, estado e número de série para o pagamento sair correto depois.',
+  },
+];
 
 function getControleNotificacao(username: string): { ultima: string } | null {
   try {
@@ -688,6 +728,12 @@ export function EPIs() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={EPIS_TOUR_STEPS}
+        targetAttribute="data-epis-tour"
+        title="Abrir tutorial de EPIs"
+        detailLabel="Controle de validade"
+      />
     </PageContainer>
   );
 }

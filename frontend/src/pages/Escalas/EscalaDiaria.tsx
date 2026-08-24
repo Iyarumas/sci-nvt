@@ -3,9 +3,10 @@ import {
   Calendar, Shield, Users, Plus, Trash2, FileText, Radio,
   ChevronDown, ChevronUp, Save, Pencil, Copy, Printer,
   AlertTriangle,
-  ArrowRightLeft, ArrowRight, Sparkles,
+  ArrowRightLeft, ArrowRight, Sparkles, HelpCircle,
 } from 'lucide-react';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
+import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarEscalas, criarEscala, atualizarEscala, excluirEscala } from '../../services/escalaService';
 import { listarAtivos } from '../../services/bombeiroService';
@@ -43,6 +44,76 @@ const INSTRUTOR_SECTIONS = [
 ] as const;
 
 type InstrutorSection = (typeof INSTRUTOR_SECTIONS)[number]['key'];
+
+type EscalaDiariaTourStep = AnimatedTourStep & {
+  mode: 'list' | 'form';
+};
+
+const ESCALA_DIARIA_TOUR_STEPS: EscalaDiariaTourStep[] = [
+  {
+    target: 'diaria-lista-filtros',
+    mode: 'list',
+    title: 'Lista das escalas diárias',
+    body: 'Aqui você filtra as escalas já criadas por mês, ano, período e equipe.',
+    detail: 'Use essa lista para conferir se o plantão do dia já foi montado antes de criar outro registro.',
+  },
+  {
+    target: 'diaria-nova',
+    mode: 'list',
+    title: 'Crie a escala do plantão',
+    body: 'Nova Escala Diária abre o formulário do dia. Ela deve ser feita para a equipe que está realmente de plantão naquela data.',
+    detail: 'A diária usa a escala mensal como base e depois ajusta o efetivo com trocas, extras e afastamentos aprovados.',
+  },
+  {
+    target: 'diaria-form-topo',
+    mode: 'form',
+    title: 'Equipe e data comandam a diária',
+    body: 'Escolha equipe, chefe e data do plantão. Horário e turno são preenchidos conforme o regime da equipe.',
+    detail: 'Esses campos definem qual mensal será consultada e quais trocas, atestados e extras entram naquele dia.',
+  },
+  {
+    target: 'diaria-auto',
+    mode: 'form',
+    title: 'Use o auto-preenchimento',
+    body: 'O botão Auto-Preenchimento busca a escala mensal do mês, monta as guarnições e aplica as regras do dia.',
+    detail: 'Ele também considera trocas de serviço assinadas, férias, substituições, extras e atestados/afastamentos aprovados.',
+  },
+  {
+    target: 'diaria-guarnicoes',
+    mode: 'form',
+    title: 'Confira as guarnições',
+    body: 'As guarnições mostram quem fica em CCI 02, CCI 03 e CRS no plantão.',
+    detail: 'Se alguém saiu por troca, extra ou atestado, a diária mostra o efetivo ajustado para aquele dia.',
+  },
+  {
+    target: 'diaria-ptrba',
+    mode: 'form',
+    title: 'Preencha BDS e PTR-BA',
+    body: 'Nessas seções você informa instrutor, função e assunto do PTR-BA do plantão.',
+    detail: 'O PTR-BA puxa automaticamente essas informações conforme preenchido aqui, então revise antes de salvar a escala.',
+  },
+  {
+    target: 'diaria-automacoes',
+    mode: 'form',
+    title: 'Trocas, extras e atestados',
+    body: 'Essas áreas são automáticas e mostram o que o sistema encontrou para o dia do plantão.',
+    detail: 'Trocas vêm das trocas de serviço aprovadas; extras e atestados vêm de afastamentos/substituições aprovadas.',
+  },
+  {
+    target: 'diaria-radio',
+    mode: 'form',
+    title: 'Rádio vem da mensal',
+    body: 'A escala de rádio do dia pode ser puxada da escala mensal e ajustada aqui quando necessário.',
+    detail: 'Os horários definidos na mensal entram na diária para manter a comunicação do plantão organizada.',
+  },
+  {
+    target: 'diaria-acoes',
+    mode: 'form',
+    title: 'Salve para alimentar o sistema',
+    body: 'Depois de conferir tudo, salve a escala diária.',
+    detail: 'A diária salva vira referência para PTR-BA, LRO e conferências do efetivo daquele plantão.',
+  },
+];
 
 function emptyFuncaoSlot() {
   return { funcao: '', nomeGuerra: '', assunto: '' };
@@ -1149,11 +1220,11 @@ function EscalaDiariaForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" data-escala-diaria-tour="diaria-form-topo">
         <h3 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
           {escala?.id ? 'Editar Escala Diária' : escala ? 'Clonar Escala Diária' : 'Nova Escala Diária'}
         </h3>
-        {autoPreencherButton}
+        <span data-escala-diaria-tour="diaria-auto">{autoPreencherButton}</span>
       </div>
 
       <div className="space-y-4">
@@ -1215,7 +1286,7 @@ function EscalaDiariaForm({
       </div>
 
       {/* Guarnições */}
-      <fieldset>
+      <fieldset data-escala-diaria-tour="diaria-guarnicoes">
         <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
           <Shield className="mr-1 inline h-4 w-4" /> Guarnições
         </legend>
@@ -1252,6 +1323,7 @@ function EscalaDiariaForm({
       </fieldset>
 
       {/* BDS / PTR-1 / PTR-2 / PTR-3 */}
+      <div className="space-y-8" data-escala-diaria-tour="diaria-ptrba">
       {INSTRUTOR_SECTIONS.map(({ key: section, label }) => {
         const funcaoSelecionada = form[section].funcao;
         const isApoc = funcaoSelecionada === 'APOC';
@@ -1303,81 +1375,82 @@ function EscalaDiariaForm({
         </fieldset>
         );
       })}
+      </div>
 
       {/* Trocas (automáticas - somente leitura) */}
-      <fieldset>
-        <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
-          <Users className="mr-1 inline h-4 w-4" /> Trocas {form.trocas.length > 0 && <span className="ml-1 text-[10px] text-amber-600">(automáticas - carregadas do sistema)</span>}
-        </legend>
-        {form.trocas.length === 0 ? (
-          <p className="text-sm text-graphite-400 dark:text-graphite-500">Nenhuma troca registrada para este plantão.</p>
-        ) : (
-          <div className="space-y-2">
-            {form.trocas.map((t, i) => (
-              <div key={i} className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/10">
-                <ArrowRightLeft className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                <div className="min-w-0 flex-1 text-sm">
-                  <span className="font-medium text-graphite-900 dark:text-graphite-100">{t.nomeSaindo}</span>
-                  <span className="mx-1.5 text-graphite-400">({t.funcaoSaindo})</span>
-                  <ArrowRight className="mx-1 inline h-3 w-3 text-amber-500" />
-                  <span className="font-medium text-graphite-900 dark:text-graphite-100">{t.nomeEntrando}</span>
-                  <span className="mx-1.5 text-graphite-400">({t.funcaoEntrando})</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </fieldset>
-
-      {/* Extras (automáticos - somente leitura) */}
-      <fieldset>
-        <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
-          <Users className="mr-1 inline h-4 w-4" /> Extras {form.extras.length > 0 && <span className="ml-1 text-[10px] text-purple-600">(automáticos - afastamento/atestados)</span>}
-        </legend>
-        {form.extras.length === 0 ? (
-          <p className="text-sm text-graphite-400 dark:text-graphite-500">Nenhum extra registrado para este plantão.</p>
-        ) : (
-          <div className="space-y-2">
-            {form.extras.map((extra, i) => {
-              const funcaoLabel = extra.cargoOriginalEntrando && extra.cargoOriginalEntrando !== extra.funcaoEntrando
-                ? `${extra.cargoOriginalEntrando} -> ${extra.funcaoEntrando}`
-                : extra.funcaoEntrando;
-              return (
-                <div key={`${extra.substitutoId || extra.nomeEntrando}-${i}`} className="flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50/50 px-4 py-3 dark:border-purple-800 dark:bg-purple-900/10">
-                  <Users className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+      <div className="space-y-8" data-escala-diaria-tour="diaria-automacoes">
+        <fieldset>
+          <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
+            <Users className="mr-1 inline h-4 w-4" /> Trocas {form.trocas.length > 0 && <span className="ml-1 text-[10px] text-amber-600">(automáticas - carregadas do sistema)</span>}
+          </legend>
+          {form.trocas.length === 0 ? (
+            <p className="text-sm text-graphite-400 dark:text-graphite-500">Nenhuma troca registrada para este plantão.</p>
+          ) : (
+            <div className="space-y-2">
+              {form.trocas.map((t, i) => (
+                <div key={i} className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/10">
+                  <ArrowRightLeft className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                   <div className="min-w-0 flex-1 text-sm">
-                    <span className="font-medium text-graphite-900 dark:text-graphite-100">{extra.nomeEntrandoCompleto || extra.nomeEntrando}</span>
-                    <span className="mx-1.5 text-graphite-400">({funcaoLabel}) substitui</span>
-                    <span className="font-medium text-graphite-900 dark:text-graphite-100">{extra.nomeSaindoCompleto || extra.nomeSaindo}</span>
-                    <span className="mx-1.5 text-graphite-400">({extra.funcaoSaindo})</span>
+                    <span className="font-medium text-graphite-900 dark:text-graphite-100">{t.nomeSaindo}</span>
+                    <span className="mx-1.5 text-graphite-400">({t.funcaoSaindo})</span>
+                    <ArrowRight className="mx-1 inline h-3 w-3 text-amber-500" />
+                    <span className="font-medium text-graphite-900 dark:text-graphite-100">{t.nomeEntrando}</span>
+                    <span className="mx-1.5 text-graphite-400">({t.funcaoEntrando})</span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </fieldset>
+              ))}
+            </div>
+          )}
+        </fieldset>
 
-      {/* Atestados (automáticos - somente leitura) */}
-      <fieldset>
-        <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
-          <FileText className="mr-1 inline h-4 w-4" /> Atestados {form.atestados.length > 0 && <span className="ml-1 text-[10px] text-orange-600">(automáticos)</span>}
-        </legend>
-        {form.atestados.length === 0 ? (
-          <p className="text-sm text-graphite-400 dark:text-graphite-500">Nenhum atestado ou afastamento aprovado para este plantão.</p>
-        ) : (
-          <div className="space-y-2">
-            {form.atestados.map((atestado, i) => (
-              <div key={`${atestado}-${i}`} className="rounded-xl border border-orange-200 bg-orange-50/50 px-4 py-3 text-sm text-graphite-900 dark:border-orange-800 dark:bg-orange-900/10 dark:text-graphite-100">
-                {atestado}
-              </div>
-            ))}
-          </div>
-        )}
-      </fieldset>
+        <fieldset>
+          <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
+            <Users className="mr-1 inline h-4 w-4" /> Extras {form.extras.length > 0 && <span className="ml-1 text-[10px] text-purple-600">(automáticos - afastamento/atestados)</span>}
+          </legend>
+          {form.extras.length === 0 ? (
+            <p className="text-sm text-graphite-400 dark:text-graphite-500">Nenhum extra registrado para este plantão.</p>
+          ) : (
+            <div className="space-y-2">
+              {form.extras.map((extra, i) => {
+                const funcaoLabel = extra.cargoOriginalEntrando && extra.cargoOriginalEntrando !== extra.funcaoEntrando
+                  ? `${extra.cargoOriginalEntrando} -> ${extra.funcaoEntrando}`
+                  : extra.funcaoEntrando;
+                return (
+                  <div key={`${extra.substitutoId || extra.nomeEntrando}-${i}`} className="flex items-center gap-3 rounded-xl border border-purple-200 bg-purple-50/50 px-4 py-3 dark:border-purple-800 dark:bg-purple-900/10">
+                    <Users className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+                    <div className="min-w-0 flex-1 text-sm">
+                      <span className="font-medium text-graphite-900 dark:text-graphite-100">{extra.nomeEntrandoCompleto || extra.nomeEntrando}</span>
+                      <span className="mx-1.5 text-graphite-400">({funcaoLabel}) substitui</span>
+                      <span className="font-medium text-graphite-900 dark:text-graphite-100">{extra.nomeSaindoCompleto || extra.nomeSaindo}</span>
+                      <span className="mx-1.5 text-graphite-400">({extra.funcaoSaindo})</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
+            <FileText className="mr-1 inline h-4 w-4" /> Atestados {form.atestados.length > 0 && <span className="ml-1 text-[10px] text-orange-600">(automáticos)</span>}
+          </legend>
+          {form.atestados.length === 0 ? (
+            <p className="text-sm text-graphite-400 dark:text-graphite-500">Nenhum atestado ou afastamento aprovado para este plantão.</p>
+          ) : (
+            <div className="space-y-2">
+              {form.atestados.map((atestado, i) => (
+                <div key={`${atestado}-${i}`} className="rounded-xl border border-orange-200 bg-orange-50/50 px-4 py-3 text-sm text-graphite-900 dark:border-orange-800 dark:bg-orange-900/10 dark:text-graphite-100">
+                  {atestado}
+                </div>
+              ))}
+            </div>
+          )}
+        </fieldset>
+      </div>
 
       {/* Escala de Rádio */}
-      <fieldset>
+      <fieldset data-escala-diaria-tour="diaria-radio">
         <legend className="mb-4 text-sm font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
           <Radio className="mr-1 inline h-4 w-4" /> Escala de Rádio
         </legend>
@@ -1449,7 +1522,7 @@ function EscalaDiariaForm({
       </fieldset>
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-3 border-t border-graphite-200 pt-6 dark:border-border-dark">
+      <div className="flex items-center justify-end gap-3 border-t border-graphite-200 pt-6 dark:border-border-dark" data-escala-diaria-tour="diaria-acoes">
         <button type="button" onClick={onCancel}
           className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-medium text-graphite-700 backdrop-blur-sm transition-all duration-200 hover:bg-graphite-50 hover:border-graphite-300 dark:border-border-dark dark:bg-surface-card/80 dark:text-graphite-200 dark:hover:bg-surface-hover/50">
           Cancelar
@@ -1717,6 +1790,15 @@ export function EscalaDiariaView() {
   const [filtroAno, setFiltroAno] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFinal, setDataFinal] = useState('');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const tutorialOrigemRef = useRef<{
+    mode: 'list' | 'form' | 'print';
+    editando: EscalaDiaria | null;
+    visualizando: EscalaDiaria | null;
+    scrollX: number;
+    scrollY: number;
+  } | null>(null);
   const escalasFiltradas = useMemo(() => {
     let lista = escalas;
     if (filtroEquipe) lista = lista.filter(e => e.equipe === filtroEquipe);
@@ -1729,6 +1811,88 @@ export function EscalaDiariaView() {
     }
     return lista;
   }, [escalas, filtroEquipe, filterMode, filtroAno, filtroMes, dataInicio, dataFinal]);
+
+  function tutorialIndexInicial(): number {
+    const formIndex = ESCALA_DIARIA_TOUR_STEPS.findIndex(step => step.mode === 'form');
+    return mode === 'form' && formIndex >= 0 ? formIndex : 0;
+  }
+
+  function abrirTutorialDiaria() {
+    if (showTutorial || !canCreate) return;
+    tutorialOrigemRef.current = {
+      mode,
+      editando,
+      visualizando,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    };
+    setTutorialStepIndex(tutorialIndexInicial());
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialDiaria() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    if (origem) {
+      setMode(origem.mode);
+      setEditando(origem.editando);
+      setVisualizando(origem.visualizando);
+      window.setTimeout(() => {
+        window.scrollTo({ left: origem.scrollX, top: origem.scrollY, behavior: 'smooth' });
+      }, 80);
+    }
+    tutorialOrigemRef.current = null;
+  }
+
+  function voltarTutorialDiaria() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorialDiaria() {
+    if (tutorialStepIndex >= ESCALA_DIARIA_TOUR_STEPS.length - 1) {
+      fecharTutorialDiaria();
+      return;
+    }
+    setTutorialStepIndex(tutorialStepIndex + 1);
+  }
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    const tourStep = ESCALA_DIARIA_TOUR_STEPS[tutorialStepIndex] || ESCALA_DIARIA_TOUR_STEPS[0];
+    if (tourStep.mode === 'form' && mode !== 'form') {
+      setEditando(null);
+      setMode('form');
+    }
+    if (tourStep.mode === 'list' && mode !== 'list') setMode('list');
+  }, [showTutorial, tutorialStepIndex, mode]);
+
+  function renderBotaoTutorialDiaria() {
+    if (showTutorial || !canCreate) return null;
+    return (
+      <button
+        type="button"
+        onClick={abrirTutorialDiaria}
+        aria-label="Abrir tutorial animado da Escala Diária"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-aviation-500 to-aviation-700 text-white shadow-2xl shadow-aviation-500/30 ring-4 ring-white/70 transition-all hover:scale-105 hover:from-aviation-400 hover:to-aviation-600 dark:ring-graphite-900/80"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+    );
+  }
+
+  function renderTutorialDiaria() {
+    return (
+      <AnimatedPageTour
+        open={showTutorial}
+        steps={ESCALA_DIARIA_TOUR_STEPS}
+        stepIndex={tutorialStepIndex}
+        targetAttribute="data-escala-diaria-tour"
+        onBack={voltarTutorialDiaria}
+        onNext={avancarTutorialDiaria}
+        onClose={fecharTutorialDiaria}
+      />
+    );
+  }
 
   async function carregar() {
     const [todas, bombeiros, trocas, substituicoes, vigencias] = await Promise.all([
@@ -1838,6 +2002,7 @@ export function EscalaDiariaView() {
   if (mode === 'form') {
     return (
       <div>
+        {renderBotaoTutorialDiaria()}
         <EscalaDiariaForm
           escala={editando || undefined}
           onSave={handleSave}
@@ -1845,6 +2010,7 @@ export function EscalaDiariaView() {
           canManageGlobal={canManageGlobal}
           equipeEfetiva={equipeEfetiva}
         />
+        {renderTutorialDiaria()}
       </div>
     );
   }
@@ -1857,7 +2023,8 @@ export function EscalaDiariaView() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+      {renderBotaoTutorialDiaria()}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4" data-escala-diaria-tour="diaria-lista-filtros">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex overflow-hidden rounded-xl border border-graphite-300/60 bg-white/70 text-xs font-medium dark:border-border-dark dark:bg-surface-card">
             <button onClick={() => setFilterMode('mes-ano')}
@@ -1898,6 +2065,7 @@ export function EscalaDiariaView() {
         <div className="flex items-center gap-3">
           {canCreate && (
           <button onClick={() => { setEditando(null); setMode('form'); }}
+            data-escala-diaria-tour="diaria-nova"
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all duration-200 hover:shadow-xl hover:shadow-aviation-500/30 hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
             <Plus className="h-4 w-4" /> Nova Escala Diária
           </button>
@@ -1945,6 +2113,7 @@ export function EscalaDiariaView() {
           </div>
         </div>
       )}
+      {renderTutorialDiaria()}
     </div>
   );
 }

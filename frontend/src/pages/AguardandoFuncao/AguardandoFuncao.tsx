@@ -1,5 +1,27 @@
 import { Clock, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { PageTour } from '../../components/ui/PageTour';
+
+const AGUARDANDO_FUNCAO_TOUR_STEPS = [
+  {
+    selector: 'h1',
+    title: 'Aguardando liberação',
+    body: 'Esta tela aparece quando sua conta já existe, mas ainda não foi vinculada a um cadastro e função dentro do sistema.',
+    detail: 'Sem esse vínculo, o SCI NVT não sabe sua equipe, cargo ou permissões. Por isso o acesso às telas internas fica bloqueado até um administrador concluir o cadastro.',
+  },
+  {
+    selector: 'p',
+    title: 'O que falta fazer',
+    body: 'O administrador precisa associar seu usuário a um bombeiro ou APOC e definir a função correta.',
+    detail: 'Depois da liberação, o sistema passa a mostrar as páginas compatíveis com seu perfil e com as permissões da sua equipe.',
+  },
+  {
+    selector: 'button',
+    title: 'Voltar ao login',
+    body: 'Use este botão para retornar ao Login.',
+    detail: 'Quando o administrador avisar que o vínculo foi concluído, entre novamente pelo Login para acessar o sistema normalmente.',
+  },
+];
 
 export function AguardandoFuncao() {
   const navigate = useNavigate();
@@ -26,6 +48,12 @@ export function AguardandoFuncao() {
           Voltar ao Login <ArrowRight className="h-4 w-4" />
         </button>
       </div>
+      <PageTour
+        steps={AGUARDANDO_FUNCAO_TOUR_STEPS}
+        targetAttribute="data-aguardando-funcao-tour"
+        title="Abrir tutorial de Aguardando Liberação"
+        detailLabel="Como usar esta página"
+      />
     </div>
   );
 }

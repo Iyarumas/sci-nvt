@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ClipboardList, Plus, Search, Trash2, Save, Printer, CheckCircle2, Link2,
-  X, ImagePlus,
+  X, ImagePlus, HelpCircle,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { isAdministradorSistema } from '../../utils/permissoes';
 import { formatarDataBR, formatarDataHoraBR, hojeLocalISO } from '../../utils/datas';
@@ -60,10 +61,99 @@ const ANOS = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - i).
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 placeholder-graphite-400 outline-none transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400';
 const labelCls = 'mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300';
+type OrdemServicoTourStep = AnimatedTourStep & { formOpen?: boolean; createOnly?: boolean; adminOnly?: boolean };
+
+const ORDEM_SERVICO_TOUR_STEPS: OrdemServicoTourStep[] = [
+  {
+    target: 'os-topo',
+    title: 'Ordens de Serviço',
+    body: 'Esta página registra solicitações de serviço, manutenção, reparos ou demandas operacionais que precisam de acompanhamento.',
+    detail: 'A OS guarda solicitante, equipe, prioridade, local, descrição, imagens, status e dados de finalização.',
+  },
+  {
+    target: 'os-stats',
+    title: 'Resumo das OS',
+    body: 'Os cards mostram total, abertas, em manutenção, concluídas e urgentes.',
+    detail: 'Use esse resumo para saber rapidamente o volume de ordens e o que ainda precisa de ação.',
+  },
+  {
+    target: 'os-filtros',
+    title: 'Filtros e pesquisa',
+    body: 'A busca encontra OS por número, solicitante, equipe, local ou descrição. Os filtros refinam por mês, período, status e prioridade.',
+    detail: 'Quando a lista ficar grande, filtre antes de imprimir, finalizar ou conferir uma OS específica.',
+  },
+  {
+    target: 'os-lista',
+    title: 'Lista de ordens',
+    body: 'Cada linha mostra número, prioridade, status, descrição resumida, solicitante, equipe, data e local.',
+    detail: 'Clique em uma OS para visualizar o documento completo. Os ícones da direita permitem imprimir, atualizar status, editar ou excluir conforme permissão.',
+  },
+  {
+    target: 'os-nova',
+    title: 'Criar nova OS',
+    body: 'O botão Nova OS abre o formulário de criação com numeração automática do ano e solicitante preenchido pelo usuário logado.',
+    detail: 'A criação depende da equipe efetiva ou permissão global, porque a OS precisa ficar vinculada a uma equipe responsável.',
+    createOnly: true,
+  },
+  {
+    target: 'os-form-identificacao',
+    title: 'Identificação da OS',
+    body: 'O número é gerado automaticamente. A data de emissão registra quando a ordem foi aberta.',
+    detail: 'Esse número será usado para localizar, imprimir e acompanhar o histórico da OS.',
+    formOpen: true,
+    createOnly: true,
+  },
+  {
+    target: 'os-form-responsaveis',
+    title: 'Solicitante, equipe e prioridade',
+    body: 'O solicitante identifica quem abriu a OS. A equipe define quem responde pelo registro e a prioridade ajuda a ordenar urgências.',
+    detail: 'Usuários sem permissão global normalmente salvam apenas na própria equipe efetiva.',
+    formOpen: true,
+    createOnly: true,
+  },
+  {
+    target: 'os-form-descricao',
+    title: 'Local e descrição do serviço',
+    body: 'Informe onde está o problema e descreva claramente o serviço necessário.',
+    detail: 'Quanto mais objetiva a descrição, mais fácil fica para a equipe, empresa ou responsável executar e depois finalizar a OS.',
+    formOpen: true,
+    createOnly: true,
+  },
+  {
+    target: 'os-form-imagens',
+    title: 'Imagens e evidências',
+    body: 'As imagens ajudam a comprovar o problema, mostrar o local ou registrar o estado antes do serviço.',
+    detail: 'Essas imagens também aparecem na visualização/impressão da OS quando forem anexadas.',
+    formOpen: true,
+    createOnly: true,
+  },
+  {
+    target: 'os-form-acoes',
+    title: 'Salvar a ordem',
+    body: 'Cancelar fecha a janela sem gravar. Salvar cria ou atualiza a OS quando os campos obrigatórios estão preenchidos.',
+    detail: 'Depois de salva, a OS aparece na lista e pode ser impressa ou ter o status atualizado.',
+    formOpen: true,
+    createOnly: true,
+  },
+  {
+    target: 'os-lista',
+    title: 'Imprimir e finalizar',
+    body: 'Na lista, o ícone de impressão gera o documento. O ícone de confirmação atualiza a OS para manutenção, concluída ou cancelada.',
+    detail: 'Na finalização, o sistema registra quem finalizou, empresa/pessoa responsável e a descrição do que foi feito.',
+  },
+  {
+    target: 'os-link-publico',
+    title: 'Link público',
+    body: 'Administradores podem copiar um link público para abertura de OS por pessoas externas ao fluxo interno.',
+    detail: 'Use esse link apenas quando fizer sentido operacionalmente, porque ele facilita a entrada de solicitações sem navegar pelo sistema completo.',
+    adminOnly: true,
+  },
+];
 
 export function OrdemServico() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
   const isAdminOnly = isAdministradorSistema(user);
+  const tutorialOrigemRef = useRef<{ scrollY: number } | null>(null);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [search, setSearch] = useState('');
   const [filtroStatus, setFiltroStatus] = useState('');
@@ -106,6 +196,8 @@ export function OrdemServico() {
   const [formConclusao, setFormConclusao] = useState('');
   const [formObservacoes, setFormObservacoes] = useState('');
   const [searchSol, setSearchSol] = useState('');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
 
   useEffect(() => {
     listarOrdensServico()
@@ -194,6 +286,23 @@ export function OrdemServico() {
       setSearchSol(usuarioNome);
     }
     setEditando(null);
+    setFormOpen(true);
+  }
+
+  function abrirFormularioTutorialOS() {
+    resetForm();
+    const usuarioNome = user?.name || user?.pessoa?.nomeGuerra || '';
+    const usuarioCargo = user?.pessoa?.funcao || user?.role || '';
+    if (usuarioNome) {
+      setFormSolicitante(user?.pessoa?.id || '');
+      setFormSolicitanteNome(usuarioNome);
+      setFormSolicitanteCargo(usuarioCargo);
+      setSearchSol(usuarioNome);
+    }
+    setEditando(null);
+    setVisualizando(null);
+    setFinalizando(null);
+    setConfirmDelete(null);
     setFormOpen(true);
   }
 
@@ -355,13 +464,75 @@ export function OrdemServico() {
     urgentes: ordens.filter(o => o.prioridade === 'Urgente').length,
   }), [ordens]);
   const imagensVisualizando = useMemo(() => visualizando ? parseOrdemServicoImagens(visualizando.imagem) : [], [visualizando]);
+  const canCreateOrdemServico = canManageGlobal || !!equipeEfetiva;
+  const ordemServicoTourSteps = ORDEM_SERVICO_TOUR_STEPS.filter(step =>
+    (!step.createOnly || canCreateOrdemServico) && (!step.adminOnly || isAdminOnly),
+  );
+  const currentTutorialStep = ordemServicoTourSteps[tutorialStepIndex] || ordemServicoTourSteps[0];
+  const tutorialPrecisaFormulario = !!currentTutorialStep?.formOpen;
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    if (tutorialStepIndex < ordemServicoTourSteps.length) return;
+    setTutorialStepIndex(Math.max(0, ordemServicoTourSteps.length - 1));
+  }, [ordemServicoTourSteps.length, showTutorial, tutorialStepIndex]);
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    if (tutorialPrecisaFormulario) {
+      if (!formOpen) abrirFormularioTutorialOS();
+      return;
+    }
+    if (formOpen) {
+      setFormOpen(false);
+      setEditando(null);
+    }
+  }, [formOpen, showTutorial, tutorialPrecisaFormulario]);
+
+  function abrirTutorialOrdemServico() {
+    tutorialOrigemRef.current = { scrollY: window.scrollY };
+    setVisualizando(null);
+    setFinalizando(null);
+    setConfirmDelete(null);
+    setTutorialStepIndex(0);
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialOrdemServico() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    setTutorialStepIndex(0);
+    setFormOpen(false);
+    setEditando(null);
+    setVisualizando(null);
+    setFinalizando(null);
+    setConfirmDelete(null);
+    if (origem) {
+      window.setTimeout(() => window.scrollTo({ top: origem.scrollY, behavior: 'smooth' }), 50);
+    }
+    tutorialOrigemRef.current = null;
+  }
+
+  function voltarTutorialOrdemServico() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorialOrdemServico() {
+    if (tutorialStepIndex >= ordemServicoTourSteps.length - 1) {
+      fecharTutorialOrdemServico();
+      return;
+    }
+    setTutorialStepIndex(index => index + 1);
+  }
 
   return (
     <PageContainer>
-      <PageTitle icon={ClipboardList} title="Ordens de Serviço" />
+      <div data-os-tour="os-topo">
+        <PageTitle icon={ClipboardList} title="Ordens de Serviço" />
+      </div>
 
       <div className="space-y-6">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5" data-os-tour="os-stats">
           <div className="rounded-xl border border-graphite-200 bg-white p-3 text-center dark:border-border-dark dark:bg-surface-card">
             <p className="text-xl font-black text-graphite-900 dark:text-graphite-100">{stats.total}</p>
             <p className="text-[10px] font-medium text-graphite-500">Total</p>
@@ -384,7 +555,7 @@ export function OrdemServico() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3" data-os-tour="os-filtros">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar OS..." className={`${inputCls} !pl-10`} />
@@ -429,12 +600,14 @@ export function OrdemServico() {
           </span>
           {(canManageGlobal || equipeEfetiva) && (
             <button onClick={handleNovo}
+              data-os-tour="os-nova"
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]">
               <Plus className="h-4 w-4" /> Nova OS
             </button>
           )}
           {isAdminOnly && (
             <button onClick={handleCopiarLinkPublico}
+              data-os-tour="os-link-publico"
               className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all ${linkCopiado ? 'border-green-300 bg-green-50 text-green-700 dark:border-green-700 dark:bg-green-900/20 dark:text-green-300' : 'border-aviation-300 bg-white text-aviation-700 hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300'}`}>
               <Link2 className="h-4 w-4" /> {linkCopiado ? 'Link copiado!' : 'Link público'}
             </button>
@@ -442,13 +615,13 @@ export function OrdemServico() {
         </div>
 
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white/50 p-12 text-center dark:border-border-dark dark:bg-surface-card">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white/50 p-12 text-center dark:border-border-dark dark:bg-surface-card" data-os-tour="os-lista">
             <ClipboardList className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
             <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhuma OS encontrada</h3>
             <p className="text-sm text-graphite-500">Clique em "Nova OS" para criar.</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2" data-os-tour="os-lista">
             {filtered.map(os => (
               <div key={os.id} onClick={() => handleVisualizar(os)}
                 className="cursor-pointer rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -504,7 +677,7 @@ export function OrdemServico() {
       {/* Modal Form */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 py-8">
-          <div className="relative w-full max-w-2xl mx-4 rounded-2xl bg-white shadow-2xl dark:bg-surface-elevated">
+          <div className="relative w-full max-w-2xl mx-4 rounded-2xl bg-white shadow-2xl dark:bg-surface-elevated" data-os-tour="os-form">
             <div className="flex items-center justify-between border-b border-graphite-200 px-6 py-4 dark:border-border-dark">
               <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{editando ? 'Editar' : 'Nova'} Ordem de Serviço</h2>
               <button onClick={() => setFormOpen(false)} className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover">
@@ -512,7 +685,7 @@ export function OrdemServico() {
               </button>
             </div>
             <div className="space-y-5 p-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-os-tour="os-form-identificacao">
                 <div>
                   <label className={labelCls}>Número <span className="text-red-500">*</span></label>
                   <input type="text" value={formNumero} readOnly disabled className={inputCls + ' opacity-70'} />
@@ -524,60 +697,64 @@ export function OrdemServico() {
                 </div>
               </div>
 
-              <div>
-                <label className={labelCls}>Solicitante <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={formSolicitanteNome ? `${formSolicitanteNome}${formSolicitanteCargo ? ` - ${formSolicitanteCargo}` : ''}` : searchSol}
-                  readOnly
-                  disabled
-                  className={inputCls + ' opacity-80'}
-                />
-                {formSolicitanteNome && <p className="mt-1 text-xs text-emerald-600 font-medium">{formSolicitanteNome}{formSolicitanteCargo ? ` · ${formSolicitanteCargo}` : ''}</p>}
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-4" data-os-tour="os-form-responsaveis">
                 <div>
-                  <label className={labelCls}>Equipe</label>
-                  <select value={formEquipe} onChange={e => setFormEquipe(e.target.value)} className={inputCls} disabled={!canManageGlobal}>
-                    <option value="">Selecione</option>
-                    {EQUIPES.filter(eq => canManageGlobal || eq === equipeEfetiva).map(eq => <option key={eq} value={eq}>{eq}</option>)}
-                  </select>
+                  <label className={labelCls}>Solicitante <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={formSolicitanteNome ? `${formSolicitanteNome}${formSolicitanteCargo ? ` - ${formSolicitanteCargo}` : ''}` : searchSol}
+                    readOnly
+                    disabled
+                    className={inputCls + ' opacity-80'}
+                  />
+                  {formSolicitanteNome && <p className="mt-1 text-xs text-emerald-600 font-medium">{formSolicitanteNome}{formSolicitanteCargo ? ` · ${formSolicitanteCargo}` : ''}</p>}
                 </div>
-                <div>
-                  <label className={labelCls}>Prioridade</label>
-                  <select value={formPrioridade} onChange={e => setFormPrioridade(e.target.value)} className={inputCls}>
-                    {PRIORIDADES.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-              </div>
 
-              <div>
-                <label className={labelCls}>Local do Problema</label>
-                <input type="text" value={formLocal} onChange={e => setFormLocal(e.target.value)} placeholder="Ex: Hangar, Terminal de Passageiros, Pátio de Manobras, Seção Administrativa..." className={inputCls} />
-              </div>
-
-              {editando && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className={labelCls}>Status</label>
-                    <select value={formStatus} onChange={e => setFormStatus(e.target.value)} className={inputCls}>
-                      {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                    <label className={labelCls}>Equipe</label>
+                    <select value={formEquipe} onChange={e => setFormEquipe(e.target.value)} className={inputCls} disabled={!canManageGlobal}>
+                      <option value="">Selecione</option>
+                      {EQUIPES.filter(eq => canManageGlobal || eq === equipeEfetiva).map(eq => <option key={eq} value={eq}>{eq}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls}>Data de Conclusão</label>
-                    <input type="date" value={formConclusao} onChange={e => setFormConclusao(e.target.value)} className={inputCls} />
+                    <label className={labelCls}>Prioridade</label>
+                    <select value={formPrioridade} onChange={e => setFormPrioridade(e.target.value)} className={inputCls}>
+                      {PRIORIDADES.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
                   </div>
                 </div>
-              )}
-
-              <div>
-                <label className={labelCls}>Descrição do Serviço <span className="text-red-500">*</span></label>
-                <textarea value={formDescricao} onChange={e => setFormDescricao(e.target.value)} rows={4} placeholder="Descreva o serviço..." className={inputCls} />
               </div>
 
-              <div>
+              <div className="space-y-4" data-os-tour="os-form-descricao">
+                <div>
+                  <label className={labelCls}>Local do Problema</label>
+                  <input type="text" value={formLocal} onChange={e => setFormLocal(e.target.value)} placeholder="Ex: Hangar, Terminal de Passageiros, Pátio de Manobras, Seção Administrativa..." className={inputCls} />
+                </div>
+
+                {editando && (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>Status</label>
+                      <select value={formStatus} onChange={e => setFormStatus(e.target.value)} className={inputCls}>
+                        {STATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Data de Conclusão</label>
+                      <input type="date" value={formConclusao} onChange={e => setFormConclusao(e.target.value)} className={inputCls} />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className={labelCls}>Descrição do Serviço <span className="text-red-500">*</span></label>
+                  <textarea value={formDescricao} onChange={e => setFormDescricao(e.target.value)} rows={4} placeholder="Descreva o serviço..." className={inputCls} />
+                </div>
+              </div>
+
+              <div data-os-tour="os-form-imagens">
                 <label className={labelCls}>Imagens do Problema</label>
                 <div className="space-y-3">
                   {formImagens.length > 0 && (
@@ -605,7 +782,7 @@ export function OrdemServico() {
                 <textarea value={formObservacoes} onChange={e => setFormObservacoes(e.target.value)} rows={3} placeholder="Observações..." className={inputCls} />
               </div>
 
-              <div className="flex justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark">
+              <div className="flex justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark" data-os-tour="os-form-acoes">
                 <button onClick={() => setFormOpen(false)} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">Cancelar</button>
                 <button onClick={handleSalvar} disabled={!formNumero || !formSolicitante || !formDescricao || !formEquipe}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
@@ -834,6 +1011,24 @@ export function OrdemServico() {
           </div>
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={abrirTutorialOrdemServico}
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-aviation-200 bg-aviation-600 text-white shadow-2xl shadow-aviation-900/30 transition-all hover:scale-105 hover:bg-aviation-500 focus:outline-none focus:ring-4 focus:ring-aviation-300/40 dark:border-aviation-400/30"
+        title="Abrir tutorial de Ordens de Serviço"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+      <AnimatedPageTour
+        open={showTutorial}
+        steps={ordemServicoTourSteps}
+        stepIndex={tutorialStepIndex}
+        targetAttribute="data-os-tour"
+        onBack={voltarTutorialOrdemServico}
+        onNext={avancarTutorialOrdemServico}
+        onClose={fecharTutorialOrdemServico}
+      />
     </PageContainer>
   );
 }

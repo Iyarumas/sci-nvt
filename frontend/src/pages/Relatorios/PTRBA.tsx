@@ -14,6 +14,40 @@ import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
 import type { PTRBACompleto } from '../../types/ptrbaCompleto';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { formatarDataBR, formatarDataHoraBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
+
+const RELATORIO_PTRBA_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Relatório PTR-BA',
+    body: 'Este relatório analisa horas, registros, equipes, pessoas e assuntos de PTR-BA.',
+    detail: 'Ele usa registros de PTR-BA por instrução e também dados do PTR-BA completo quando aplicável.',
+  },
+  {
+    selector: 'main select, main input',
+    title: 'Filtros do relatório',
+    body: 'Filtre por mês, ano, equipe, assunto e pessoa conforme a visão aberta.',
+    detail: 'Os filtros mudam os totais de horas, participantes e registros mostrados nas tabelas.',
+  },
+  {
+    selector: 'main button',
+    title: 'Navegação entre visões',
+    body: 'O relatório permite sair do resumo geral para uma equipe, depois para uma pessoa e depois para os PTR-BAs detalhados.',
+    detail: 'Use os botões e cards clicáveis para aprofundar a conferência sem perder o contexto dos filtros.',
+  },
+  {
+    selector: 'main table, main .space-y-2',
+    title: 'Tabelas e cards',
+    body: 'As tabelas mostram horas por equipe, pessoa e assunto. Os cards detalham registros individuais quando você entra em uma pessoa.',
+    detail: 'Clique nos registros para expandir descrição, participantes e evidências quando disponíveis.',
+  },
+  {
+    selector: 'main button[title="Visualizar detalhes"], main button',
+    title: 'Visualização e impressão',
+    body: 'Use as ações de visualizar e imprimir para conferir ou gerar saída física/PDF.',
+    detail: 'As opções de impressão usam exatamente os filtros e a visão atual do relatório.',
+  },
+];
 
 function formatDate(d: string) {
   return formatarDataBR(d);
@@ -1576,6 +1610,12 @@ ${opts.legenda ? `<div class="legenda">
           </div>
         </div>
       )}
+      <PageTour
+        steps={RELATORIO_PTRBA_TOUR_STEPS}
+        targetAttribute="data-relatorio-ptrba-tour"
+        title="Abrir tutorial do Relatório PTR-BA"
+        detailLabel="Análise"
+      />
     </PageContainer>
   );
 }

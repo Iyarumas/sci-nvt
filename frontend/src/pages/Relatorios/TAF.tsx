@@ -18,6 +18,7 @@ import type { TAFInput, TreinamentoTAF } from '../../types/taf';
 import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
+import { PageTour } from '../../components/ui/PageTour';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const TIPO_TAF = ['TAF-1', 'TAF-2'];
@@ -30,6 +31,45 @@ const SLOTS = [
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+
+const TAF_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'TAF',
+    body: 'Esta página registra e consulta o Teste de Aptidão Física das equipes.',
+    detail: 'Cada registro tem número/ano, equipe, tipo TAF, data, hora, turno, participantes, função, idade, tempo, observações e status.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo TAF',
+    body: 'O botão Novo TAF abre o formulário de lançamento.',
+    detail: 'O sistema separa slots por função operacional e permite selecionar bombeiros da equipe. Confira cada pessoa antes de aprovar.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Filtros da lista',
+    body: 'Pesquise por registro e filtre por equipe e ano.',
+    detail: 'Use para encontrar TAFs de um ciclo específico ou de uma equipe.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Cards de TAF',
+    body: 'Cada card mostra número/ano, equipe, tipo, data, turno e status de rascunho ou aprovado.',
+    detail: 'Ao expandir, aparecem participantes, funções, idades e tempos registrados.',
+  },
+  {
+    selector: 'main input, main [role="combobox"]',
+    title: 'Participantes e tempos',
+    body: 'No formulário, selecione cada bombeiro por função e informe o tempo no formato do cronômetro.',
+    detail: 'Evite duplicar participantes. O tempo é o dado central do TAF e precisa ser conferido antes de salvar ou aprovar.',
+  },
+  {
+    selector: 'main button[title="Ver documento"], main button[title="Baixar PDF"], main button',
+    title: 'Aprovar e gerar PDF',
+    body: 'Rascunhos podem ser editados e aprovados. Depois da aprovação, o documento pode ser visualizado e baixado em PDF.',
+    detail: 'Aprovar significa considerar o TAF como final para emissão. Revise os tempos antes dessa etapa.',
+  },
+];
 
 function fmt(d: string) { return formatarDataBR(d); }
 
@@ -790,6 +830,12 @@ export function TAF() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={TAF_TOUR_STEPS}
+        targetAttribute="data-taf-tour"
+        title="Abrir tutorial do TAF"
+        detailLabel="Treinamento"
+      />
     </PageContainer>
   );
 }

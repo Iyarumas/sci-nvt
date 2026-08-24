@@ -29,6 +29,7 @@ import {
   resolverContextoOperacional,
 } from '../../utils/permissoes';
 import { dataLocalISO, formatarDataBR, hojeLocalISO } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 const NR_COLORS: Record<string, string> = {
   'NR-1': 'from-slate-500 to-slate-600',
@@ -45,6 +46,45 @@ const NR_COLORS: Record<string, string> = {
   'NR-34': 'from-purple-500 to-purple-600',
   'NR-35': 'from-cyan-500 to-cyan-600',
 };
+
+const CERTIFICACOES_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Certificações',
+    body: 'Esta tela concentra certificados NR e cursos operacionais dos bombeiros.',
+    detail: 'Ela ajuda a controlar validade, anexar comprovantes e verificar requisitos para funções como BA-CE, BA-LR, CRS e Motorista CCI.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Busca e equipe',
+    body: 'Pesquise o funcionário pelo nome e, quando tiver permissão, filtre por equipe.',
+    detail: 'BA-CE e BA-LR visualizam conforme a equipe efetiva. Administrador e GS conseguem olhar todas as equipes e gerenciar os certificados.',
+  },
+  {
+    selector: 'main p',
+    title: 'Resumo da tela',
+    body: 'O resumo mostra quantos funcionários, NRs e cursos estão carregados na tela.',
+    detail: 'Use esse número para confirmar se o filtro selecionado está mostrando o conjunto esperado antes de revisar vencimentos.',
+  },
+  {
+    selector: 'main .space-y-3',
+    title: 'Cards dos funcionários',
+    body: 'Cada card mostra a pessoa, equipe, cargo, CNH/CVE quando aplicável, NRs e cursos cadastrados.',
+    detail: 'Os selos de validade mostram se um certificado está válido, próximo do vencimento ou vencido. Certificados vitalícios aparecem sem cobrança de validade.',
+  },
+  {
+    selector: 'main button',
+    title: 'Adicionar NR ou curso',
+    body: 'Os botões de adicionar abrem formulários inline dentro do próprio funcionário.',
+    detail: 'Para NR, escolha a NR, emissão, validade, empresa certificadora e anexo. Para cursos, escolha o curso, datas, se é vitalício quando permitido e anexe PDF ou imagem do certificado.',
+  },
+  {
+    selector: 'main iframe, main img, main button',
+    title: 'Visualizar comprovante',
+    body: 'Quando um certificado tem anexo, o botão de visualização abre o arquivo em modal.',
+    detail: 'Use essa visualização para conferir se o documento anexado corresponde ao curso ou NR antes de considerar o cadastro correto.',
+  },
+];
 
 function getDefaultValidade(): string {
   const d = new Date();
@@ -817,6 +857,12 @@ export function Certificacoes() {
       )}
 
       {arquivoModal && <ArquivoModal arquivo={arquivoModal.arquivo} title={arquivoModal.title} onClose={() => setArquivoModal(null)} />}
+      <PageTour
+        steps={CERTIFICACOES_TOUR_STEPS}
+        targetAttribute="data-certificacoes-tour"
+        title="Abrir tutorial de Certificações"
+        detailLabel="Validação"
+      />
     </PageContainer>
   );
 }

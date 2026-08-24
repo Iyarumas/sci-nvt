@@ -31,6 +31,7 @@ import { AlertModal } from '../../components/ui/AlertModal';
 import { estaNoPeriodoISO, formatarDataBR } from '../../utils/datas';
 import { equipeEstaNoPlantao } from '../../utils/equipes';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
+import { PageTour } from '../../components/ui/PageTour';
 
 function capitalize(str: string) { return capitalizarNome(str); }
 function formatDate(d: string) { return formatarDataBR(d); }
@@ -43,6 +44,72 @@ const MESES_RELATORIO = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 const ANOS_RELATORIO = Array.from({ length: 6 }, (_, index) => String(new Date().getFullYear() - index));
+
+const SUBSTITUICOES_OPERACIONAL_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Substituições temporárias',
+    body: 'Esta tela registra substituições, afastamentos, atestados e plantões extras temporários.',
+    detail: 'Depois de aprovado, o movimento impacta o status do funcionário e pode ser puxado automaticamente para a Escala Diária, PTR-BA e LRO conforme o caso.',
+  },
+  {
+    selector: 'main button',
+    title: 'Nova movimentação',
+    body: 'Use Nova Movimentação para registrar uma substituição ou afastamento.',
+    detail: 'Substituição troca uma pessoa por outra em um período. Afastamento/atestado tira a pessoa do serviço e permite apontar quem fará os extras nos plantões afetados.',
+  },
+  {
+    selector: 'main div.mb-6.flex.items-center.gap-1',
+    title: 'Todas e pendentes',
+    body: 'Quando você pode aprovar, as abas separam todas as movimentações das pendentes.',
+    detail: 'Pendentes precisam ser aprovadas ou rejeitadas para entrarem corretamente na rotina automatizada. Sem aprovação, a movimentação não deve ser considerada final.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Busca e status',
+    body: 'A busca localiza por nome ou tipo. O filtro de status separa Pendente, Aprovada e Rejeitada.',
+    detail: 'Use o filtro para conferir rapidamente o que ainda está aguardando decisão e o que já está valendo.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Cards das movimentações',
+    body: 'Cada card mostra tipo, funcionário original, substituto, motivo, período, status e extras quando houver afastamento.',
+    detail: 'Clique no card para expandir e ver detalhes como quem criou, quem aprovou, CID quando informado, descrição e lista de extras por plantão.',
+  },
+  {
+    selector: 'main button[title="Editar"], main button[title="Excluir"], main button',
+    title: 'Aprovar, rejeitar e editar',
+    body: 'Usuários autorizados podem aprovar, rejeitar, editar ou excluir movimentações.',
+    detail: 'Ao rejeitar, informe o motivo. Ao aprovar afastamentos, confira os extras selecionados porque eles serão usados nas escalas e documentos automáticos.',
+  },
+];
+
+const SUBSTITUICOES_RELATORIO_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Relatório de substituições',
+    body: 'Esta visão mostra afastamentos, atestados e extras aprovados por mês.',
+    detail: 'Ela é usada para conferência mensal e impressão. Movimentações pendentes não entram como registro final do relatório.',
+  },
+  {
+    selector: 'main select, main button',
+    title: 'Mês, ano e impressão',
+    body: 'Escolha o mês e o ano para montar o relatório mensal. O botão Imprimir relatório mensal abre a impressão do período.',
+    detail: 'Antes de imprimir, confirme a quantidade de registros mostrada ao lado dos filtros para garantir que selecionou o período correto.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Registros do período',
+    body: 'Os cards mostram os afastamentos e extras aprovados que cruzam o mês selecionado.',
+    detail: 'Abra o card para conferir motivo, período, descrição, CID quando informado e extras vinculados aos plantões.',
+  },
+  {
+    selector: 'main button[title="Imprimir relatório individual"], main button',
+    title: 'Relatório individual',
+    body: 'Quando disponível, o ícone de impressão no card gera a impressão daquele afastamento específico.',
+    detail: 'Use a impressão individual quando precisar documentar apenas um afastamento ou atestado, sem imprimir o mês inteiro.',
+  },
+];
 
 type Tab = 'lista' | 'aprovacoes';
 
@@ -195,6 +262,7 @@ export function Substituicoes() {
   const { user, effectiveRole } = useAuth();
   const location = useLocation();
   const isRelatorioRoute = location.pathname.startsWith('/relatorios');
+  const substituicoesTourSteps = isRelatorioRoute ? SUBSTITUICOES_RELATORIO_TOUR_STEPS : SUBSTITUICOES_OPERACIONAL_TOUR_STEPS;
   const canApprove = effectiveRole === 'desenvolvedor' || effectiveRole === 'admin' || effectiveRole === 'gerente';
 
   const [tab, setTab] = useState<Tab>('lista');
@@ -1523,6 +1591,12 @@ export function Substituicoes() {
         error={deleteError}
         onClose={() => { if (!deleting) { setConfirmDeleteId(null); setDeleteError(''); } }}
         onConfirm={() => confirmDeleteId ? handleExcluir(confirmDeleteId) : undefined}
+      />
+      <PageTour
+        steps={substituicoesTourSteps}
+        targetAttribute="data-substituicoes-tour"
+        title={isRelatorioRoute ? 'Abrir tutorial do Relatório de Substituições' : 'Abrir tutorial de Substituições'}
+        detailLabel={isRelatorioRoute ? 'Conferência' : 'Automação'}
       />
     </PageContainer>
   );

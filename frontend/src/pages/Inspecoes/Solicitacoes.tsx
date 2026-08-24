@@ -8,6 +8,7 @@ import type { Conferencia } from '../../types/conferencia';
 import type { Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 const EQUIPES_SOLICITACAO = EQUIPE_OPTIONS.filter(eq => eq !== 'Ferista' && eq !== 'Embaixador');
 
@@ -16,6 +17,39 @@ const inputForm = 'w-full rounded-xl border border-graphite-300/60 bg-white/70 p
 
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
+
+const SOLICITACOES_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Solicitações',
+    body: 'Esta página registra solicitações feitas durante o plantão.',
+    detail: 'Use para pedidos de manutenção, reposição, apoio ou qualquer demanda que precisa ficar documentada e ser puxada nos registros do dia.',
+  },
+  {
+    selector: 'main button',
+    title: 'Nova solicitação',
+    body: 'O botão Nova Solicitação abre o formulário da demanda.',
+    detail: 'Preencha data, data do turno, hora, equipe, tipo de solicitação e descrição detalhada.',
+  },
+  {
+    selector: 'main input, main select, main textarea',
+    title: 'Campos da solicitação',
+    body: 'A data do turno indica em qual plantão a solicitação deve aparecer.',
+    detail: 'A descrição deve conter o que foi solicitado, motivo, local e qualquer informação necessária para acompanhamento posterior.',
+  },
+  {
+    selector: 'main select, main input',
+    title: 'Filtros',
+    body: 'Na lista, filtre por mês/ano ou por período e por equipe.',
+    detail: 'Isso ajuda a conferir solicitações de um plantão, de um mês ou de uma equipe específica.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Cards de solicitações',
+    body: 'Cada card mostra o tipo, equipe, data/hora, turno e responsável pelo registro.',
+    detail: 'Clique para abrir a descrição. Quem tem permissão da equipe pode editar ou excluir a solicitação.',
+  },
+];
 
 export function Solicitacoes() {
   const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
@@ -353,6 +387,12 @@ export function Solicitacoes() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={SOLICITACOES_TOUR_STEPS}
+        targetAttribute="data-solicitacoes-tour"
+        title="Abrir tutorial de Solicitações"
+        detailLabel="Demanda"
+      />
     </PageContainer>
   );
 }

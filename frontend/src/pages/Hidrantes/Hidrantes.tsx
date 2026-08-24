@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Droplets, Search, Plus, Pencil, Trash2, AlertCircle, X } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { useAuth } from '../../context/AuthContext';
 import { listarHidrantes, criarHidrante, atualizarHidrante, excluirHidrante } from '../../services/hidranteService';
 import type { Hidrante, TipoHidrante, StatusHidrante } from '../../types/hidrante';
@@ -21,6 +22,39 @@ const EMPTY: Omit<Hidrante, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> = {
   intervaloConferencia: '6',
   observacoes: '',
 };
+
+const HIDRANTES_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Cadastro de Hidrantes',
+    body: 'Esta tela controla os hidrantes e pontos de água cadastrados, com número, tipo, localização, pressão, intervalo de conferência e status.',
+    detail: 'Essas informações ajudam inspeções e planejamento de resposta, pois indicam onde estão os pontos de abastecimento e se estão ativos.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo Hidrante',
+    body: 'Este botão abre o formulário para cadastrar um hidrante ou ponto de água.',
+    detail: 'Informe número, tipo, localização, pressão e intervalo de conferência para que a equipe consiga localizar e avaliar o ponto corretamente.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Pesquisa e filtro de status',
+    body: 'A busca localiza hidrantes por número ou localização. O filtro separa os registros por status.',
+    detail: 'Use para encontrar rapidamente hidrantes ativos, em manutenção ou fora de operação.',
+  },
+  {
+    selector: 'main table',
+    title: 'Tabela de hidrantes',
+    body: 'A tabela mostra número, tipo, localização, pressão, intervalo de conferência e status de cada hidrante.',
+    detail: 'Revise pressão e status com atenção, porque um ponto indisponível não deve ser tratado como recurso operacional.',
+  },
+  {
+    selector: 'main table button',
+    title: 'Editar ou excluir',
+    body: 'Os ícones permitem corrigir dados ou excluir cadastros quando o usuário tem permissão.',
+    detail: 'Para alteração operacional, geralmente é melhor editar status/observação do que apagar o registro.',
+  },
+];
 
 export function Hidrantes() {
   const { user } = useAuth();
@@ -266,6 +300,11 @@ export function Hidrantes() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={HIDRANTES_TOUR_STEPS}
+        targetAttribute="data-hidrantes-tour"
+        title="Abrir tutorial de Hidrantes"
+      />
     </PageContainer>
   );
 }

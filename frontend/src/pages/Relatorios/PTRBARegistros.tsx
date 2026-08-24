@@ -10,9 +10,43 @@ import type { PTRBACompleto, PTRBACompletoEvidencia } from '../../types/ptrbaCom
 import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
 import { EQUIPES } from '../../types/ptrb';
 import { formatarDataBR, formatarDataHoraBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+const PTRBA_REGISTROS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'PTR-BA Registros',
+    body: 'Esta página reúne todos os PTR-BAs em uma lista única por ordem de data.',
+    detail: 'Ela junta PTR-BA por instrução e PTR-BA completo. Cada documento conta como um registro, mesmo quando o completo possui várias evidências.',
+  },
+  {
+    selector: 'main select',
+    title: 'Filtros de período e equipe',
+    body: 'Filtre por ano, mês e equipe para montar a lista do período desejado.',
+    detail: 'O total de documentos, horas e participações muda conforme os filtros.',
+  },
+  {
+    selector: 'main button',
+    title: 'Imprimir relatório',
+    body: 'O botão Imprimir Relatório gera a versão de impressão da tabela atual.',
+    detail: 'Antes de imprimir, confirme se ano, mês e equipe estão corretos e se as evidências do PTR-BA completo estão expandidas quando necessário.',
+  },
+  {
+    selector: 'main table',
+    title: 'Tabela de documentos',
+    body: 'A tabela mostra número da linha, data, equipe, turno, horário, duração, assunto, instrutor e participantes.',
+    detail: 'A linha marcada como COMPLETO representa um PTR-BA completo; clique nela para abrir as evidências/instruções internas.',
+  },
+  {
+    selector: 'main img, main .space-y-2',
+    title: 'Evidências do completo',
+    body: 'Quando um PTR-BA completo é expandido, aparecem as instruções, horários, descrições e imagens registradas.',
+    detail: 'Isso ajuda a conferir o conteúdo detalhado sem sair do relatório geral.',
+  },
+];
 
 function formatDate(d: string) {
   return formatarDataBR(d);
@@ -283,6 +317,12 @@ export function PTRBARegistros() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={PTRBA_REGISTROS_TOUR_STEPS}
+        targetAttribute="data-ptrba-registros-tour"
+        title="Abrir tutorial de PTR-BA Registros"
+        detailLabel="Conferência"
+      />
     </PageContainer>
   );
 

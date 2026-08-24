@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Calendar, ChevronDown, ChevronUp, Save, Printer, Pencil,
   Trash2, Radio, Shield, Users, ClipboardList,
-  Sparkles, AlertTriangle, X, Eye, Image,
+  Sparkles, AlertTriangle, X, Eye, Image, HelpCircle,
 } from 'lucide-react';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
 import { AlertModal } from '../../components/ui/AlertModal';
+import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { listarAtivos } from '../../services/bombeiroService';
 import { equipesNoDia } from '../../utils/equipes';
 import { dataLocalISO, formatarDataBR, periodosSobrepostosISO } from '../../utils/datas';
@@ -445,6 +446,62 @@ function nextFrame(): Promise<void> {
   return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
 
+type EscalaMensalTourStep = AnimatedTourStep & {
+  mode: 'list' | 'setup';
+};
+
+const ESCALA_MENSAL_TOUR_STEPS: EscalaMensalTourStep[] = [
+  {
+    target: 'mensal-lista-topo',
+    mode: 'list',
+    title: 'Escala Mensal organiza o mês',
+    body: 'Aqui ficam as escalas mensais já criadas. Ela é a base para montar o efetivo da equipe durante o mês inteiro.',
+    detail: 'Quando a escala mensal está correta, a escala diária consegue puxar as pessoas esperadas para cada plantão sem começar do zero.',
+  },
+  {
+    target: 'mensal-lista-filtros',
+    mode: 'list',
+    title: 'Filtre por equipe',
+    body: 'Use o filtro para localizar a escala mensal de uma equipe específica e conferir quantas escalas existem na lista.',
+    detail: 'Antes de criar uma diária, confira se já existe escala mensal da equipe e do mês correspondente.',
+  },
+  {
+    target: 'mensal-nova',
+    mode: 'list',
+    title: 'Crie a mensal primeiro',
+    body: 'O botão Nova Escala Mensal abre a configuração do mês. Preencha essa etapa antes de depender do auto-preenchimento da diária.',
+    detail: 'A mensal define a distribuição principal da equipe, responsabilidades, limpeza e rádio que depois servem de base para o dia de plantão.',
+  },
+  {
+    target: 'mensal-configuracao',
+    mode: 'setup',
+    title: 'Equipe, mês e plantões',
+    body: 'Escolha a equipe, mês e ano. A paridade dos plantões é calculada pelo sistema conforme o ciclo operacional.',
+    detail: 'Esses dados dizem ao sistema quais dias daquele mês pertencem à equipe e quais pessoas devem entrar no cálculo do efetivo mensal.',
+  },
+  {
+    target: 'mensal-guarnicoes',
+    mode: 'setup',
+    title: 'Monte as guarnições do mês',
+    body: 'Aqui entram CRS, CCI F2 e CCI F3. O sistema usa as pessoas ativas, férias e substituições para sugerir o efetivo válido do mês.',
+    detail: 'Essas posições são a base que a escala diária tenta puxar quando você cria o plantão de uma data específica.',
+  },
+  {
+    target: 'mensal-radio',
+    mode: 'setup',
+    title: 'Defina os horários de rádio',
+    body: 'A escala mensal também organiza o comunicante e os horários de rádio do mês.',
+    detail: 'Quando a diária for criada, ela busca essa configuração de rádio da mensal para preencher o plantão do dia com os horários corretos.',
+  },
+  {
+    target: 'mensal-acoes',
+    mode: 'setup',
+    title: 'Gere e salve a escala',
+    body: 'Depois de revisar equipe, guarnições, responsabilidades e rádio, gere a escala mensal para deixá-la disponível ao restante do sistema.',
+    detail: 'Sem salvar a mensal, a escala diária perde essa referência e pode precisar de mais ajuste manual.',
+  },
+];
+
 export function EscalaMensal() {
   const { canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
   const { showAlert } = useGlobalAlert();
@@ -477,9 +534,92 @@ export function EscalaMensal() {
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [autoPreencherSetup, setAutoPreencherSetup] = useState(true);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+  const tutorialOrigemRef = useRef<{
+    mode: 'view' | 'setup' | 'list';
+    selecionada: string | null;
+    editingId: string | null;
+    autoPreencherSetup: boolean;
+    scrollX: number;
+    scrollY: number;
+  } | null>(null);
 
   function mostrarAlerta(title: string, message: string, variant: GlobalAlertVariant = 'info') {
     showAlert({ title, message, variant });
+  }
+
+  function tutorialIndexInicial(): number {
+    const setupIndex = ESCALA_MENSAL_TOUR_STEPS.findIndex(step => step.mode === 'setup');
+    return mode === 'setup' && setupIndex >= 0 ? setupIndex : 0;
+  }
+
+  function abrirTutorialMensal() {
+    if (showTutorial || !canCreate) return;
+    tutorialOrigemRef.current = {
+      mode,
+      selecionada,
+      editingId,
+      autoPreencherSetup,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    };
+    setTutorialStepIndex(tutorialIndexInicial());
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialMensal() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    if (origem) {
+      setMode(origem.mode);
+      setSelecionada(origem.selecionada);
+      setEditingId(origem.editingId);
+      setAutoPreencherSetup(origem.autoPreencherSetup);
+      window.setTimeout(() => {
+        window.scrollTo({ left: origem.scrollX, top: origem.scrollY, behavior: 'smooth' });
+      }, 80);
+    }
+    tutorialOrigemRef.current = null;
+  }
+
+  function voltarTutorialMensal() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorialMensal() {
+    if (tutorialStepIndex >= ESCALA_MENSAL_TOUR_STEPS.length - 1) {
+      fecharTutorialMensal();
+      return;
+    }
+    setTutorialStepIndex(tutorialStepIndex + 1);
+  }
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    const tourStep = ESCALA_MENSAL_TOUR_STEPS[tutorialStepIndex] || ESCALA_MENSAL_TOUR_STEPS[0];
+    if (mode !== tourStep.mode) {
+      setMode(tourStep.mode);
+      if (tourStep.mode === 'setup') {
+        setEditingId(null);
+        setAutoPreencherSetup(false);
+      }
+    }
+    if (tourStep.target === 'mensal-radio') setRadioExpanded(true);
+  }, [showTutorial, tutorialStepIndex, mode]);
+
+  function renderBotaoTutorialMensal() {
+    if (showTutorial || !canCreate) return null;
+    return (
+      <button
+        type="button"
+        onClick={abrirTutorialMensal}
+        aria-label="Abrir tutorial animado da Escala Mensal"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-aviation-500 to-aviation-700 text-white shadow-2xl shadow-aviation-500/30 ring-4 ring-white/70 transition-all hover:scale-105 hover:from-aviation-400 hover:to-aviation-600 dark:ring-graphite-900/80"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+    );
   }
 
   async function handleExportPNG() {
@@ -1118,9 +1258,10 @@ export function EscalaMensal() {
 
   return (
     <div className="space-y-6">
+      {renderBotaoTutorialMensal()}
       {/* Header */}
       {mode === 'list' && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3" data-escala-mensal-tour="mensal-lista-topo">
           <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">Escala Mensal</h2>
           {canCreate && (
             <button title="Criar uma nova escala mensal" onClick={() => {
@@ -1128,6 +1269,7 @@ export function EscalaMensal() {
               setParidade('impar'); setPessoas(SLOTS.map(() => null)); setFaxinaManual({}); setResponsabilidadesManual({}); setRadioManual(criarRadioManualVazio()); setMode('setup');
               setEditingId(null); setAutoPreencherSetup(true);
             }}
+              data-escala-mensal-tour="mensal-nova"
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20">
               <Calendar className="h-4 w-4" /> Nova Escala Mensal
             </button>
@@ -1191,7 +1333,7 @@ export function EscalaMensal() {
       {/* Setup mode */}
       {mode === 'setup' && (
     <div className="space-y-6 pb-60">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-4" data-escala-mensal-tour="mensal-configuracao">
             <div>
               <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Equipe <span className="text-red-500">*</span></label>
               <select value={equipe} onChange={e => setEquipe(e.target.value)} disabled={!isGlobal}
@@ -1224,7 +1366,7 @@ export function EscalaMensal() {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4" data-escala-mensal-tour="mensal-guarnicoes">
             {[
               { nome: 'CRS', cor: 'border-blue-300 bg-blue-50/30 dark:border-blue-800 dark:bg-blue-900/10', indices: [2, 1, 5, 6] },
               { nome: 'CCI F2', cor: 'border-amber-300 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-900/10', indices: [3, 0, 7] },
@@ -1306,7 +1448,7 @@ export function EscalaMensal() {
             ))}
           </div>
 
-          <div className="rounded-2xl border border-graphite-200/60 bg-white/70 p-4 dark:border-border-dark dark:bg-surface-card/70">
+          <div className="rounded-2xl border border-graphite-200/60 bg-white/70 p-4 dark:border-border-dark dark:bg-surface-card/70" data-escala-mensal-tour="mensal-radio">
             <button
               type="button"
               onClick={() => setFaxinaExpanded(prev => !prev)}
@@ -1486,7 +1628,7 @@ export function EscalaMensal() {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3" data-escala-mensal-tour="mensal-acoes">
             <button title="Preencher automaticamente as funções com base na configuração atual" onClick={handleAutoFill}
               className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-aviation-50 px-4 py-2.5 text-sm font-medium text-aviation-700 transition-all hover:bg-aviation-100 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               <Sparkles className="h-4 w-4" /> Auto-Preenchimento
@@ -1611,7 +1753,7 @@ export function EscalaMensal() {
       {/* List mode */}
       {mode === 'list' && (
         <>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" data-escala-mensal-tour="mensal-lista-filtros">
             <select value={filterListEquipe} onChange={e => setFilterListEquipe(e.target.value)}
               className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100">
               <option value="">Todas as equipes</option>
@@ -1689,6 +1831,15 @@ export function EscalaMensal() {
           {msg}
         </div>
       )}
+      <AnimatedPageTour
+        open={showTutorial}
+        steps={ESCALA_MENSAL_TOUR_STEPS}
+        stepIndex={tutorialStepIndex}
+        targetAttribute="data-escala-mensal-tour"
+        onBack={voltarTutorialMensal}
+        onNext={avancarTutorialMensal}
+        onClose={fecharTutorialMensal}
+      />
     </div>
   );
 }

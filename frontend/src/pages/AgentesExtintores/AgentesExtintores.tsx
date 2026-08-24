@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { useAuth } from '../../context/AuthContext';
 import { useDebounce } from '../../hooks/useDebounce';
 import {
@@ -38,6 +39,39 @@ const EMPTY: Omit<AgenteExtintor, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'
   status: 'Disponivel',
   observacoes: '',
 };
+
+const AGENTES_EXTINTORES_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Agentes Extintores',
+    body: 'Esta tela controla os agentes usados no combate a incêndio, como LGE, PQS, nitrogênio e outros materiais de extinção.',
+    detail: 'As informações daqui ajudam a acompanhar estoque, validade, lote, localização e disponibilidade operacional.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo Agente',
+    body: 'Este botão cadastra um novo agente extintor no estoque.',
+    detail: 'Use para registrar material novo, informando tipo, quantidade, lote, validade, localização e status correto.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Pesquisa e filtros',
+    body: 'A busca localiza agentes por nome, lote ou localização. Os filtros separam por tipo e status.',
+    detail: 'Use os filtros para conferir rapidamente o que está disponível, vencido, em uso ou em manutenção.',
+  },
+  {
+    selector: 'main table',
+    title: 'Tabela de agentes',
+    body: 'A tabela mostra cada agente cadastrado, quantidade, unidade, lote, validade, localização e situação atual.',
+    detail: 'Confira principalmente quantidade e validade, porque esses dados indicam se o material pode ser usado com segurança.',
+  },
+  {
+    selector: 'main table button',
+    title: 'Editar ou excluir',
+    body: 'Os ícones da tabela permitem editar informações do agente ou excluir o registro, quando seu perfil tem permissão.',
+    detail: 'Antes de excluir, confirme se o agente não deve permanecer no histórico ou no controle de estoque.',
+  },
+];
 
 function formatDate(value: string): string {
   return formatarDataBR(value);
@@ -308,6 +342,11 @@ export function AgentesExtintores() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={AGENTES_EXTINTORES_TOUR_STEPS}
+        targetAttribute="data-agentes-extintores-tour"
+        title="Abrir tutorial de Agentes Extintores"
+      />
     </PageContainer>
   );
 }

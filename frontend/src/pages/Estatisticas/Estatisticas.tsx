@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { listarAtivos } from '../../services/bombeiroService';
 import { listarOcorrencias } from '../../services/ocorrenciaService';
 import { listarReas } from '../../services/reaService';
@@ -1181,6 +1182,39 @@ const TABS = [
   { key: 'desempenho', label: 'Desempenho', icon: TrendingUp },
 ] as const;
 
+const ESTATISTICAS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Estatísticas do sistema',
+    body: 'Esta página concentra indicadores gerais do SCI NVT para acompanhar efetivo, documentos, treinamentos, viaturas, ordens de serviço e desempenho operacional.',
+    detail: 'Ela serve para enxergar tendências e pontos de atenção. Os números vêm dos registros preenchidos nas outras telas, então quanto mais correto estiver o lançamento diário, mais confiável fica a análise.',
+  },
+  {
+    target: 'abas-analise',
+    title: 'Abas de análise',
+    body: 'Cada aba muda o tipo de leitura: Visão Geral, Treinamentos, Certificações, Ordens de Serviço, Viaturas e Desempenho.',
+    detail: 'Use as abas para separar o assunto antes de tomar decisão. Treinamentos mostra volume e evidências, Certificações aponta vencimentos, Viaturas mostra disponibilidade e panes, Ordens acompanha prioridade/status e Desempenho compara resultados.',
+  },
+  {
+    selector: 'main [class*="grid"]',
+    title: 'Cards e painéis',
+    body: 'Os cards resumem totais, percentuais e alertas importantes sem precisar abrir cada módulo separadamente.',
+    detail: 'Quando algum card parecer estranho, confira a origem do dado na tela correspondente. Por exemplo: férias e substituições vêm de Férias/Substituições, ocorrências vêm dos registros diários e ordens vêm de Documentos > Ordens de Serviço.',
+  },
+  {
+    selector: 'main svg',
+    title: 'Gráficos',
+    body: 'Os gráficos ajudam a comparar equipes, categorias e períodos visualmente.',
+    detail: 'Eles são úteis para perceber concentração de ocorrências, evolução de treinamentos, distribuição do efetivo e volume de registros. Não substituem o relatório detalhado, mas indicam onde vale investigar.',
+  },
+  {
+    selector: 'main',
+    title: 'Como interpretar',
+    body: 'Use Estatísticas como painel de acompanhamento, não como tela de lançamento.',
+    detail: 'Se faltar informação aqui, normalmente o ajuste deve ser feito no cadastro, escala, férias, PTR-BA, LRO, ordens de serviço ou relatórios específicos. Esta tela apenas consolida o que já foi registrado.',
+  },
+];
+
 type TabKey = typeof TABS[number]['key'];
 
 export function Estatisticas() {
@@ -1192,7 +1226,7 @@ export function Estatisticas() {
         <PageTitle icon={BarChart3} title="Estatísticas" />
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-1 rounded-2xl border border-graphite-200/60 bg-graphite-50/50 p-1 dark:border-border-dark dark:bg-surface-card/50">
+      <div data-estatisticas-tour="abas-analise" className="mb-6 flex flex-wrap gap-1 rounded-2xl border border-graphite-200/60 bg-graphite-50/50 p-1 dark:border-border-dark dark:bg-surface-card/50">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-300 ${
@@ -1212,6 +1246,13 @@ export function Estatisticas() {
       {tab === 'ordens' && <TabOrdens />}
       {tab === 'viaturas' && <TabViaturas />}
       {tab === 'desempenho' && <TabDesempenho />}
+
+      <PageTour
+        steps={ESTATISTICAS_TOUR_STEPS}
+        targetAttribute="data-estatisticas-tour"
+        title="Abrir tutorial de Estatísticas"
+        detailLabel="Como usar esta página"
+      />
     </PageContainer>
   );
 }

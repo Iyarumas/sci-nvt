@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { useSidebar } from '../../hooks/useSidebar';
 import { useAuth } from '../../context/AuthContext';
 import { Tooltip } from '../ui/Tooltip';
+import { DailyOperationsTutorial } from '../ui/DailyOperationsTutorial';
 import { menuItems } from '../../services/menuData';
 import type { MenuItem as MenuItemType } from '../../types/navigation';
 import {
@@ -286,6 +287,9 @@ export function Sidebar() {
         </ul>
       </nav>
 
+      <div className="px-3 pb-3">
+        <DailyOperationsTutorial collapsed={effectiveCollapsed} />
+      </div>
       <div className="mx-3 mb-3 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <div className="px-3 pb-3 text-center text-[10px] font-medium uppercase tracking-widest text-aviation-400">
         {effectiveCollapsed ? '' : 'SCI NVT v1.0'}

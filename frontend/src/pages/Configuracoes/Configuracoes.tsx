@@ -2,7 +2,41 @@ import { useState } from 'react';
 import { Settings, Sun, Moon, Sidebar, PanelRight, MonitorSmartphone } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { useTheme } from '../../hooks/useTheme';
+
+const CONFIGURACOES_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Configurações',
+    body: 'Esta página reúne preferências visuais e informações básicas do sistema.',
+    detail: 'Ela não é usada para lançar documentos ou dados operacionais. É o lugar para ajustar como a interface aparece para o usuário e conferir versão, ambiente e tema atual.',
+  },
+  {
+    selector: 'main button',
+    title: 'Aparência',
+    body: 'O primeiro controle alterna entre modo claro e modo escuro.',
+    detail: 'Use quando a iluminação do ambiente mudar ou quando preferir uma leitura com mais ou menos contraste. A troca altera a aparência geral das telas do sistema.',
+  },
+  {
+    selector: 'main [class*="grid"] > div:nth-child(2)',
+    title: 'Barra lateral',
+    body: 'A seção Barra Lateral define como o menu lateral deve se comportar.',
+    detail: 'A opção Fixa mantém a navegação sempre visível. A opção Auto-esconder deixa a área de trabalho mais livre e mostra o menu ao passar o mouse, quando esse comportamento estiver ativo na interface.',
+  },
+  {
+    selector: 'main [class*="grid"] > div:nth-child(3)',
+    title: 'Estilo dos cartões',
+    body: 'Aqui você escolhe o estilo visual usado nos cards da interface.',
+    detail: 'Os cartões ajudam a organizar informações como indicadores, listas e blocos de dados. O estilo muda a aparência, mas não altera os registros salvos no sistema.',
+  },
+  {
+    selector: 'main [class*="grid"] > div:nth-child(4)',
+    title: 'Informações do sistema',
+    body: 'Esta área mostra versão, ambiente e tema atual.',
+    detail: 'É útil para suporte e conferência. Se houver dúvida sobre atualização ou comportamento diferente entre desenvolvimento e produção, essas informações ajudam a identificar onde o sistema está rodando.',
+  },
+];
 
 export function Configuracoes() {
   const { theme, toggleTheme } = useTheme();
@@ -103,6 +137,13 @@ export function Configuracoes() {
           </div>
         </div>
       </div>
+
+      <PageTour
+        steps={CONFIGURACOES_TOUR_STEPS}
+        targetAttribute="data-configuracoes-tour"
+        title="Abrir tutorial de Configurações"
+        detailLabel="Como usar esta página"
+      />
     </PageContainer>
   );
 }

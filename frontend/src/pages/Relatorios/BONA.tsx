@@ -9,6 +9,40 @@ import type { Ocorrencia } from '../../types/ocorrencia';
 import type { ReaRegistro } from '../../types/rea';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { formatarDataBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
+
+const RELATORIO_BONA_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Relatório BONA/REA',
+    body: 'Esta página é a consulta dos documentos BONA e REA já cadastrados.',
+    detail: 'Ela não substitui a tela de criação. Aqui você confere documentos, status, numeração, data, equipe e detalhes resumidos.',
+  },
+  {
+    selector: 'main .mb-4.grid',
+    title: 'Indicadores do relatório',
+    body: 'Os cards mostram total de documentos, quantidade de BONA, quantidade de REA, documentos abertos e encerrados.',
+    detail: 'Use para entender rapidamente o volume e o status dos documentos formais registrados.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Pesquisa e filtros',
+    body: 'Pesquise por número, título, descrição, aeródromo, empresa ou matrícula. Filtre por tipo e categoria quando estiver vendo BONA.',
+    detail: 'O filtro de categoria aparece apenas para BONA porque REA tem estrutura própria.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Cards BONA e REA',
+    body: 'Cada card mostra o tipo do documento, número, data, hora, equipe e status.',
+    detail: 'Clique para expandir e ler os principais detalhes sem sair da tela.',
+  },
+  {
+    selector: 'main button',
+    title: 'Expandir documento',
+    body: 'Ao abrir um card, o BONA mostra descrição e ações tomadas. O REA mostra aeródromo, cidade, empresa, matrícula e descrição da emergência.',
+    detail: 'Para editar, aprovar ou gerar PDF, use a tela Registros Diários > BONA/REA.',
+  },
+];
 
 function fmt(d: string) {
   return formatarDataBR(d);
@@ -215,6 +249,12 @@ export function BONA() {
           })}
         </div>
       )}
+      <PageTour
+        steps={RELATORIO_BONA_TOUR_STEPS}
+        targetAttribute="data-relatorio-bona-tour"
+        title="Abrir tutorial do Relatório BONA/REA"
+        detailLabel="Consulta"
+      />
     </PageContainer>
   );
 }

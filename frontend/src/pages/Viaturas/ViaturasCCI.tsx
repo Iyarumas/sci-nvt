@@ -8,6 +8,7 @@ import { listarPanes, criarPane, atualizarPane, excluirPane } from '../../servic
 import type { Viatura, ViaturaPane, StatusViatura } from '../../types/viatura';
 import { STATUS_VIATURA_OPTIONS } from '../../types/viatura';
 import { formatarDataBR, formatarDataHoraBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 function statusColor(s: StatusViatura) {
   return STATUS_VIATURA_OPTIONS.find(o => o.value === s)?.color || '';
@@ -15,6 +16,39 @@ function statusColor(s: StatusViatura) {
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400 dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+
+const VIATURAS_CCI_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Viaturas CCI',
+    body: 'Esta página não é o cadastro técnico da viatura. Ela serve para acompanhar panes abertas, consertos e histórico de manutenção de cada veículo.',
+    detail: 'Use esta tela no dia a dia para registrar problema operacional, acompanhar o que ainda está pendente e documentar como a pane foi resolvida.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Selecionar viatura',
+    body: 'Primeiro filtre ou selecione a viatura pelo prefixo, placa, marca ou modelo.',
+    detail: 'Ao escolher uma viatura, o sistema carrega as panes abertas e o histórico somente daquele veículo. Sem selecionar a viatura, os campos de pane não aparecem.',
+  },
+  {
+    selector: 'main textarea',
+    title: 'Registrar nova pane',
+    body: 'Depois de selecionar a viatura, descreva a pane de forma clara: o que falhou, quando foi percebido e qualquer detalhe útil para manutenção.',
+    detail: 'Ao registrar, a pane fica como Aberta e aparece na lista de panes ativas com data, hora e usuário que registrou.',
+  },
+  {
+    selector: 'main button[title="Marcar como resolvido"], main button',
+    title: 'Marcar como resolvida',
+    body: 'Quando a manutenção for concluída, use Marcar como Resolvido e informe o relato do conserto.',
+    detail: 'Esse relato é importante porque forma o histórico da viatura. Ele ajuda a entender reincidências, serviços feitos e decisões futuras de manutenção.',
+  },
+  {
+    selector: 'main .relative.space-y-4, main .space-y-3',
+    title: 'Histórico de manutenção',
+    body: 'O histórico mostra panes já resolvidas com descrição original, data do relato, data do conserto e quem realizou a baixa.',
+    detail: 'Use esse histórico para verificar se uma falha já ocorreu antes e para manter rastreabilidade da condição operacional da viatura.',
+  },
+];
 
 function fmtData(d: string) {
   return formatarDataBR(d);
@@ -364,6 +398,12 @@ export function ViaturasCCI() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={VIATURAS_CCI_TOUR_STEPS}
+        targetAttribute="data-viaturas-cci-tour"
+        title="Abrir tutorial de Viaturas CCI"
+        detailLabel="Rotina"
+      />
     </PageContainer>
   );
 }

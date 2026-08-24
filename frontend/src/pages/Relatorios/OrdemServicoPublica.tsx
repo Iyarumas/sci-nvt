@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Printer, ClipboardList, ArrowLeft } from 'lucide-react';
+import { PageTour } from '../../components/ui/PageTour';
 import { listarOrdensServico } from '../../services/ordemServicoService';
 import type { OrdemServico } from '../../types/ordemServico';
 import { formatarDataBR } from '../../utils/datas';
@@ -30,6 +31,54 @@ const STATUS_LIST = ['Aberta', 'Manutenção', 'Concluída', 'Cancelada'];
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ANOS = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - i).toString());
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 outline-none transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400';
+
+const ORDEM_SERVICO_PUBLICA_TOUR_STEPS = [
+  {
+    selector: 'h1',
+    title: 'Consulta pública de OS',
+    body: 'Esta página mostra as ordens de serviço publicadas para acompanhamento sem precisar entrar no sistema interno.',
+    detail: 'Ela é usada para consultar situação, prioridade, solicitante, equipe, data e descrição resumida das OS. Para criar ou editar uma OS, use o módulo interno de Ordens de Serviço.',
+  },
+  {
+    selector: 'button',
+    title: 'Modo de filtro',
+    body: 'Escolha entre filtrar por Mês/Ano ou por Período.',
+    detail: 'Mês/Ano é melhor para consulta mensal. Período permite buscar um intervalo específico, útil quando você sabe a data aproximada da solicitação.',
+  },
+  {
+    selector: 'select, input',
+    title: 'Filtros de data e status',
+    body: 'Os campos reduzem a lista por mês, ano, intervalo de datas e status.',
+    detail: 'O status mostra a fase atual da OS: Aberta, Manutenção, Concluída ou Cancelada. Use esse filtro para acompanhar pendências ou conferir o que já foi resolvido.',
+  },
+  {
+    selector: '.space-y-2 button',
+    title: 'Cartões da lista',
+    body: 'Cada cartão representa uma ordem de serviço. O número em destaque identifica a OS, e as etiquetas indicam prioridade e status.',
+    detail: 'A descrição aparece resumida. Também são exibidos solicitante, cargo, data de emissão e equipe. Clique no cartão para abrir a versão detalhada.',
+  },
+];
+
+const ORDEM_SERVICO_PUBLICA_DETALHE_TOUR_STEPS = [
+  {
+    selector: 'button',
+    title: 'Voltar ou imprimir',
+    body: 'No topo da OS aberta, Voltar retorna para a lista e Imprimir envia a ordem para impressão ou salvamento em PDF pelo navegador.',
+    detail: 'Use Imprimir quando precisar anexar a OS em outro processo, salvar uma cópia ou entregar para acompanhamento externo.',
+  },
+  {
+    selector: 'h1, h2',
+    title: 'Identificação da OS',
+    body: 'A área principal mostra número, solicitante, equipe, emissão, prioridade, status e local quando preenchido.',
+    detail: 'Esses campos ajudam a confirmar se você abriu a ordem correta antes de imprimir ou repassar a informação.',
+  },
+  {
+    selector: '[class*="whitespace-pre-wrap"]',
+    title: 'Descrição e observações',
+    body: 'A descrição informa o problema ou solicitação registrada. Observações complementam o acompanhamento quando existirem.',
+    detail: 'Se houver imagens do problema, elas aparecem na própria visualização. O motivo de cancelamento também aparece em destaque quando a OS foi cancelada.',
+  },
+];
 
 function fmt(d: string) {
   return formatarDataBR(d);
@@ -203,6 +252,12 @@ export function OrdemServicoPublica() {
             )}
           </div>
         </div>
+        <PageTour
+          steps={ORDEM_SERVICO_PUBLICA_DETALHE_TOUR_STEPS}
+          targetAttribute="data-os-publica-tour"
+          title="Abrir tutorial da OS"
+          detailLabel="Como usar esta página"
+        />
       </div>
     );
   }
@@ -284,6 +339,12 @@ export function OrdemServicoPublica() {
           </div>
         )}
       </div>
+      <PageTour
+        steps={ORDEM_SERVICO_PUBLICA_TOUR_STEPS}
+        targetAttribute="data-os-publica-tour"
+        title="Abrir tutorial de Ordens de Serviço"
+        detailLabel="Como usar esta página"
+      />
     </div>
   );
 }

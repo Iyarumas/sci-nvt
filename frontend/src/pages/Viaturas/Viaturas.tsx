@@ -8,6 +8,7 @@ import type { Viatura, StatusViatura, TipoViatura, TipoCCI, CategoriaCAT, Sistem
 import { TIPO_VIATURA_OPTIONS, STATUS_VIATURA_OPTIONS, TIPO_CCI_OPTIONS, CATEGORIA_CAT_OPTIONS, SISTEMA_RADIO_OPTIONS, SISTEMA_SINALIZACAO_OPTIONS } from '../../types/viatura';
 import { useDebounce } from '../../hooks/useDebounce';
 import { canGerenciarCadastroModulo, resolverContextoOperacional } from '../../utils/permissoes';
+import { PageTour } from '../../components/ui/PageTour';
 
 function statusColor(s: StatusViatura) {
   return STATUS_VIATURA_OPTIONS.find(o => o.value === s)?.color || '';
@@ -15,6 +16,39 @@ function statusColor(s: StatusViatura) {
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400 dark:focus:ring-aviation-400/10';
 const labelCls = 'mb-1 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+
+const VIATURAS_CADASTRO_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Cadastro de viaturas',
+    body: 'Esta tela cadastra as viaturas CCI e demais veículos, com prefixo, placa, tipo, CAT, status, marca, modelo e dados técnicos.',
+    detail: 'O cadastro técnico é separado da tela Viaturas CCI, que acompanha panes e histórico. Aqui você mantém a ficha da viatura atualizada.',
+  },
+  {
+    selector: 'main button',
+    title: 'Nova viatura',
+    body: 'O botão Nova Viatura abre o formulário completo da viatura.',
+    detail: 'Para CCI, preencha capacidade de água, LGE, pó químico, bomba, canhões, autoproteção, carretéis, rádio, sinalização, km e horas de motor quando disponíveis.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Pesquisa e tipo',
+    body: 'A busca encontra prefixo, placa, marca ou modelo. O filtro de tipo separa CCI de outros veículos cadastrados.',
+    detail: 'Quando quiser revisar somente as viaturas de combate, filtre por CCI e confira também o status para identificar veículo operacional ou fora de serviço.',
+  },
+  {
+    selector: 'main .space-y-3',
+    title: 'Cards das viaturas',
+    body: 'Os cards mostram prefixo, tipo, tipo CCI, status, placa, marca, modelo, ano e, quando for CCI, capacidades e componentes principais.',
+    detail: 'Esses dados ajudam a equipe a conferir rapidamente a viatura correta e seus recursos principais antes de registros ou inspeções.',
+  },
+  {
+    selector: 'main .space-y-3 button, main button',
+    title: 'Edição e exclusão',
+    body: 'Nos cards, o lápis edita a viatura e a lixeira exclui, conforme a permissão do usuário.',
+    detail: 'Use edição para atualizar km, horas de motor, status e dados técnicos. Excluir deve ser reservado para cadastro duplicado ou registro criado por engano.',
+  },
+];
 
 export function Viaturas() {
   const { user } = useAuth();
@@ -251,6 +285,12 @@ export function Viaturas() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={VIATURAS_CADASTRO_TOUR_STEPS}
+        targetAttribute="data-viaturas-cadastro-tour"
+        title="Abrir tutorial de Cadastro de Viaturas"
+        detailLabel="Ficha da viatura"
+      />
     </PageContainer>
   );
 }

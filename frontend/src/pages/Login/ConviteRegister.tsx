@@ -5,11 +5,81 @@ import {
   CheckCircle2, Shield, Sparkles, ArrowRight, Key,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { PageTour } from '../../components/ui/PageTour';
 import { validarConvite, usarConvite } from '../../services/conviteService';
 
 const BG_IMAGES = [
   '/entradalogin1.png', '/entradalogin2.png', '/entradalogin3.png',
   '/entradalogin4.png', '/entradalogin5.png',
+];
+
+const CONVITE_CADASTRO_TOUR_STEPS = [
+  {
+    selector: 'h2',
+    title: 'Cadastro por convite',
+    body: 'Esta página cria uma conta nova a partir de um link enviado pela administração.',
+    detail: 'O convite valida que você tem autorização para se cadastrar. Depois da criação, sua conta ainda pode precisar ser vinculada a um bombeiro ou APOC para liberar as telas corretas.',
+  },
+  {
+    selector: '[class*="font-mono"]',
+    title: 'Código do convite',
+    body: 'Este bloco mostra o código usado para validar o cadastro.',
+    detail: 'O código vem no link. Se o convite estiver expirado ou já tiver sido usado, o cadastro não será liberado e será necessário pedir outro convite.',
+  },
+  {
+    selector: 'form > div:nth-of-type(1) input',
+    title: 'Escolher usuário',
+    body: 'Digite o usuário que você usará para entrar no sistema.',
+    detail: 'Escolha um nome fácil de identificar, de preferência seguindo o padrão definido pela administração. Esse usuário será usado na tela de Login.',
+  },
+  {
+    selector: 'form > div:nth-of-type(2) input',
+    title: 'Criar senha',
+    body: 'Digite uma senha com no mínimo 6 caracteres.',
+    detail: 'O botão de olho permite conferir o que foi digitado. Use isso apenas se estiver em um local seguro.',
+  },
+  {
+    selector: 'form > div:nth-of-type(3) input',
+    title: 'Confirmar senha',
+    body: 'Repita a mesma senha no campo de confirmação.',
+    detail: 'Se os dois campos não forem iguais, o sistema não cria a conta. Isso evita erro de digitação no primeiro acesso.',
+  },
+  {
+    selector: 'form button[type="submit"]',
+    title: 'Criar conta',
+    body: 'Clique em Criar Conta para finalizar o cadastro.',
+    detail: 'Depois disso, faça login. Se aparecer aguardando liberação, o administrador precisa vincular sua conta a um cadastro e ajustar a função.',
+  },
+];
+
+const CONVITE_INVALIDO_TOUR_STEPS = [
+  {
+    selector: 'h2',
+    title: 'Convite inválido',
+    body: 'Esta mensagem aparece quando o link não existe, já foi usado ou não pode mais ser validado.',
+    detail: 'A correção é pedir um novo convite para a administração. O sistema não permite reaproveitar um convite inválido para criar outra conta.',
+  },
+  {
+    selector: 'button',
+    title: 'Voltar ao login',
+    body: 'Use este botão para voltar para a tela de Login.',
+    detail: 'Se você já tem conta, tente entrar normalmente. Se ainda não tem, solicite um novo link de cadastro.',
+  },
+];
+
+const CONVITE_SUCESSO_TOUR_STEPS = [
+  {
+    selector: 'h2',
+    title: 'Conta criada',
+    body: 'Esta confirmação indica que seu usuário foi criado com sucesso.',
+    detail: 'A conta existe, mas o administrador ainda pode precisar vincular você a um cadastro de bombeiro ou APOC para liberar as permissões corretas.',
+  },
+  {
+    selector: 'button',
+    title: 'Fazer login',
+    body: 'Clique em Fazer Login para entrar com o usuário e a senha criados.',
+    detail: 'Se depois do login aparecer a tela Aguardando Liberação, aguarde o administrador finalizar seu vínculo e função.',
+  },
 ];
 
 function BgLayer() {
@@ -135,6 +205,12 @@ export function ConviteRegister() {
             </button>
           </div>
         </Card>
+        <PageTour
+          steps={CONVITE_INVALIDO_TOUR_STEPS}
+          targetAttribute="data-convite-tour"
+          title="Abrir tutorial do Convite"
+          detailLabel="Como usar esta página"
+        />
       </div>
     );
   }
@@ -166,6 +242,12 @@ export function ConviteRegister() {
             </button>
           </div>
         </Card>
+        <PageTour
+          steps={CONVITE_SUCESSO_TOUR_STEPS}
+          targetAttribute="data-convite-tour"
+          title="Abrir tutorial do Cadastro"
+          detailLabel="Como usar esta página"
+        />
       </div>
     );
   }
@@ -274,6 +356,12 @@ export function ConviteRegister() {
           © 2026 SCI NVT. Todos os direitos reservados.
         </p>
       </Card>
+      <PageTour
+        steps={CONVITE_CADASTRO_TOUR_STEPS}
+        targetAttribute="data-convite-tour"
+        title="Abrir tutorial do Cadastro por Convite"
+        detailLabel="Como usar esta página"
+      />
     </div>
   );
 }

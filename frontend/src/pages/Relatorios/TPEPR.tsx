@@ -45,9 +45,49 @@ import {
 } from '../../types/tpepr';
 import type { TPEPRInput, TPEPRParticipante, TreinamentoTPEPR } from '../../types/tpepr';
 import { TEMPO_CRONOMETRO_ZERO } from '../../utils/tempo';
+import { PageTour } from '../../components/ui/PageTour';
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+
+const TPEPR_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'TP/EPR',
+    body: 'Esta página registra Teste de Proficiência e Exercício de Proficiência de Resgate por equipe e função operacional.',
+    detail: 'O registro controla número/ano, equipe, data, hora, turno, chefe, participantes e tomadas de tempo.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo TP/EPR',
+    body: 'O botão Novo TP/EPR abre o formulário do exercício.',
+    detail: 'Você pode preencher pela equipe para trazer participantes conforme a escala/efetivo e depois ajustar manualmente os tempos.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Filtros da lista',
+    body: 'Pesquise e filtre por equipe e ano.',
+    detail: 'Use para conferir exercícios de um ano específico ou de uma equipe antes de abrir o documento.',
+  },
+  {
+    selector: 'main .space-y-3',
+    title: 'Cards TP/EPR',
+    body: 'Cada card mostra número/ano, equipe, data, turno, chefe e status de rascunho ou aprovado.',
+    detail: 'Ao expandir, aparecem participantes e tempos da 1ª, 2ª, 3ª e 4ª tomadas.',
+  },
+  {
+    selector: 'main input, main [role="combobox"]',
+    title: 'Tomadas de tempo',
+    body: 'No formulário, informe as tomadas de tempo por participante.',
+    detail: 'A 4ª tomada é calculada automaticamente pela regra: (3ª tomada - 2ª tomada) / 1,7.',
+  },
+  {
+    selector: 'main button[title="Ver documento"], main button[title="Baixar PDF"], main button',
+    title: 'Aprovação e PDF',
+    body: 'O registro pode ficar como rascunho ou ser aprovado. Depois de aprovado, pode ser visualizado e baixado em PDF.',
+    detail: 'Confira equipe, participantes e tempos antes de aprovar, porque o PDF final depende desses dados.',
+  },
+];
 
 function fmtData(data: string) {
   return formatarDataBR(data);
@@ -931,6 +971,12 @@ export function TPEPR() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={TPEPR_TOUR_STEPS}
+        targetAttribute="data-tpepr-tour"
+        title="Abrir tutorial de TP/EPR"
+        detailLabel="Proficiência"
+      />
     </PageContainer>
   );
 }

@@ -1,13 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, Shield, AlertTriangle, CalendarClock,
-  GraduationCap, Flame, Truck, FileText, ArrowRight, Activity,
-  Clock, CheckCircle2, XCircle, AlertCircle, Eye, UserCheck,
-  Calendar, Award, HardHat,
+  LayoutDashboard, Users, AlertTriangle, CalendarClock,
+  ArrowRight, Activity, Clock, AlertCircle,
+  Calendar, Award, HelpCircle,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { listarAtivos } from '../../services/bombeiroService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { listarOcorrencias } from '../../services/ocorrenciaService';
@@ -58,6 +58,57 @@ const STATUS_SUBST_COLORS: Record<string, string> = {
   'Rejeitado': 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400',
 };
 
+const DASHBOARD_TOUR_STEPS: AnimatedTourStep[] = [
+  {
+    target: 'dashboard-titulo',
+    title: 'Dashboard é o painel geral',
+    body: 'Esta página mostra um resumo rápido do sistema. Ela junta informações de bombeiros, férias, ocorrências, certificações, vagas pendentes e substituições.',
+    detail: 'Use o Dashboard para perceber o que precisa de atenção antes de abrir cada módulo separadamente.',
+  },
+  {
+    target: 'dashboard-kpis',
+    title: 'Cards principais',
+    body: 'Cada card mostra uma contagem importante e também funciona como atalho. Ao clicar, você vai direto para a tela relacionada.',
+    detail: 'Ocorrências abertas, férias em gozo, substituições pendentes, certificações vencendo e vagas pendentes são alertas operacionais do dia a dia.',
+  },
+  {
+    target: 'dashboard-equipes',
+    title: 'Distribuição por equipe',
+    body: 'Aqui você compara quantos bombeiros ativos existem em Alfa, Bravo, Charlie e Delta.',
+    detail: 'A barra maior vira referência visual. Isso ajuda a enxergar rapidamente se alguma equipe está com efetivo menor.',
+  },
+  {
+    target: 'dashboard-ferias-status',
+    title: 'Status das férias',
+    body: 'Este quadro separa as férias em programadas, em gozo e gozadas.',
+    detail: 'Ele ajuda a acompanhar o fluxo das férias sem precisar entrar primeiro na escala anual ou no cadastro de férias.',
+  },
+  {
+    target: 'dashboard-ocorrencias-status',
+    title: 'Status das ocorrências',
+    body: 'As ocorrências BONA e REA aparecem agrupadas por situação: aberta, encaminhada, em andamento ou fechada.',
+    detail: 'Se houver muita ocorrência fora de fechada, é um sinal para revisar o módulo BONA/REA.',
+  },
+  {
+    target: 'dashboard-ferias-andamento',
+    title: 'Férias em andamento',
+    body: 'Esta lista mostra quem está de férias agora, com período e status.',
+    detail: 'Ela é útil para conferir substituições e entender por que o efetivo de uma equipe pode estar diferente.',
+  },
+  {
+    target: 'dashboard-ocorrencias-recentes',
+    title: 'Ocorrências recentes',
+    body: 'Aqui ficam os BONA e REA mais recentes, com número, equipe, data e status.',
+    detail: 'Serve como acompanhamento rápido de documentos operacionais que foram registrados recentemente.',
+  },
+  {
+    target: 'dashboard-substituicoes',
+    title: 'Substituições pendentes',
+    body: 'Esta área mostra trocas ou substituições temporárias que ainda aguardam aprovação.',
+    detail: 'Pendências aqui podem afetar escala diária, LRO e efetivo operacional, então vale revisar antes de fechar documentos do dia.',
+  },
+];
+
 function CardStat({ icon: Icon, label, value, color, onClick }: { icon: any; label: string; value: string | number; color: string; onClick?: () => void }) {
   return (
     <button onClick={onClick} disabled={!onClick}
@@ -75,6 +126,7 @@ function CardStat({ icon: Icon, label, value, color, onClick }: { icon: any; lab
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const tutorialOrigemRef = useRef<{ scrollY: number } | null>(null);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
@@ -84,6 +136,8 @@ export function Dashboard() {
   const [vagasPendentes, setVagasPendentes] = useState<any[]>([]);
   const [cursos, setCursos] = useState<CertificacaoCurso[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
 
   useEffect(() => {
     (async () => {
@@ -187,6 +241,35 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
     [substituicoes],
   );
 
+  function abrirTutorial() {
+    tutorialOrigemRef.current = { scrollY: window.scrollY };
+    setTutorialStepIndex(0);
+    setShowTutorial(true);
+  }
+
+  function fecharTutorial() {
+    setShowTutorial(false);
+    setTutorialStepIndex(0);
+    window.setTimeout(() => {
+      if (tutorialOrigemRef.current) {
+        window.scrollTo({ top: tutorialOrigemRef.current.scrollY, behavior: 'smooth' });
+      }
+      tutorialOrigemRef.current = null;
+    }, 50);
+  }
+
+  function voltarTutorial() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorial() {
+    if (tutorialStepIndex >= DASHBOARD_TOUR_STEPS.length - 1) {
+      fecharTutorial();
+      return;
+    }
+    setTutorialStepIndex(index => index + 1);
+  }
+
   if (loading) {
     return (
       <PageContainer>
@@ -199,12 +282,12 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
 
   return (
     <PageContainer>
-      <div className="mb-6">
+      <div className="mb-6" data-dashboard-tour="dashboard-titulo">
         <PageTitle icon={LayoutDashboard} title="Dashboard" />
       </div>
 
       {/* Stats */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" data-dashboard-tour="dashboard-kpis">
         <CardStat icon={Users} label="Bombeiros Ativos" value={stats.totalBombeiros} color="bg-gradient-to-br from-blue-500 to-blue-700" onClick={() => navigate('/funcionarios')} />
         <CardStat icon={AlertTriangle} label="Ocorrências Abertas" value={stats.ocorrenciasAbertas} color="bg-gradient-to-br from-red-500 to-red-700" onClick={() => navigate('/registros-diarios/bona-rea')} />
         <CardStat icon={CalendarClock} label="Férias em Gozo" value={stats.emGozo} color="bg-gradient-to-br from-amber-500 to-amber-700" onClick={() => navigate('/cadastro/ferias')} />
@@ -216,7 +299,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
       {/* Charts Row */}
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Equipes Distribution */}
-        <div className="rounded-2xl border border-graphite-200 bg-white p-5 dark:border-border-dark dark:bg-surface-card">
+        <div className="rounded-2xl border border-graphite-200 bg-white p-5 dark:border-border-dark dark:bg-surface-card" data-dashboard-tour="dashboard-equipes">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
             <Users className="h-4 w-4 text-aviation-600" /> Distribuição por Equipe
           </h3>
@@ -240,7 +323,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
         </div>
 
         {/* Férias Status */}
-        <div className="rounded-2xl border border-graphite-200 bg-white p-5 dark:border-border-dark dark:bg-surface-card">
+        <div className="rounded-2xl border border-graphite-200 bg-white p-5 dark:border-border-dark dark:bg-surface-card" data-dashboard-tour="dashboard-ferias-status">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
             <Calendar className="h-4 w-4 text-aviation-600" /> Status das Férias
           </h3>
@@ -268,7 +351,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
         </div>
 
         {/* Ocorrências por Status */}
-        <div className="rounded-2xl border border-graphite-200 bg-white p-5 dark:border-border-dark dark:bg-surface-card">
+        <div className="rounded-2xl border border-graphite-200 bg-white p-5 dark:border-border-dark dark:bg-surface-card" data-dashboard-tour="dashboard-ocorrencias-status">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
             <Activity className="h-4 w-4 text-aviation-600" /> Ocorrências por Status
           </h3>
@@ -300,7 +383,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
       {/* Tables Row */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
         {/* Férias em Andamento */}
-        <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
+        <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card" data-dashboard-tour="dashboard-ferias-andamento">
           <div className="flex items-center justify-between border-b border-graphite-200 px-5 py-4 dark:border-border-dark">
             <h3 className="flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
               <CalendarClock className="h-4 w-4 text-amber-500" /> Férias em Andamento
@@ -330,7 +413,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
         </div>
 
         {/* Ocorrências Recentes */}
-        <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
+        <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card" data-dashboard-tour="dashboard-ocorrencias-recentes">
           <div className="flex items-center justify-between border-b border-graphite-200 px-5 py-4 dark:border-border-dark">
             <h3 className="flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
               <AlertTriangle className="h-4 w-4 text-red-500" /> Ocorrências Recentes
@@ -369,7 +452,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
         </div>
 
         {/* Substituições Pendentes */}
-        <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
+        <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card" data-dashboard-tour="dashboard-substituicoes">
           <div className="flex items-center justify-between border-b border-graphite-200 px-5 py-4 dark:border-border-dark">
             <h3 className="flex items-center gap-2 text-sm font-bold text-graphite-900 dark:text-graphite-100">
               <Clock className="h-4 w-4 text-purple-500" /> Substituições Pendentes
@@ -398,6 +481,25 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
           </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={abrirTutorial}
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-aviation-200 bg-aviation-600 text-white shadow-2xl shadow-aviation-900/30 transition-all hover:scale-105 hover:bg-aviation-500 focus:outline-none focus:ring-4 focus:ring-aviation-300/40 dark:border-aviation-400/30"
+        title="Abrir tutorial do Dashboard"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+
+      <AnimatedPageTour
+        open={showTutorial}
+        steps={DASHBOARD_TOUR_STEPS}
+        stepIndex={tutorialStepIndex}
+        targetAttribute="data-dashboard-tour"
+        onBack={voltarTutorial}
+        onNext={avancarTutorial}
+        onClose={fecharTutorial}
+      />
     </PageContainer>
   );
 }

@@ -2,8 +2,30 @@ import { useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
 import { montarHTML } from '../../services/lroGenerator';
+import { PageTour } from '../../components/ui/PageTour';
 
 const STATUS_LRO_EXPORTAVEIS = new Set(['aguardando', 'assinado', 'finalizado', 'arquivado']);
+
+const PREVIEW_LRO_TOUR_STEPS = [
+  {
+    selector: 'button',
+    title: 'Voltar para o LRO',
+    body: 'O botão Voltar retorna para a tela anterior, normalmente o Gerar LRO.',
+    detail: 'Use para corrigir alguma informação antes de finalizar ou imprimir. A prévia não altera os dados sozinha.',
+  },
+  {
+    selector: 'iframe',
+    title: 'Prévia do documento',
+    body: 'Aqui aparece o LRO montado no formato de documento, usando as informações preenchidas no fluxo do LRO.',
+    detail: 'Revise equipe, data, efetivo, substituições, PTR-BA, viaturas, ocorrências, solicitações e assinaturas antes de salvar ou imprimir.',
+  },
+  {
+    selector: 'button',
+    title: 'Imprimir e salvar PDF',
+    body: 'Quando o LRO já está exportável, aparecem os botões Imprimir e Salvar PDF.',
+    detail: 'Imprimir usa a prévia atual. Salvar PDF abre uma janela pronta para impressão/salvamento em PDF pelo navegador.',
+  },
+];
 
 const SAMPLE_DATA: Record<string, unknown> = {
   logoUrl: '/assets/med-group-logo.png',
@@ -160,6 +182,12 @@ export function PreviewLRO() {
           />
         </div>
       </div>
+      <PageTour
+        steps={PREVIEW_LRO_TOUR_STEPS}
+        targetAttribute="data-preview-lro-tour"
+        title="Abrir tutorial da Prévia do LRO"
+        detailLabel="Revisão"
+      />
     </div>
   );
 }

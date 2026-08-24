@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw, ChevronDown, ChevronUp, HelpCircle, MousePointer2 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { AlertModal } from '../../components/ui/AlertModal';
@@ -112,6 +112,279 @@ function buscarBombeiroPorTexto(nome: string, pessoas: Bombeiro[]): Bombeiro | u
       textoNormalizadoContemNome(alvo, p.nomeGuerra)
     )
     .sort((a, b) => normalizarPessoaTexto(b.nomeCompleto).length - normalizarPessoaTexto(a.nomeCompleto).length)[0];
+}
+
+type LroTourStep = {
+  target: string;
+  view: 'lista' | 'wizard';
+  step?: 'equipe' | 'trocas' | 'preencher' | 'revisar';
+  title: string;
+  body: string;
+  automation: string;
+};
+
+type TourRect = Pick<DOMRect, 'top' | 'left' | 'right' | 'bottom' | 'width' | 'height'>;
+
+const LRO_TOUR_STEPS: LroTourStep[] = [
+  {
+    target: 'novo-lro',
+    view: 'lista',
+    title: 'Comece por Novo LRO',
+    body: 'Aqui você cria o documento do plantão. Use Clonar LRO só quando quiser reaproveitar dados de outro dia e revisar tudo antes de finalizar.',
+    automation: 'O sistema usa o novo LRO para montar uma sequência limpa de equipe, data, trocas, efetivo, ocorrências e revisão final.',
+  },
+  {
+    target: 'etapas-fluxo',
+    view: 'wizard',
+    step: 'equipe',
+    title: 'Siga as etapas em ordem',
+    body: 'O LRO é dividido em Equipe, Trocas, Dados e Revisão. Cada etapa prepara informação para a próxima.',
+    automation: 'Pular uma etapa ou deixar dados incompletos pode impedir que a automação puxe o plantão certo ou monte o documento completo.',
+  },
+  {
+    target: 'equipe-plantao',
+    view: 'wizard',
+    step: 'equipe',
+    title: 'Equipe e data comandam tudo',
+    body: 'Escolha equipe, data de entrada e data de saída com atenção. Esses campos definem o plantão que será consultado.',
+    automation: 'PTR-BA, BONA, REA, ocorrências, inspeções, solicitações, trocas e substituições dependem dessa equipe e dessa data para aparecerem corretamente.',
+  },
+  {
+    target: 'trocas-substituicoes',
+    view: 'wizard',
+    step: 'trocas',
+    title: 'Confirme trocas e substituições',
+    body: 'Esta etapa mostra trocas registradas, férias, substituições temporárias e trocas emergenciais do dia.',
+    automation: 'Quando você confirma uma troca, o efetivo e a cadeia de substituição entram certos no LRO. Se recusar ou esquecer uma troca, a escala final pode ficar errada.',
+  },
+  {
+    target: 'informacoes-dia',
+    view: 'wizard',
+    step: 'preencher',
+    title: 'Preencha as informações do dia',
+    body: 'Aqui ficam chefe, comunicação, efetivo, viaturas, instruções, alterações, emergências, ocorrências e solicitações.',
+    automation: 'O sistema já tenta trazer dados cadastrados em outros módulos, mas esta tela é a revisão operacional: confira nomes, funções, viaturas e textos antes de seguir.',
+  },
+  {
+    target: 'visualizar-pdf',
+    view: 'wizard',
+    step: 'preencher',
+    title: 'Visualize antes de finalizar',
+    body: 'O botão Visualizar abre o documento no formato final. Ali você pode imprimir ou salvar em PDF para conferir com calma.',
+    automation: 'O PDF usa exatamente o que está preenchido aqui. Se notar algo errado no preview, volte e ajuste antes de finalizar.',
+  },
+  {
+    target: 'revisao-final',
+    view: 'wizard',
+    step: 'revisar',
+    title: 'Revise o resumo final',
+    body: 'Esta é a última parada antes de enviar o LRO para aprovação. Confira equipe, plantão, responsáveis, trocas e principais textos.',
+    automation: 'Depois de finalizar, o LRO fica aguardando aprovação e a equipe não altera mais. Administrador ou desenvolvedor faz a etapa final.',
+  },
+  {
+    target: 'finalizar-lro',
+    view: 'wizard',
+    step: 'revisar',
+    title: 'Finalize só quando estiver pronto',
+    body: 'Finalizar envia o LRO para aguardando aprovação. Depois disso, use Ver documento para imprimir ou salvar o PDF.',
+    automation: 'Quando o administrador marcar como finalizado, ocorrências vinculadas podem ser fechadas e bloqueadas para manter o histórico do plantão.',
+  },
+];
+
+function getTourTargetRect(target: string): DOMRect | null {
+  const element = document.querySelector(`[data-lro-tour="${target}"]`) as HTMLElement | null;
+  return element ? element.getBoundingClientRect() : null;
+}
+
+function fallbackTourRect(): TourRect {
+  const width = Math.min(320, window.innerWidth - 32);
+  const height = 112;
+  const left = (window.innerWidth - width) / 2;
+  const top = Math.max(80, (window.innerHeight - height) / 2);
+  return { top, left, right: left + width, bottom: top + height, width, height };
+}
+
+function normalizeTourRect(rect: TourRect): TourRect {
+  const margin = 16;
+  const maxWidth = Math.max(80, window.innerWidth - margin * 2);
+  const maxHeight = Math.max(80, Math.min(window.innerHeight - margin * 2, 260));
+  const width = Math.min(Math.max(rect.width, 80), maxWidth);
+  const height = Math.min(Math.max(rect.height, 56), maxHeight);
+  const left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin));
+  const top = Math.max(margin, Math.min(rect.top, window.innerHeight - height - margin));
+
+  return { top, left, right: left + width, bottom: top + height, width, height };
+}
+
+function overlapArea(a: TourRect, b: TourRect): number {
+  const x = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+  const y = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  return x * y;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function tourPanelStyle(rect: TourRect): CSSProperties {
+  const margin = 16;
+  const width = Math.min(window.innerWidth < 900 ? 420 : 460, window.innerWidth - margin * 2);
+  const estimatedHeight = Math.min(430, window.innerHeight - margin * 2);
+  const minHeight = Math.min(360, estimatedHeight);
+  const maxLeft = window.innerWidth - width - margin;
+  const maxTop = window.innerHeight - estimatedHeight - margin;
+
+  if (window.innerWidth < 700) {
+    return { left: margin, right: margin, bottom: margin, minHeight, maxHeight: estimatedHeight };
+  }
+
+  const candidates = [
+    { left: rect.right + 20, top: rect.top },
+    { left: rect.left - width - 20, top: rect.top },
+    { left: rect.left, top: rect.bottom + 20 },
+    { left: rect.left, top: rect.top - estimatedHeight - 20 },
+    { left: window.innerWidth - width - margin, top: window.innerHeight - estimatedHeight - margin },
+  ].map(candidate => {
+    const left = clamp(candidate.left, margin, maxLeft);
+    const top = clamp(candidate.top, margin, Math.max(margin, maxTop));
+    const panelRect = { top, left, right: left + width, bottom: top + estimatedHeight, width, height: estimatedHeight };
+    return { left, top, overlap: overlapArea(panelRect, rect) };
+  });
+
+  const best = candidates.sort((a, b) => a.overlap - b.overlap)[0];
+  return { left: best.left, top: best.top, width, minHeight, maxHeight: estimatedHeight };
+}
+
+function AnimatedLroTour({
+  open,
+  steps,
+  stepIndex,
+  onBack,
+  onNext,
+  onClose,
+}: {
+  open: boolean;
+  steps: LroTourStep[];
+  stepIndex: number;
+  onBack: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const step = steps[stepIndex] || steps[0];
+
+  useEffect(() => {
+    if (!open) return;
+
+    setRect(null);
+    const element = document.querySelector(`[data-lro-tour="${step.target}"]`) as HTMLElement | null;
+    element?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+
+    const updateRect = () => setRect(getTourTargetRect(step.target));
+    const timers = [
+      window.setTimeout(updateRect, 80),
+      window.setTimeout(updateRect, 380),
+      window.setTimeout(updateRect, 720),
+    ];
+
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('scroll', updateRect, true);
+    updateRect();
+
+    return () => {
+      timers.forEach(timer => window.clearTimeout(timer));
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('scroll', updateRect, true);
+    };
+  }, [open, step.target]);
+
+  if (!open) return null;
+
+  const targetRect = normalizeTourRect(rect || fallbackTourRect());
+  const panelStyle = tourPanelStyle(targetRect);
+  const spotlightPadding = 14;
+  const spotlightStyle: CSSProperties = {
+    top: targetRect.top - spotlightPadding,
+    left: targetRect.left - spotlightPadding,
+    width: targetRect.width + spotlightPadding * 2,
+    height: targetRect.height + spotlightPadding * 2,
+  };
+  const cursorStyle: CSSProperties = {
+    top: targetRect.top + targetRect.height / 2,
+    left: targetRect.left + targetRect.width / 2,
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 pointer-events-none">
+      <div
+        className="fixed rounded-2xl border-2 border-aviation-300 bg-white/5 shadow-[0_0_0_9999px_rgba(0,0,0,0.58),0_0_0_8px_rgba(14,116,144,0.16),0_18px_50px_rgba(14,116,144,0.35)] transition-all duration-700 ease-out"
+        style={spotlightStyle}
+      />
+      <span
+        className="fixed z-[61] h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-aviation-300 bg-aviation-400/20 opacity-70 animate-ping"
+        style={cursorStyle}
+      />
+      <MousePointer2
+        className="fixed z-[62] h-9 w-9 -translate-x-1 -translate-y-1 text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.65)] transition-all duration-700 ease-out"
+        style={cursorStyle}
+        fill="white"
+      />
+
+      <div
+        className="pointer-events-auto fixed z-[63] overflow-y-auto rounded-2xl border border-graphite-200 bg-white p-6 shadow-2xl shadow-black/25 dark:border-border-dark dark:bg-surface-card"
+        style={panelStyle}
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <span className="text-[11px] font-black uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
+              Passo {stepIndex + 1} de {steps.length}
+            </span>
+            <h3 className="mt-1 text-lg font-bold text-graphite-900 dark:text-graphite-100">{step.title}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-2 text-graphite-400 transition-colors hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-200"
+            title="Pular tutorial"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="text-sm leading-6 text-graphite-600 dark:text-graphite-300">{step.body}</p>
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+          <span className="font-bold">Automação: </span>{step.automation}
+        </div>
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-graphite-300 bg-white px-3 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover/50"
+          >
+            Pular
+          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onBack}
+              disabled={stepIndex === 0}
+              className="rounded-xl border border-graphite-300 bg-white px-3 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200"
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              className="rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600"
+            >
+              {stepIndex === steps.length - 1 ? 'Concluir' : 'Próximo'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 type EquipeOpcao = 'Alfa' | 'Bravo' | 'Charlie' | 'Delta';type Step = 'equipe' | 'trocas' | 'preencher' | 'revisar';
@@ -291,6 +564,8 @@ export function GerarLRO() {
   }, [canEscolherEquipe, equipeEfetiva]);
   const inputClass = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400 dark:focus:ring-aviation-400/10';
   const [view, setView] = useState<'lista' | 'wizard'>('lista');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
   const [erroValidacao, setErroValidacao] = useState('');
   const [showConfirmTroca, setShowConfirmTroca] = useState(false);
@@ -305,6 +580,7 @@ export function GerarLRO() {
   const [draftCountdowns, setDraftCountdowns] = useState<Record<string, string>>({});
   const [lroExpandidoId, setLroExpandidoId] = useState<string | null>(null);
   const camposEquipeEditadosRef = useRef<Set<string>>(new Set());
+  const tutorialOrigemRef = useRef<{ view: 'lista' | 'wizard'; step: Step } | null>(null);
 
   function campoEquipeKey(grupo: string, key?: string): string {
     return key ? `${grupo}.${key}` : grupo;
@@ -385,6 +661,65 @@ export function GerarLRO() {
     setStep('equipe');
     setView('wizard');
     setErroValidacao('');
+  }
+
+  function tutorialIndexInicial(): number {
+    if (view === 'lista') return 0;
+    if (step === 'equipe') return 1;
+    if (step === 'trocas') return 3;
+    if (step === 'preencher') return 4;
+    return 6;
+  }
+
+  function abrirTutorialLRO() {
+    tutorialOrigemRef.current = { view, step };
+    setTutorialStepIndex(tutorialIndexInicial());
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialLRO() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    if (origem) {
+      setView(origem.view);
+      setStep(origem.step);
+      tutorialOrigemRef.current = null;
+    }
+  }
+
+  function voltarTutorialLRO() {
+    setTutorialStepIndex(prev => Math.max(0, prev - 1));
+  }
+
+  function avancarTutorialLRO() {
+    if (tutorialStepIndex >= LRO_TOUR_STEPS.length - 1) {
+      fecharTutorialLRO();
+      return;
+    }
+    setTutorialStepIndex(prev => Math.min(prev + 1, LRO_TOUR_STEPS.length - 1));
+  }
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    const tourStep = LRO_TOUR_STEPS[tutorialStepIndex] || LRO_TOUR_STEPS[0];
+    if (tourStep.view !== view) setView(tourStep.view);
+    if (tourStep.step && tourStep.step !== step) setStep(tourStep.step);
+  }, [showTutorial, tutorialStepIndex, view, step]);
+
+  function renderBotaoTutorialFlutuante() {
+    if (showTutorial) return null;
+
+    return (
+      <button
+        type="button"
+        onClick={abrirTutorialLRO}
+        aria-label="Abrir tutorial animado do LRO"
+        title="Tutorial do LRO"
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-aviation-600 to-aviation-700 text-white shadow-2xl shadow-aviation-500/30 transition-all hover:-translate-y-0.5 hover:from-aviation-500 hover:to-aviation-600 hover:shadow-aviation-500/40 focus:outline-none focus:ring-4 focus:ring-aviation-500/25 active:scale-95"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+    );
   }
 
   useEffect(() => {
@@ -1839,14 +2174,16 @@ export function GerarLRO() {
       <PageContainer>
         <div className="mb-6 flex items-center justify-between">
           <PageTitle icon={FileText} title="LRO - Livro Ata de Chefe de Equipe" />
-          <div className="flex gap-3">
+          <div className="flex flex-wrap justify-end gap-3">
             {canCreate && (
               <>
                 <button onClick={() => setCloneOrigem({ id: 'novo', equipe: equipeEfetiva || '', data_plantao: '', status: 'rascunho', dados: {}, created_by: username, created_at: '', updated_at: '', expires_at: '' } as any)}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 hover:shadow-xl hover:shadow-amber-500/30 active:scale-[0.98]">
                   <FileText className="h-4 w-4" /> Clonar LRO
                 </button>
-                <button onClick={iniciarNovoLRO}
+                <button
+                  onClick={iniciarNovoLRO}
+                  data-lro-tour="novo-lro"
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
                   <FileText className="h-4 w-4" /> Novo LRO
                 </button>
@@ -2166,6 +2503,16 @@ export function GerarLRO() {
             </div>
           </div>
         )}
+
+        {renderBotaoTutorialFlutuante()}
+        <AnimatedLroTour
+          open={showTutorial}
+          steps={LRO_TOUR_STEPS}
+          stepIndex={tutorialStepIndex}
+          onBack={voltarTutorialLRO}
+          onNext={avancarTutorialLRO}
+          onClose={fecharTutorialLRO}
+        />
       </PageContainer>
     );
   }
@@ -2180,7 +2527,7 @@ export function GerarLRO() {
       </div>
 
       {/* Steps indicator */}
-      <div className="mb-6 flex items-center gap-2">
+      <div className="mb-6 flex items-center gap-2" data-lro-tour="etapas-fluxo">
         {(['equipe', 'trocas', 'preencher', 'revisar'] as Step[]).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${step === s ? 'bg-aviation-600 text-white' : 'bg-graphite-100 text-graphite-500 dark:bg-graphite-800'}`}>{i + 1}</div>
@@ -2202,7 +2549,7 @@ export function GerarLRO() {
 {step === 'equipe' && (
         <div className="space-y-6">
           <div className="rounded-2xl border border-graphite-200 bg-white p-6 dark:border-border-dark dark:bg-surface-card">
-            <h3 className="mb-4 text-lg font-bold text-graphite-900 dark:text-graphite-100">Selecionar Equipe e Data</h3>
+            <h3 className="mb-4 w-fit max-w-full text-lg font-bold text-graphite-900 dark:text-graphite-100" data-lro-tour="equipe-plantao">Selecionar Equipe e Data</h3>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Equipe *</label>
@@ -2442,7 +2789,7 @@ export function GerarLRO() {
 
           {/* TROCAS EMERGENCIAIS (formulário manual) */}
           <div className="rounded-2xl border border-graphite-200 bg-white p-6 dark:border-border-dark dark:bg-surface-card">
-            <div className="mb-4 flex items-center gap-3">
+            <div className="mb-4 flex w-fit max-w-full items-center gap-3" data-lro-tour="trocas-substituicoes">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
                 <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
               </div>
@@ -2613,7 +2960,7 @@ export function GerarLRO() {
         <div className="space-y-4">
           {/* I. Equipe */}
           <div className="rounded-2xl border border-graphite-200 bg-white p-6 dark:border-border-dark dark:bg-surface-card">
-            <h3 className="mb-4 font-bold text-graphite-900 dark:text-graphite-100">I. Equipe de Serviço</h3>
+            <h3 className="mb-4 w-fit max-w-full font-bold text-graphite-900 dark:text-graphite-100" data-lro-tour="informacoes-dia">I. Equipe de Serviço</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <SearchSelect
@@ -2995,7 +3342,7 @@ export function GerarLRO() {
               <ArrowLeft className="h-4 w-4" /> Voltar
             </button>
             <div className="flex gap-3">
-              <button onClick={handlePreview} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/20 transition-all hover:from-violet-500 hover:to-violet-600 disabled:opacity-50">
+              <button onClick={handlePreview} data-lro-tour="visualizar-pdf" className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/20 transition-all hover:from-violet-500 hover:to-violet-600 disabled:opacity-50">
                 <Eye className="h-4 w-4" /> Visualizar
               </button>
               <button onClick={handleSalvarRascunho} disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 disabled:opacity-50">
@@ -3019,7 +3366,7 @@ export function GerarLRO() {
       {step === 'revisar' && (
         <div className="space-y-6">
           <div className="rounded-2xl border border-graphite-200 bg-white p-6 dark:border-border-dark dark:bg-surface-card">
-            <h3 className="mb-4 text-lg font-bold text-graphite-900 dark:text-graphite-100">Resumo do LRO</h3>
+            <h3 className="mb-4 w-fit max-w-full text-lg font-bold text-graphite-900 dark:text-graphite-100" data-lro-tour="revisao-final">Resumo do LRO</h3>
             <div className="space-y-2 text-sm">
               <p><span className="font-semibold">Equipe:</span> {equipe}</p>
               <p><span className="font-semibold">Plantão:</span> {formatarDataBR(dataInicio)} a {formatarDataBR(dataFim)}</p>
@@ -3036,7 +3383,7 @@ export function GerarLRO() {
               <ArrowLeft className="h-4 w-4" /> Voltar
             </button>
             <div className="flex gap-3">
-              <button onClick={() => setShowConfirm(true)} disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-green-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-green-500/20 transition-all hover:from-green-500 hover:to-green-600 active:scale-[0.98] disabled:opacity-50">
+              <button onClick={() => setShowConfirm(true)} data-lro-tour="finalizar-lro" disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-green-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-green-500/20 transition-all hover:from-green-500 hover:to-green-600 active:scale-[0.98] disabled:opacity-50">
                 <Check className="h-4 w-4" /> {saving ? 'Finalizando...' : 'Finalizar LRO'}
               </button>
             </div>
@@ -3109,6 +3456,15 @@ export function GerarLRO() {
         loadingLabel="Finalizando..."
         onClose={() => setShowConfirm(false)}
         onConfirm={handleFinalizarLRO}
+      />
+      {renderBotaoTutorialFlutuante()}
+      <AnimatedLroTour
+        open={showTutorial}
+        steps={LRO_TOUR_STEPS}
+        stepIndex={tutorialStepIndex}
+        onBack={voltarTutorialLRO}
+        onNext={avancarTutorialLRO}
+        onClose={fecharTutorialLRO}
       />
     </PageContainer>
   );

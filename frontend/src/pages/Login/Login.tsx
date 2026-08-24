@@ -2,8 +2,36 @@ import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, User, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { PageTour } from '../../components/ui/PageTour';
 
 const LOGIN_IMAGES = ['/entradalogin1.png', '/entradalogin2.png', '/entradalogin3.png', '/entradalogin4.png', '/entradalogin5.png'];
+
+const LOGIN_TOUR_STEPS = [
+  {
+    selector: 'h1',
+    title: 'Tela de acesso',
+    body: 'Esta é a entrada do SCI NVT. Use o usuário e a senha cadastrados para acessar o sistema.',
+    detail: 'Se a conta acabou de ser criada por convite, ela pode depender de vínculo e liberação do administrador antes de abrir as telas internas.',
+  },
+  {
+    selector: 'form input[type="text"]',
+    title: 'Usuário',
+    body: 'Digite exatamente o nome de usuário cadastrado.',
+    detail: 'O usuário pode ser criado manualmente por um administrador ou pela página de convite. Erros de digitação impedem o acesso mesmo que a senha esteja correta.',
+  },
+  {
+    selector: 'form > div:nth-of-type(2) input',
+    title: 'Senha',
+    body: 'Digite sua senha no campo Senha. O ícone de olho mostra ou oculta temporariamente o texto digitado.',
+    detail: 'Use o botão de visualizar apenas quando estiver em um local seguro. Se esquecer a senha, um administrador deve ajustar o acesso na tela de Usuários.',
+  },
+  {
+    selector: 'form button[type="submit"]',
+    title: 'Entrar no sistema',
+    body: 'Clique em Entrar para validar as credenciais e abrir o Dashboard.',
+    detail: 'Se aparecer erro, confira usuário, senha e se a conta já foi liberada. Contas sem função podem ser enviadas para a tela de aguardando liberação.',
+  },
+];
 
 export function Login() {
   const bgImage = useMemo(() => LOGIN_IMAGES[Math.floor(Math.random() * LOGIN_IMAGES.length)], []);
@@ -163,6 +191,12 @@ export function Login() {
           </div>
         </div>
       </div>
+      <PageTour
+        steps={LOGIN_TOUR_STEPS}
+        targetAttribute="data-login-tour"
+        title="Abrir tutorial de Login"
+        detailLabel="Como usar esta página"
+      />
     </div>
   );
 }

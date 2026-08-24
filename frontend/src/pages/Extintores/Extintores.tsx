@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Flame, Search, Plus, Pencil, Trash2, AlertCircle, X, Check } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { useAuth } from '../../context/AuthContext';
 import { listarExtintores, criarExtintor, atualizarExtintor, excluirExtintor } from '../../services/extintorService';
 import type { Extintor, TipoExtintor, SeloInmetro, StatusExtintor } from '../../types/extintor';
@@ -25,6 +26,39 @@ const EMPTY: Omit<Extintor, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> = {
   intervaloConferencia: '6',
   observacoes: '',
 };
+
+const EXTINTORES_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Cadastro de Extintores',
+    body: 'Esta tela controla os extintores instalados ou disponíveis, com número, tipo, capacidade, fabricação, selo INMETRO, localização e status.',
+    detail: 'O objetivo é manter o inventário confiável para inspeções, conferências e segurança operacional.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo Extintor',
+    body: 'Este botão abre o cadastro de um extintor novo.',
+    detail: 'Preencha número de série, número do extintor, tipo, capacidade, fabricação, INMETRO e localização para evitar duplicidade ou item sem rastreio.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Busca e status',
+    body: 'A busca encontra extintores por número de série, número do extintor ou localização. O filtro de status separa ativos, manutenção, inativos e outras situações.',
+    detail: 'Use antes de cadastrar para confirmar se o extintor já existe no sistema.',
+  },
+  {
+    selector: 'main table',
+    title: 'Tabela de extintores',
+    body: 'A tabela apresenta identificação, tipo, capacidade, data de fabricação, selo INMETRO, localização e status.',
+    detail: 'Esses dados permitem saber onde o extintor está, se está em condição de uso e se precisa de conferência.',
+  },
+  {
+    selector: 'main table button',
+    title: 'Ações do registro',
+    body: 'Os ícones permitem editar informações ou excluir um extintor, quando o usuário tem permissão.',
+    detail: 'Prefira editar o status quando o extintor existir fisicamente; exclua apenas cadastro realmente incorreto.',
+  },
+];
 
 export function Extintores() {
   const { user } = useAuth();
@@ -304,6 +338,11 @@ export function Extintores() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={EXTINTORES_TOUR_STEPS}
+        targetAttribute="data-extintores-tour"
+        title="Abrir tutorial de Extintores"
+      />
     </PageContainer>
   );
 }

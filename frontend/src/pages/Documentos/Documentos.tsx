@@ -3,10 +3,11 @@ import {
   FileText, Plus, Search, Eye, Loader2,
   ChevronDown, ChevronUp, Edit3, CheckCircle,
   Trash2, Download, Upload, Shield, Save, ArrowLeft,
-  AlertTriangle, Package, Link, X, Send,
+  AlertTriangle, Package, Link, X, Send, HelpCircle,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { PdfFieldEditor } from '../../components/documentos/PdfFieldEditor';
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { FieldPropertiesPanel } from '../../components/documentos/FieldPropertiesPanel';
@@ -33,10 +34,71 @@ import { podeVerCadastroCompletoBase, resolverContextoOperacional } from '../../
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 type View = 'list' | 'admin' | 'manage' | 'fill' | 'grid';
+type DocumentosTourStep = AnimatedTourStep & { view: 'list' | 'admin' };
+
+const DOCUMENTOS_TOUR_STEPS: DocumentosTourStep[] = [
+  {
+    view: 'list',
+    target: 'documentos-topo',
+    title: 'Biblioteca de documentos',
+    body: 'Esta página reúne os modelos de documentos usados pelo sistema. Aqui ficam templates operacionais, administrativos, de treinamento e outros formulários configuráveis.',
+    detail: 'Use esta tela para conferir se o documento existe, visualizar o modelo, preencher quando aplicável ou entrar na configuração quando você tiver permissão.',
+  },
+  {
+    view: 'list',
+    target: 'documentos-busca',
+    title: 'Busca por documento',
+    body: 'A busca filtra os documentos pelo nome. Ela é útil quando a lista crescer ou quando você souber o formulário que precisa abrir.',
+    detail: 'Digite parte do nome, como troca, checklist, ordem ou outro termo do modelo cadastrado.',
+  },
+  {
+    view: 'list',
+    target: 'documentos-lista',
+    title: 'Cards dos modelos',
+    body: 'Cada card mostra o nome, categoria, descrição e se existe PDF template vinculado. O selo verde indica que o documento já tem modelo PDF configurado.',
+    detail: 'Quando o documento tem PDF e campos configurados, ele pode ser preenchido, pré-visualizado e usado para gerar um arquivo final.',
+  },
+  {
+    view: 'list',
+    target: 'documentos-lista',
+    title: 'Ações do documento',
+    body: 'Administradores podem editar, excluir e vincular o documento a um módulo de origem. Esse vínculo ajuda o sistema a saber onde aquele modelo será usado.',
+    detail: 'Por exemplo: um template pode ser vinculado a trocas, LRO, treinamento ou outro módulo para manter os documentos organizados.',
+  },
+  {
+    view: 'list',
+    target: 'documentos-novo',
+    title: 'Criar novo modelo',
+    body: 'O botão Novo Documento abre o cadastro inicial de um template. Essa etapa cria a identificação do documento antes da configuração do PDF.',
+    detail: 'Só quem tem permissão administrativa vê esta ação, porque ela altera a biblioteca de modelos do sistema.',
+  },
+  {
+    view: 'admin',
+    target: 'documentos-form',
+    title: 'Dados básicos do modelo',
+    body: 'Nesta tela você define nome, descrição e categoria. Esses dados aparecem depois na lista e ajudam a equipe a encontrar o documento correto.',
+    detail: 'Use nomes claros, porque o nome do documento também orienta qual template e quais campos o sistema pode sincronizar.',
+  },
+  {
+    view: 'admin',
+    target: 'documentos-categoria',
+    title: 'Categoria do documento',
+    body: 'A categoria separa o documento em operacional, administrativo, treinamento ou geral.',
+    detail: 'A categoria não preenche o PDF sozinha, mas deixa a biblioteca mais fácil de filtrar mentalmente e manter organizada.',
+  },
+  {
+    view: 'admin',
+    target: 'documentos-criar',
+    title: 'Criar e configurar',
+    body: 'Depois de criar, o sistema leva para a configuração do template, onde o PDF pode ser anexado e os campos podem ser posicionados.',
+    detail: 'É nessa configuração que o documento passa a funcionar de verdade: campos, assinantes, autocomplete e geração do PDF dependem dessa etapa.',
+  },
+];
 
 export function Documentos() {
   const { user } = useAuth();
   const [canManageDocumentos, setCanManageDocumentos] = useState(() => podeVerCadastroCompletoBase(user));
+  const tutorialOrigemRef = useRef<{ view: View; selectedDoc: DocumentWithFields | null; pdfData: ArrayBuffer | null; scrollY: number } | null>(null);
 
   const [documentos, setDocumentos] = useState<Document[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<DocumentWithFields | null>(null);
@@ -89,6 +151,13 @@ export function Documentos() {
   const [storagePdfs, setStoragePdfs] = useState<{ name: string; path: string; id: string }[]>([]);
   const [storageLoading, setStorageLoading] = useState(false);
   const [storageSearch, setStorageSearch] = useState('');
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
+
+  const documentosTourSteps = canManageDocumentos
+    ? DOCUMENTOS_TOUR_STEPS
+    : DOCUMENTOS_TOUR_STEPS.filter(step => step.view === 'list');
+  const currentTutorialStep = documentosTourSteps[tutorialStepIndex] || documentosTourSteps[0];
 
   useEffect(() => { loadDocumentos(); }, []);
 
@@ -114,6 +183,20 @@ export function Documentos() {
   }, [canManageDocumentos, view]);
 
   useEffect(() => {
+    if (!showTutorial || !currentTutorialStep) return;
+    if (view !== currentTutorialStep.view) {
+      setView(currentTutorialStep.view);
+      setSelectedDoc(null);
+      setPdfData(null);
+    }
+  }, [currentTutorialStep, showTutorial, view]);
+
+  useEffect(() => {
+    if (!showTutorial || tutorialStepIndex < documentosTourSteps.length) return;
+    setTutorialStepIndex(Math.max(0, documentosTourSteps.length - 1));
+  }, [documentosTourSteps.length, showTutorial, tutorialStepIndex]);
+
+  useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (vincularOpen) {
         const target = e.target as HTMLElement;
@@ -125,6 +208,40 @@ export function Documentos() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [vincularOpen]);
+
+  function abrirTutorialDocumentos() {
+    tutorialOrigemRef.current = { view, selectedDoc, pdfData, scrollY: window.scrollY };
+    setVincularOpen(null);
+    setPreviewDoc(null);
+    setPreviewPdfData(null);
+    setTutorialStepIndex(0);
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialDocumentos() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    setTutorialStepIndex(0);
+    if (origem) {
+      setView(origem.view);
+      setSelectedDoc(origem.selectedDoc);
+      setPdfData(origem.pdfData);
+      window.setTimeout(() => window.scrollTo({ top: origem.scrollY, behavior: 'smooth' }), 50);
+    }
+    tutorialOrigemRef.current = null;
+  }
+
+  function voltarTutorialDocumentos() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorialDocumentos() {
+    if (tutorialStepIndex >= documentosTourSteps.length - 1) {
+      fecharTutorialDocumentos();
+      return;
+    }
+    setTutorialStepIndex(index => index + 1);
+  }
 
   useEffect(() => {
     async function loadFuncionarios() {
@@ -868,15 +985,15 @@ export function Documentos() {
       {renderOverlays()}
       {previewDoc && renderPreviewModal()}
       <PageContainer>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between" data-documentos-tour="documentos-topo">
           <PageTitle icon={FileText} title="Documentos" />
           {canManageDocumentos && (
-            <button onClick={() => setView('admin')} className="flex items-center gap-2 rounded-lg bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-700">
+            <button onClick={() => setView('admin')} className="flex items-center gap-2 rounded-lg bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-700" data-documentos-tour="documentos-novo">
               <Plus className="h-4 w-4" /> Novo Documento
             </button>
           )}
         </div>
-        <div className="mb-4">
+        <div className="mb-4" data-documentos-tour="documentos-busca">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
             <input type="text" placeholder="Buscar documentos..." value={search} onChange={e => setSearch(e.target.value)}
@@ -886,12 +1003,12 @@ export function Documentos() {
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-aviation-500" /></div>
         ) : documentos.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-graphite-300 bg-graphite-50 py-12 text-center dark:border-graphite-700 dark:bg-graphite-800/50">
+          <div className="rounded-xl border border-dashed border-graphite-300 bg-graphite-50 py-12 text-center dark:border-graphite-700 dark:bg-graphite-800/50" data-documentos-tour="documentos-lista">
             <FileText className="mx-auto mb-3 h-12 w-12 text-graphite-300" />
             <p className="text-graphite-500">Nenhum documento</p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-documentos-tour="documentos-lista">
             {documentos.filter(d => d.name.toLowerCase().includes(search.toLowerCase())).map(doc => (
               <div key={doc.id} className="group rounded-xl border border-graphite-200 bg-white p-5 transition-all hover:border-aviation-300 hover:shadow-md dark:border-graphite-700 dark:bg-graphite-800">
                 <div className="mb-3 flex items-center gap-3">
@@ -972,7 +1089,7 @@ export function Documentos() {
           <button onClick={() => setView('list')} className="rounded-lg border border-graphite-200 px-3 py-1.5 text-sm text-graphite-700 hover:bg-graphite-50 dark:border-graphite-700 dark:text-graphite-200 dark:hover:bg-graphite-700"><ArrowLeft className="inline h-4 w-4 mr-1" />Voltar</button>
           <PageTitle icon={Plus} title="Novo Documento" />
         </div>
-        <div className="mx-auto max-w-xl rounded-xl border border-graphite-200 bg-white p-6 shadow-sm dark:border-graphite-700 dark:bg-graphite-800">
+        <div className="mx-auto max-w-xl rounded-xl border border-graphite-200 bg-white p-6 shadow-sm dark:border-graphite-700 dark:bg-graphite-800" data-documentos-tour="documentos-form">
           <div className="space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Nome do Documento *</label>
@@ -984,7 +1101,7 @@ export function Documentos() {
               <input type="text" value={newDocDesc} onChange={e => setNewDocDesc(e.target.value)} placeholder="Descrição"
                 className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2.5 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
             </div>
-            <div>
+            <div data-documentos-tour="documentos-categoria">
               <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Categoria</label>
               <select value={newDocCategory} onChange={e => setNewDocCategory(e.target.value)}
                 className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2.5 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100">
@@ -995,6 +1112,7 @@ export function Documentos() {
               </select>
             </div>
             <button onClick={handleCreateDocument} disabled={!newDocName.trim()}
+              data-documentos-tour="documentos-criar"
               className="flex items-center gap-2 rounded-lg bg-aviation-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-aviation-700 disabled:opacity-50">
               <Plus className="h-4 w-4" /> Criar e Configurar
             </button>
@@ -1599,6 +1717,23 @@ export function Documentos() {
             </div>
           </div>
         )}
+        <button
+          type="button"
+          onClick={abrirTutorialDocumentos}
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-aviation-200 bg-aviation-600 text-white shadow-2xl shadow-aviation-900/30 transition-all hover:scale-105 hover:bg-aviation-500 focus:outline-none focus:ring-4 focus:ring-aviation-300/40 dark:border-aviation-400/30"
+          title="Abrir tutorial de Documentos"
+        >
+          <HelpCircle className="h-7 w-7" />
+        </button>
+        <AnimatedPageTour
+          open={showTutorial}
+          steps={documentosTourSteps}
+          stepIndex={tutorialStepIndex}
+          targetAttribute="data-documentos-tour"
+          onBack={voltarTutorialDocumentos}
+          onNext={avancarTutorialDocumentos}
+          onClose={fecharTutorialDocumentos}
+        />
       </>
     );
   }

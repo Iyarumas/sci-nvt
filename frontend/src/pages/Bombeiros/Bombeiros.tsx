@@ -9,8 +9,42 @@ import { CARGO_OPTIONS, EQUIPE_OPTIONS, ABBR_CARGO, getHorarioTrabalho } from '.
 import { BombeiroForm } from './BombeiroForm';
 import { useDebounce } from '../../hooks/useDebounce';
 import { AlertModal } from '../../components/ui/AlertModal';
+import { PageTour } from '../../components/ui/PageTour';
 import { capitalizarNome } from '../../utils/capitalize';
 import { podeVerCadastroCompletoBase, resolverContextoOperacional } from '../../utils/permissoes';
+
+const BOMBEIROS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Cadastro de bombeiros',
+    body: 'Esta tela é a base do efetivo operacional. Aqui ficam matrícula, nome, nome de guerra, cargo, abreviação, equipe, horário, turno e situação de cada bombeiro.',
+    detail: 'Essas informações aparecem nas escalas mensal e diária, férias, substituições, PTR-BA, LRO e permissões por equipe. Quando alguém mudar de cargo, equipe ou ficar inativo, é aqui que o cadastro precisa estar correto.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Pesquisa e filtros',
+    body: 'Use a busca para localizar por matrícula, nome, CPF ou nome de guerra. Os filtros de equipe e cargo ajudam a conferir rapidamente a composição de Alfa, Bravo, Charlie e Delta.',
+    detail: 'A pesquisa espera alguns instantes antes de atualizar a lista. Se quiser voltar para a visão completa, limpe o texto da busca e selecione Todas as Equipes e Todos os Cargos.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo cadastro',
+    body: 'O botão Novo Cadastro abre o formulário completo do bombeiro.',
+    detail: 'Preencha os dados pessoais, cargo, equipe, turno, cursos, CNH/CVE e informações necessárias para que o sistema consiga validar funções, montar escalas e calcular substituições corretamente.',
+  },
+  {
+    selector: 'main table',
+    title: 'Lista do efetivo',
+    body: 'A tabela mostra os bombeiros encontrados com os principais dados operacionais. Cargo e equipe devem ser revisados com atenção porque alimentam várias automações do sistema.',
+    detail: 'O horário de trabalho é derivado da equipe e do cargo. A situação Ativo/Inativo controla se a pessoa continua disponível para rotinas como escala, férias, PTR-BA e LRO.',
+  },
+  {
+    selector: 'main table button[title="Editar"], main button[title="Editar"]',
+    title: 'Editar ou excluir',
+    body: 'O lápis abre o cadastro para correção. A lixeira remove o registro, quando o perfil tem permissão.',
+    detail: 'Prefira inativar quando houver histórico ligado ao bombeiro. Excluir deve ser usado com cuidado, porque registros antigos podem depender desse cadastro para exibição correta.',
+  },
+];
 
 export function Bombeiros() {
   const { user } = useAuth();
@@ -271,6 +305,12 @@ export function Bombeiros() {
         onConfirm={() => confirmDelete ? handleDelete(confirmDelete) : undefined}
       />
 
+      <PageTour
+        steps={BOMBEIROS_TOUR_STEPS}
+        targetAttribute="data-bombeiros-tour"
+        title="Abrir tutorial de Bombeiros"
+        detailLabel="Atenção"
+      />
     </PageContainer>
   );
 }

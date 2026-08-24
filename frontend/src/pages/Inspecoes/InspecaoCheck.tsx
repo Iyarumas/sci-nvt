@@ -12,9 +12,49 @@ import type { ItemChecklist, StatusItemChecklist } from '../../types/conferencia
 import { CHECKLIST_EXTINTOR, CHECKLIST_HIDRANTE, STATUS_ITEM_CHECKLIST_OPTIONS } from '../../types/conferencia';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 type Step = 'buscar' | 'checklist' | 'sucesso';
 type TipoBusca = 'extintor' | 'hidrante';
+
+const INSPECAO_CHECK_TOUR_STEPS = [
+  {
+    selector: 'h1',
+    title: 'Inspeção rápida',
+    body: 'Esta tela foi feita para registrar rapidamente a conferência de um extintor ou hidrante.',
+    detail: 'Ela busca o equipamento cadastrado, abre o checklist padrão e grava a próxima data de inspeção conforme o intervalo configurado no cadastro.',
+  },
+  {
+    selector: 'button',
+    title: 'Escolher tipo',
+    body: 'Selecione Extintor ou Hidrante antes de buscar.',
+    detail: 'A escolha muda a base pesquisada e também o checklist que será aberto. Extintores usam perguntas próprias e hidrantes usam outro conjunto.',
+  },
+  {
+    selector: 'input',
+    title: 'Buscar equipamento',
+    body: 'Digite o número do extintor, número de série ou número do hidrante.',
+    detail: 'A lista aparece depois de pelo menos dois caracteres. Clique no item correto para iniciar a conferência.',
+  },
+  {
+    selector: 'main button, .space-y-2 button, textarea',
+    title: 'Checklist de conferência',
+    body: 'No checklist, marque cada item como OK, Pendência ou Não se aplica.',
+    detail: 'Quando marcar Pendência, descreva o problema. Qualquer pendência transforma o resultado final em Reprovado.',
+  },
+  {
+    selector: 'select, textarea, input',
+    title: 'Equipe e responsável',
+    body: 'Informe a equipe e a pessoa responsável pela conferência.',
+    detail: 'Usuários sem permissão global ficam presos à equipe efetiva. Isso evita registrar inspeção em nome de outra equipe por engano.',
+  },
+  {
+    selector: 'button',
+    title: 'Finalizar e salvar',
+    body: 'Depois de revisar os itens, finalize para salvar a conferência.',
+    detail: 'O sistema grava resultado, observações, inspetor e calcula a próxima inspeção. Na tela de sucesso, use Nova Inspeção para começar outro item.',
+  },
+];
 
 const CARGO_ABBREV: Record<string, string> = {
   'BA-2': 'BA2', 'BA-MC': 'MC', 'BA-CE': 'CE', 'BA-LR': 'LR',
@@ -186,6 +226,12 @@ export function InspecaoCheck() {
             className="mt-8 block w-full rounded-xl bg-aviation-600 py-3 text-sm font-medium text-white">
             Nova Inspeção
           </button>
+          <PageTour
+            steps={INSPECAO_CHECK_TOUR_STEPS}
+            targetAttribute="data-inspecao-check-tour"
+            title="Abrir tutorial da Inspeção Rápida"
+            detailLabel="Conferência"
+          />
         </div>
       </div>
     );
@@ -312,6 +358,12 @@ export function InspecaoCheck() {
             className="w-full rounded-xl bg-aviation-600 py-3 text-sm font-medium text-white disabled:opacity-50">
             {saving ? 'Salvando...' : 'Finalizar e Salvar'}
           </button>
+          <PageTour
+            steps={INSPECAO_CHECK_TOUR_STEPS}
+            targetAttribute="data-inspecao-check-tour"
+            title="Abrir tutorial da Inspeção Rápida"
+            detailLabel="Conferência"
+          />
         </div>
       </div>
     );
@@ -378,6 +430,12 @@ export function InspecaoCheck() {
           </div>
         )}
       </div>
+      <PageTour
+        steps={INSPECAO_CHECK_TOUR_STEPS}
+        targetAttribute="data-inspecao-check-tour"
+        title="Abrir tutorial da Inspeção Rápida"
+        detailLabel="Conferência"
+      />
     </div>
   );
 }

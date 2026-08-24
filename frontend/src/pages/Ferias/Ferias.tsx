@@ -1,13 +1,14 @@
-﻿import { useState, useEffect, useMemo } from 'react';
+﻿import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CalendarDays, Plus, Search, Pencil, Trash2, X, Save, User,
   Calendar, Clock, ChevronDown, ChevronRight, Users, AlertTriangle,
   ArrowRightLeft, Check, Send,
-  BarChart3, FileText, CheckCircle2, XCircle, Eye,
+  BarChart3, FileText, CheckCircle2, XCircle, Eye, HelpCircle,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { AlertModal } from '../../components/ui/AlertModal';
+import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { useAuth } from '../../context/AuthContext';
 import { listarAtivos, obterBombeiro } from '../../services/bombeiroService';
 import {
@@ -62,6 +63,80 @@ const PERIODO_STATUS_COLORS: Record<string, string> = {
   'Gozado': 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400',
   'Vencido': 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400',
 };
+
+type FeriasTourStep = AnimatedTourStep & { adminOnly?: boolean };
+
+const FERIAS_TOUR_STEPS: FeriasTourStep[] = [
+  {
+    target: 'titulo',
+    title: 'Tela de Férias',
+    body: 'Esta tela controla o planejamento de férias dos bombeiros, as solicitações, aprovações, escala anual, substituições e o impacto no efetivo.',
+    detail: 'Tudo que é aprovado aqui pode refletir na Escala Diária, no LRO e no quadro de efetivos, então as informações precisam estar corretas.',
+  },
+  {
+    target: 'resumo',
+    title: 'Resumo geral das férias',
+    body: 'Os cards mostram uma visão rápida: total de ativos, quem já tem direito, quem está em gozo, férias planejadas, gozadas, próximas de vencer e vencidas.',
+    detail: 'Use esse resumo para enxergar rapidamente se existe pendência de férias, período vencendo ou equipe com muitas pessoas afastadas.',
+  },
+  {
+    target: 'abas',
+    title: 'Barra de abas',
+    body: 'Esta barra separa o módulo em áreas. Cada botão abre uma parte diferente do processo de férias.',
+    detail: 'A ideia é evitar misturar cadastro, aprovação, planejamento anual e conferência de efetivo na mesma visão.',
+  },
+  {
+    target: 'manual',
+    title: 'Cadastrar Férias Manual',
+    body: 'Este botão permite lançar férias diretamente para um bombeiro, sem depender de uma solicitação feita pelo próprio usuário.',
+    detail: 'Use somente quando for necessário cadastrar ou corrigir férias administrativamente. Confira bombeiro, período, dias e substituto antes de salvar.',
+    adminOnly: true,
+  },
+  {
+    target: 'tab-bombeiros',
+    title: 'Aba Bombeiros',
+    body: 'Mostra os bombeiros cadastrados e os períodos aquisitivos de cada um. É usada para conferir quem tem direito, quem já gozou e quem ainda precisa programar férias.',
+    detail: 'Esta aba ajuda a analisar pessoa por pessoa antes de cadastrar férias ou verificar pendências.',
+    adminOnly: true,
+  },
+  {
+    target: 'tab-aprovacoes',
+    title: 'Aba Aprovações',
+    body: 'Reúne solicitações ou itens que precisam ser aprovados ou rejeitados por quem gerencia férias.',
+    detail: 'Antes de aprovar, verifique datas, equipe, cargo, substituto e impacto no efetivo. Uma aprovação errada pode gerar escala e LRO incorretos.',
+    adminOnly: true,
+  },
+  {
+    target: 'tab-escala-geral',
+    title: 'Aba Escala Geral',
+    body: 'Mostra uma visão geral das férias entre equipes e períodos, facilitando a conferência do planejamento como um todo.',
+    detail: 'Use para enxergar conflito de datas, concentração de afastamentos e impacto entre Alfa, Bravo, Charlie e Delta.',
+  },
+  {
+    target: 'tab-escala',
+    title: 'Aba Escala Anual',
+    body: 'Organiza o planejamento anual de férias. Aqui você monta ou confere os períodos do ano e acompanha o que está programado.',
+    detail: 'A Escala Anual é uma das bases para saber quem estará fora em cada período e preparar as substituições.',
+  },
+  {
+    target: 'tab-equipe',
+    title: 'Aba Minha Equipe',
+    body: 'Mostra as férias relacionadas à equipe efetiva do usuário, deixando a consulta mais direta para chefes e líderes.',
+    detail: 'Use para acompanhar o impacto das férias no seu próprio efetivo sem precisar olhar todas as equipes.',
+  },
+  {
+    target: 'tab-efetivos',
+    title: 'Aba Quadro de Efetivos',
+    body: 'Mostra o quadro de efetivos considerando equipes, cargos, férias e substituições.',
+    detail: 'É a conferência mais importante para saber se a equipe continua operacionalmente completa durante os períodos de férias.',
+  },
+  {
+    target: 'conteudo',
+    title: 'Conteúdo da aba aberta',
+    body: 'Depois que você escolhe uma aba, esta área mostra os dados daquela parte: listas, cards, escala, aprovações ou quadro de efetivos.',
+    detail: 'Sempre revise o conteúdo da aba antes de salvar, aprovar, rejeitar ou usar a informação em escala/LRO.',
+  },
+];
 
 // -- Types -----------------------------------------------------------------------
 
@@ -3790,6 +3865,7 @@ function ModalCadastroFeriasManual({ onClose, onSuccess }: { onClose: () => void
 
 export function Ferias() {
   const { user } = useAuth();
+  const tutorialOrigemRef = useRef<{ scrollY: number } | null>(null);
   const [permissao, setPermissao] = useState<ContextoPermissaoFerias>(() => ({
     equipe: equipeDoUsuario(user),
     cargo: user?.pessoa?.funcao || null,
@@ -3801,6 +3877,8 @@ export function Ferias() {
   const [tab, setTab] = useState<string>('');
   const [showCadastroManual, setShowCadastroManual] = useState(false);
   const [quadroRefreshKey, setQuadroRefreshKey] = useState(0);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -3840,10 +3918,40 @@ export function Ferias() {
   ] as const;
 
   const tabs = canManage ? adminTabs : chefeTabs;
+  const feriasTourSteps = FERIAS_TOUR_STEPS.filter(step => !step.adminOnly || canManage);
 
   useEffect(() => {
     if (tabs.length > 0 && !tabs.some(t => t.key === tab)) setTab(tabs[0].key);
   }, [tab, tabs]);
+
+  function abrirTutorialFerias() {
+    tutorialOrigemRef.current = { scrollY: window.scrollY };
+    setShowCadastroManual(false);
+    setTutorialStepIndex(0);
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialFerias() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    setTutorialStepIndex(0);
+    if (origem) {
+      window.setTimeout(() => window.scrollTo({ top: origem.scrollY, behavior: 'smooth' }), 50);
+    }
+    tutorialOrigemRef.current = null;
+  }
+
+  function voltarTutorialFerias() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorialFerias() {
+    if (tutorialStepIndex >= feriasTourSteps.length - 1) {
+      fecharTutorialFerias();
+      return;
+    }
+    setTutorialStepIndex(index => index + 1);
+  }
 
   if (resolving) {
     return (
@@ -3871,14 +3979,19 @@ export function Ferias() {
 
   return (
     <PageContainer>
-      <PageTitle icon={CalendarDays} title="Ferias" />
+      <div data-ferias-tour="titulo">
+        <PageTitle icon={CalendarDays} title="Ferias" />
+      </div>
 
-      <DashboardFerias myEquipe={canManage ? null : myEquipe} />
+      <div data-ferias-tour="resumo">
+        <DashboardFerias myEquipe={canManage ? null : myEquipe} />
+      </div>
 
-      <div className="mt-6 mb-6 flex flex-wrap items-center gap-2">
+      <div className="mt-6 mb-6 flex flex-wrap items-center gap-2" data-ferias-tour="abas">
         {canManage && (
           <button
             onClick={() => setShowCadastroManual(true)}
+            data-ferias-tour="manual"
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" /> Cadastrar Férias Manual
@@ -3888,6 +4001,7 @@ export function Ferias() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
+            data-ferias-tour={`tab-${t.key}`}
             className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
               tab === t.key
                 ? 'bg-gradient-to-r from-aviation-600 to-aviation-700 text-white shadow-lg shadow-aviation-500/20'
@@ -3900,12 +4014,14 @@ export function Ferias() {
         ))}
       </div>
 
-      {canManage && tab === 'bombeiros' && <TabBombeiros />}
-      {canManage && tab === 'aprovacoes' && <TabAprovacoes />}
-      {tab === 'escala-geral' && <TabEscalaGeral canManage={canManage} equipeUsuario={myEquipe} />}
-      {tab === 'escala' && <TabEscalaAnual canManage={canManage} equipeUsuario={myEquipe} />}
-      {tab === 'equipe' && <TabMinhaEquipe canManage={canManage} equipeUsuario={myEquipe} />}
-      {tab === 'efetivos' && <TabQuadroEfetivos key={quadroRefreshKey} />}
+      <div data-ferias-tour="conteudo">
+        {canManage && tab === 'bombeiros' && <TabBombeiros />}
+        {canManage && tab === 'aprovacoes' && <TabAprovacoes />}
+        {tab === 'escala-geral' && <TabEscalaGeral canManage={canManage} equipeUsuario={myEquipe} />}
+        {tab === 'escala' && <TabEscalaAnual canManage={canManage} equipeUsuario={myEquipe} />}
+        {tab === 'equipe' && <TabMinhaEquipe canManage={canManage} equipeUsuario={myEquipe} />}
+        {tab === 'efetivos' && <TabQuadroEfetivos key={quadroRefreshKey} />}
+      </div>
 
       {canManage && showCadastroManual && (
         <ModalCadastroFeriasManual
@@ -3913,6 +4029,24 @@ export function Ferias() {
           onSuccess={() => { setShowCadastroManual(false); setQuadroRefreshKey(k => k + 1); }}
         />
       )}
+
+      <button
+        type="button"
+        onClick={abrirTutorialFerias}
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-aviation-200 bg-aviation-600 text-white shadow-2xl shadow-aviation-900/30 transition-all hover:scale-105 hover:bg-aviation-500 focus:outline-none focus:ring-4 focus:ring-aviation-300/40 dark:border-aviation-400/30"
+        title="Abrir tutorial de Férias"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+      <AnimatedPageTour
+        open={showTutorial}
+        steps={feriasTourSteps}
+        stepIndex={tutorialStepIndex}
+        targetAttribute="data-ferias-tour"
+        onBack={voltarTutorialFerias}
+        onNext={avancarTutorialFerias}
+        onClose={fecharTutorialFerias}
+      />
     </PageContainer>
   );
 }

@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ClipboardCheck,
   Columns3,
+  HelpCircle,
   Loader2,
   Pencil,
   Plus,
@@ -16,6 +17,7 @@ import {
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { AlertModal } from '../../components/ui/AlertModal';
+import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import {
   CHECKLIST_TOTAL_ROWS,
@@ -55,6 +57,7 @@ type ChecklistPrintData = ChecklistDraft & {
   printLayout?: ChecklistTotalPrintLayout;
   printPages?: Array<{ rows: ChecklistTotalPrintRow[] }>;
 };
+type ChecklistTourStep = AnimatedTourStep & { formOpen?: boolean; adminOnly?: boolean };
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
 const CHECKLIST_TOTAL_MODEL_TEAM = 'MODELO FIXO';
@@ -78,6 +81,81 @@ const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 const iconButtonCls = 'inline-flex h-9 w-9 items-center justify-center rounded-xl border border-graphite-200 bg-white text-graphite-500 transition-all hover:border-graphite-300 hover:bg-graphite-50 hover:text-graphite-800 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300 dark:hover:bg-surface-hover';
 const PRINT_ROWS_PER_PAGE = 31;
+
+const CHECKLISTS_TOUR_STEPS: ChecklistTourStep[] = [
+  {
+    target: 'checklists-titulo',
+    title: 'Página de Checklists',
+    body: 'Esta página organiza os checklists operacionais que podem ser impressos ou editados conforme a permissão do usuário.',
+    detail: 'Ela serve tanto para usar o CHECK LIST TOTAL fixo quanto para criar checklists personalizados do dia a dia.',
+  },
+  {
+    target: 'checklists-stats',
+    title: 'Resumo dos registros',
+    body: 'Os cards mostram quantos checklists existem no total e quantos são quinzenais ou personalizados.',
+    detail: 'Esse resumo ajuda a perceber se o módulo está sendo usado mais para modelos fixos ou para checklists próprios.',
+  },
+  {
+    target: 'checklists-total',
+    title: 'CHECK LIST TOTAL',
+    body: 'Este bloco gera o documento fixo do sistema para a 1ª ou 2ª quinzena do mês selecionado.',
+    detail: 'Escolha mês e ano, depois clique na quinzena desejada para imprimir todos os checklists do modelo total em um único documento.',
+  },
+  {
+    target: 'checklists-total-edicao',
+    title: 'Edição do modelo fixo',
+    body: 'Administradores podem escolher qual documento do CHECK LIST TOTAL será ajustado e abrir a edição do modelo.',
+    detail: 'Essa edição altera a estrutura fixa usada na impressão, então deve ser feita com cuidado para não despadronizar o documento.',
+    adminOnly: true,
+  },
+  {
+    target: 'checklists-filtros',
+    title: 'Pesquisa, filtros e novo checklist',
+    body: 'Aqui você pesquisa por título, descrição, equipe, responsável ou período, além de filtrar por quinzenal ou personalizado.',
+    detail: 'O botão Novo Checklist cria um modelo independente, útil para controles específicos que não fazem parte do CHECK LIST TOTAL.',
+  },
+  {
+    target: 'checklists-lista',
+    title: 'Lista de checklists',
+    body: 'Cada linha mostra o título, tipo, período, quantidade de linhas e colunas, além das ações de imprimir, editar ou excluir quando permitido.',
+    detail: 'Checklists personalizados normalmente podem ser editados pelo criador; modelos fixos ficam restritos ao administrador.',
+  },
+  {
+    target: 'checklists-form-identificacao',
+    title: 'Identificação do checklist',
+    body: 'No formulário você define título, tipo, equipe responsável e quem responde pelo checklist.',
+    detail: 'Essas informações aparecem na impressão e ajudam a rastrear quem criou ou atualizou o documento.',
+    formOpen: true,
+  },
+  {
+    target: 'checklists-form-periodo',
+    title: 'Período e descrição',
+    body: 'Mês, ano e quinzena determinam o período do documento. A descrição identifica melhor a finalidade do checklist.',
+    detail: 'No modelo quinzenal, o período orienta a impressão por dias; no personalizado, ajuda a organizar o controle criado pela equipe.',
+    formOpen: true,
+  },
+  {
+    target: 'checklists-form-estrutura',
+    title: 'Colunas e linhas',
+    body: 'Em checklists personalizados você pode montar colunas de marcação ou texto e criar linhas por seção.',
+    detail: 'As linhas viram itens de verificação. As colunas definem como cada item será marcado, preenchido ou conferido na impressão.',
+    formOpen: true,
+  },
+  {
+    target: 'checklists-form-tabela',
+    title: 'Prévia da impressão',
+    body: 'A tabela mostra como o checklist ficará na impressão, com seções, quantidades, itens e campos de preenchimento.',
+    detail: 'Revise essa prévia antes de salvar para evitar itens duplicados, nomes cortados ou colunas desnecessárias.',
+    formOpen: true,
+  },
+  {
+    target: 'checklists-form-acoes',
+    title: 'Salvar ou imprimir',
+    body: 'No rodapé você cancela ou salva o checklist. O botão de impressão no topo do formulário permite conferir o documento antes do uso.',
+    detail: 'Salvar grava o modelo no sistema; imprimir apenas gera a visualização para papel ou PDF do navegador.',
+    formOpen: true,
+  },
+];
 const PRINT_LAST_PAGE_ROWS = 22;
 const PRINT_FOOTER_BLANK_ROWS = 5;
 
@@ -755,7 +833,7 @@ function ChecklistForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/55 p-3 md:p-6">
-      <div className="w-full max-w-[1500px] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-elevated">
+      <div className="w-full max-w-[1500px] overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-elevated" data-checklists-tour="checklists-form">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-graphite-200 px-5 py-4 dark:border-border-dark">
           <div>
             <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
@@ -776,7 +854,7 @@ function ChecklistForm({
         </div>
 
         <div className="space-y-5 p-5">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.9fr_0.9fr_0.9fr]">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.9fr_0.9fr_0.9fr]" data-checklists-tour="checklists-form-identificacao">
             <div>
               <label className={labelCls}>Título *</label>
               <input value={draft.titulo} onChange={e => setCampo('titulo', e.target.value)} className={inputCls} />
@@ -830,7 +908,7 @@ function ChecklistForm({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.8fr_0.7fr_0.8fr_1.2fr]">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.8fr_0.7fr_0.8fr_1.2fr]" data-checklists-tour="checklists-form-periodo">
             <div>
               <label className={labelCls}>Mês</label>
               <select
@@ -868,7 +946,7 @@ function ChecklistForm({
             </div>
           </div>
 
-          <div className={`grid grid-cols-1 gap-4 ${isModeloQuinzenal ? '' : 'xl:grid-cols-[1fr_1fr]'}`}>
+          <div className={`grid grid-cols-1 gap-4 ${isModeloQuinzenal ? '' : 'xl:grid-cols-[1fr_1fr]'}`} data-checklists-tour="checklists-form-estrutura">
             {!isModeloQuinzenal && (
               <div className="rounded-2xl border border-graphite-200 bg-white p-4 dark:border-border-dark dark:bg-surface-card">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -949,7 +1027,7 @@ function ChecklistForm({
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-graphite-200 bg-white dark:border-border-dark dark:bg-surface-card">
+          <div className="overflow-hidden rounded-2xl border border-graphite-200 bg-white dark:border-border-dark dark:bg-surface-card" data-checklists-tour="checklists-form-tabela">
             <div className="flex items-center justify-between gap-3 border-b border-graphite-200 px-4 py-3 dark:border-border-dark">
               <div>
                 <p className="text-sm font-bold text-graphite-900 dark:text-graphite-100">{mesAnoLabel(draft.payload)} · {draft.payload.quinzena}ª quinzena</p>
@@ -1032,7 +1110,7 @@ function ChecklistForm({
             </div>
           </div>
 
-          <div className="flex flex-wrap justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark">
+          <div className="flex flex-wrap justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark" data-checklists-tour="checklists-form-acoes">
             <button onClick={onCancel} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover">
               Cancelar
             </button>
@@ -1053,6 +1131,7 @@ function ChecklistForm({
 
 export function Checklists() {
   const { contexto, user } = useContextoOperacional();
+  const tutorialOrigemRef = useRef<{ formOpen: boolean; editando: Checklist | null; editingTotalDocument: ChecklistTotalPrintDocument | null; initialDraft: ChecklistDraft | undefined; scrollY: number } | null>(null);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
   const [search, setSearch] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
@@ -1070,6 +1149,8 @@ export function Checklists() {
   const [selectedTotalDocumentId, setSelectedTotalDocumentId] = useState(CHECKLIST_TOTAL_PRINT_DOCUMENTS[0]?.id || '');
   const [editingTotalDocument, setEditingTotalDocument] = useState<ChecklistTotalPrintDocument | null>(null);
   const [initialDraft, setInitialDraft] = useState<ChecklistDraft | undefined>(undefined);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
 
   async function carregar() {
     setLoading(true);
@@ -1136,10 +1217,78 @@ export function Checklists() {
 
   const canManageFixedChecklists = contexto.isAdministradorSistema;
   const currentUsername = user?.username || user?.name || '';
+  const checklistTourSteps = CHECKLISTS_TOUR_STEPS.filter(step => !step.adminOnly || canManageFixedChecklists);
+  const currentTutorialStep = checklistTourSteps[tutorialStepIndex] || checklistTourSteps[0];
+  const tutorialPrecisaFormulario = !!currentTutorialStep?.formOpen;
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    if (tutorialStepIndex < checklistTourSteps.length) return;
+    setTutorialStepIndex(Math.max(0, checklistTourSteps.length - 1));
+  }, [checklistTourSteps.length, showTutorial, tutorialStepIndex]);
+
+  useEffect(() => {
+    if (!showTutorial) return;
+    if (tutorialPrecisaFormulario) {
+      if (!formOpen) {
+        setEditando(null);
+        setEditingTotalDocument(null);
+        setInitialDraft(undefined);
+        setFormOpen(true);
+      }
+      return;
+    }
+    if (formOpen) {
+      setFormOpen(false);
+      setEditando(null);
+      setEditingTotalDocument(null);
+      setInitialDraft(undefined);
+    }
+  }, [formOpen, showTutorial, tutorialPrecisaFormulario]);
 
   function canEditChecklist(checklist: Checklist) {
     if (canManageFixedChecklists) return true;
     return checklist.tipo === 'personalizado' && checklist.createdBy === currentUsername;
+  }
+
+  function abrirTutorialChecklists() {
+    tutorialOrigemRef.current = { formOpen, editando, editingTotalDocument, initialDraft, scrollY: window.scrollY };
+    setConfirmDelete(null);
+    setTutorialStepIndex(0);
+    setShowTutorial(true);
+  }
+
+  function fecharTutorialChecklists() {
+    const origem = tutorialOrigemRef.current;
+    setShowTutorial(false);
+    setTutorialStepIndex(0);
+    if (origem) {
+      setFormOpen(origem.formOpen);
+      setEditando(origem.editando);
+      setEditingTotalDocument(origem.editingTotalDocument);
+      setInitialDraft(origem.initialDraft);
+      window.setTimeout(() => window.scrollTo({ top: origem.scrollY, behavior: 'smooth' }), 50);
+    }
+    tutorialOrigemRef.current = null;
+  }
+
+  function voltarTutorialChecklists() {
+    setTutorialStepIndex(index => Math.max(0, index - 1));
+  }
+
+  function avancarTutorialChecklists() {
+    if (tutorialStepIndex >= checklistTourSteps.length - 1) {
+      fecharTutorialChecklists();
+      return;
+    }
+    setTutorialStepIndex(index => index + 1);
+  }
+
+  function abrirNovoChecklist() {
+    setEditando(null);
+    setEditingTotalDocument(null);
+    setInitialDraft(undefined);
+    setFormOpen(true);
   }
 
   function handlePrint(data: ChecklistPrintData) {
@@ -1241,9 +1390,11 @@ export function Checklists() {
 
   return (
     <PageContainer>
-      <PageTitle icon={ClipboardCheck} title="Checklists" />
+      <div data-checklists-tour="checklists-titulo">
+        <PageTitle icon={ClipboardCheck} title="Checklists" />
+      </div>
 
-      <div className="mb-4 grid max-w-md grid-cols-3 gap-3">
+      <div className="mb-4 grid max-w-md grid-cols-3 gap-3" data-checklists-tour="checklists-stats">
         <div className="rounded-xl border border-graphite-200 bg-white p-3 text-center dark:border-border-dark dark:bg-surface-card">
           <p className="text-xl font-black text-graphite-900 dark:text-graphite-100">{stats.total}</p>
           <p className="text-[10px] font-bold uppercase text-graphite-500">Total</p>
@@ -1264,7 +1415,7 @@ export function Checklists() {
         </div>
       )}
 
-      <div className="mb-5 rounded-2xl border border-graphite-200 bg-white p-4 dark:border-border-dark dark:bg-surface-card">
+      <div className="mb-5 rounded-2xl border border-graphite-200 bg-white p-4 dark:border-border-dark dark:bg-surface-card" data-checklists-tour="checklists-total">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-graphite-900 dark:text-graphite-100">CHECK LIST TOTAL</h2>
@@ -1303,7 +1454,7 @@ export function Checklists() {
           ))}
         </div>
         {canManageFixedChecklists && (
-          <div className="mt-4 rounded-xl border border-graphite-200 bg-graphite-50 p-3 dark:border-border-dark dark:bg-surface-hover/60">
+          <div className="mt-4 rounded-xl border border-graphite-200 bg-graphite-50 p-3 dark:border-border-dark dark:bg-surface-hover/60" data-checklists-tour="checklists-total-edicao">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[260px] flex-1">
                 <label className={labelCls}>Editar documento do CHECK LIST TOTAL</label>
@@ -1332,7 +1483,7 @@ export function Checklists() {
         )}
       </div>
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-center gap-3" data-checklists-tour="checklists-filtros">
         <div className="relative min-w-[240px] flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar..." className={`${inputCls} pl-10`} />
@@ -1343,12 +1494,8 @@ export function Checklists() {
           <option value="personalizado">Personalizados</option>
         </select>
         <button
-          onClick={() => {
-            setEditando(null);
-            setEditingTotalDocument(null);
-            setInitialDraft(undefined);
-            setFormOpen(true);
-          }}
+          onClick={abrirNovoChecklist}
+          data-checklists-tour="checklists-novo"
           className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]"
         >
           <Plus className="h-4 w-4" />
@@ -1361,13 +1508,13 @@ export function Checklists() {
           <Loader2 className="h-8 w-8 animate-spin text-aviation-500" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white p-12 text-center dark:border-border-dark dark:bg-surface-card">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white p-12 text-center dark:border-border-dark dark:bg-surface-card" data-checklists-tour="checklists-lista">
           <ClipboardCheck className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhum checklist encontrado</h3>
           <p className="text-sm text-graphite-400 dark:text-graphite-500">Os registros criados aparecerão aqui.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" data-checklists-tour="checklists-lista">
           {filtered.map(checklist => {
             const canEdit = canEditChecklist(checklist);
             return (
@@ -1733,6 +1880,24 @@ export function Checklists() {
         loading={saving}
         onClose={() => setConfirmDelete(null)}
         onConfirm={handleDelete}
+      />
+
+      <button
+        type="button"
+        onClick={abrirTutorialChecklists}
+        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full border border-aviation-200 bg-aviation-600 text-white shadow-2xl shadow-aviation-900/30 transition-all hover:scale-105 hover:bg-aviation-500 focus:outline-none focus:ring-4 focus:ring-aviation-300/40 dark:border-aviation-400/30"
+        title="Abrir tutorial de Checklists"
+      >
+        <HelpCircle className="h-7 w-7" />
+      </button>
+      <AnimatedPageTour
+        open={showTutorial}
+        steps={checklistTourSteps}
+        stepIndex={tutorialStepIndex}
+        targetAttribute="data-checklists-tour"
+        onBack={voltarTutorialChecklists}
+        onNext={avancarTutorialChecklists}
+        onClose={fecharTutorialChecklists}
       />
     </PageContainer>
   );

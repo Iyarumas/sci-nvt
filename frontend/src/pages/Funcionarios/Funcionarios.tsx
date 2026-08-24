@@ -28,9 +28,43 @@ import {
 } from '../../utils/permissoes';
 import { capitalizarNome } from '../../utils/capitalize';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
+import { PageTour } from '../../components/ui/PageTour';
 
 type Tab = 'todos' | 'bombeiros' | 'apoc' | 'substituicoes';
 type SituacaoBombeiro = 'Ativo' | 'Afastado' | 'Desligado';
+
+const FUNCIONARIOS_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Funcionários',
+    body: 'Esta tela é uma consulta geral de pessoas cadastradas no sistema.',
+    detail: 'Ela junta bombeiros, APOC e situações temporárias para visualização. O cadastro completo continua nas telas Bombeiros e APOC.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Busca e filtros',
+    body: 'Pesquise por matrícula, nome ou equipe. Quando estiver vendo bombeiros, também é possível filtrar por equipe e cargo.',
+    detail: 'Esses filtros ajudam a localizar rápido uma pessoa antes de abrir o detalhe ou confirmar a situação atual dela.',
+  },
+  {
+    selector: 'main div.mb-6.flex.items-center.gap-1',
+    title: 'Abas de visualização',
+    body: 'As abas separam Todos, Bombeiros, APOC e Substituições/Afastamentos quando disponíveis.',
+    detail: 'Use Todos para visão ampla, Bombeiros para efetivo operacional, APOC para Centro de Operações Aeroportuárias e Substituições para movimentações temporárias relacionadas.',
+  },
+  {
+    selector: 'main table',
+    title: 'Tabelas de pessoas',
+    body: 'As tabelas mostram dados resumidos como matrícula, nome, nome de guerra, e-mail quando permitido, cargo, equipe, turno e situação.',
+    detail: 'Ativo, Afastado e Desligado ajudam a entender se a pessoa está disponível para as rotinas do sistema naquele momento.',
+  },
+  {
+    selector: 'main table tbody tr',
+    title: 'Detalhes do funcionário',
+    body: 'Quando o perfil tem permissão, clicar em uma linha abre os detalhes da pessoa.',
+    detail: 'O modal mostra informações pessoais e funcionais. Usuários sem permissão continuam vendo apenas a listagem reduzida.',
+  },
+];
 
 function capitalize(str: string) {
   return capitalizarNome(str);
@@ -518,6 +552,12 @@ export function Funcionarios() {
       {canViewDetails && selecionado && tipoSelecionado === 'apoc' && (
         <APOCDetailModal apoc={selecionado as APOC} onClose={() => setSelecionado(null)} />
       )}
+      <PageTour
+        steps={FUNCIONARIOS_TOUR_STEPS}
+        targetAttribute="data-funcionarios-tour"
+        title="Abrir tutorial de Funcionários"
+        detailLabel="Consulta"
+      />
     </PageContainer>
   );
 }

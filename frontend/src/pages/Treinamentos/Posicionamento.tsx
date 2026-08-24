@@ -20,12 +20,52 @@ import type { ExercicioPosicionamento, ExercicioPosicionamentoInput } from '../.
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { imprimirPdfBlob } from '../../utils/pdfPrint';
+import { PageTour } from '../../components/ui/PageTour';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const CARGOS_CRS_BA_RE = ['BA-RE', 'BA-2'] as const;
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
+
+const POSICIONAMENTO_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Exercício de posicionamento',
+    body: 'Esta página registra exercício de posicionamento para intervenção, com equipe, viaturas, funções, tempos e avaliação operacional.',
+    detail: 'O registro pode ficar como rascunho ou ser aprovado para gerar o documento/PDF.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo exercício',
+    body: 'O botão abre o formulário de posicionamento.',
+    detail: 'Preencha equipe, número/ano, data, hora, local, chefe, participantes das composições, tempos e campos de avaliação.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Filtros',
+    body: 'Pesquise e filtre por equipe e ano para encontrar exercícios já lançados.',
+    detail: 'Use os filtros para revisar rascunhos, exercícios aprovados ou registros de uma equipe específica.',
+  },
+  {
+    selector: 'main .space-y-2, main .space-y-3',
+    title: 'Cards dos exercícios',
+    body: 'Cada card mostra equipe, número, data, status e principais informações.',
+    detail: 'Ao expandir, aparecem ações para aprovar, visualizar, imprimir, editar ou excluir conforme permissão.',
+  },
+  {
+    selector: 'main [role="combobox"], main textarea',
+    title: 'Composições e avaliação',
+    body: 'No formulário, selecione os bombeiros por função para Fumaça 2, Fumaça 3, CRS e operador de comunicações.',
+    detail: 'Depois registre tempos, coordenação, comunicação, PCINC, feedbacks, resumo, acionamento, deslocamento e considerações finais.',
+  },
+  {
+    selector: 'main iframe, main canvas, main button',
+    title: 'PDF e aprovação',
+    body: 'A visualização abre o documento antes de imprimir ou gerar PDF.',
+    detail: 'Revise participantes, tempos e textos de avaliação antes de aprovar, porque a aprovação marca o exercício como final.',
+  },
+];
 
 function formatDate(d: string) {
   return formatarDataBR(d);
@@ -934,6 +974,12 @@ export default function Posicionamento() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={POSICIONAMENTO_TOUR_STEPS}
+        targetAttribute="data-posicionamento-tour"
+        title="Abrir tutorial de Posicionamento"
+        detailLabel="Exercício"
+      />
     </PageContainer>
   );
 }

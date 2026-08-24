@@ -23,8 +23,48 @@ import { ReaModal } from './ReaModal';
 import { ReaCard } from './ReaCard';
 import { hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
+import { PageTour } from '../../components/ui/PageTour';
 
 const BONA_ULTIMO_NUMERO_LEGADO = 63;
+
+const BONA_REA_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'BONA/REA',
+    body: 'Esta página reúne documentos formais de ocorrência: BONA e REA.',
+    detail: 'BONA é usado para ocorrência não aeronáutica. REA é usado para registro de emergência aeronáutica. Eles têm numeração, aprovação e geração/visualização de PDF.',
+  },
+  {
+    selector: 'main button, main select, main input',
+    title: 'Filtros da lista',
+    body: 'Alterne entre Mês/Ano e Período, filtre por tipo de documento e equipe.',
+    detail: 'Use BONA ou REA quando precisar conferir somente um tipo. O período ajuda em auditorias ou fechamento mensal.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo documento',
+    body: 'O botão Novo Documento permite escolher entre criar BONA ou REA.',
+    detail: 'Escolha BONA para ocorrência não aeronáutica e REA para emergência aeronáutica. Cada tipo abre um formulário próprio.',
+  },
+  {
+    selector: 'main .space-y-3',
+    title: 'Cards de documentos',
+    body: 'A lista mostra BONA e REA juntos, com ações de visualizar, editar, aprovar, gerar/baixar PDF e excluir conforme permissão.',
+    detail: 'Registros aprovados devem ser revisados com cuidado. A numeração e o PDF são parte do histórico formal.',
+  },
+  {
+    selector: 'main input, main textarea, main select',
+    title: 'Campos do BONA/REA',
+    body: 'Os formulários pedem data, hora, equipe, tipo, local, descrição, atuação da equipe, bombeiros envolvidos e demais campos específicos.',
+    detail: 'Preencha de forma completa porque esses dados aparecem no PDF e nos relatórios. Para BONA, confira também os bombeiros/funções puxados do efetivo operacional.',
+  },
+  {
+    selector: 'main iframe, main canvas, main button',
+    title: 'PDF e aprovação',
+    body: 'A prévia mostra o PDF antes de baixar ou imprimir.',
+    detail: 'Revise o documento antes de aprovar ou baixar. Se encontrar erro, volte para editar antes de gerar a versão final.',
+  },
+];
 
 function numeroSequencial(registro: Pick<Ocorrencia, 'numero'>, prefixo: string, ano: number): number {
   const regex = new RegExp(`^${prefixo}-(\\d+)(?:\\/${ano})?$`, 'i');
@@ -1526,6 +1566,12 @@ export function Ocorrencias() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={BONA_REA_TOUR_STEPS}
+        targetAttribute="data-bona-rea-tour"
+        title="Abrir tutorial de BONA/REA"
+        detailLabel="Documento formal"
+      />
     </PageContainer>
   );
 }

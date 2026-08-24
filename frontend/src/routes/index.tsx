@@ -43,6 +43,7 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Dashboard /> },
+      { path: 'tutorial/dia-a-dia', element: lazyPage(() => import('../pages/Tutorial/DiaADia')) },
       { path: 'cadastro/bombeiros', element: lazyPage(() => import('../pages/Bombeiros/Bombeiros')) },
       { path: 'cadastro/apoc', element: lazyPage(() => import('../pages/APOC/APOCs')) },
       { path: 'cadastro/equipamentos', element: lazyPage(() => import('../pages/Equipamentos/Equipamentos')) },

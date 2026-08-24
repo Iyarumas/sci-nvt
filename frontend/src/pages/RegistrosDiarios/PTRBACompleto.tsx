@@ -50,6 +50,7 @@ import type {
   PTRBACompletoInput,
   PTRBACompletoParticipante,
 } from '../../types/ptrbaCompleto';
+import { PageTour } from '../../components/ui/PageTour';
 
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ANOS = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - i).toString());
@@ -63,6 +64,45 @@ const EVIDENCIA_VAZIA: PTRBACompletoEvidencia = {
 const SITUACOES_TOOLTIP = PTRBA_COMPLETO_SITUACOES
   .map(situacao => `${situacao} = ${PTRBA_COMPLETO_SITUACAO_DESCRICOES[situacao] || situacao}`)
   .join('\n');
+
+const PTRBA_COMPLETO_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'PTR-BA completo',
+    body: 'Esta página registra o PTR-BA completo do plantão, com efetivo, instruções e evidências.',
+    detail: 'Diferente do PTR-BA por instrução, aqui o documento reúne o conjunto completo do dia e pode gerar PDF com as informações e imagens.',
+  },
+  {
+    selector: 'main select',
+    title: 'Filtros de registros',
+    body: 'Filtre por ano, mês e equipe para encontrar PTR-BAs completos já feitos.',
+    detail: 'Use a lista para abrir, baixar PDF, editar ou excluir registros conforme sua permissão.',
+  },
+  {
+    selector: 'main button',
+    title: 'Novo PTR-BA completo',
+    body: 'O botão abre o formulário completo do PTR-BA.',
+    detail: 'O sistema pode usar a escala diária, trocas e vigências para ajudar a montar participantes e informações do plantão.',
+  },
+  {
+    selector: 'main input, main textarea, main select',
+    title: 'Dados do plantão',
+    body: 'No formulário, preencha aeroporto, data, equipe, horários, participantes, situações e observações.',
+    detail: 'Confira nomes e funções porque o PDF final depende exatamente desses campos.',
+  },
+  {
+    selector: 'main textarea, main img, main input[type="file"]',
+    title: 'Evidências e instruções',
+    body: 'As evidências registram assuntos, horários, fotos e descrições das instruções do plantão.',
+    detail: 'Cada evidência deve representar uma instrução real. Fotos erradas ou ausentes deixam o documento final incompleto.',
+  },
+  {
+    selector: 'main .space-y-3, main table',
+    title: 'Visualizar e baixar PDF',
+    body: 'Nos cards, use visualizar para revisar o registro e baixar para gerar o PDF.',
+    detail: 'Antes de baixar, abra a visualização para conferir se o conteúdo e as evidências estão corretos.',
+  },
+];
 type CampoCompartilhadoEvidencia = Exclude<keyof PTRBACompletoEvidencia, 'imagem'>;
 type InstrucaoPTRNumero = 1 | 2 | 3;
 type InstrucaoPTRDaEscala = {
@@ -1121,6 +1161,12 @@ export function PTRBACompletoPage() {
           </div>
         </div>
       )}
+      <PageTour
+        steps={PTRBA_COMPLETO_TOUR_STEPS}
+        targetAttribute="data-ptrba-completo-tour"
+        title="Abrir tutorial de PTR-BA Completo"
+        detailLabel="PDF"
+      />
     </PageContainer>
   );
 }

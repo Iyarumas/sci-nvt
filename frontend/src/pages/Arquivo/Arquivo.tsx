@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { PageTour } from '../../components/ui/PageTour';
 import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
 import type { Document, DocumentFill } from '../../types/document';
 import { SOURCE_MODULE_OPTIONS } from '../../types/document';
@@ -70,6 +71,45 @@ function getStatusLabel(status: string) {
 function fmt(d: string) {
   return formatarDataBR(d);
 }
+
+const ARQUIVO_TOUR_STEPS = [
+  {
+    selector: 'main h1',
+    title: 'Arquivo do sistema',
+    body: 'Esta tela reúne documentos que já foram arquivados, separados por tipo quando você acessa uma categoria específica pela sidebar.',
+    detail: 'Aqui aparecem trocas, férias, EPIs, certificações, ocorrências, LRO, PTR-BA, treinamentos, checklists e outros documentos que já saíram do fluxo principal. É uma área de consulta e conferência histórica.',
+  },
+  {
+    selector: 'main a',
+    title: 'Atalhos para a origem',
+    body: 'Quando disponível, os atalhos levam de volta ao módulo que gera aquele documento, como Trocas ou LRO.',
+    detail: 'Use esses atalhos quando perceber que precisa criar um novo registro, revisar a tela de origem ou conferir por que determinado documento foi arquivado.',
+  },
+  {
+    selector: 'main input, main select',
+    title: 'Filtros do arquivo',
+    body: 'A busca pesquisa dentro dos dados preenchidos do documento. Os filtros de ano, mês, status, tipo e equipe reduzem a lista para encontrar o registro correto.',
+    detail: 'O filtro de status ajuda a separar assinado, aguardando, cancelado e rascunho. O filtro de equipe é importante para localizar documentos operacionais de Alfa, Bravo, Charlie, Delta ou Ferista.',
+  },
+  {
+    selector: 'main .space-y-2',
+    title: 'Lista de documentos',
+    body: 'Cada linha representa um documento arquivado. O ícone e a cor indicam o módulo, enquanto o título e subtítulo mostram as informações principais.',
+    detail: 'Em Trocas, por exemplo, a linha mostra quem solicitou e quem foi chamado. Em LRO aparece equipe e data. Em PTR-BA aparece assunto/equipe. Isso ajuda a conferir sem abrir cada documento.',
+  },
+  {
+    selector: 'main a[title], main button[title]',
+    title: 'Ações e links',
+    body: 'Quando o documento tem link de assinatura, o ícone abre o Autentique. Outras ações podem levar para a tela de detalhes ou origem do documento.',
+    detail: 'Visualizar o arquivo não significa poder alterar. A gestão do arquivo fica restrita a perfis autorizados; BA-CE e BA-LR podem visualizar, mas alterações ficam para Admin/GS quando a regra do sistema exigir.',
+  },
+  {
+    selector: 'main',
+    title: 'Quando usar o Arquivo',
+    body: 'Use esta página para auditoria, impressão posterior, conferência de histórico e localização de documentos já concluídos ou arquivados.',
+    detail: 'Se o documento ainda estiver em preenchimento ou revisão, procure a tela de origem. O Arquivo é o lugar certo quando o registro já saiu do fluxo ativo.',
+  },
+];
 
 function getCardInfo(doc: Document, fill: DocumentFill): { titulo: string; subtitulo: string; cor: string; icon: typeof FileText } {
   const data = (fill.filled_data || {}) as Record<string, string>;
@@ -270,6 +310,12 @@ export default function Arquivo() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-aviation-500" />
         </div>
+        <PageTour
+          steps={ARQUIVO_TOUR_STEPS}
+          targetAttribute="data-arquivo-tour"
+          title="Abrir tutorial do Arquivo"
+          detailLabel="Como usar esta página"
+        />
       </PageContainer>
     );
   }
@@ -283,6 +329,12 @@ export default function Arquivo() {
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Acesso Restrito</h3>
           <p className="text-sm text-graphite-400 dark:text-graphite-500">Apenas Administradores, GS, BA-CE e BA-LR podem visualizar o arquivo.</p>
         </div>
+        <PageTour
+          steps={ARQUIVO_TOUR_STEPS}
+          targetAttribute="data-arquivo-tour"
+          title="Abrir tutorial do Arquivo"
+          detailLabel="Como usar esta página"
+        />
       </PageContainer>
     );
   }
@@ -409,6 +461,13 @@ export default function Arquivo() {
           })}
         </div>
       )}
+
+      <PageTour
+        steps={ARQUIVO_TOUR_STEPS}
+        targetAttribute="data-arquivo-tour"
+        title="Abrir tutorial do Arquivo"
+        detailLabel="Como usar esta página"
+      />
     </PageContainer>
   );
 }

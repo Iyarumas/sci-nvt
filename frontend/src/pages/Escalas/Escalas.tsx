@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Calendar } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -8,7 +9,18 @@ import { EscalaMensal } from './EscalaMensal';
 type Tab = 'diaria' | 'mensal';
 
 export function Escalas() {
-  const [tab, setTab] = useState<Tab>('diaria');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'mensal' ? 'mensal' : 'diaria';
+  const [tab, setTab] = useState<Tab>(initialTab);
+
+  useEffect(() => {
+    setTab(searchParams.get('tab') === 'mensal' ? 'mensal' : 'diaria');
+  }, [searchParams]);
+
+  function handleTabChange(nextTab: Tab) {
+    setTab(nextTab);
+    setSearchParams({ tab: nextTab });
+  }
 
   return (
     <PageContainer>
@@ -19,7 +31,7 @@ export function Escalas() {
       <div className="mb-6 border-b border-graphite-200 dark:border-border-dark">
         <div className="flex gap-6">
           <button
-            onClick={() => setTab('diaria')}
+            onClick={() => handleTabChange('diaria')}
             className={`pb-3 text-sm font-medium transition-colors relative ${
               tab === 'diaria'
                 ? 'text-aviation-600 dark:text-aviation-400'
@@ -32,7 +44,7 @@ export function Escalas() {
             )}
           </button>
           <button
-            onClick={() => setTab('mensal')}
+            onClick={() => handleTabChange('mensal')}
             className={`pb-3 text-sm font-medium transition-colors relative ${
               tab === 'mensal'
                 ? 'text-aviation-600 dark:text-aviation-400'

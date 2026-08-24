@@ -23,6 +23,7 @@ import { useDebounce } from '../../hooks/useDebounce';
 import { useAuth } from '../../context/AuthContext';
 import {
   canAcessarDadosPessoais,
+  type AuthUserPermissao,
   podeVerDadosPessoaisBase,
   resolverContextoOperacional,
 } from '../../utils/permissoes';
@@ -61,8 +62,8 @@ const FUNCIONARIOS_TOUR_STEPS = [
   {
     selector: 'main table tbody tr',
     title: 'Detalhes do funcionário',
-    body: 'Quando o perfil tem permissão, clicar em uma linha abre os detalhes da pessoa.',
-    detail: 'O modal mostra informações pessoais e funcionais. Usuários sem permissão continuam vendo apenas a listagem reduzida.',
+    body: 'Clicar em uma linha de bombeiro abre os detalhes operacionais da pessoa.',
+    detail: 'CPF, RG, número da CNH e dados pessoais completos aparecem somente para admin, desenvolvedor, GS e Embaixador.',
   },
 ];
 
@@ -77,6 +78,13 @@ function labelCargo(valor: string) {
 
 function formatDate(d: string) {
   return formatarDataBR(d);
+}
+
+function podeVerDetalhesCompletosBase(user: AuthUserPermissao): boolean {
+  return (
+    podeVerDadosPessoaisBase(user) ||
+    (user?.pessoa?.personType === 'bombeiro' && user.pessoa.equipe === 'Embaixador')
+  );
 }
 
 function SituacaoBadge({ situacao }: { situacao: SituacaoBombeiro }) {
@@ -117,16 +125,26 @@ function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value
   );
 }
 
-function BombeiroDetailModal({ bombeiro, situacao, onClose }: { bombeiro: Bombeiro; situacao: SituacaoBombeiro; onClose: () => void }) {
+function BombeiroDetailModal({
+  bombeiro,
+  situacao,
+  fullAccess,
+  onClose,
+}: {
+  bombeiro: Bombeiro;
+  situacao: SituacaoBombeiro;
+  fullAccess: boolean;
+  onClose: () => void;
+}) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 pt-10 pb-10" onClick={onClose}>
-      <div className="relative w-full max-w-2xl rounded-2xl bg-white/95 shadow-2xl shadow-black/5 backdrop-blur-sm dark:bg-surface-elevated/95 dark:shadow-black/20" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+      <div className="relative max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-white/95 shadow-2xl shadow-black/5 backdrop-blur-sm dark:bg-surface-elevated/95 dark:shadow-black/20" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-graphite-200 px-6 py-4 dark:border-border-dark">
           <div className="flex items-center gap-3">
             {bombeiro.foto ? (
-              <img src={bombeiro.foto} alt="" className="h-10 w-10 rounded-full object-cover" />
+              <img src={bombeiro.foto} alt="" className="h-16 w-16 rounded-full object-cover ring-2 ring-aviation-500/30" />
             ) : (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-aviation-600 text-sm font-bold text-white">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-aviation-600 text-sm font-bold text-white">
                 {bombeiro.nomeGuerra.charAt(0)}
               </div>
             )}
@@ -142,14 +160,21 @@ function BombeiroDetailModal({ bombeiro, situacao, onClose }: { bombeiro: Bombei
 
         <div className="px-6 py-5 space-y-6">
           <div>
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Informações Pessoais</h3>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-              <InfoRow icon={Mail} label="E-mail" value={bombeiro.email} />
-              <InfoRow icon={IdCard} label="CPF" value={bombeiro.cpf} />
-              <InfoRow icon={IdCard} label="RG" value={bombeiro.rg} />
-              <InfoRow icon={Car} label="CNH" value={bombeiro.cnhNumero} />
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
+              {fullAccess ? 'Informações Pessoais' : 'Informações Operacionais'}
+            </h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {fullAccess && (
+                <>
+                  <InfoRow icon={Mail} label="E-mail" value={bombeiro.email} />
+                  <InfoRow icon={IdCard} label="CPF" value={bombeiro.cpf} />
+                  <InfoRow icon={IdCard} label="RG" value={bombeiro.rg} />
+                  <InfoRow icon={Car} label="Número da CNH" value={bombeiro.cnhNumero} />
+                </>
+              )}
               <InfoRow icon={Car} label="Cat. CNH" value={bombeiro.cnhCategoria} />
               <InfoRow icon={Calendar} label="Validade CNH" value={formatDate(bombeiro.cnhValidade)} />
+              <InfoRow icon={IdCard} label="Validade Credencial" value={formatDate(bombeiro.credencialValidade)} />
               <InfoRow icon={Droplets} label="Tipo Sanguíneo" value={bombeiro.tipoSanguineo} />
             </div>
           </div>
@@ -158,12 +183,16 @@ function BombeiroDetailModal({ bombeiro, situacao, onClose }: { bombeiro: Bombei
 
           <div>
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Dados Funcionais</h3>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <InfoRow icon={Hash} label="Matrícula MMS" value={bombeiro.matricula} />
               <InfoRow icon={User} label="Nome de Guerra" value={capitalize(bombeiro.nomeGuerra)} />
-              <InfoRow icon={Calendar} label="Nascimento" value={formatDate(bombeiro.dataNascimento)} />
-              <InfoRow icon={Calendar} label="Idade" value={String(bombeiro.idade)} />
-              <InfoRow icon={Calendar} label="Admissão" value={formatDate(bombeiro.dataAdmissao)} />
+              {fullAccess && (
+                <>
+                  <InfoRow icon={Calendar} label="Nascimento" value={formatDate(bombeiro.dataNascimento)} />
+                  <InfoRow icon={Calendar} label="Idade" value={String(bombeiro.idade || '')} />
+                  <InfoRow icon={Calendar} label="Admissão" value={formatDate(bombeiro.dataAdmissao)} />
+                </>
+              )}
               <InfoRow icon={Briefcase} label="Cargo" value={labelCargo(bombeiro.cargo)} />
               <InfoRow icon={Shield} label="Equipe" value={bombeiro.equipe} />
               <InfoRow icon={Clock} label="Turno" value={bombeiro.turno} />
@@ -171,7 +200,7 @@ function BombeiroDetailModal({ bombeiro, situacao, onClose }: { bombeiro: Bombei
             </div>
           </div>
 
-          {bombeiro.dataDesligamento && (
+          {fullAccess && bombeiro.dataDesligamento && (
             <>
               <div className="border-t border-graphite-200 dark:border-border-dark" />
               <div>
@@ -237,7 +266,7 @@ export function Funcionarios() {
   const [filterCargo, setFilterCargo] = useState('');
   const [selecionado, setSelecionado] = useState<Bombeiro | APOC | null>(null);
   const [tipoSelecionado, setTipoSelecionado] = useState<'bombeiro' | 'apoc'>('bombeiro');
-  const [canViewDetails, setCanViewDetails] = useState(() => podeVerDadosPessoaisBase(user));
+  const [canViewFullDetails, setCanViewFullDetails] = useState(() => podeVerDetalhesCompletosBase(user));
 
   const [allBombeiros, setAllBombeiros] = useState<Bombeiro[]>([]);
   const [allApocs, setAllApocs] = useState<APOC[]>([]);
@@ -249,14 +278,14 @@ export function Funcionarios() {
 
   useEffect(() => {
     let cancelled = false;
-    setCanViewDetails(podeVerDadosPessoaisBase(user));
+    setCanViewFullDetails(podeVerDetalhesCompletosBase(user));
 
     resolverContextoOperacional(user)
       .then(contexto => {
-        if (!cancelled) setCanViewDetails(canAcessarDadosPessoais(contexto));
+        if (!cancelled) setCanViewFullDetails(canAcessarDadosPessoais(contexto) || contexto.equipe === 'Embaixador');
       })
       .catch(() => {
-        if (!cancelled) setCanViewDetails(podeVerDadosPessoaisBase(user));
+        if (!cancelled) setCanViewFullDetails(podeVerDetalhesCompletosBase(user));
       });
 
     return () => { cancelled = true; };
@@ -265,33 +294,33 @@ export function Funcionarios() {
   useEffect(() => {
     async function load() {
       const [bombeirosData, substituicoesData] = await Promise.all([
-        canViewDetails ? listarBombeiros() : listarBombeirosPublico(),
+        canViewFullDetails ? listarBombeiros() : listarBombeirosPublico(),
         listarSubstituicoesTemporarias(),
       ]);
       setAllBombeiros(bombeirosData);
       setSubstituicoes(substituicoesData);
     }
     load();
-  }, [canViewDetails]);
+  }, [canViewFullDetails]);
 
   useEffect(() => {
     async function load() {
-      setAllApocs(await (canViewDetails ? listarAPOCs() : listarAPOCsPublico()));
+      setAllApocs(await (canViewFullDetails ? listarAPOCs() : listarAPOCsPublico()));
     }
     load();
-  }, [canViewDetails]);
+  }, [canViewFullDetails]);
 
   useEffect(() => {
     async function load() {
       let lista = debouncedTermo
-        ? await (canViewDetails ? buscarBombeiro(debouncedTermo) : buscarBombeiroPublico(debouncedTermo))
+        ? await (canViewFullDetails ? buscarBombeiro(debouncedTermo) : buscarBombeiroPublico(debouncedTermo))
         : allBombeiros;
       if (filterEquipe) lista = lista.filter(b => b.equipe === filterEquipe);
       if (filterCargo) lista = lista.filter(b => b.cargo === filterCargo);
       setBombeiros(lista);
     }
     load();
-  }, [debouncedTermo, filterEquipe, filterCargo, allBombeiros, canViewDetails]);
+  }, [debouncedTermo, filterEquipe, filterCargo, allBombeiros, canViewFullDetails]);
 
   useEffect(() => {
     async function load() {
@@ -299,10 +328,10 @@ export function Funcionarios() {
         setApocs(allApocs);
         return;
       }
-      setApocs(await (canViewDetails ? buscarAPOC(debouncedTermo) : buscarAPOCPublico(debouncedTermo)));
+      setApocs(await (canViewFullDetails ? buscarAPOC(debouncedTermo) : buscarAPOCPublico(debouncedTermo)));
     }
     load();
-  }, [debouncedTermo, allApocs, canViewDetails]);
+  }, [debouncedTermo, allApocs, canViewFullDetails]);
 
   const filteredBombeiros = tab === 'apoc' ? [] : bombeiros;
   const filteredApocs = tab === 'bombeiros' ? [] : apocs;
@@ -327,13 +356,12 @@ export function Funcionarios() {
   }
 
   function handleSelectBombeiro(b: Bombeiro) {
-    if (!canViewDetails) return;
     setSelecionado(b);
     setTipoSelecionado('bombeiro');
   }
 
   function handleSelectApoc(a: APOC) {
-    if (!canViewDetails) return;
+    if (!canViewFullDetails) return;
     setSelecionado(a);
     setTipoSelecionado('apoc');
   }
@@ -443,7 +471,7 @@ export function Funcionarios() {
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Matrícula</th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Nome</th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Nome de Guerra</th>
-                      {canViewDetails && <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">E-mail</th>}
+                      {canViewFullDetails && <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">E-mail</th>}
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Cargo</th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Equipe</th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Turno</th>
@@ -456,12 +484,8 @@ export function Funcionarios() {
                       return (
                         <tr
                           key={b.id}
-                          onClick={canViewDetails ? () => handleSelectBombeiro(b) : undefined}
-                          className={`border-b border-graphite-100 transition-colors dark:border-border-dark ${
-                            canViewDetails
-                              ? 'cursor-pointer hover:bg-aviation-50/50 dark:hover:bg-aviation-900/20'
-                              : 'cursor-default'
-                          }`}
+                          onClick={() => handleSelectBombeiro(b)}
+                          className="cursor-pointer border-b border-graphite-100 transition-colors hover:bg-aviation-50/50 dark:border-border-dark dark:hover:bg-aviation-900/20"
                         >
                           <td className="px-4 py-3 font-medium text-graphite-900 dark:text-graphite-100">{b.matricula}</td>
                           <td className="px-4 py-3">
@@ -473,7 +497,7 @@ export function Funcionarios() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{capitalize(b.nomeGuerra)}</td>
-                          {canViewDetails && <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{b.email || '-'}</td>}
+                          {canViewFullDetails && <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{b.email || '-'}</td>}
                           <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{labelCargo(b.cargo)}</td>
                           <td className="px-4 py-3">
                             <span className="inline-flex rounded-full bg-aviation-50 px-2.5 py-0.5 text-xs font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">
@@ -509,7 +533,7 @@ export function Funcionarios() {
                     <tr className="border-b border-graphite-200 bg-graphite-50 text-left dark:border-border-dark dark:bg-surface-card">
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Nome de Guerra</th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Nome Completo</th>
-                      {canViewDetails && <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">E-mail</th>}
+                      {canViewFullDetails && <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">E-mail</th>}
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Função</th>
                     </tr>
                   </thead>
@@ -517,16 +541,16 @@ export function Funcionarios() {
                     {filteredApocs.map(a => (
                       <tr
                         key={a.id}
-                        onClick={canViewDetails ? () => handleSelectApoc(a) : undefined}
+                        onClick={canViewFullDetails ? () => handleSelectApoc(a) : undefined}
                         className={`border-b border-graphite-100 transition-colors dark:border-border-dark ${
-                          canViewDetails
+                          canViewFullDetails
                             ? 'cursor-pointer hover:bg-aviation-50/50 dark:hover:bg-aviation-900/20'
                             : 'cursor-default'
                         }`}
                       >
                         <td className="px-4 py-3 font-medium text-graphite-900 dark:text-graphite-100">{capitalize(a.nomeGuerra)}</td>
                         <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{capitalize(a.nomeCompleto)}</td>
-                        {canViewDetails && <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{a.email}</td>}
+                        {canViewFullDetails && <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{a.email}</td>}
                         <td className="px-4 py-3">
                           <span className="inline-flex rounded-full bg-aviation-50 px-2.5 py-0.5 text-xs font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">
                             {a.funcao}
@@ -542,14 +566,15 @@ export function Funcionarios() {
         </div>
       )}
 
-      {canViewDetails && selecionado && tipoSelecionado === 'bombeiro' && (
+      {selecionado && tipoSelecionado === 'bombeiro' && (
         <BombeiroDetailModal
           bombeiro={selecionado as Bombeiro}
           situacao={situacaoBombeiro(selecionado as Bombeiro)}
+          fullAccess={canViewFullDetails}
           onClose={() => setSelecionado(null)}
         />
       )}
-      {canViewDetails && selecionado && tipoSelecionado === 'apoc' && (
+      {canViewFullDetails && selecionado && tipoSelecionado === 'apoc' && (
         <APOCDetailModal apoc={selecionado as APOC} onClose={() => setSelecionado(null)} />
       )}
       <PageTour

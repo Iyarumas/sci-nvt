@@ -290,7 +290,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   ├── src/
 │   │   ├── App.tsx         # Provider hierarchy (Auth → Theme → Sidebar → Router)
 │   │   ├── main.tsx        # Entry point
-│   │   ├── components/     # chat, documentos, layout, ui (inclui AnimatedPageTour/PageTour para tutoriais por tela e DailyOperationsTutorial para atalho da rotina do plantão)
+│   │   ├── components/     # chat, documentos, layout, ui (inclui AnimatedPageTour/PageTour, DailyOperationsTutorial e ChefeVencimentosAlert)
 │   │   ├── context/        # Auth, GlobalAlert, Theme, Sidebar
 │   │   ├── data/           # Dados estáticos
 │   │   ├── hooks/          # Hooks compartilhados

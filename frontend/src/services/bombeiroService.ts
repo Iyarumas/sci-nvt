@@ -2,7 +2,7 @@ import type { Bombeiro } from '../types/bombeiro';
 import { supabase } from '../lib/supabase';
 
 const TABLE = 'bombeiros';
-const PUBLIC_COLUMNS = 'id, matricula, nome_completo, nome_guerra, cargo, equipe, turno, idade, foto, data_desligamento, created_at, updated_at';
+const PUBLIC_COLUMNS = 'id, matricula, nome_completo, nome_guerra, cargo, equipe, turno, foto, cnh_categoria, cnh_validade, credencial_validade, tipo_sanguineo, data_desligamento, created_at, updated_at';
 
 function getDb() {
   if (!supabase) throw new Error('Supabase não configurado. Verifique as credenciais no arquivo .env');

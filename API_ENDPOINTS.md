@@ -144,12 +144,12 @@ Base URL local: `http://localhost:3333/api`
 ### listarBombeirosPublico
 
 **Método HTTP:** GET
-**REST equivalência:** `GET /rest/v1/bombeiros?select=id,matricula,nome_completo,nome_guerra,cargo,equipe,turno,foto,data_desligamento,created_at,updated_at&order=created_at.desc`
+**REST equivalência:** `GET /rest/v1/bombeiros?select=id,matricula,nome_completo,nome_guerra,cargo,equipe,turno,foto,cnh_categoria,cnh_validade,credencial_validade,tipo_sanguineo,data_desligamento,created_at,updated_at&order=created_at.desc`
 **Query Params:** `equipe?: string`, `cargo?: string`
 **Request Body:** —
 **Response:** `Bombeiro[]` com campos pessoais sensíveis preenchidos como vazio no mapper
 **Estado:** ✅ OK
-**Uso:** listagem geral de funcionários para usuários sem permissão de dados pessoais.
+**Uso:** listagem geral de funcionários para usuários sem permissão de dados pessoais, incluindo dados operacionais mínimos do modal limitado.
 
 ---
 
@@ -167,12 +167,12 @@ Base URL local: `http://localhost:3333/api`
 ### buscarBombeiroPublico
 
 **Método HTTP:** GET
-**REST equivalência:** `GET /rest/v1/bombeiros?select=id,matricula,nome_completo,nome_guerra,cargo,equipe,turno,foto,data_desligamento,created_at,updated_at&or=(nome_completo.ilike.%termo%,nome_guerra.ilike.%termo%,matricula.ilike.%termo%,equipe.ilike.%termo%)`
+**REST equivalência:** `GET /rest/v1/bombeiros?select=id,matricula,nome_completo,nome_guerra,cargo,equipe,turno,foto,cnh_categoria,cnh_validade,credencial_validade,tipo_sanguineo,data_desligamento,created_at,updated_at&or=(nome_completo.ilike.%termo%,nome_guerra.ilike.%termo%,matricula.ilike.%termo%,equipe.ilike.%termo%)`
 **Query Params:** `termo: string`
 **Request Body:** —
 **Response:** `Bombeiro[]` com campos pessoais sensíveis preenchidos como vazio no mapper
 **Estado:** ✅ OK
-**Uso:** busca pública na aba Funcionários > Todos, sem CPF/e-mail/RG/CNH.
+**Uso:** busca pública na aba Funcionários > Todos, sem CPF/e-mail/RG/número da CNH.
 
 ---
 
@@ -1076,6 +1076,8 @@ GET com filtro `ativa=true`. ✅ OK
 ### listarMensagens / mensagensGerais / mensagensPrivadas / conversaCom / contarNaoLidas
 
 ✅ OK  
+
+`mensagensGerais`, `mensagensPrivadas` e `conversaCom` retornam em ordem cronológica crescente para exibição direta no painel de chat.
 
 ### enviarMensagem
 

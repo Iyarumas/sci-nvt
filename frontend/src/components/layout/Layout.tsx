@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { useSidebar } from '../../hooks/useSidebar';
+import { ChefeVencimentosAlert } from '../ui/ChefeVencimentosAlert';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
@@ -19,6 +20,7 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      <ChefeVencimentosAlert />
     </div>
   );
 }

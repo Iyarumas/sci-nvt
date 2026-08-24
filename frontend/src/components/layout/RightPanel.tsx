@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth, type UserRole, ROLE_LABELS } from '../../context/AuthContext';
 import { listarBombeiros, listarBombeirosResumido } from '../../services/bombeiroService';
+import { listarUsuarios } from '../../services/usuarioService';
 import {
   mensagensGerais, conversaCom, enviarMensagem, marcarLida, contarNaoLidas,
 } from '../../services/chatService';
@@ -17,34 +18,11 @@ import type { Notificacao } from '../../services/notificacaoService';
 import type { Equipe } from '../../types/bombeiro';
 import { formatarDataBR } from '../../utils/datas';
 
-const USERS_KEY = 'sescinc-users';
-
-interface StoredUser {
-  name: string;
-  role: UserRole;
-  previousRole?: UserRole;
-}
-
-function getStoredUsers(): Record<string, StoredUser> {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
 interface ChatUser {
   username: string;
   name: string;
   role: UserRole;
   previousRole?: UserRole;
-}
-
-function getChatUsers(currentUsername: string): ChatUser[] {
-  const users = getStoredUsers();
-  return Object.entries(users)
-    .filter(([key]) => key !== currentUsername)
-    .map(([key, u]) => ({ username: key, name: u.name, role: u.role, previousRole: u.previousRole }));
 }
 
 const PRESENCE_KEY = 'sescinc-presence';
@@ -113,6 +91,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
   const [busca, setBusca] = useState('');
   const [conversaComUser, setConversaComUser] = useState<string | null>(null);
   const [conversaComNome, setConversaComNome] = useState('');
+  const [sending, setSending] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -124,7 +103,25 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setChatUsers(getChatUsers(username));
+    async function carregarUsuariosChat() {
+      try {
+        const usuarios = await listarUsuarios();
+        setChatUsers(usuarios
+          .filter(u => u.username && u.username !== username)
+          .map(u => ({
+            username: u.username,
+            name: u.name || u.username,
+            role: u.role || 'sem_funcao',
+            previousRole: u.previousRole,
+          })));
+      } catch (error) {
+        console.warn('Não foi possível carregar os contatos do chat.', error);
+        setChatUsers([]);
+      }
+    }
+
+    carregarUsuariosChat();
+
     async function carregarEquipes() {
       try {
         const data = await listarBombeirosResumido();
@@ -203,18 +200,28 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
     }
   }, [conversaComUser, username]);
 
-  function handleSend() {
-    if (!msg.trim()) return;
-    enviarMensagem({
-      de: username,
-      deNome: user?.name || username,
-      para: conversaComUser,
-      paraNome: conversaComNome || null,
-      texto: msg.trim(),
-    });
+  async function handleSend() {
+    const texto = msg.trim();
+    if (!texto || !username || sending) return;
+
+    setSending(true);
     setMsg('');
-    setRefresh(r => r + 1);
-    inputRef.current?.focus();
+    try {
+      await enviarMensagem({
+        de: username,
+        deNome: user?.name || username,
+        para: conversaComUser,
+        paraNome: conversaComNome || null,
+        texto,
+      });
+      setRefresh(r => r + 1);
+    } catch (error) {
+      console.warn('Não foi possível enviar a mensagem.', error);
+      setMsg(texto);
+    } finally {
+      setSending(false);
+      inputRef.current?.focus();
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -463,7 +470,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                       rows={1}
                       className="min-h-[40px] max-h-24 flex-1 resize-none rounded-xl border border-border-dark bg-surface-card px-4 py-2.5 text-[13px] text-graphite-100 placeholder-graphite-600 outline-none transition-all focus:border-aviation-500/50 focus:ring-1 focus:ring-aviation-500/20"
                     />
-                    <button onClick={handleSend} disabled={!msg.trim()}
+                    <button onClick={handleSend} disabled={!msg.trim() || sending || !username}
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aviation-600 text-white transition-all hover:bg-aviation-500 disabled:opacity-20 disabled:cursor-not-allowed active:scale-95 shadow-lg shadow-aviation-600/20">
                       <Send className="h-4 w-4" />
                     </button>
@@ -528,7 +535,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                     rows={1}
                     className="min-h-[40px] max-h-24 flex-1 resize-none rounded-xl border border-border-dark bg-surface-card px-4 py-2.5 text-[13px] text-graphite-100 placeholder-graphite-600 outline-none transition-all focus:border-aviation-500/50 focus:ring-1 focus:ring-aviation-500/20"
                   />
-                  <button onClick={handleSend} disabled={!msg.trim()}
+                  <button onClick={handleSend} disabled={!msg.trim() || sending || !username}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aviation-600 text-white transition-all hover:bg-aviation-500 disabled:opacity-20 disabled:cursor-not-allowed active:scale-95 shadow-lg shadow-aviation-600/20">
                     <Send className="h-4 w-4" />
                   </button>

@@ -39,14 +39,14 @@ export async function listarMensagens(): Promise<ChatMensagem[]> {
 
 export async function mensagensGerais(): Promise<ChatMensagem[]> {
   const db = getDb();
-  const { data, error } = await db.from(TABLE).select('*').is('para', null).order('created_at', { ascending: false });
+  const { data, error } = await db.from(TABLE).select('*').is('para', null).order('created_at', { ascending: true });
   if (error) handleSupabaseError(error);
   return (data || []).map(rowToMensagem);
 }
 
 export async function mensagensPrivadas(usuario: string): Promise<ChatMensagem[]> {
   const db = getDb();
-  const { data, error } = await db.from(TABLE).select('*').or(`de.eq.${usuario},para.eq.${usuario}`).order('created_at', { ascending: false });
+  const { data, error } = await db.from(TABLE).select('*').or(`de.eq.${usuario},para.eq.${usuario}`).order('created_at', { ascending: true });
   if (error) handleSupabaseError(error);
   return (data || []).map(rowToMensagem);
 }

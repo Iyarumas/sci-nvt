@@ -58,7 +58,7 @@ export interface StoredUser {
 
 const USERS_KEY = 'sescinc-users';
 const SESSION_KEY = 'sescinc-session';
-const IDLE_TIMEOUT = 10 * 60 * 1000;
+const IDLE_TIMEOUT = 20 * 60 * 1000;
 
 function getStoredUsers(): Record<string, StoredUser> {
   try {

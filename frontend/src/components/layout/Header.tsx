@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import {
   Search,
   Bell,
@@ -217,11 +218,12 @@ export function Header() {
         </div>
       </div>
 
-      {rightPanelOpen && (
+      {rightPanelOpen && createPortal(
         <RightPanel
           onClose={() => setRightPanelOpen(false)}
           openTab={rightPanelTab}
-        />
+        />,
+        document.body,
       )}
     </header>
   );

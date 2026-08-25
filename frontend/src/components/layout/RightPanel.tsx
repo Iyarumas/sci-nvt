@@ -54,6 +54,14 @@ function getOnlineUsers(): Set<string> {
   }
 }
 
+function StatusDot({ online, className = '' }: { online: boolean; className?: string }) {
+  return (
+    <span
+      className={`absolute rounded-full border-2 border-graphite-950 ${online ? 'bg-green-500' : 'bg-red-500'} ${className}`}
+    />
+  );
+}
+
 type RightTab = 'chat' | 'notificacoes' | 'contatos';
 type ChatSubTab = 'geral' | 'privado';
 
@@ -253,13 +261,14 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
   }
 
   const mensagensAtuais = chatSubTab === 'geral' ? gerais : privadas;
+  const conversaOnline = conversaComUser ? onlineUsers.has(conversaComUser) : false;
 
   return (
-    <div className="fixed right-0 top-0 z-50 flex h-screen justify-end" onClick={onClose}>
+    <div className="fixed right-0 top-0 z-[90] flex h-screen justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30" />
       <div
         onClick={e => e.stopPropagation()}
-        className="relative flex h-screen w-[360px] flex-col bg-graphite-950 border-l border-white/10 shadow-2xl shadow-black/60 animate-slideInRight"
+        className="relative flex h-screen w-[380px] max-w-[calc(100vw-0.75rem)] flex-col bg-graphite-950 border-l border-white/10 shadow-2xl shadow-black/60 animate-slideInRight"
       >
         {/* ── Header ── */}
         <div className="flex items-center justify-between border-b border-border-dark px-5 py-4">
@@ -270,17 +279,18 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                 <ArrowLeft className="h-4 w-4" />
               </button>
             )}
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-aviation-500 to-aviation-700 shadow-md shadow-aviation-500/20">
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-aviation-500 to-aviation-700 shadow-md shadow-aviation-500/20">
               <MessageSquare className="h-4.5 w-4.5 text-white" />
+              {conversaComUser && <StatusDot online={conversaOnline} className="-bottom-0.5 -right-0.5 h-3 w-3" />}
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-white">
+            <div className="min-w-0">
+              <h2 className="max-w-[250px] truncate text-sm font-bold text-white">
                 {conversaComUser ? conversaComNome :
                  tab === 'chat' ? 'Chat' :
                  tab === 'notificacoes' ? 'Notificações' : 'Contatos'}
               </h2>
               <p className="text-[11px] text-graphite-500">
-                {conversaComUser ? 'Mensagem privada' :
+                {conversaComUser ? (conversaOnline ? 'Online agora' : 'Offline') :
                  tab === 'chat' ? (chatSubTab === 'geral' ? 'Canal geral' : `${chatUsers.length} usuarios`) :
                  tab === 'notificacoes' ? `${naoLidas} não lida(s)` :
                  `${chatUsers.length} cadastrado(s)`}
@@ -320,11 +330,11 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
         )}
 
         {/* ── Content ── */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
 
           {/* ═══ CHAT ═══ */}
           {tab === 'chat' && !conversaComUser && (
-            <>
+            <div className="flex min-h-0 flex-1 flex-col">
               {/* Sub-tabs Geral/Privado */}
               <div className="flex border-b border-border-dark">
                 <button onClick={() => setChatSubTab('geral')}
@@ -364,7 +374,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
 
               {/* Lista de usuários (privado) */}
               {chatSubTab === 'privado' && (
-                <div className="px-3">
+                <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
                   {usuariosFiltrados.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-12">
                       <Users className="mb-3 h-8 w-8 text-graphite-700" />
@@ -386,8 +396,11 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                           <button key={u.username}
                             onClick={() => { setConversaComUser(u.username); setConversaComNome(u.name); setBusca(''); }}
                             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all hover:bg-surface-card active:scale-[0.98]">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-aviation-500 to-aviation-700 text-xs font-bold text-white shadow-md shadow-aviation-500/10">
-                              {initials}
+                            <div className="relative shrink-0">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-aviation-500 to-aviation-700 text-xs font-bold text-white shadow-md shadow-aviation-500/10">
+                                {initials}
+                              </div>
+                              <StatusDot online={onlineUsers.has(u.username)} className="bottom-0 right-0 h-3 w-3" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-semibold text-graphite-100 truncate">{u.name}</p>
@@ -404,9 +417,9 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
 
               {/* Mensagens gerais */}
               {chatSubTab === 'geral' && (
-                <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+                <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                   {mensagensAtuais.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16">
+                    <div className="flex h-full flex-col items-center justify-center text-center">
                       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-card">
                         <MessageCircle className="h-7 w-7 text-graphite-600" />
                       </div>
@@ -459,7 +472,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
 
               {/* Input geral */}
               {chatSubTab === 'geral' && (
-                <div className="border-t border-border-dark px-4 py-3">
+                <div className="shrink-0 border-t border-border-dark px-4 pb-5 pt-3">
                   <div className="flex items-end gap-2">
                     <textarea
                       ref={inputRef}
@@ -467,25 +480,25 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                       onChange={e => setMsg(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="Enviar mensagem para todos..."
-                      rows={1}
-                      className="min-h-[40px] max-h-24 flex-1 resize-none rounded-xl border border-border-dark bg-surface-card px-4 py-2.5 text-[13px] text-graphite-100 placeholder-graphite-600 outline-none transition-all focus:border-aviation-500/50 focus:ring-1 focus:ring-aviation-500/20"
+                      rows={2}
+                      className="min-h-[58px] max-h-32 flex-1 resize-none rounded-2xl border border-border-dark bg-surface-card px-4 py-3 text-sm leading-relaxed text-graphite-100 placeholder-graphite-600 outline-none transition-all focus:border-aviation-500/50 focus:ring-1 focus:ring-aviation-500/20"
                     />
                     <button onClick={handleSend} disabled={!msg.trim() || sending || !username}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aviation-600 text-white transition-all hover:bg-aviation-500 disabled:opacity-20 disabled:cursor-not-allowed active:scale-95 shadow-lg shadow-aviation-600/20">
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-aviation-600 text-white transition-all hover:bg-aviation-500 disabled:opacity-20 disabled:cursor-not-allowed active:scale-95 shadow-lg shadow-aviation-600/20">
                       <Send className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
               )}
-            </>
+            </div>
           )}
 
           {/* ═══ CONVERSA PRIVADA ═══ */}
           {conversaComUser && (
-            <>
-              <div ref={chatScrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div ref={chatScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                 {mensagensAtuais.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16">
+                  <div className="flex h-full flex-col items-center justify-center text-center">
                     <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-card">
                       <MessageCircle className="h-7 w-7 text-graphite-600" />
                     </div>
@@ -524,7 +537,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                   </div>
                 )}
               </div>
-              <div className="border-t border-border-dark px-4 py-3">
+              <div className="shrink-0 border-t border-border-dark px-4 pb-5 pt-3">
                 <div className="flex items-end gap-2">
                   <textarea
                     ref={inputRef}
@@ -532,21 +545,21 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                     onChange={e => setMsg(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={`Mensagem para ${conversaComNome}...`}
-                    rows={1}
-                    className="min-h-[40px] max-h-24 flex-1 resize-none rounded-xl border border-border-dark bg-surface-card px-4 py-2.5 text-[13px] text-graphite-100 placeholder-graphite-600 outline-none transition-all focus:border-aviation-500/50 focus:ring-1 focus:ring-aviation-500/20"
+                    rows={2}
+                    className="min-h-[58px] max-h-32 flex-1 resize-none rounded-2xl border border-border-dark bg-surface-card px-4 py-3 text-sm leading-relaxed text-graphite-100 placeholder-graphite-600 outline-none transition-all focus:border-aviation-500/50 focus:ring-1 focus:ring-aviation-500/20"
                   />
                   <button onClick={handleSend} disabled={!msg.trim() || sending || !username}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aviation-600 text-white transition-all hover:bg-aviation-500 disabled:opacity-20 disabled:cursor-not-allowed active:scale-95 shadow-lg shadow-aviation-600/20">
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-aviation-600 text-white transition-all hover:bg-aviation-500 disabled:opacity-20 disabled:cursor-not-allowed active:scale-95 shadow-lg shadow-aviation-600/20">
                     <Send className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-            </>
+            </div>
           )}
 
           {/* ═══ NOTIFICAÇÕES ═══ */}
           {tab === 'notificacoes' && !conversaComUser && (
-            <div className="p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {notificacoes.length > 0 && (
                 <div className="mb-4 flex items-center justify-between">
                   <span className="text-[11px] font-medium text-graphite-500">{notificacoes.length} notificação(ões)</span>
@@ -606,7 +619,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
 
           {/* ═══ CONTATOS ═══ */}
           {tab === 'contatos' && !conversaComUser && (
-            <div className="p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-graphite-600" />
                 <input type="text" value={busca} onChange={e => setBusca(e.target.value)}
@@ -642,11 +655,7 @@ export function RightPanel({ onClose, openTab = 'chat' }: { onClose: () => void;
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-aviation-500 to-aviation-700 text-sm font-bold text-white shadow-md shadow-aviation-500/10">
                             {initials}
                           </div>
-                          {onlineUsers.has(u.username) ? (
-                            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-graphite-950 bg-green-500" />
-                          ) : (
-                            <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-graphite-950 bg-red-500" />
-                          )}
+                          <StatusDot online={onlineUsers.has(u.username)} className="bottom-0 right-0 h-3 w-3" />
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-graphite-100 truncate">{u.name}</p>

@@ -247,7 +247,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (attempts[username].count === 1) attempts[username].firstAttempt = now;
       localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(attempts));
       const tentativasRestantes = MAX_ATTEMPTS - attempts[username].count;
-      throw new Error(`Usuário ou senha inválidos. ${tentativasRestantes > 0 ? `${tentativasRestantes} tentativa(s) restante(s).` : 'Conta bloqueada por 15 minutos.'}`);
+      if (tentativasRestantes <= 0) {
+        throw new Error(`Usuário ou senha inválidos. Conta bloqueada por ${BLOCK_MINUTES} minutos.`);
+      }
+
+      const avisoBloqueio = tentativasRestantes === 1
+        ? `Mais uma tentativa inválida bloqueará a conta por ${BLOCK_MINUTES} minutos.`
+        : `Após ${MAX_ATTEMPTS} tentativas inválidas, a conta ficará bloqueada por ${BLOCK_MINUTES} minutos.`;
+      throw new Error(`Usuário ou senha inválidos. ${tentativasRestantes} tentativa(s) restante(s). ${avisoBloqueio}`);
     }
 
     delete attempts[username];

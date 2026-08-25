@@ -10,6 +10,7 @@ export interface PTRB {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
   data: string;
   horaInicio: string;
   horaTermino: string;

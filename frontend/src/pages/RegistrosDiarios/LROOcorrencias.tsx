@@ -6,10 +6,20 @@ import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorrencia } from '../../services/ocorrenciaService';
+import { listarBombeiros } from '../../services/bombeiroService';
 import { STATUS_OCORRENCIA, EQUIPES } from '../../types/ocorrencia';
 import type { Ocorrencia } from '../../types/ocorrencia';
+import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
+import {
+  canCriarRegistrosDiarios,
+  canEditarRegistroDiario,
+  canEscolherEquipeRegistrosDiarios,
+  canExcluirRegistroDiario,
+  equipePadraoRegistrosDiarios,
+} from '../../utils/permissoes';
 
 const MENSAGEM_OCORRENCIA_LRO_FINALIZADO = 'Esta ocorrência já foi incluída em um LRO finalizado e não pode ser alterada.';
 const MENSAGEM_EXCLUIR_OCORRENCIA_LRO_FINALIZADO = 'Esta ocorrência já foi incluída em um LRO finalizado e não pode ser excluída.';
@@ -57,7 +67,7 @@ function ocorrenciaPertenceAoLRO(ocorrencia: Pick<Ocorrencia, 'numero'>): boolea
 
 
 
-function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
+function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   const hoje = hojeLocalISO();
   return {
     tipoDocumento: 'BONA',
@@ -89,7 +99,7 @@ function OcorrenciaForm({
   ocorrencia?: Ocorrencia;
   userEquipe: string;
   canManageGlobal: boolean;
-  onSave: (data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void;
+  onSave: (data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState(ocorrencia ? {
@@ -202,12 +212,14 @@ function OcorrenciaView({ ocorrencia, onBack }: { ocorrencia: Ocorrencia; onBack
 /* ───────── Card ───────── */
 
 function OcorrenciaCard({
-  o, canEdit, onView, onEdit, onDelete,
+  o, canEdit, canDelete, auditoriaPessoas, onView, onEdit, onDelete,
 }: {
-  o: Ocorrencia; canEdit: boolean;
+  o: Ocorrencia; canEdit: boolean; canDelete: boolean;
+  auditoriaPessoas: Bombeiro[];
   onView: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const auditoria = resumoAuditoria(o, auditoriaPessoas);
   const statusColor: Record<string, string> = {
     'Aberta': 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400',
     'Em Andamento': 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
@@ -230,6 +242,7 @@ function OcorrenciaCard({
             <span>Equipe {o.equipe}</span>
             {o.local && <span>· Turno {formatarDataBR(o.local)}</span>}
           </div>
+          <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
         </div>
         {expanded ? <ChevronUp className="ml-2 h-4 w-4 shrink-0 text-graphite-400" /> : <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-graphite-400" />}
       </button>
@@ -246,9 +259,11 @@ function OcorrenciaCard({
                 <button onClick={onEdit} className="flex items-center gap-1 rounded-lg bg-graphite-100 px-3 py-1.5 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
                   <Pencil className="h-3.5 w-3.5" /> Editar
                 </button>
-                <button onClick={onDelete} className="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
-                  <Trash2 className="h-3.5 w-3.5" /> Excluir
-                </button>
+                {canDelete && (
+                  <button onClick={onDelete} className="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
+                    <Trash2 className="h-3.5 w-3.5" /> Excluir
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -261,11 +276,14 @@ function OcorrenciaCard({
 /* ───────── Página principal ───────── */
 
 export function LROOcorrencias() {
-  const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
+  const { user, contexto, canManageGlobal, equipeEfetiva } = useContextoOperacional();
   const username = user?.username || '';
-  const canCreate = canManageGlobal || !!equipeEfetiva;
+  const canCreate = canCriarRegistrosDiarios(contexto);
+  const canEscolherEquipe = canManageGlobal || canEscolherEquipeRegistrosDiarios(contexto);
+  const equipePadrao = equipePadraoRegistrosDiarios(contexto) || equipeEfetiva;
 
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
+  const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [mode, setMode] = useState<'list' | 'form' | 'view'>('list');
   const [editando, setEditando] = useState<Ocorrencia | null>(null);
   const [visualizando, setVisualizando] = useState<Ocorrencia | null>(null);
@@ -281,8 +299,9 @@ export function LROOcorrencias() {
   const inputClass = 'rounded-xl border border-graphite-300/70 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 
   async function carregar() {
-    const registros = await listarOcorrencias();
+    const [registros, bombeirosAtivos] = await Promise.all([listarOcorrencias(), listarBombeiros()]);
     setOcorrencias(registros.filter(ocorrenciaPertenceAoLRO));
+    setBombeiros(bombeirosAtivos);
   }
   useEffect(() => { carregar(); }, []);
 
@@ -306,23 +325,24 @@ export function LROOcorrencias() {
     return list;
   }, [ocorrencias, filtroEquipe, filtroStatus, filtroAno, filtroMes]);
 
-  async function handleSave(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) {
+  async function handleSave(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) {
     if (editando?.id && ocorrenciaBloqueadaPorLRO(editando)) {
       alert(MENSAGEM_OCORRENCIA_LRO_FINALIZADO);
       return;
     }
-    const equipeAlvo = canManageGlobal ? data.equipe : equipeEfetiva || data.equipe;
-    if (!canManageEquipe(equipeAlvo)) {
-      alert('Você só pode salvar ocorrências da sua equipe efetiva.');
+    if (editando?.id) {
+      if (!canEditarRegistroDiario(contexto, editando, username, bombeiros)) {
+        alert('Você só pode editar ocorrências que criou, que foram criadas pelo chefe no caso de BA-LR, ou que pertencem à sua equipe fixa autorizada.');
+        return;
+      }
+    } else if (!canCriarRegistrosDiarios(contexto)) {
+      alert('Você não tem permissão para criar ocorrências de LRO.');
       return;
     }
-    if (editando?.id && !canManageEquipe(editando.equipe)) {
-      alert('Você só pode editar ocorrências da sua equipe efetiva.');
-      return;
-    }
+    const equipeAlvo = canEscolherEquipe ? data.equipe : equipePadrao || data.equipe;
     const payload = { ...data, equipe: equipeAlvo as string, numero: '' };
     if (editando && editando.id) {
-      await atualizarOcorrencia(editando.id, payload);
+      await atualizarOcorrencia(editando.id, { ...payload, updatedBy: username });
     } else {
       await criarOcorrencia({ ...payload, createdBy: username });
     }
@@ -333,8 +353,8 @@ export function LROOcorrencias() {
 
   async function handleDelete(id: string) {
     const alvo = ocorrencias.find(o => o.id === id);
-    if (!alvo || !canManageEquipe(alvo.equipe)) {
-      alert('Você só pode excluir ocorrências da sua equipe efetiva.');
+    if (!alvo || !canExcluirRegistroDiario(contexto, alvo, username, bombeiros)) {
+      alert('Você não tem permissão para excluir esta ocorrência.');
       setConfirmDelete(null);
       return;
     }
@@ -371,8 +391,8 @@ export function LROOcorrencias() {
         <PageTitle icon={AlertCircle} title={editando ? 'Editar Ocorrência' : 'Nova Ocorrência'} />
         <OcorrenciaForm
           ocorrencia={editando || undefined}
-          userEquipe={equipeEfetiva || ''}
-          canManageGlobal={canManageGlobal}
+          userEquipe={equipePadrao || ''}
+          canManageGlobal={canEscolherEquipe}
           onSave={handleSave}
           onCancel={() => { setMode('list'); setEditando(null); }}
         />
@@ -442,7 +462,10 @@ export function LROOcorrencias() {
       ) : (
         <div className="space-y-3">
           {filtradas.map(o => (
-            <OcorrenciaCard key={o.id} o={o} canEdit={canManageEquipe(o.equipe) && !ocorrenciaBloqueadaPorLRO(o)}
+            <OcorrenciaCard key={o.id} o={o}
+              canEdit={canEditarRegistroDiario(contexto, o, username, bombeiros) && !ocorrenciaBloqueadaPorLRO(o)}
+              canDelete={canExcluirRegistroDiario(contexto, o, username, bombeiros) && !ocorrenciaBloqueadaPorLRO(o)}
+              auditoriaPessoas={bombeiros}
               onView={() => { setVisualizando(o); setMode('view'); }}
               onEdit={() => handleEdit(o)}
               onDelete={() => handleConfirmDelete(o)}

@@ -17,6 +17,7 @@ function handleSupabaseError(err: unknown): never {
 }
 
 export type LRODraftStatus = 'rascunho' | 'aguardando' | 'assinado' | 'cancelado' | 'finalizado' | 'arquivado';
+const STATUS_CONCLUIDO = new Set<LRODraftStatus>(['assinado', 'finalizado', 'arquivado']);
 
 export interface LRODraft {
   id: string;
@@ -29,6 +30,40 @@ export interface LRODraft {
   created_at: string;
   updated_at: string;
   expires_at: string;
+}
+
+function usuarioAuditavel(value: unknown): string {
+  return String(value || '').trim();
+}
+
+function dadosComAuditoria(
+  dados: Record<string, unknown>,
+  usuario: string,
+  now: string,
+  draftAtual?: LRODraft | null,
+  registrarEdicaoAposConclusao = false,
+): Record<string, unknown> {
+  const dadosAtuais = draftAtual?.dados || {};
+  const createdBy = usuarioAuditavel(draftAtual?.dados?._createdBy)
+    || usuarioAuditavel(draftAtual?.created_by)
+    || usuarioAuditavel(dados._createdBy)
+    || usuarioAuditavel(usuario);
+
+  const auditoria: Record<string, unknown> = {
+    ...dados,
+    _createdBy: createdBy,
+    _completedBy: usuarioAuditavel(dados._completedBy) || usuarioAuditavel(dadosAtuais._completedBy),
+    _completedAt: usuarioAuditavel(dados._completedAt) || usuarioAuditavel(dadosAtuais._completedAt),
+    _lastPostCompletionEditBy: usuarioAuditavel(dados._lastPostCompletionEditBy) || usuarioAuditavel(dadosAtuais._lastPostCompletionEditBy),
+    _lastPostCompletionEditAt: usuarioAuditavel(dados._lastPostCompletionEditAt) || usuarioAuditavel(dadosAtuais._lastPostCompletionEditAt),
+  };
+
+  if (registrarEdicaoAposConclusao) {
+    auditoria._lastPostCompletionEditBy = usuarioAuditavel(usuario) || createdBy;
+    auditoria._lastPostCompletionEditAt = now;
+  }
+
+  return auditoria;
 }
 
 function rowToDraft(row: Record<string, unknown>): LRODraft {
@@ -71,31 +106,53 @@ export async function salvarDraft(
 ): Promise<LRODraft> {
   const db = getDb();
   const now = new Date().toISOString();
-  const row = {
-    equipe,
-    data_plantao,
-    dados,
-    created_by: createdBy,
-    updated_at: now,
-  };
 
   if (draftId) {
+    const draftAtual = await obterDraft(draftId);
+    const registrarEdicaoAposConclusao = draftAtual ? STATUS_CONCLUIDO.has(draftAtual.status) : false;
+    const row = {
+      equipe,
+      data_plantao,
+      dados: dadosComAuditoria(dados, createdBy, now, draftAtual, registrarEdicaoAposConclusao),
+      updated_at: now,
+    };
     const { data, error } = await db.from(TABLE).update(row).eq('id', draftId).select().single();
     if (error) handleSupabaseError(error);
     return rowToDraft(data);
   }
 
+  const row = {
+    equipe,
+    data_plantao,
+    dados: dadosComAuditoria(dados, createdBy, now),
+    created_by: createdBy,
+    updated_at: now,
+  };
   const { data, error } = await db.from(TABLE).insert({ ...row, created_at: now, status: 'rascunho' }).select().single();
   if (error) handleSupabaseError(error);
   return rowToDraft(data);
 }
 
-export async function atualizarStatus(id: string, status: LRODraftStatus, autentiqueDocId?: string): Promise<void> {
+export async function atualizarStatus(
+  id: string,
+  status: LRODraftStatus,
+  autentiqueDocId?: string,
+  updatedBy?: string,
+): Promise<LRODraft> {
   const db = getDb();
-  const r: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const r: Record<string, unknown> = { status, updated_at: now };
   if (autentiqueDocId) r.autentique_doc_id = autentiqueDocId;
-  const { error } = await db.from(TABLE).update(r).eq('id', id);
+  if (updatedBy && STATUS_CONCLUIDO.has(status)) {
+    const draftAtual = await obterDraft(id);
+    const dadosAuditados = dadosComAuditoria(draftAtual?.dados || {}, updatedBy, now, draftAtual);
+    dadosAuditados._completedBy = usuarioAuditavel(dadosAuditados._completedBy) || usuarioAuditavel(updatedBy) || dadosAuditados._createdBy;
+    dadosAuditados._completedAt = usuarioAuditavel(dadosAuditados._completedAt) || now;
+    r.dados = dadosAuditados;
+  }
+  const { data, error } = await db.from(TABLE).update(r).eq('id', id).select().single();
   if (error) handleSupabaseError(error);
+  return rowToDraft(data);
 }
 
 export async function excluirDraft(id: string): Promise<void> {

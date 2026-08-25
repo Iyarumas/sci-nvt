@@ -22,6 +22,8 @@ function rowToItem(row: Record<string, unknown>): TreinamentoTAF {
     p10Nome: (row.p10_nome as string) || '', p10Funcao: (row.p10_funcao as string) || '', p10Idade: (row.p10_idade as number) || 0, p10Tempo: (row.p10_tempo as string) || '',
     observacoes: (row.observacoes as string) || '', chefeEquipe: (row.chefe_equipe as string) || '',
     status: (row.status as TreinamentoTAF['status']) || 'Rascunho',
+    createdBy: (row.created_by as string) || '',
+    updatedBy: (row.updated_by as string) || '',
     aprovadoPor: (row.aprovado_por as string) || '',
     aprovadoPorNome: (row.aprovado_por_nome as string) || '',
     aprovadoEm: (row.aprovado_em as string) || '',
@@ -32,7 +34,7 @@ function rowToItem(row: Record<string, unknown>): TreinamentoTAF {
 const MAP = {
   equipe: 'equipe', numero: 'numero', ano: 'ano', data: 'data', hora: 'hora', turno: 'turno',
   tipoTaf: 'tipo_taf', observacoes: 'observacoes', chefeEquipe: 'chefe_equipe',
-  status: 'status', aprovadoPor: 'aprovado_por', aprovadoPorNome: 'aprovado_por_nome', aprovadoEm: 'aprovado_em',
+  status: 'status', createdBy: 'created_by', updatedBy: 'updated_by', aprovadoPor: 'aprovado_por', aprovadoPorNome: 'aprovado_por_nome', aprovadoEm: 'aprovado_em',
 } as const;
 
 export async function listarTAFs(params?: { equipe?: string; ano?: string }): Promise<TreinamentoTAF[]> {
@@ -61,6 +63,8 @@ export async function obterProximoNumero(ano: string): Promise<number> {
 
 function escrever(data: TAFInput): Record<string, unknown> {
   const r: Record<string, unknown> = { equipe: data.equipe, numero: data.numero, ano: data.ano, data: data.data, hora: data.hora, turno: data.turno, tipo_taf: data.tipoTaf, observacoes: data.observacoes, chefe_equipe: data.chefeEquipe };
+  if (data.createdBy !== undefined) r.created_by = data.createdBy;
+  if (data.updatedBy !== undefined) r.updated_by = data.updatedBy;
   if (data.status !== undefined) r.status = data.status;
   if (data.aprovadoPor !== undefined) r.aprovado_por = data.aprovadoPor;
   if (data.aprovadoPorNome !== undefined) r.aprovado_por_nome = data.aprovadoPorNome;

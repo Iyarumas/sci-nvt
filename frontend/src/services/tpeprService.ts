@@ -43,6 +43,7 @@ function rowToTPEPR(row: Record<string, unknown>): TreinamentoTPEPR {
     createdBy: (row.created_by as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
+    updatedBy: (row.updated_by as string) || '',
     equipe: (row.equipe as string) || '',
     numero: (row.numero as number) || 0,
     ano: (row.ano as string) || '',
@@ -64,6 +65,7 @@ function rowToTPEPR(row: Record<string, unknown>): TreinamentoTPEPR {
 function inputToRow(input: Partial<TPEPRInput>): Record<string, unknown> {
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.createdBy !== undefined) row.created_by = input.createdBy;
+  if (input.updatedBy !== undefined) row.updated_by = input.updatedBy;
   if (input.equipe !== undefined) row.equipe = input.equipe;
   if (input.numero !== undefined) row.numero = input.numero;
   if (input.ano !== undefined) row.ano = input.ano;

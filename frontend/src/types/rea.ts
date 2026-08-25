@@ -7,6 +7,7 @@ export interface ReaRegistro {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
   numero: string;
   status: ReaStatus;
   equipe: string;

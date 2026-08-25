@@ -21,6 +21,8 @@ import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { imprimirPdfBlob } from '../../utils/pdfPrint';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
+import type { Bombeiro } from '../../types/bombeiro';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const CCI_OPTIONS = ['319', '320', '333'];
@@ -80,6 +82,7 @@ export default function TempoResposta() {
   const currentUsername = user?.username || user?.name || '';
   const currentName = user?.name || user?.username || '';
   const [treinos, setTreinos] = useState<TreinamentoTempoResposta[]>([]);
+  const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [opcoesParticipantes, setOpcoesParticipantes] = useState<AtivoItem[]>([]);
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
@@ -172,8 +175,9 @@ export default function TempoResposta() {
   }, [formOpen]);
 
   async function carregar() {
-    const lista = await listarTreinos({ ano: filtroAno });
+    const [lista, ativos] = await Promise.all([listarTreinos({ ano: filtroAno }), listarAtivos()]);
     setTreinos(lista);
+    setBombeiros(ativos);
   }
 
   const filtered = useMemo(() => {
@@ -380,7 +384,9 @@ export default function TempoResposta() {
         feedbackTwr: formFeedbackTwr, feedbackSci: formFeedbackSci,
         chefeEquipe: formChefeEquipe || user?.name || '',
         gerente: formGerente || nomeGsPadrao || (contexto.cargo === 'GS' ? currentName : ''),
+        createdBy: editando?.createdBy || currentUsername,
       };
+      if (editando) data.updatedBy = currentUsername;
       data.ano = ano;
       data.numero = formNumero || await obterProximoNumero(ano);
       if (aprovar) {
@@ -595,6 +601,7 @@ export default function TempoResposta() {
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
                           {fmt(t.data)} {t.hora && `às ${t.hora}`} - {t.local || 'Sem local'} - Chefe: {t.chefeEquipe || '-'}
                         </p>
+                        <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(t, bombeiros)}</p>
                       </div>
                     </button>
                   </div>

@@ -14,10 +14,14 @@ import {
 function contextoFallback(user: ReturnType<typeof useAuth>['user']): ContextoOperacionalPermissao {
   return {
     equipe: (user?.pessoa?.equipe as ContextoOperacionalPermissao['equipe']) || null,
+    equipeFixa: (user?.pessoa?.equipe as ContextoOperacionalPermissao['equipeFixa']) || null,
     cargo: user?.pessoa?.funcao || null,
+    cargoFixo: user?.pessoa?.funcao || null,
     canManageGlobal: podeVerDadosPessoaisBase(user),
     isAdministradorSistema: isAdministradorSistema(user),
     bombeiroId: user?.pessoa?.personType === 'bombeiro' ? user.pessoa.id || null : null,
+    autorizadoRegistrosDiarios: false,
+    autorizacaoRegistrosDiariosEquipe: null,
   };
 }
 
@@ -58,5 +62,7 @@ export function useContextoOperacional() {
     canVisualizarRelatorios,
     canVisualizarRelatoriosPtrBa,
     equipeEfetiva: contexto.equipe,
+    equipeFixa: contexto.equipeFixa,
+    equipeAutorizadaRegistrosDiarios: contexto.autorizacaoRegistrosDiariosEquipe,
   };
 }

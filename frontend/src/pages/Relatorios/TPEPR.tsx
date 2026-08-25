@@ -46,6 +46,7 @@ import {
 import type { TPEPRInput, TPEPRParticipante, TreinamentoTPEPR } from '../../types/tpepr';
 import { TEMPO_CRONOMETRO_ZERO } from '../../utils/tempo';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
@@ -494,6 +495,7 @@ export function TPEPR() {
         chefeEquipe: fChefeEquipe,
         participantes,
       };
+      if (editando) payload.updatedBy = currentUsername;
       if (aprovar) {
         payload.status = 'Aprovado';
         payload.aprovadoPor = currentUsername;
@@ -739,6 +741,7 @@ export function TPEPR() {
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
                           {fmtData(registro.data)} {registro.hora && `as ${registro.hora}`} - {registro.turno || '-'} - Chefe: {registro.chefeEquipe || '-'}
                         </p>
+                        <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(registro, bombeiros)}</p>
                       </div>
                     </button>
                   </div>

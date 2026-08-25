@@ -100,6 +100,7 @@ function rowToOcorrencia(row: Record<string, unknown>): Ocorrencia {
     createdBy: (row.created_by as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
+    updatedBy: (row.updated_by as string) || '',
     tipoDocumento,
     numero,
     numeroOcorrencia: numero,
@@ -160,7 +161,7 @@ export async function listarOcorrencias(params?: {
   return (data || []).map(rowToOcorrencia);
 }
 
-export async function criarOcorrencia(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt'>): Promise<Ocorrencia> {
+export async function criarOcorrencia(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'updatedBy'>): Promise<Ocorrencia> {
   const db = getDb();
   const now = new Date().toISOString();
   const normalized = data.tipoDocumento === 'BONA' ? bonaDadosToRow(data) : data;
@@ -197,6 +198,7 @@ export async function atualizarOcorrencia(id: string, data: Partial<Ocorrencia>)
   if (normalized.status !== undefined) r.status = normalized.status;
   if (normalized.fotos !== undefined) r.fotos = normalizarFotos(normalized.fotos);
   if (normalized.bonaDados !== undefined) r.bona_dados = normalizarBonaDados(normalized.bonaDados, normalized);
+  if (normalized.updatedBy !== undefined) r.updated_by = normalized.updatedBy;
   const { data: updated, error } = await db.from(TABLE).update(r).eq('id', id).select().single();
   if (error) handleSupabaseError(error);
   return updated ? rowToOcorrencia(updated) : null;

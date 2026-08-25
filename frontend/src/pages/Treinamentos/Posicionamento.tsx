@@ -21,6 +21,8 @@ import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { imprimirPdfBlob } from '../../utils/pdfPrint';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
+import type { Bombeiro } from '../../types/bombeiro';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const CARGOS_CRS_BA_RE = ['BA-RE', 'BA-2'] as const;
@@ -78,6 +80,7 @@ export default function Posicionamento() {
   const currentUsername = user?.username || user?.name || '';
   const currentName = user?.name || user?.username || '';
   const [exercicios, setExercicios] = useState<ExercicioPosicionamento[]>([]);
+  const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [opcoesParticipantes, setOpcoesParticipantes] = useState<AtivoItem[]>([]);
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
@@ -156,8 +159,9 @@ export default function Posicionamento() {
   }, [formOpen]);
 
   async function carregar() {
-    const lista = await listarExercicios({ ano: filtroAno });
+    const [lista, ativos] = await Promise.all([listarExercicios({ ano: filtroAno }), listarAtivos()]);
     setExercicios(lista);
+    setBombeiros(ativos);
   }
 
   const filtered = useMemo(() => {
@@ -430,7 +434,9 @@ export default function Posicionamento() {
         visibilidadeSuperficie: formVisibilidade, feedbackCoe: formFeedbackCoe,
         chefeEquipe: formChefeEquipe || user?.name || '',
         gerente: formGerente || nomeGsPadrao || (contexto.cargo === 'GS' ? currentName : ''),
+        createdBy: editando?.createdBy || currentUsername,
       };
+      if (editando) data.updatedBy = currentUsername;
       data.ano = ano;
       data.numero = formNumero || await obterProximoNumero(ano);
       if (aprovar) {
@@ -652,6 +658,7 @@ export default function Posicionamento() {
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
                           {formatDate(ex.data)} {ex.hora && `às ${ex.hora}`} - {ex.local || 'Sem local'} - Chefe: {ex.chefeEquipe || '-'}
                         </p>
+                        <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(ex, bombeiros)}</p>
                       </div>
                     </button>
                   </div>

@@ -11,6 +11,7 @@ export type Equipe = 'Alfa' | 'Bravo' | 'Charlie' | 'Delta' | 'Ferista' | 'Embai
 export type Turno = 'Diurno' | 'Noturno' | 'Ferista' | 'Administrativo';
 export type CatCNH = '' | 'A' | 'B' | 'C' | 'D' | 'E' | 'AB' | 'AC' | 'AD' | 'AE';
 export type Sexo = 'M' | 'F';
+export type AutorizacaoRegistrosDiariosStatus = 'nenhuma' | 'pendente' | 'aprovado' | 'rejeitado';
 
 export interface Bombeiro {
   id: string;
@@ -46,6 +47,13 @@ export interface Bombeiro {
   cursoChefeEquipe: boolean;
   cursoMotoristaCCI: boolean;
   cursoCVE: boolean;
+  autorizadoRegistrosDiarios: boolean;
+  autorizacaoRegistrosDiariosEquipe: Equipe | '';
+  autorizacaoRegistrosDiariosStatus: AutorizacaoRegistrosDiariosStatus;
+  autorizacaoRegistrosDiariosSolicitadoPor: string;
+  autorizacaoRegistrosDiariosSolicitadoEm: string;
+  autorizacaoRegistrosDiariosDecididoPor: string;
+  autorizacaoRegistrosDiariosDecididoEm: string;
   cveValidade: string;
   createdAt: string;
   updatedAt: string;

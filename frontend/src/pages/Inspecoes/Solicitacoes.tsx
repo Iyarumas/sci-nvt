@@ -4,11 +4,13 @@ import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { atualizarConferencia, excluirConferencia, listarConferencias } from '../../services/conferenciaService';
+import { listarBombeiros } from '../../services/bombeiroService';
 import type { Conferencia } from '../../types/conferencia';
-import type { Equipe } from '../../types/bombeiro';
+import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
 
 const EQUIPES_SOLICITACAO = EQUIPE_OPTIONS.filter(eq => eq !== 'Ferista' && eq !== 'Embaixador');
 
@@ -67,6 +69,7 @@ export function Solicitacoes() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   const [registros, setRegistros] = useState<any[]>([]);
+  const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [filtroEquipe, setFiltroEquipe] = useState<Equipe | ''>('');
   const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
   const [filtroMes, setFiltroMes] = useState('');
@@ -82,8 +85,9 @@ export function Solicitacoes() {
   }, [canManageGlobal, equipeEfetiva]);
 
   async function carregar() {
-    const c = await listarConferencias();
+    const [c, b] = await Promise.all([listarConferencias(), listarBombeiros()]);
     setRegistros(c.filter(r => r.tipo === 'Solicitação'));
+    setBombeiros(b);
   }
 
   const filtrados = useMemo(() => {
@@ -127,6 +131,7 @@ export function Solicitacoes() {
           equipe: equipeAlvo as Equipe,
           observacoes: descricao.trim(),
           dataProximaInspecao: dataTurno,
+          updatedBy: user.username || '',
         });
       } else {
         await criarConferencia({
@@ -340,8 +345,8 @@ export function Solicitacoes() {
                       <p className="text-xs text-graphite-500">
                         {r.dataConferencia ? formatarDataBR(r.dataConferencia) + ' às ' + new Date(r.dataConferencia).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '-'}
                         {r.dataProximaInspecao && <> {' · '}Turno {formatarDataBR(r.dataProximaInspecao)}</>}
-                        {' · '}<span className="font-medium text-graphite-700 dark:text-graphite-300">{r.createdBy || '-'}</span>
                       </p>
+                      <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(r, bombeiros)}</p>
                     </div>
                     {expandedId === r.id ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
                   </button>
@@ -349,7 +354,7 @@ export function Solicitacoes() {
                     <div className="border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
                       <p className="whitespace-pre-wrap text-sm text-graphite-700 dark:text-graphite-300">{r.observacoes || 'Sem descrição'}</p>
                       <div className="mt-3 flex flex-wrap gap-3 text-xs text-graphite-500">
-                        <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">Registrado por: {r.createdBy}</span>
+                        <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">{resumoAuditoria(r, bombeiros)}</span>
                         {r.dataConferencia && <span className="rounded-full bg-graphite-100 px-2 py-0.5 dark:bg-surface-hover dark:text-graphite-400">{formatarDataHoraBR(r.dataConferencia)}</span>}
                       </div>
                       {podeGerenciar(r) && (

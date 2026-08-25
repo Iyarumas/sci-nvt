@@ -23,9 +23,16 @@ import type { PTRB, PTRBParticipante } from '../../types/ptrb';
 import { EQUIPES, SITUACOES, ASSUNTOS, SITUACAO_DESCRICOES } from '../../types/ptrb';
 import { horarioPlantaoPorEquipe } from '../../utils/equipes';
 import { formatarDataArquivo, formatarDataBR, hojeLocalISO } from '../../utils/datas';
-import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
+import {
+  canCriarRegistrosDiarios,
+  canEditarRegistroDiario,
+  canEscolherEquipeRegistrosDiarios,
+  canExcluirRegistroDiario,
+  equipePadraoRegistrosDiarios,
+} from '../../utils/permissoes';
 import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
 const SITUACOES_TOOLTIP = SITUACOES
@@ -98,7 +105,7 @@ function calcHorasFromDuracao(duracao: string): number {
   return h + m / 60;
 }
 
-function emptyPTRB(): Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
+function emptyPTRB(): Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   const horario = horarioPlantaoPorEquipe('Alfa');
   return {
     data: hojeLocalISO(),
@@ -119,7 +126,7 @@ function emptyPTRB(): Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>
 }
 
 // ─── FORM ────────────────────────────────────────────────
-function montarPTRBInicial(equipePadrao?: string | null): Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
+function montarPTRBInicial(equipePadrao?: string | null): Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   const base = emptyPTRB();
   if (!equipePadrao || !EQUIPES_FILTRO.includes(equipePadrao as any)) return base;
   const horario = horarioPlantaoPorEquipe(equipePadrao);
@@ -149,7 +156,7 @@ function PTRBAForm({
   equipeEfetiva,
 }: {
   ptrb?: PTRB;
-  onSave: (data: Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void;
+  onSave: (data: Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) => void;
   onCancel: () => void;
   bombeiros: Bombeiro[];
   feriasGozo: FeriasGozo[];
@@ -467,15 +474,19 @@ function PTRBAForm({
 }
 
 // ─── LIST VIEW ──────────────────────────────────────────────
-function PTRBCard({ ptrb, onView, onEdit, onDelete, onClone, canEdit }: {
+function PTRBCard({ ptrb, onView, onEdit, onDelete, onClone, canEdit, canClone, canDelete, auditoriaPessoas }: {
   ptrb: PTRB;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onClone: () => void;
   canEdit: boolean;
+  canClone: boolean;
+  canDelete: boolean;
+  auditoriaPessoas: Bombeiro[];
 }) {
   const [expanded, setExpanded] = useState(false);
+  const auditoria = resumoAuditoria(ptrb, auditoriaPessoas);
 
   return (
     <div className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-border-dark dark:bg-surface-card">
@@ -491,6 +502,7 @@ function PTRBCard({ ptrb, onView, onEdit, onDelete, onClone, canEdit }: {
             <p className="text-xs text-graphite-500 dark:text-graphite-400">
               {ptrb.turno} · {ptrb.horaInicio} às {ptrb.horaTermino} ({ptrb.duracao}h)
             </p>
+            <p className="text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -504,14 +516,18 @@ function PTRBCard({ ptrb, onView, onEdit, onDelete, onClone, canEdit }: {
                 className="rounded-xl p-1.5 text-graphite-400 transition-all duration-200 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300">
                 <Pencil className="h-4 w-4" />
               </button>
-              <button onClick={onClone} title="Clonar"
-                className="rounded-xl p-1.5 text-graphite-400 transition-all duration-200 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300">
-                <Copy className="h-4 w-4" />
-              </button>
-              <button onClick={onDelete} title="Excluir"
-                className="rounded-xl p-1.5 text-alert-red transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-900/20">
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {canClone && (
+                <button onClick={onClone} title="Clonar"
+                  className="rounded-xl p-1.5 text-graphite-400 transition-all duration-200 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300">
+                  <Copy className="h-4 w-4" />
+                </button>
+              )}
+              {canDelete && (
+                <button onClick={onDelete} title="Excluir"
+                  className="rounded-xl p-1.5 text-alert-red transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-900/20">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
             </>
           )}
           <button onClick={() => setExpanded(!expanded)}
@@ -580,13 +596,15 @@ function PTRBCard({ ptrb, onView, onEdit, onDelete, onClone, canEdit }: {
 }
 
 // ─── VIEW MODE ──────────────────────────────────────────────
-function ViewMode({ ptrb, onBack }: { ptrb: PTRB; onBack: () => void }) {
+function ViewMode({ ptrb, onBack, auditoriaPessoas }: { ptrb: PTRB; onBack: () => void; auditoriaPessoas: Bombeiro[] }) {
+  const auditoria = resumoAuditoria(ptrb, auditoriaPessoas);
   return (
     <div>
       <div className="mb-6 flex items-center justify-between print-hidden">
         <h3 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">
           PTR-BA por Instrução - {ptrb.equipe} - {formatDate(ptrb.data)}
         </h3>
+        <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
         <div className="flex items-center gap-2">
           <button onClick={() => {
             if (ptrb.data) {
@@ -703,7 +721,8 @@ export function PTRBADiario() {
   const username = user?.username || '';
   const podeCriar = canCriarRegistrosDiarios(contexto);
   const canCreate = podeCriar;
-  const canEscolherEquipe = podeCriar;
+  const canEscolherEquipe = canEscolherEquipeRegistrosDiarios(contexto);
+  const equipePadrao = equipePadraoRegistrosDiarios(contexto) || equipeEfetiva;
   const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
@@ -768,10 +787,6 @@ export function PTRBADiario() {
   }
 
   useEffect(() => {
-    if (!podeCriar) {
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
     async function init() {
       setLoading(true);
@@ -781,23 +796,24 @@ export function PTRBADiario() {
     }
     init();
     return () => { cancelled = true; };
-  }, [username, podeCriar]);
+  }, [username]);
 
-  async function handleSave(data: Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) {
+  async function handleSave(data: Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) {
     try {
-      if (!canCriarRegistrosDiarios(contexto)) {
-        alert('Você não tem permissão para salvar PTR-BA por Instrução.');
+      if (editando?.id) {
+        if (!canEditarRegistroDiario(contexto, editando, username, bombeiros)) {
+          alert('Você só pode editar PTR-BA que você criou, que foi criado pelo chefe no caso de BA-LR, ou que pertence à sua equipe fixa autorizada.');
+          return;
+        }
+      } else if (!canCriarRegistrosDiarios(contexto)) {
+        alert('Você não tem permissão para criar PTR-BA por Instrução.');
         return;
       }
-      if (editando?.id && !canGerenciarRegistroDiario(contexto, editando, username, bombeiros)) {
-        alert('Você só pode editar PTR-BA que você criou (ou que seu chefe de equipe criou, no caso de BA-LR).');
-        return;
-      }
-      const equipeAlvo = canEscolherEquipe ? data.equipe : equipeEfetiva || data.equipe;
+      const equipeAlvo = canEscolherEquipe ? data.equipe : equipePadrao || data.equipe;
       const payload = { ...data, equipe: equipeAlvo as Equipe };
       let saved: PTRB | null;
       if (editando && editando.id) {
-        saved = await atualizarPTRB(editando.id, payload);
+        saved = await atualizarPTRB(editando.id, { ...payload, updatedBy: username });
       } else {
         saved = await criarPTRB({ ...payload, createdBy: username });
       }
@@ -815,7 +831,11 @@ export function PTRBADiario() {
   }
 
   function handleClone(e: PTRB) {
-    if (!canGerenciarRegistroDiario(contexto, e, username, bombeiros)) {
+    if (!canCriarRegistrosDiarios(contexto)) {
+      alert('Você não tem permissão para criar um novo PTR-BA por Instrução.');
+      return;
+    }
+    if (!canEditarRegistroDiario(contexto, e, username, bombeiros)) {
       alert('Você só pode clonar PTR-BA que você criou (ou que seu chefe de equipe criou, no caso de BA-LR).');
       return;
     }
@@ -825,6 +845,7 @@ export function PTRBADiario() {
       createdAt: '',
       updatedAt: '',
       createdBy: '',
+      updatedBy: '',
       data: hojeLocalISO(),
       observacoes: '',
       instrutor: '',
@@ -839,7 +860,7 @@ export function PTRBADiario() {
   async function handleDelete(id: string) {
     try {
       const alvo = ptrbs.find(e => e.id === id);
-      if (!alvo || !canGerenciarRegistroDiario(contexto, alvo, username, bombeiros)) {
+      if (!alvo || !canExcluirRegistroDiario(contexto, alvo, username, bombeiros)) {
         alert('Você só pode excluir PTR-BA que você criou (ou que seu chefe de equipe criou, no caso de BA-LR).');
         setConfirmDelete(null);
         return;
@@ -879,7 +900,7 @@ export function PTRBADiario() {
           vigencias={vigencias}
           apocs={apocs}
           canEscolherEquipe={canEscolherEquipe}
-          equipeEfetiva={equipeEfetiva}
+          equipeEfetiva={equipePadrao}
         />
       </PageContainer>
     );
@@ -888,7 +909,7 @@ export function PTRBADiario() {
   if (mode === 'view' && visualizando) {
     return (
       <PageContainer>
-        <ViewMode ptrb={visualizando} onBack={() => setMode('list')} />
+        <ViewMode ptrb={visualizando} auditoriaPessoas={bombeiros} onBack={() => setMode('list')} />
       </PageContainer>
     );
   }
@@ -941,17 +962,24 @@ export function PTRBADiario() {
         </div>
       ) : (
         <div className="space-y-3">
-          {ptrbsFiltradas.map(e => (
-            <PTRBCard
-              key={e.id}
-              ptrb={e}
-              canEdit={canGerenciarRegistroDiario(contexto, e, username, bombeiros)}
-              onView={() => { setVisualizando(e); setMode('view'); }}
-              onEdit={() => { setEditando(e); setMode('form'); }}
-              onClone={() => handleClone(e)}
-              onDelete={() => setConfirmDelete(e.id)}
-            />
-          ))}
+          {ptrbsFiltradas.map(e => {
+            const podeAlterar = canEditarRegistroDiario(contexto, e, username, bombeiros);
+            const podeExcluir = canExcluirRegistroDiario(contexto, e, username, bombeiros);
+            return (
+              <PTRBCard
+                key={e.id}
+                ptrb={e}
+                canEdit={podeAlterar}
+                canClone={podeAlterar && canCriarRegistrosDiarios(contexto)}
+                canDelete={podeExcluir}
+                auditoriaPessoas={bombeiros}
+                onView={() => { setVisualizando(e); setMode('view'); }}
+                onEdit={() => { setEditando(e); setMode('form'); }}
+                onClone={() => handleClone(e)}
+                onDelete={() => setConfirmDelete(e.id)}
+              />
+            );
+          })}
         </div>
       )}
 

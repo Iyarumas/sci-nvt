@@ -54,6 +54,8 @@ function rowToExercicio(row: Record<string, unknown>): ExercicioPosicionamento {
     chefeEquipe: (row.chefe_equipe as string) || '',
     gerente: (row.gerente as string) || '',
     status: (row.status as ExercicioPosicionamento['status']) || 'Rascunho',
+    createdBy: (row.created_by as string) || '',
+    updatedBy: (row.updated_by as string) || '',
     aprovadoPor: (row.aprovado_por as string) || '',
     aprovadoPorNome: (row.aprovado_por_nome as string) || '',
     aprovadoEm: (row.aprovado_em as string) || '',
@@ -139,6 +141,8 @@ export async function criarExercicio(
       chefe_equipe: data.chefeEquipe,
       gerente: data.gerente,
       status: data.status || 'Rascunho',
+      created_by: data.createdBy || '',
+      updated_by: data.updatedBy || '',
       aprovado_por: data.aprovadoPor || '',
       aprovado_por_nome: data.aprovadoPorNome || '',
       aprovado_em: data.aprovadoEm || '',
@@ -194,6 +198,8 @@ export async function atualizarExercicio(
   if (data.chefeEquipe !== undefined) row.chefe_equipe = data.chefeEquipe;
   if (data.gerente !== undefined) row.gerente = data.gerente;
   if (data.status !== undefined) row.status = data.status;
+  if (data.createdBy !== undefined) row.created_by = data.createdBy;
+  if (data.updatedBy !== undefined) row.updated_by = data.updatedBy;
   if (data.aprovadoPor !== undefined) row.aprovado_por = data.aprovadoPor;
   if (data.aprovadoPorNome !== undefined) row.aprovado_por_nome = data.aprovadoPorNome;
   if (data.aprovadoEm !== undefined) row.aprovado_em = data.aprovadoEm;

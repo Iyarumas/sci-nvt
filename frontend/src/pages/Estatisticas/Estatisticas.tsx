@@ -169,6 +169,22 @@ function horasPtrbaCompleto(c: PTRBACompleto): number {
   return total;
 }
 
+function instrucoesDaSituacao(situacao?: string): number[] {
+  const raw = String(situacao || '').toUpperCase();
+  if (!raw.includes('INSTR')) return [];
+  return Array.from(new Set((raw.match(/\d/g) || []).map(Number).filter(n => n >= 1 && n <= 3)));
+}
+
+function instrutoresPtrbaCompleto(c: PTRBACompleto): string[] {
+  const instrutores: string[] = [];
+  for (const participante of c.participantes || []) {
+    const nome = participante.nomeCompleto?.trim();
+    if (!nome) continue;
+    instrucoesDaSituacao(participante.situacao).forEach(() => instrutores.push(nome));
+  }
+  return instrutores;
+}
+
 // ── Stat Card ─────────────────────────────────────────────
 
 function StatCard({ icon: Icon, label, value, sub, trend, color, onClick }: {
@@ -369,6 +385,7 @@ interface TreinoItem {
   equipe: string;
   horas: number;
   instrutor: string;
+  instrutores: string[];
   participantes: string[];
   tempos: number[];
   assuntos: string[];
@@ -397,6 +414,7 @@ function montarTreinos(
       equipe: p.equipe,
       horas: p.horas || calcHoras(p.horaInicio, p.horaTermino),
       instrutor: p.instrutor,
+      instrutores: p.instrutor ? [p.instrutor] : [],
       participantes: (p.participantes || []).map(x => x.nomeCompleto).filter(Boolean),
       tempos: [],
       assuntos: p.assuntoMinistrado ? [p.assuntoMinistrado] : [],
@@ -417,7 +435,8 @@ function montarTreinos(
       data: c.data,
       equipe: c.equipe,
       horas: horasPtrbaCompleto(c),
-      instrutor: c.chefeEquipe,
+      instrutor: '',
+      instrutores: instrutoresPtrbaCompleto(c),
       participantes: (c.participantes || []).map(x => x.nomeCompleto).filter(Boolean),
       tempos: [],
       assuntos,
@@ -437,6 +456,7 @@ function montarTreinos(
       equipe: t.equipe,
       horas: 0,
       instrutor: t.chefeEquipe,
+      instrutores: t.chefeEquipe ? [t.chefeEquipe] : [],
       participantes: (t.participantes || []).map(x => x.nomeCompleto).filter(Boolean),
       tempos,
       assuntos: [],
@@ -460,6 +480,7 @@ function montarTreinos(
       equipe: t.equipe,
       horas: 0,
       instrutor: t.chefeEquipe,
+      instrutores: t.chefeEquipe ? [t.chefeEquipe] : [],
       participantes,
       tempos,
       assuntos: [],
@@ -479,6 +500,7 @@ function montarTreinos(
       equipe: t.equipe,
       horas: 0,
       instrutor: t.chefeEquipe,
+      instrutores: t.chefeEquipe ? [t.chefeEquipe] : [],
       participantes: [],
       tempos,
       assuntos: [],
@@ -498,6 +520,7 @@ function montarTreinos(
       equipe: e.equipe,
       horas: 0,
       instrutor: e.chefeEquipe,
+      instrutores: e.chefeEquipe ? [e.chefeEquipe] : [],
       participantes: [],
       tempos,
       assuntos: [],
@@ -572,7 +595,10 @@ function TabTreinamentos() {
 
   const topInstrutores = useMemo(() => {
     const map: Record<string, number> = {};
-    filtrados.forEach(t => { if (t.instrutor) map[t.instrutor] = (map[t.instrutor] || 0) + 1; });
+    filtrados.forEach(t => {
+      const instrutores = t.instrutores.length ? t.instrutores : (t.instrutor ? [t.instrutor] : []);
+      instrutores.forEach(nome => { map[nome] = (map[nome] || 0) + 1; });
+    });
     return Object.entries(map).map(([nome, total]) => ({ nome, total })).sort((a, b) => b.total - a.total).slice(0, 6);
   }, [filtrados]);
 

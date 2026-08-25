@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ChevronDown,
+  ChevronUp,
   Download,
   Eye,
   FileText,
@@ -15,7 +17,13 @@ import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
-import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
+import {
+  canCriarRegistrosDiarios,
+  canEditarRegistroDiario,
+  canEscolherEquipeRegistrosDiarios,
+  canExcluirRegistroDiario,
+  equipePadraoRegistrosDiarios,
+} from '../../utils/permissoes';
 import { listarAPOCs } from '../../services/apocService';
 import { listarBombeiros } from '../../services/bombeiroService';
 import { listarEscalas } from '../../services/escalaService';
@@ -29,6 +37,7 @@ import {
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
 import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
+import { resumoAuditoria } from '../../utils/auditoria';
 import type { APOC } from '../../types/apoc';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import type { EscalaDiaria } from '../../types/escala';
@@ -99,8 +108,8 @@ const PTRBA_COMPLETO_TOUR_STEPS = [
   {
     selector: 'main .space-y-3, main table',
     title: 'Visualizar e baixar PDF',
-    body: 'Nos cards, use visualizar para revisar o registro e baixar para gerar o PDF.',
-    detail: 'Antes de baixar, abra a visualização para conferir se o conteúdo e as evidências estão corretos.',
+    body: 'Clique em um card para abrir os detalhes do PTR-BA completo na própria lista.',
+    detail: 'No rodapé dos detalhes ficam as ações de ver documento, baixar PDF, editar ou excluir conforme sua permissão.',
   },
 ];
 type CampoCompartilhadoEvidencia = Exclude<keyof PTRBACompletoEvidencia, 'imagem'>;
@@ -199,7 +208,7 @@ function situacaoInstrutor(numeros: InstrucaoPTRNumero[]): string {
   return `INSTR. ${unicos.join('-')}`;
 }
 
-function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
+function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   const equipe = PTRBA_COMPLETO_EQUIPES.includes(equipePadrao as Equipe) ? equipePadrao as Equipe : 'Alfa';
   return {
     data: hojeLocalISO(),
@@ -254,7 +263,7 @@ function PTRBACompletoForm({
 }: {
   registro?: PTRBACompleto;
   onCancel: () => void;
-  onSave: (input: Omit<PTRBACompletoInput, 'createdBy'>) => void;
+  onSave: (input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) => void;
   bombeiros: Bombeiro[];
   apocs: APOC[];
   escalasDiarias: EscalaDiaria[];
@@ -700,26 +709,49 @@ function PTRBACompletoForm({
 function PTRBACompletoCard({
   registro,
   canEdit,
+  canDelete,
   downloading,
-  onView,
+  previewing,
+  auditoriaPessoas,
+  onPreviewDocument,
   onEdit,
   onDelete,
   onDownload,
 }: {
   registro: PTRBACompleto;
   canEdit: boolean;
+  canDelete: boolean;
   downloading: boolean;
-  onView: () => void;
+  previewing: boolean;
+  auditoriaPessoas: Bombeiro[];
+  onPreviewDocument: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onDownload: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const gruposEvidencias = evidenciasEmPares(registro.evidencias);
   const evidenciasPreenchidas = registro.evidencias.filter(ev => ev.imagem);
   const participantesPreenchidos = registro.participantes.filter(p => p.nomeCompleto);
+  const auditoria = resumoAuditoria(registro, auditoriaPessoas);
+  const infoCards = [
+    { label: 'Data do plantão', value: formatDate(registro.data) },
+    { label: 'Equipe', value: registro.equipe },
+    { label: 'Aeroporto', value: registro.identificacaoAeroporto || '-' },
+    { label: 'Chefe da equipe', value: registro.chefeEquipe || '-' },
+  ];
+
   return (
-    <div className="rounded-2xl border border-graphite-200/60 bg-white/80 p-5 shadow-sm backdrop-blur-sm transition-all hover:border-aviation-300/60 dark:border-border-dark dark:bg-surface-card/80">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className={`overflow-hidden rounded-2xl border bg-white/80 shadow-sm backdrop-blur-sm transition-all dark:bg-surface-card/80 ${
+      expanded
+        ? 'border-aviation-400/70 shadow-lg shadow-aviation-500/10 dark:border-aviation-500/50'
+        : 'border-graphite-200/60 hover:border-aviation-300/60 dark:border-border-dark'
+    }`}>
+      <button
+        type="button"
+        onClick={() => setExpanded(value => !value)}
+        className="flex w-full flex-col gap-4 p-5 text-left transition-all hover:bg-aviation-500/[0.03] lg:flex-row lg:items-start lg:justify-between"
+      >
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h3 className="text-base font-bold text-graphite-900 dark:text-graphite-100">
@@ -733,132 +765,137 @@ function PTRBACompletoCard({
             {participantesPreenchidos.length} participante(s) preenchido(s)
             {registro.chefeEquipe ? ` - Chefe: ${registro.chefeEquipe}` : ''}
           </p>
+          <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
           {gruposEvidencias.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {gruposEvidencias.slice(0, 3).map(grupo => (
-                <span key={grupo.grupoIndex} className="rounded-lg border border-graphite-200 bg-graphite-50 px-2.5 py-1 text-xs text-graphite-600 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-300">
-                  {evidenciaResumo(grupo.primeira)}
-                </span>
-              ))}
+              {gruposEvidencias.slice(0, 3).map(grupo => {
+                const evidenciaPrincipal = evidenciaPreenchida(grupo.primeira) ? grupo.primeira : grupo.segunda;
+                return (
+                  <span key={grupo.grupoIndex} className="rounded-lg border border-graphite-200 bg-graphite-50 px-2.5 py-1 text-xs text-graphite-600 dark:border-border-dark dark:bg-surface-hover dark:text-graphite-300">
+                    {evidenciaResumo(evidenciaPrincipal)}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <button onClick={onView} className="rounded-xl border border-graphite-300/60 bg-white/80 p-2 text-graphite-600 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300" title="Ver detalhes">
-            <Eye className="h-4 w-4" />
-          </button>
-          <button onClick={onDownload} disabled={downloading} className="flex items-center gap-1 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-sm font-medium text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300" title="Download PDF">
-            <Download className="h-4 w-4" /> {downloading ? 'Gerando' : 'PDF'}
-          </button>
-          {canEdit && (
-            <>
-              <button onClick={onEdit} className="rounded-xl border border-graphite-300/60 bg-white/80 p-2 text-graphite-600 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300" title="Editar">
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button onClick={onDelete} className="rounded-xl p-2 text-alert-red transition-all hover:bg-red-50 dark:hover:bg-red-900/20" title="Excluir">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </>
-          )}
+        <div className="flex shrink-0 items-center gap-2 self-start rounded-xl border border-graphite-200 bg-graphite-50 px-3 py-2 text-sm font-semibold text-aviation-700 dark:border-border-dark dark:bg-surface-hover dark:text-aviation-300">
+          {expanded ? 'Ocultar detalhes' : 'Ver detalhes'}
+          {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
-      </div>
-    </div>
-  );
-}
+      </button>
 
-function ViewMode({ registro, onBack, onPreviewPdf, onDownload, previewing, downloading }: {
-  registro: PTRBACompleto;
-  onBack: () => void;
-  onPreviewPdf: () => void;
-  onDownload: () => void;
-  previewing: boolean;
-  downloading: boolean;
-}) {
-  const gruposEvidencias = evidenciasEmPares(registro.evidencias);
-  return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <PageTitle icon={FileText} title={`PTR-BA Completo - ${registro.equipe} - ${formatDate(registro.data)}`} />
-        <div className="flex items-center gap-2">
-          <button onClick={onPreviewPdf} disabled={previewing} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2 text-sm font-medium text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
-            <FileText className="h-4 w-4" /> {previewing ? 'Abrindo documento' : 'Ver documento'}
-          </button>
-          <button onClick={onDownload} disabled={downloading} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 disabled:opacity-60">
-            <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : 'Download PDF'}
-          </button>
-          <button onClick={onBack} className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
-            Fechar
-          </button>
-        </div>
-      </div>
-      <div className="space-y-6">
-        <div className="rounded-2xl border border-graphite-200/60 bg-white/80 p-6 shadow-sm dark:border-border-dark dark:bg-surface-card/80">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-            <div><p className="text-xs text-graphite-400">Data</p><p className="text-sm font-semibold dark:text-graphite-100">{formatDate(registro.data)}</p></div>
-            <div><p className="text-xs text-graphite-400">Equipe</p><p className="text-sm font-semibold dark:text-graphite-100">{registro.equipe}</p></div>
-            <div><p className="text-xs text-graphite-400">Aeroporto</p><p className="text-sm font-semibold dark:text-graphite-100">{registro.identificacaoAeroporto || '-'}</p></div>
-            <div><p className="text-xs text-graphite-400">Chefe</p><p className="text-sm font-semibold dark:text-graphite-100">{registro.chefeEquipe || '-'}</p></div>
+      {expanded && (
+        <div className="border-t border-graphite-200/70 px-5 pb-5 pt-4 dark:border-border-dark">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {infoCards.map(cardInfo => (
+              <div key={cardInfo.label} className="rounded-xl border border-graphite-200/70 bg-graphite-50/80 p-3 dark:border-border-dark dark:bg-surface-hover/70">
+                <p className="text-[10px] font-black uppercase tracking-wider text-graphite-400 dark:text-graphite-500">{cardInfo.label}</p>
+                <p className="mt-1 text-sm font-semibold text-graphite-900 dark:text-graphite-100">{cardInfo.value}</p>
+              </div>
+            ))}
           </div>
-        </div>
-        <div className="rounded-2xl border border-graphite-200/60 bg-white/80 p-6 shadow-sm dark:border-border-dark dark:bg-surface-card/80">
-          <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Efetivo</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-graphite-200 text-left text-xs uppercase tracking-wider text-graphite-400 dark:border-border-dark">
-                  <th className="px-3 py-2">Ord</th>
-                  <th className="px-3 py-2">Função</th>
-                  <th className="px-3 py-2">Nome</th>
-                  <th className="px-3 py-2">Situação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {registro.participantes.filter(p => p.nomeCompleto).map((p, index) => (
-                  <tr key={index} className="border-b border-graphite-100 dark:border-border-dark">
-                    <td className="px-3 py-2 dark:text-graphite-100">{index + 1}</td>
-                    <td className="px-3 py-2 dark:text-graphite-100">{p.funcao || '-'}</td>
-                    <td className="px-3 py-2 dark:text-graphite-100">{p.nomeCompleto || '-'}</td>
-                    <td className="px-3 py-2 dark:text-graphite-100">{p.situacao || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {gruposEvidencias.length > 0 && (
-          <div className="space-y-4">
-            {gruposEvidencias.map(grupo => {
-              const fotos = [
-                { evidencia: grupo.primeira, index: grupo.primeiroIndex },
-                { evidencia: grupo.segunda, index: grupo.segundoIndex },
-              ].filter(item => item.evidencia.imagem);
 
-              return (
-                <div key={grupo.grupoIndex} className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 shadow-sm dark:border-border-dark dark:bg-surface-card/80">
-                  <div className="mb-3">
-                    <p className="text-sm font-bold text-aviation-600 dark:text-aviation-400">Instrução {grupo.grupoIndex + 1}</p>
-                    <p className="text-sm font-semibold dark:text-graphite-100">{evidenciaResumo(grupo.primeira)}</p>
-                    {grupo.primeira.descricao && <p className="mt-2 whitespace-pre-wrap text-sm text-graphite-500 dark:text-graphite-400">{grupo.primeira.descricao}</p>}
-                  </div>
-                  {fotos.length > 0 && (
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                      {fotos.map(({ evidencia, index }) => (
-                        <img key={index} src={evidencia.imagem} alt={`Evidencia ${index + 1}`} className="max-h-72 w-full rounded-xl object-contain" />
-                      ))}
+          <div className="mt-4 rounded-xl border border-graphite-200/70 bg-white/60 p-4 dark:border-border-dark dark:bg-surface-card/60">
+            <h4 className="mb-3 text-xs font-black uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Efetivo</h4>
+            {participantesPreenchidos.length === 0 ? (
+              <p className="text-sm text-graphite-500 dark:text-graphite-400">Nenhum participante preenchido.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-graphite-200 text-left text-xs uppercase tracking-wider text-graphite-400 dark:border-border-dark">
+                      <th className="px-3 py-2">Ord</th>
+                      <th className="px-3 py-2">Função</th>
+                      <th className="px-3 py-2">Nome</th>
+                      <th className="px-3 py-2">Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {participantesPreenchidos.map((participante, index) => (
+                      <tr key={`${participante.nomeCompleto}-${index}`} className="border-b border-graphite-100 last:border-0 dark:border-border-dark">
+                        <td className="px-3 py-2 font-medium text-graphite-700 dark:text-graphite-200">{index + 1}</td>
+                        <td className="px-3 py-2 text-graphite-700 dark:text-graphite-200">{participante.funcao || '-'}</td>
+                        <td className="px-3 py-2 font-semibold text-graphite-900 dark:text-graphite-100">{participante.nomeCompleto || '-'}</td>
+                        <td className="px-3 py-2 text-graphite-700 dark:text-graphite-200">{participante.situacao || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {gruposEvidencias.length > 0 && (
+            <div className="mt-4 space-y-3">
+              {gruposEvidencias.map(grupo => {
+                const evidenciaPrincipal = evidenciaPreenchida(grupo.primeira) ? grupo.primeira : grupo.segunda;
+                const descricoes = Array.from(new Set(
+                  [grupo.primeira.descricao, grupo.segunda.descricao]
+                    .map(descricao => String(descricao || '').trim())
+                    .filter(Boolean)
+                ));
+                const fotos = [
+                  { evidencia: grupo.primeira, index: grupo.primeiroIndex },
+                  { evidencia: grupo.segunda, index: grupo.segundoIndex },
+                ].filter(item => item.evidencia.imagem);
+
+                return (
+                  <div key={grupo.grupoIndex} className="rounded-xl border border-graphite-200/70 bg-white/60 p-4 dark:border-border-dark dark:bg-surface-card/60">
+                    <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Instrução {grupo.grupoIndex + 1}</p>
+                        <p className="text-sm font-semibold text-graphite-900 dark:text-graphite-100">{evidenciaResumo(evidenciaPrincipal)}</p>
+                      </div>
+                      <span className="w-fit rounded-full bg-graphite-100 px-2.5 py-1 text-xs font-semibold text-graphite-500 dark:bg-surface-hover dark:text-graphite-400">
+                        {fotos.length} foto(s)
+                      </span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    {descricoes.length > 0 && (
+                      <p className="mb-3 whitespace-pre-wrap text-sm text-graphite-600 dark:text-graphite-300">{descricoes.join('\n\n')}</p>
+                    )}
+                    {fotos.length > 0 && (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {fotos.map(({ evidencia, index }) => (
+                          <img key={index} src={evidencia.imagem} alt={`Evidencia ${index + 1}`} className="max-h-64 w-full rounded-xl border border-graphite-200/70 bg-graphite-50 object-contain dark:border-border-dark dark:bg-surface-hover" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {registro.observacoes && (
+            <div className="mt-4 rounded-xl border border-graphite-200/70 bg-white/60 p-4 dark:border-border-dark dark:bg-surface-card/60">
+              <h4 className="mb-2 text-xs font-black uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Observações</h4>
+              <p className="whitespace-pre-wrap text-sm text-graphite-600 dark:text-graphite-300">{registro.observacoes}</p>
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-graphite-200/70 pt-4 dark:border-border-dark">
+            <button type="button" onClick={onPreviewDocument} disabled={previewing} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+              <Eye className="h-4 w-4" /> {previewing ? 'Abrindo documento' : 'Ver documento'}
+            </button>
+            <button type="button" onClick={onDownload} disabled={downloading} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60">
+              <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : 'Download PDF'}
+            </button>
+            {canEdit && (
+              <>
+                <button type="button" onClick={onEdit} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                  <Pencil className="h-4 w-4" /> Editar
+                </button>
+                {canDelete && (
+                  <button type="button" onClick={onDelete} className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                    <Trash2 className="h-4 w-4" /> Excluir
+                  </button>
+                )}
+              </>
+            )}
           </div>
-        )}
-        {registro.observacoes && (
-          <div className="rounded-2xl border border-graphite-200/60 bg-white/80 p-6 shadow-sm dark:border-border-dark dark:bg-surface-card/80">
-            <h3 className="mb-2 text-sm font-bold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Observações</h3>
-            <p className="whitespace-pre-wrap text-sm text-graphite-600 dark:text-graphite-300">{registro.observacoes}</p>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -899,7 +936,8 @@ export function PTRBACompletoPage() {
   const username = user?.username || '';
   const podeCriar = canCriarRegistrosDiarios(contexto);
   const canCreate = podeCriar;
-  const canEscolherEquipe = podeCriar;
+  const canEscolherEquipe = canEscolherEquipeRegistrosDiarios(contexto);
+  const equipePadrao = equipePadraoRegistrosDiarios(contexto) || equipeEfetiva;
   const [registros, setRegistros] = useState<PTRBACompleto[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
@@ -907,9 +945,8 @@ export function PTRBACompletoPage() {
   const [vigencias, setVigencias] = useState<any[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<'list' | 'form' | 'view'>('list');
+  const [mode, setMode] = useState<'list' | 'form'>('list');
   const [editando, setEditando] = useState<PTRBACompleto | null>(null);
-  const [visualizando, setVisualizando] = useState<PTRBACompleto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
@@ -971,32 +1008,27 @@ export function PTRBACompletoPage() {
     return () => { cancelado = true; };
   }, []);
 
-  async function handleSave(input: Omit<PTRBACompletoInput, 'createdBy'>) {
+  async function handleSave(input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) {
     try {
-      if (!canCriarRegistrosDiarios(contexto)) {
-        alert('Você não tem permissão para salvar PTR-BA completo.');
-        return;
-      }
-      if (editando?.id && !canGerenciarRegistroDiario(contexto, editando, username, bombeiros)) {
-        alert('Você só pode editar PTR-BA completo que você criou (ou que seu chefe de equipe criou, no caso de BA-LR).');
-        return;
-      }
-      const equipeAlvo = canEscolherEquipe ? input.equipe : equipeEfetiva || input.equipe;
-      const payload = { ...input, equipe: equipeAlvo as Equipe };
-      let salvo: PTRBACompleto | null;
       if (editando?.id) {
-        salvo = await atualizarPTRBACompleto(editando.id, payload);
+        if (!canEditarRegistroDiario(contexto, editando, username, bombeiros)) {
+          alert('Você só pode editar PTR-BA completo que você criou, que foi criado pelo chefe no caso de BA-LR, ou que pertence à sua equipe fixa autorizada.');
+          return;
+        }
+      } else if (!canCriarRegistrosDiarios(contexto)) {
+        alert('Você não tem permissão para criar PTR-BA completo.');
+        return;
+      }
+      const equipeAlvo = canEscolherEquipe ? input.equipe : equipePadrao || input.equipe;
+      const payload = { ...input, equipe: equipeAlvo as Equipe };
+      if (editando?.id) {
+        await atualizarPTRBACompleto(editando.id, { ...payload, updatedBy: username });
       } else {
-        salvo = await criarPTRBACompleto({ ...payload, createdBy: username });
+        await criarPTRBACompleto({ ...payload, createdBy: username });
       }
       setEditando(null);
       await carregar();
-      if (salvo) {
-        setVisualizando(salvo);
-        setMode('view');
-      } else {
-        setMode('list');
-      }
+      setMode('list');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao salvar PTR-BA completo.');
     }
@@ -1005,7 +1037,7 @@ export function PTRBACompletoPage() {
   async function handleDelete(id: string) {
     try {
       const alvo = registros.find(registro => registro.id === id);
-      if (!alvo || !canGerenciarRegistroDiario(contexto, alvo, username, bombeiros)) {
+      if (!alvo || !canExcluirRegistroDiario(contexto, alvo, username, bombeiros)) {
         alert('Você só pode excluir PTR-BA completo que você criou (ou que seu chefe de equipe criou, no caso de BA-LR).');
         setConfirmDelete(null);
         return;
@@ -1062,24 +1094,8 @@ export function PTRBACompletoPage() {
           trocaFills={trocaFills}
           canManageGlobal={canManageGlobal}
           canEscolherEquipe={canEscolherEquipe}
-          equipeEfetiva={equipeEfetiva}
+          equipeEfetiva={equipePadrao}
         />
-      </PageContainer>
-    );
-  }
-
-  if (mode === 'view' && visualizando) {
-    return (
-      <PageContainer>
-        <ViewMode
-          registro={visualizando}
-          onBack={() => setMode('list')}
-          onPreviewPdf={() => handlePreviewPdf(visualizando)}
-          onDownload={() => handleDownload(visualizando)}
-          previewing={previewingId === visualizando.id}
-          downloading={downloadingId === visualizando.id}
-        />
-        <PTRBACompletoPdfPreviewModal title={previewPdfTitle} pdfData={previewPdfData} onClose={closePreviewPdf} />
       </PageContainer>
     );
   }
@@ -1130,18 +1146,25 @@ export function PTRBACompletoPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {registrosFiltrados.map(registro => (
-            <PTRBACompletoCard
-              key={registro.id}
-              registro={registro}
-              canEdit={canGerenciarRegistroDiario(contexto, registro, username, bombeiros)}
-              downloading={downloadingId === registro.id}
-              onView={() => { setVisualizando(registro); setMode('view'); }}
-              onEdit={() => { setEditando(registro); setMode('form'); }}
-              onDelete={() => setConfirmDelete(registro.id)}
-              onDownload={() => handleDownload(registro)}
-            />
-          ))}
+          {registrosFiltrados.map(registro => {
+            const podeAlterar = canEditarRegistroDiario(contexto, registro, username, bombeiros);
+            const podeExcluir = canExcluirRegistroDiario(contexto, registro, username, bombeiros);
+            return (
+              <PTRBACompletoCard
+                key={registro.id}
+                registro={registro}
+                canEdit={podeAlterar}
+                canDelete={podeExcluir}
+                downloading={downloadingId === registro.id}
+                previewing={previewingId === registro.id}
+                auditoriaPessoas={bombeiros}
+                onPreviewDocument={() => handlePreviewPdf(registro)}
+                onEdit={() => { setEditando(registro); setMode('form'); }}
+                onDelete={() => setConfirmDelete(registro.id)}
+                onDownload={() => handleDownload(registro)}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -1161,6 +1184,7 @@ export function PTRBACompletoPage() {
           </div>
         </div>
       )}
+      <PTRBACompletoPdfPreviewModal title={previewPdfTitle} pdfData={previewPdfData} onClose={closePreviewPdf} />
       <PageTour
         steps={PTRBA_COMPLETO_TOUR_STEPS}
         targetAttribute="data-ptrba-completo-tour"

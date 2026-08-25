@@ -43,6 +43,8 @@ export interface TreinamentoTempoResposta {
   chefeEquipe: string;
   gerente: string;
   status: TreinamentoTempoRespostaStatus;
+  createdBy: string;
+  updatedBy?: string;
   aprovadoPor: string;
   aprovadoPorNome: string;
   aprovadoEm: string;

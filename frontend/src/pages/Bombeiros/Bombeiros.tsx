@@ -114,10 +114,30 @@ export function Bombeiros() {
     if (!canManageCadastro) return;
     try {
       setSaveError('');
+      const anterior = editando;
+      const equipeAutorizacaoMudou =
+        (anterior?.autorizacaoRegistrosDiariosEquipe || '') !== (data.autorizacaoRegistrosDiariosEquipe || '');
+      const solicitouNovaAutorizacao =
+        data.autorizacaoRegistrosDiariosStatus === 'pendente' &&
+        (anterior?.autorizacaoRegistrosDiariosStatus !== 'pendente' || equipeAutorizacaoMudou);
+      const cancelouAutorizacao = data.autorizacaoRegistrosDiariosStatus === 'nenhuma';
+      const payload = {
+        ...data,
+        autorizadoRegistrosDiarios: data.autorizacaoRegistrosDiariosStatus === 'aprovado' && !!data.autorizacaoRegistrosDiariosEquipe,
+        autorizacaoRegistrosDiariosEquipe: cancelouAutorizacao ? '' : data.autorizacaoRegistrosDiariosEquipe,
+        autorizacaoRegistrosDiariosSolicitadoPor: solicitouNovaAutorizacao
+          ? user?.username || user?.name || ''
+          : cancelouAutorizacao ? '' : data.autorizacaoRegistrosDiariosSolicitadoPor,
+        autorizacaoRegistrosDiariosSolicitadoEm: solicitouNovaAutorizacao
+          ? new Date().toISOString()
+          : cancelouAutorizacao ? '' : data.autorizacaoRegistrosDiariosSolicitadoEm,
+        autorizacaoRegistrosDiariosDecididoPor: cancelouAutorizacao ? '' : data.autorizacaoRegistrosDiariosDecididoPor,
+        autorizacaoRegistrosDiariosDecididoEm: cancelouAutorizacao ? '' : data.autorizacaoRegistrosDiariosDecididoEm,
+      };
       if (editando) {
-        await atualizarBombeiro(editando.id, data);
+        await atualizarBombeiro(editando.id, payload);
       } else {
-        await criarBombeiro(data);
+        await criarBombeiro(payload);
       }
       setFormOpen(false);
       setEditando(null);
@@ -223,6 +243,7 @@ export function Bombeiros() {
                 <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Cargo</th>
                 <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Função Abrev.</th>
                 <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Equipe</th>
+                <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Reg. Diários</th>
                 <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Horário</th>
                 <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Turno</th>
                 <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Situação</th>
@@ -241,6 +262,25 @@ export function Bombeiros() {
                     <span className="inline-flex rounded-full bg-aviation-50 px-2.5 py-0.5 text-xs font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">
                       {b.equipe}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {b.autorizadoRegistrosDiarios ? (
+                      <span className="inline-flex rounded-full bg-status-green/10 px-2.5 py-0.5 text-xs font-medium text-status-green">
+                        Autorizado{b.autorizacaoRegistrosDiariosEquipe ? ` ${b.autorizacaoRegistrosDiariosEquipe}` : ''}
+                      </span>
+                    ) : b.autorizacaoRegistrosDiariosStatus === 'pendente' ? (
+                      <span className="inline-flex rounded-full bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-600 dark:text-yellow-300">
+                        Pendente{b.autorizacaoRegistrosDiariosEquipe ? ` ${b.autorizacaoRegistrosDiariosEquipe}` : ''}
+                      </span>
+                    ) : b.autorizacaoRegistrosDiariosStatus === 'rejeitado' ? (
+                      <span className="inline-flex rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-alert-red">
+                        Recusado{b.autorizacaoRegistrosDiariosEquipe ? ` ${b.autorizacaoRegistrosDiariosEquipe}` : ''}
+                      </span>
+                    ) : (
+                      <span className="inline-flex rounded-full bg-graphite-100 px-2.5 py-0.5 text-xs font-medium text-graphite-500 dark:bg-surface-hover dark:text-graphite-400">
+                        Não
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{getHorarioTrabalho(b.equipe, b.cargo)}</td>
                   <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{b.turno}</td>

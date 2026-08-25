@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { CheckCircle, ChevronDown, ChevronUp, Download, Eye, Pencil, Trash2 } from 'lucide-react';
 import type { ReaRegistro } from '../../types/rea';
 import { formatarDataBR } from '../../utils/datas';
+import { resumoAuditoria } from '../../utils/auditoria';
+import type { Bombeiro } from '../../types/bombeiro';
 
 function fmtDate(value?: string): string {
   return formatarDataBR(value);
@@ -13,6 +15,7 @@ export function ReaCard({
   downloading,
   processing,
   approving,
+  auditoriaPessoas,
   onEdit,
   onDelete,
   onPreview,
@@ -24,6 +27,7 @@ export function ReaCard({
   downloading: boolean;
   processing: boolean;
   approving: boolean;
+  auditoriaPessoas: Bombeiro[];
   onEdit: () => void;
   onDelete: () => void;
   onPreview: () => void;
@@ -45,6 +49,7 @@ export function ReaCard({
       <p className={valueCls}>{value || '-'}</p>
     </div>
   );
+  const auditoria = resumoAuditoria(rea, auditoriaPessoas);
 
   return (
     <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -62,6 +67,7 @@ export function ReaCard({
             {rea.aerodromo && <span>{rea.aerodromo}</span>}
             {rea.cidade && <span>{rea.cidade}</span>}
           </div>
+          <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
         </div>
         {expanded ? <ChevronUp className="ml-2 h-4 w-4 shrink-0 text-graphite-400" /> : <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-graphite-400" />}
       </button>

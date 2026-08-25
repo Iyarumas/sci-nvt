@@ -37,6 +37,7 @@ function rowToConferencia(row: Record<string, unknown>): Conferencia {
     createdBy: (row.created_by as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
+    updatedBy: (row.updated_by as string) || '',
   };
 }
 
@@ -57,6 +58,7 @@ function conferenciaToRow(data: Partial<Conferencia>): Record<string, unknown> {
   if (data.observacoes !== undefined) row.observacoes = data.observacoes;
   if (data.dataProximaInspecao !== undefined) row.data_proxima_inspecao = data.dataProximaInspecao;
   if (data.createdBy !== undefined) row.created_by = data.createdBy;
+  if (data.updatedBy !== undefined) row.updated_by = data.updatedBy;
   return row;
 }
 
@@ -70,7 +72,7 @@ export async function listarConferencias(): Promise<Conferencia[]> {
   return (data || []).map(rowToConferencia);
 }
 
-export async function criarConferencia(data: Omit<Conferencia, 'id' | 'createdAt' | 'updatedAt'>): Promise<Conferencia> {
+export async function criarConferencia(data: Omit<Conferencia, 'id' | 'createdAt' | 'updatedAt' | 'updatedBy'>): Promise<Conferencia> {
   const db = getDb();
   const now = new Date().toISOString();
   const row = { ...conferenciaToRow(data), created_at: now, updated_at: now };

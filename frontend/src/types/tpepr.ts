@@ -20,6 +20,7 @@ export interface TreinamentoTPEPR {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
   equipe: Equipe | string;
   numero: number;
   ano: string;

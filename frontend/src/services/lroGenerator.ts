@@ -8,11 +8,25 @@ function cb(checked: boolean) {
   return `<span style="display:inline-flex; align-items:center; justify-content:center; width:9px; height:9px; border:1px solid #000; font-size:8px; line-height:1; vertical-align:middle; position:relative; top:0; font-weight:bold; color:#000;">${fill}</span>`;
 }
 
+function escapeHTML(value: unknown): string {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textoMultilinha(value: unknown, fallback = 'SEM ALTERAÇÕES'): string {
+  const texto = String(value || '').trim();
+  return texto ? escapeHTML(texto) : fallback;
+}
+
 function secaoCheckbox(titulo: string, temAlteracao: boolean, texto: string): string {
   return `<table class="mb" style="border:1px solid #000; border-collapse:separate; border-spacing:0;">
     <tr><td colspan="6" style="border:none; border-bottom:1px solid #000; font-weight:bold; font-size:11px; background:#d4d4d4; text-align:center; padding:2px 3px;">${titulo}</td></tr>
     <tr><td style="border:none; padding:2px 40px; font-size:11px;">${cb(temAlteracao)} ABAIXO &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${cb(!temAlteracao)} SEM ALTERAÇÕES</td></tr>
-    <tr><td style="border:none; border-top:1px solid #000; padding:6px 8px; font-size:11px;">${texto || 'SEM ALTERAÇÕES'}</td></tr>
+    <tr><td style="border:none; border-top:1px solid #000; padding:6px 8px; font-size:11px; line-height:1.25; white-space:pre-wrap;">${textoMultilinha(texto)}</td></tr>
   </table>`;
 }
 
@@ -140,14 +154,14 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
 
   const subHTML = temSubstituicao
     ? substituicao.map(s => `
-      <tr><td colspan="7" style="padding:4px 4px; font-size:11px;"><div style="display:grid; grid-template-columns:2fr 1fr 2fr; text-align:center;"><div><span class="b" style="font-size:11px;">${s.funcao1 || 'BA-2'}</span> <span style="font-size:11px;">${(s.nome1 || '').toUpperCase()}</span></div><div style="align-self:center;"><span style="font-size:14px;">→</span></div><div><span class="b" style="font-size:11px;">${s.funcao2 || 'BA-2'}</span> <span style="font-size:11px;">${(s.nome2 || '').toUpperCase()}</span></div></div></td></tr>
+      <tr><td colspan="7" style="border-top:none; border-bottom:none; border-left:1px solid #000; border-right:1px solid #000; padding:3px 4px; font-size:11px;"><div style="display:grid; grid-template-columns:2fr 1fr 2fr; text-align:center;"><div><span class="b" style="font-size:11px;">${s.funcao1 || 'BA-2'}</span> <span style="font-size:11px;">${(s.nome1 || '').toUpperCase()}</span></div><div style="align-self:center;"><span style="font-size:14px;">→</span></div><div><span class="b" style="font-size:11px;">${s.funcao2 || 'BA-2'}</span> <span style="font-size:11px;">${(s.nome2 || '').toUpperCase()}</span></div></div></td></tr>
     `).join('')
     : '';
 
   const substituicoesAtivasHTML = temSubstituicoesAtivas
     ? `<tr><td style="border-top:1px solid #000; border-bottom:1px solid #000; padding:2px 3px; font-weight:bold; font-size:11px; background:#d4d4d4; text-align:center;" colspan="7">CADEIA DE SUBSTITUIÇÕES (FÉRIAS / TEMPORÁRIAS / CASCATA)</td></tr>
 ${substituicoesAtivas.map(s => `
-    <tr><td colspan="7" style="padding:4px 4px; font-size:11px;"><div style="display:grid; grid-template-columns:2fr 1fr 2fr; text-align:center; align-items:center;"><div><span class="b" style="font-size:11px;">${s.cargoAusente || ''}</span> <span style="font-size:11px;">${(s.nomeAusente || '').toUpperCase()}</span></div><div style="align-self:center;"><span style="font-size:14px;">→</span></div><div><span class="b" style="font-size:11px;">${s.cargoPresente || ''}</span> <span style="font-size:11px;">${(s.nomePresente || '').toUpperCase()}</span></div></div><div style="font-size:10px; color:#555; text-align:center; margin-top:2px;">${motivoSubstituicaoLabel(s.motivo)} · Nível ${s.nivel || 1}</div></td></tr>
+    <tr><td colspan="7" style="border-top:none; border-bottom:none; border-left:1px solid #000; border-right:1px solid #000; padding:3px 4px; font-size:11px;"><div style="display:grid; grid-template-columns:2fr 1fr 2fr; text-align:center; align-items:center;"><div><span class="b" style="font-size:11px;">${s.cargoAusente || ''}</span> <span style="font-size:11px;">${(s.nomeAusente || '').toUpperCase()}</span></div><div style="align-self:center;"><span style="font-size:14px;">→</span></div><div><span class="b" style="font-size:11px;">${s.cargoPresente || ''}</span> <span style="font-size:11px;">${(s.nomePresente || '').toUpperCase()}</span></div></div><div style="font-size:10px; color:#555; text-align:center; margin-top:2px;">${motivoSubstituicaoLabel(s.motivo)} · Nível ${s.nivel || 1}</div></td></tr>
   `).join('')}`
     : '';
 

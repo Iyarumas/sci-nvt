@@ -29,8 +29,14 @@ import type { PTRB } from '../../types/ptrb';
 import type { PTRBACompleto } from '../../types/ptrbaCompleto';
 import type { ReaRegistro } from '../../types/rea';
 import { dataSaidaPlantao, equipeEstaNoPlantao, horarioPlantaoPorEquipe } from '../../utils/equipes';
-import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO, normalizarDataISO, parseDataLocalISO } from '../../utils/datas';
-import { canCriarRegistrosDiarios, canGerenciarRegistroDiario } from '../../utils/permissoes';
+import { estaNoPeriodoISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, mesmoDiaISO, normalizarDataISO, parseDataLocalISO } from '../../utils/datas';
+import {
+  canCriarRegistrosDiarios,
+  canEditarRegistroDiario,
+  canEscolherEquipeRegistrosDiarios,
+  canExcluirRegistroDiario,
+  equipePadraoRegistrosDiarios,
+} from '../../utils/permissoes';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
 
 function SearchSelect({ options, value, onChange, placeholder, label }: {
@@ -487,7 +493,8 @@ export function GerarLRO() {
   const username = user?.username || '';
   const podeCriar = canCriarRegistrosDiarios(contexto);
   const canCreate = podeCriar;
-  const canEscolherEquipe = podeCriar;
+  const canEscolherEquipe = canEscolherEquipeRegistrosDiarios(contexto);
+  const equipePadrao = equipePadraoRegistrosDiarios(contexto) || equipeEfetiva;
 
   const [step, setStep] = useState<Step>('equipe');
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
@@ -560,8 +567,8 @@ export function GerarLRO() {
   const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
   const equipesFormulario = useMemo(() => {
     if (canEscolherEquipe) return ['Alfa', 'Bravo', 'Charlie', 'Delta'] as EquipeOpcao[];
-    return equipeEfetiva ? [equipeEfetiva as EquipeOpcao] : [];
-  }, [canEscolherEquipe, equipeEfetiva]);
+    return equipePadrao ? [equipePadrao as EquipeOpcao] : [];
+  }, [canEscolherEquipe, equipePadrao]);
   const inputClass = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400 dark:focus:ring-aviation-400/10';
   const [view, setView] = useState<'lista' | 'wizard'>('lista');
   const [showTutorial, setShowTutorial] = useState(false);
@@ -604,7 +611,17 @@ export function GerarLRO() {
 
   function canManageDraft(draft: LRODraft): boolean {
     const dados = draft.dados as Record<string, unknown>;
-    return canGerenciarRegistroDiario(
+    return canEditarRegistroDiario(
+      contexto,
+      { createdBy: draft.created_by, equipe: draft.equipe || (dados?.equipeNome as string | undefined) || '' },
+      username,
+      bombeiros,
+    );
+  }
+
+  function canDeleteDraft(draft: LRODraft): boolean {
+    const dados = draft.dados as Record<string, unknown>;
+    return canExcluirRegistroDiario(
       contexto,
       { createdBy: draft.created_by, equipe: draft.equipe || (dados?.equipeNome as string | undefined) || '' },
       username,
@@ -723,10 +740,10 @@ export function GerarLRO() {
   }
 
   useEffect(() => {
-    if (!canEscolherEquipe && equipeEfetiva && equipe !== equipeEfetiva) {
-      setEquipe(equipeEfetiva as EquipeOpcao);
+    if (!canEscolherEquipe && equipePadrao && equipe !== equipePadrao) {
+      setEquipe(equipePadrao as EquipeOpcao);
     }
-  }, [canEscolherEquipe, equipeEfetiva, equipe]);
+  }, [canEscolherEquipe, equipePadrao, equipe]);
 
   useEffect(() => {
     const tick = () => {
@@ -1690,7 +1707,7 @@ export function GerarLRO() {
       const saved = await salvarDraft(dados, equipe, dataInicio, username, draftId || undefined);
       setDraftId(saved.id);
       if (draftEmEdicaoStatus && draftEmEdicaoStatus !== 'rascunho') {
-        await atualizarStatus(saved.id, 'rascunho');
+        await atualizarStatus(saved.id, 'rascunho', undefined, username);
         setDraftEmEdicaoStatus('rascunho');
       }
       const updated = await listarDrafts('').catch(() => []);
@@ -1846,7 +1863,7 @@ export function GerarLRO() {
       };
       const saved = await salvarDraft(dados, equipe, dataInicio, username, draftId || undefined);
       setDraftId(saved.id);
-      await atualizarStatus(saved.id, 'aguardando');
+      await atualizarStatus(saved.id, 'aguardando', undefined, username);
       setDraftEmEdicaoStatus('aguardando');
       const updated = await listarDrafts('').catch(() => []);
       setDrafts(updated);
@@ -1889,9 +1906,9 @@ export function GerarLRO() {
   }
 
   async function finalizarDraftComOcorrencias(draft: LRODraft) {
-    await atualizarStatus(draft.id, 'finalizado');
+    const atualizado = await atualizarStatus(draft.id, 'finalizado', undefined, username);
     await fecharOcorrenciasIncluidasNoDraft(draft);
-    setDrafts(prev => prev.map(x => x.id === draft.id ? { ...x, status: 'finalizado' } : x));
+    setDrafts(prev => prev.map(x => x.id === draft.id ? atualizado : x));
   }
 
   function draftTravaOcorrencias(draft: LRODraft): boolean {
@@ -2038,6 +2055,71 @@ export function GerarLRO() {
     return itens.length ? itens.join(', ') : 'Sem alterações';
   }
 
+  function valorAuditoria(value: unknown): string {
+    return String(value || '').trim();
+  }
+
+  function buscarBombeiroAuditoria(value: unknown): Bombeiro | undefined {
+    const raw = valorAuditoria(value);
+    const alvo = normalizarPessoaTexto(raw);
+    const email = raw.toLocaleLowerCase('pt-BR');
+    if (!alvo) return undefined;
+
+    const exato = bombeiros.find(p =>
+      normalizarPessoaTexto(p.id) === alvo ||
+      normalizarPessoaTexto(p.matricula) === alvo ||
+      normalizarPessoaTexto(p.nomeGuerra) === alvo ||
+      normalizarPessoaTexto(p.nomeCompleto) === alvo ||
+      normalizarPessoaTexto(p.nome) === alvo ||
+      normalizarPessoaTexto(p.email) === alvo ||
+      String(p.email || '').trim().toLocaleLowerCase('pt-BR') === email
+    );
+    if (exato) return exato;
+
+    return buscarBombeiroPorTexto(raw, bombeiros);
+  }
+
+  function usuarioAuditoria(value: unknown): string {
+    const raw = valorAuditoria(value);
+    const bombeiro = buscarBombeiroAuditoria(raw);
+    if (bombeiro) {
+      const nome = bombeiro.nomeGuerra || bombeiro.nomeCompleto;
+      return [bombeiro.cargo, nome].filter(Boolean).join(' ');
+    }
+    return raw || 'Não informado';
+  }
+
+  function dadosAuditoriaDraft(draft: LRODraft): Record<string, unknown> {
+    return (draft.dados as Record<string, unknown>) || {};
+  }
+
+  function draftCriadoPor(draft: LRODraft): string {
+    const dados = dadosAuditoriaDraft(draft);
+    return usuarioAuditoria(draft.created_by || dados._createdBy);
+  }
+
+  function draftEditadoPor(draft: LRODraft): string {
+    return usuarioAuditoria(draftEditadoPorRaw(draft));
+  }
+
+  function draftEditadoPorRaw(draft: LRODraft): string {
+    const dados = dadosAuditoriaDraft(draft);
+    return valorAuditoria(dados._lastPostCompletionEditBy);
+  }
+
+  function draftEditadoEm(draft: LRODraft): string {
+    const dados = dadosAuditoriaDraft(draft);
+    return valorAuditoria(dados._lastPostCompletionEditAt);
+  }
+
+  function draftTemEdicao(draft: LRODraft): boolean {
+    return !!draftEditadoPorRaw(draft) && !!draftEditadoEm(draft);
+  }
+
+  function dataHoraAuditoria(value: unknown): string {
+    return formatarDataHoraBR(value, formatarDataBR(value, '—'));
+  }
+
   function lroDetailCard(label: string, value: ReactNode) {
     return (
       <div className="rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/70">
@@ -2087,7 +2169,7 @@ export function GerarLRO() {
   }
 
   async function excluirDraftComOcorrencias(draft: LRODraft) {
-    if (!canManageDraft(draft)) return;
+    if (!canDeleteDraft(draft)) return;
 
     await excluirDraft(draft.id);
     await reabrirOcorrenciasIncluidasNoDraftExcluido(draft);
@@ -2177,7 +2259,7 @@ export function GerarLRO() {
           <div className="flex flex-wrap justify-end gap-3">
             {canCreate && (
               <>
-                <button onClick={() => setCloneOrigem({ id: 'novo', equipe: equipeEfetiva || '', data_plantao: '', status: 'rascunho', dados: {}, created_by: username, created_at: '', updated_at: '', expires_at: '' } as any)}
+                <button onClick={() => setCloneOrigem({ id: 'novo', equipe: equipePadrao || '', data_plantao: '', status: 'rascunho', dados: {}, created_by: username, created_at: '', updated_at: '', expires_at: '' } as any)}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 hover:shadow-xl hover:shadow-amber-500/30 active:scale-[0.98]">
                   <FileText className="h-4 w-4" /> Clonar LRO
                 </button>
@@ -2239,9 +2321,12 @@ export function GerarLRO() {
                         <FileText className="h-4 w-4 text-graphite-400" />
                         <span>LRO - Equipe {d.equipe}</span>
                       </div>
-                      <div className="text-xs text-graphite-500 mt-0.5">
-                        {formatarDataBR(d.data_plantao)}
-                        {' · '}Criado em {formatarDataBR(d.created_at)}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-graphite-500 dark:text-graphite-400">
+                        <span>{formatarDataBR(d.data_plantao)}</span>
+                        <span>· Criado por {draftCriadoPor(d)} em {formatarDataBR(d.created_at)}</span>
+                        {draftTemEdicao(d) && (
+                          <span>· Editado por {draftEditadoPor(d)} em {formatarDataBR(draftEditadoEm(d))}</span>
+                        )}
                       </div>
                     </div>
                     {expanded ? <ChevronUp className="h-4 w-4 shrink-0 text-graphite-400" /> : <ChevronDown className="h-4 w-4 shrink-0 text-graphite-400" />}
@@ -2259,6 +2344,12 @@ export function GerarLRO() {
                 </div>
                 {expanded && (
                   <div className="space-y-4 border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
+                    <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-3">
+                      {lroDetailCard('Criado por', `${draftCriadoPor(d)} em ${dataHoraAuditoria(d.created_at)}`)}
+                      {draftTemEdicao(d) && lroDetailCard('Editado por', `${draftEditadoPor(d)} em ${dataHoraAuditoria(draftEditadoEm(d))}`)}
+                      {lroDetailCard('Status', STATUS_LABELS[d.status] || d.status)}
+                    </div>
+
                     <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
                       {lroDetailCard('Data do plantão', formatarDataBR(d.data_plantao))}
                       {lroDetailCard('Equipe', d.equipe || dd.equipeNome || '—')}
@@ -2352,7 +2443,8 @@ export function GerarLRO() {
                       {contexto.isAdministradorSistema && d.status !== 'arquivado' && d.status !== 'rascunho' && (
                         <button onClick={async () => {
                           await arquivarDraftComoDocumento(d);
-                          setDrafts(prev => prev.map(x => x.id === d.id ? { ...x, status: 'arquivado' } : x));
+                          const atualizado = await atualizarStatus(d.id, 'arquivado', undefined, username);
+                          setDrafts(prev => prev.map(x => x.id === d.id ? atualizado : x));
                         }} title="Arquivar"
                           className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300">
                           <Archive className="h-4 w-4" /> Arquivar
@@ -2370,7 +2462,7 @@ export function GerarLRO() {
                           <RefreshCw className="h-4 w-4" /> Desarquivar
                         </button>
                       )}
-                      {canManageDraft(d) && (d.status === 'rascunho' || contexto.isAdministradorSistema) && (
+                      {canDeleteDraft(d) && (d.status === 'rascunho' || contexto.isAdministradorSistema) && (
                         <button onClick={async () => {
                           try {
                             await excluirDraftComOcorrencias(d);
@@ -2413,7 +2505,7 @@ export function GerarLRO() {
                 )}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Nova equipe</label>
-                  <select id="cloneEquipe" defaultValue={canEscolherEquipe ? (cloneOrigem.equipe || equipesFormulario[0] || '') : (equipeEfetiva || '')} disabled={!canEscolherEquipe} className="w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm dark:border-border-dark dark:bg-surface-card disabled:opacity-60">
+                  <select id="cloneEquipe" defaultValue={canEscolherEquipe ? (cloneOrigem.equipe || equipesFormulario[0] || '') : (equipePadrao || '')} disabled={!canEscolherEquipe} className="w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm dark:border-border-dark dark:bg-surface-card disabled:opacity-60">
                     {equipesFormulario.map(e => <option key={e} value={e}>{e}</option>)}
                   </select>
                 </div>
@@ -2433,7 +2525,7 @@ export function GerarLRO() {
                   if (!origem) return;
                   const selEquipe = canEscolherEquipe
                     ? ((document.getElementById('cloneEquipe') as HTMLSelectElement)?.value || origem.equipe)
-                    : (equipeEfetiva || '');
+                    : (equipePadrao || '');
                   if (!canCriarRegistrosDiarios(contexto)) {
                     alert('Você não tem permissão para clonar LRO.');
                     return;

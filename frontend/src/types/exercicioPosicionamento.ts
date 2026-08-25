@@ -39,6 +39,8 @@ export interface ExercicioPosicionamento {
   chefeEquipe: string;
   gerente: string;
   status: ExercicioPosicionamentoStatus;
+  createdBy: string;
+  updatedBy?: string;
   aprovadoPor: string;
   aprovadoPorNome: string;
   aprovadoEm: string;

@@ -19,6 +19,7 @@ import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const TIPO_TAF = ['TAF-1', 'TAF-2'];
@@ -422,7 +423,19 @@ export function TAF() {
     }
     setSavingAction(aprovar ? 'approve' : 'draft');
     try {
-      const data = { equipe: equipeAlvo, numero: fNumero, ano: fAno, data: fData, hora: fHora, turno: turnoAuto(equipeAlvo), tipoTaf: fTipo, observacoes: fObs, chefeEquipe: fChefeEquipe || user?.name || '' } as TAFInput;
+      const data = {
+        equipe: equipeAlvo,
+        numero: fNumero,
+        ano: fAno,
+        data: fData,
+        hora: fHora,
+        turno: turnoAuto(equipeAlvo),
+        tipoTaf: fTipo,
+        observacoes: fObs,
+        chefeEquipe: fChefeEquipe || user?.name || '',
+        createdBy: editando?.createdBy || currentUsername,
+      } as TAFInput;
+      if (editando) data.updatedBy = currentUsername;
       if (aprovar) {
         data.status = 'Aprovado';
         data.aprovadoPor = currentUsername;
@@ -595,6 +608,7 @@ export function TAF() {
                       </span>
                     </div>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
+                    <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{resumoAuditoria(r, bombeiros)}</p>
                   </div>
                 </button>
               </div>

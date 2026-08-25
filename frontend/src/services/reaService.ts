@@ -41,6 +41,7 @@ function rowToRea(row: Record<string, unknown>): ReaRegistro {
     createdBy: (row.created_by as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
+    updatedBy: (row.updated_by as string) || '',
     numero: (row.numero as string) || '',
     status: (row.status as ReaStatus) || 'Aberta',
     equipe: (row.equipe as string) || '',
@@ -57,6 +58,7 @@ function rowToRea(row: Record<string, unknown>): ReaRegistro {
 function inputToRow(input: Partial<ReaRegistroInput>): Record<string, unknown> {
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.createdBy !== undefined) row.created_by = input.createdBy;
+  if (input.updatedBy !== undefined) row.updated_by = input.updatedBy;
   if (input.numero !== undefined) row.numero = input.numero;
   if (input.status !== undefined) row.status = input.status;
   if (input.equipe !== undefined) row.equipe = input.equipe;

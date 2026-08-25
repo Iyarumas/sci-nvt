@@ -63,6 +63,7 @@ const disabledClass = "w-full rounded-xl border border-graphite-200/60 bg-graphi
 const labelClass = "mb-1 block text-xs font-medium text-graphite-600 dark:text-graphite-400";
 const PHOTO_PREVIEW_SIZE = 280;
 const PHOTO_OUTPUT_SIZE = 512;
+const EQUIPES_REGISTROS_DIARIOS: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -322,6 +323,8 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
   const [cursoChefeEquipe, setCursoChefeEquipe] = useState(false);
   const [cursoMotoristaCCI, setCursoMotoristaCCI] = useState(false);
   const [cursoCVE, setCursoCVE] = useState(false);
+  const [solicitarRegistrosDiarios, setSolicitarRegistrosDiarios] = useState(false);
+  const [autorizacaoRegistrosDiariosEquipe, setAutorizacaoRegistrosDiariosEquipe] = useState<Equipe | ''>('');
   const [cveValidade, setCveValidade] = useState('');
   const [municipios, setMunicipios] = useState<string[]>([]);
   const [loadingMunicipios, setLoadingMunicipios] = useState(false);
@@ -361,11 +364,24 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
       setCursoChefeEquipe(bombeiro.cursoChefeEquipe || false);
       setCursoMotoristaCCI(bombeiro.cursoMotoristaCCI || false);
       setCursoCVE(bombeiro.cursoCVE || false);
+      const cargoElegivelAutorizacao = bombeiro.cargo !== 'BA-CE' && bombeiro.cargo !== 'BA-LR' && bombeiro.cargo !== 'GS';
+      setSolicitarRegistrosDiarios(
+        cargoElegivelAutorizacao &&
+        (bombeiro.autorizadoRegistrosDiarios ||
+          bombeiro.autorizacaoRegistrosDiariosStatus === 'pendente')
+      );
+      setAutorizacaoRegistrosDiariosEquipe(
+        cargoElegivelAutorizacao
+          ? bombeiro.autorizacaoRegistrosDiariosEquipe || (EQUIPES_REGISTROS_DIARIOS.includes(bombeiro.equipe) ? bombeiro.equipe : '')
+          : ''
+      );
       setCveValidade(bombeiro.cveValidade || '');
     }
   }, [bombeiro]);
 
   const idade = calcularIdade(dataNascimento);
+  const cargoJaPodeRegistrosDiarios = cargo === 'BA-CE' || cargo === 'BA-LR';
+  const cargoElegivelAutorizacaoRegistrosDiarios = !cargoJaPodeRegistrosDiarios && cargo !== 'GS';
 
   useEffect(() => {
     if (!uf) { setMunicipios([]); return; }
@@ -431,11 +447,17 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
   function handleEquipeChange(novaEquipe: Equipe) {
     setEquipe(novaEquipe);
     setTurno(turnoAutoPorEquipe(novaEquipe, cargo));
+    if (!autorizacaoRegistrosDiariosEquipe && EQUIPES_REGISTROS_DIARIOS.includes(novaEquipe)) {
+      setAutorizacaoRegistrosDiariosEquipe(novaEquipe);
+    }
   }
 
   function handleCargoChange(novoCargo: Cargo) {
     setCargo(novoCargo);
     setTurno(turnoAutoPorEquipe(equipe, novoCargo));
+    if (novoCargo === 'BA-CE' || novoCargo === 'BA-LR' || novoCargo === 'GS') {
+      setSolicitarRegistrosDiarios(false);
+    }
   }
 
   function handleTemCnhChange(checked: boolean) {
@@ -461,6 +483,24 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
     setErro('');
     setSubmitting(true);
     try {
+      const solicitarAutorizacao = cargoElegivelAutorizacaoRegistrosDiarios && solicitarRegistrosDiarios;
+      const equipeAutorizacao = solicitarAutorizacao ? autorizacaoRegistrosDiariosEquipe : '';
+      if (solicitarAutorizacao && !equipeAutorizacao) {
+        setErro('Selecione a equipe que poderá ser criada/editada nos registros diários.');
+        setSubmitting(false);
+        return;
+      }
+      const equipeAutorizacaoMudou = (bombeiro?.autorizacaoRegistrosDiariosEquipe || '') !== equipeAutorizacao;
+      const manterAutorizacaoAprovada = !!(
+        solicitarAutorizacao &&
+        !equipeAutorizacaoMudou &&
+        bombeiro?.autorizadoRegistrosDiarios &&
+        bombeiro.autorizacaoRegistrosDiariosStatus === 'aprovado'
+      );
+      const statusAutorizacao: Bombeiro['autorizacaoRegistrosDiariosStatus'] = solicitarAutorizacao
+        ? (manterAutorizacaoAprovada ? 'aprovado' : 'pendente')
+        : 'nenhuma';
+
       await onSave({
       matricula,
       nomeCompleto: capitalizarNome(nomeCompleto),
@@ -493,6 +533,13 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
       cursoChefeEquipe,
       cursoMotoristaCCI,
       cursoCVE,
+      autorizadoRegistrosDiarios: manterAutorizacaoAprovada,
+      autorizacaoRegistrosDiariosEquipe: equipeAutorizacao,
+      autorizacaoRegistrosDiariosStatus: statusAutorizacao,
+      autorizacaoRegistrosDiariosSolicitadoPor: bombeiro?.autorizacaoRegistrosDiariosSolicitadoPor || '',
+      autorizacaoRegistrosDiariosSolicitadoEm: bombeiro?.autorizacaoRegistrosDiariosSolicitadoEm || '',
+      autorizacaoRegistrosDiariosDecididoPor: manterAutorizacaoAprovada ? bombeiro?.autorizacaoRegistrosDiariosDecididoPor || '' : '',
+      autorizacaoRegistrosDiariosDecididoEm: manterAutorizacaoAprovada ? bombeiro?.autorizacaoRegistrosDiariosDecididoEm || '' : '',
       cveValidade,
       });
     } finally {
@@ -711,6 +758,57 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
                       className={inputClass} />
                   </div>
                 )}
+                <div className="md:col-span-2 rounded-xl border border-graphite-300/60 bg-white/70 px-4 py-3 transition-all duration-200 dark:border-border-dark dark:bg-surface-card">
+                  {cargoJaPodeRegistrosDiarios ? (
+                    <div>
+                      <span className="block text-sm font-medium text-graphite-700 dark:text-graphite-200">Registros diários liberados pela função</span>
+                      <span className="mt-0.5 block text-[11px] text-graphite-400 dark:text-graphite-500">BA-CE e BA-LR já seguem a regra normal do sistema. Não precisam desta autorização extra.</span>
+                    </div>
+                  ) : cargo === 'GS' ? (
+                    <div>
+                      <span className="block text-sm font-medium text-graphite-700 dark:text-graphite-200">Registros diários</span>
+                      <span className="mt-0.5 block text-[11px] text-graphite-400 dark:text-graphite-500">GS mantém acesso administrativo/visual conforme a regra do sistema, sem autorização por chefe de equipe.</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <label className="flex cursor-pointer items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={solicitarRegistrosDiarios}
+                          onChange={e => {
+                            setSolicitarRegistrosDiarios(e.target.checked);
+                            if (e.target.checked && !autorizacaoRegistrosDiariosEquipe && EQUIPES_REGISTROS_DIARIOS.includes(equipe)) {
+                              setAutorizacaoRegistrosDiariosEquipe(equipe);
+                            }
+                          }}
+                          className="mt-0.5 h-4 w-4 rounded border-graphite-300 text-aviation-600 focus:ring-aviation-500"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-graphite-700 dark:text-graphite-200">Solicitar autorização para registros diários</span>
+                          <span className="mt-0.5 block text-[11px] text-graphite-400 dark:text-graphite-500">Libera criar/editar, mas nunca excluir. A aprovação será enviada ao BA-CE da equipe escolhida.</span>
+                        </span>
+                      </label>
+                      {solicitarRegistrosDiarios && (
+                        <div>
+                          <label className={labelClass}>Equipe autorizada *</label>
+                          <select
+                            value={autorizacaoRegistrosDiariosEquipe}
+                            onChange={e => setAutorizacaoRegistrosDiariosEquipe(e.target.value as Equipe | '')}
+                            className={selectClass}
+                          >
+                            <option value="">Selecione a equipe</option>
+                            {EQUIPES_REGISTROS_DIARIOS.map(eq => (
+                              <option key={eq} value={eq}>{eq}</option>
+                            ))}
+                          </select>
+                          <p className="mt-0.5 text-[11px] text-graphite-400 dark:text-graphite-500">
+                            Use isto para Feristas ou apoios que ajudam uma equipe específica.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </fieldset>
 

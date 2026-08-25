@@ -1,6 +1,6 @@
 # API Endpoints — SESCINC Manager
 
-> **Data:** 2026-07-31
+> **Data:** 2026-08-25
 > **Total de serviços:** 45 ficheiros em `src/services/`
 > **Comunicação com Supabase:** 34 ficheiros
 > **Total de funções:** ~202
@@ -15,6 +15,10 @@
 Base URL local: `http://localhost:3333/api`
 
 > **Atualizacao arquitetural (2026-08-11):** o front-end foi movido para `frontend/` e nao chama mais Supabase diretamente. Os services de `frontend/src/services/` continuam preservando os contratos abaixo, mas passam por `frontend/src/lib/supabase.ts`, um adapter HTTP que envia as operacoes para a API NestJS em `backend/`. O PostgreSQL local roda via `docker-compose.yml`; as migrations SQL foram copiadas para `backend/database/migrations/`.
+
+> **Atualizacao de auditoria (2026-08-25):** registros diarios e treinamentos passam a gravar `updated_by` nas edicoes. TAF, exercicio de posicionamento e tempo resposta tambem passam a ter `created_by` quando a tabela ainda nao possuia. A migration `backend/database/migrations/059_auditoria_registros_diarios_treinamentos.sql` adiciona esses campos.
+
+> **Atualizacao de permissoes (2026-08-25):** `bombeiros.autorizado_registros_diarios` libera criar/editar registros diarios somente da equipe definida em `autorizacao_registros_diarios_equipe`, com aprovacao do BA-CE dessa equipe. Essa autorizacao nunca libera exclusao e nao acompanha troca/substituicao. As migrations `backend/database/migrations/060_autorizacao_registros_diarios_bombeiros.sql`, `061_autorizacao_registros_diarios_fluxo.sql` e `062_autorizacao_registros_diarios_equipe.sql` adicionam o fluxo.
 
 | Endpoint | Metodo | Descricao |
 |---|---|---|
@@ -38,7 +42,7 @@ Base URL local: `http://localhost:3333/api`
 
 | # | Serviço | Tabelas | Funções | Estado Geral |
 |---|---------|---------|---------|-------------|
-| 1 | bombeiroService | `bombeiros` | 9 | ✅ |
+| 1 | bombeiroService | `bombeiros` | 12 | ✅ |
 | 2 | feriasService | `ferias`, `ferias_escala`, `ferias_escala_item` | 16 + 5 stubs | ✅ (+5 ❌ stubs) |
 | 3 | substituicaoService | `substituicoes_ativas` | 7 | ⚠️ 2 bugs `.single()` |
 | 4 | substituicaoTemporariaService | `substituicoes_temporarias` | 5 | ✅ |
@@ -134,6 +138,13 @@ Base URL local: `http://localhost:3333/api`
   "cursoChefeEquipe": "boolean",
   "cursoMotoristaCCI": "boolean",
   "cursoCVE": "boolean",
+  "autorizadoRegistrosDiarios": "boolean",
+  "autorizacaoRegistrosDiariosEquipe": "Alfa | Bravo | Charlie | Delta | ''",
+  "autorizacaoRegistrosDiariosStatus": "nenhuma | pendente | aprovado | rejeitado",
+  "autorizacaoRegistrosDiariosSolicitadoPor": "string",
+  "autorizacaoRegistrosDiariosSolicitadoEm": "string (ISO datetime)",
+  "autorizacaoRegistrosDiariosDecididoPor": "string",
+  "autorizacaoRegistrosDiariosDecididoEm": "string (ISO datetime)",
   "createdAt": "string (ISO datetime)",
   "updatedAt": "string (ISO datetime)"
 }]
@@ -161,6 +172,17 @@ Base URL local: `http://localhost:3333/api`
 **Request Body:** —  
 **Response:** `Bombeiro[]`  
 **Estado:** ✅ OK  
+
+---
+
+### listarBombeirosParaAutorizacaoRegistrosDiarios
+
+**Método HTTP:** GET  
+**REST equivalência:** `GET /rest/v1/bombeiros?select=id,matricula,nome_completo,nome_guerra,cargo,equipe,turno,foto,data_desligamento,autorizado_registros_diarios,autorizacao_registros_diarios_*`  
+**Request Body:** —  
+**Response:** `Bombeiro[]` com dados pessoais sensíveis preenchidos como vazio no mapper  
+**Estado:** ✅ OK  
+**Uso:** modal do BA-CE para aprovar/recusar solicitação de criar/editar registros diários da equipe autorizada, sem carregar CPF/RG/número da CNH/e-mail.
 
 ---
 
@@ -235,7 +257,14 @@ Base URL local: `http://localhost:3333/api`
   "sexo": "M | F",
   "cursoChefeEquipe": "boolean",
   "cursoMotoristaCCI": "boolean",
-  "cursoCVE": "boolean"
+  "cursoCVE": "boolean",
+  "autorizadoRegistrosDiarios": "boolean",
+  "autorizacaoRegistrosDiariosEquipe": "Alfa | Bravo | Charlie | Delta | ''",
+  "autorizacaoRegistrosDiariosStatus": "nenhuma | pendente | aprovado | rejeitado",
+  "autorizacaoRegistrosDiariosSolicitadoPor": "string",
+  "autorizacaoRegistrosDiariosSolicitadoEm": "string (ISO datetime)",
+  "autorizacaoRegistrosDiariosDecididoPor": "string",
+  "autorizacaoRegistrosDiariosDecididoEm": "string (ISO datetime)"
 }
 ```
 **Response:** `Bombeiro` (com id, createdAt, updatedAt preenchidos)  
@@ -766,6 +795,7 @@ GET com filtro `ativa=true`. ✅ OK
 [{
   "id": "uuid",
   "createdBy": "string",
+  "updatedBy": "string",
   "createdAt": "string",
   "updatedAt": "string",
   "data": "string (ISO date)",
@@ -813,6 +843,7 @@ GET com filtro `ativa=true`. ✅ OK
 [{
   "id": "uuid",
   "createdBy": "string",
+  "updatedBy": "string",
   "createdAt": "string (ISO datetime)",
   "updatedAt": "string (ISO datetime)",
   "data": "string (ISO date)",
@@ -830,7 +861,7 @@ GET com filtro `ativa=true`. ✅ OK
 **Método:** GET / POST / PATCH / DELETE
 **REST equivalência:** `.../ptrba_completo_registros`
 **Estado:** ✅ OK
-**Regras:** a tela permite visualização geral, mas criação/edição/exclusão apenas para a equipe efetiva do usuário, ou globalmente para Administradores/GS. O download usa `ptrbaCompletoPdfService.ts` e gera PDF client-side com o layout do modelo PTR-BA completo.
+**Regras:** a tela permite visualização geral, mas criação/edição/exclusão apenas para quem pode gerenciar o registro diário conforme permissão operacional. O registro pode ser aberto na própria lista para conferência, e as ações de `Ver documento`, `Download PDF`, edição e exclusão aparecem conforme a permissão do usuário. O download usa `ptrbaCompletoPdfService.ts` e gera PDF client-side com o layout do modelo PTR-BA completo.
 
 ---
 
@@ -897,7 +928,7 @@ GET com filtro `ativa=true`. ✅ OK
 
 ### listarDrafts / obterDraft / salvarDraft / atualizarStatus / excluirDraft
 
-**Estado:** ✅ OK (exceto `atualizarStatus` e `excluirDraft` que não verificam erro após operação)
+**Estado:** ✅ OK
 
 **Payload `LRODraft`:**
 ```json
@@ -907,7 +938,7 @@ GET com filtro `ativa=true`. ✅ OK
   "data_plantao": "string (ISO date)",
   "status": "rascunho | aguardando | assinado | cancelado | finalizado | arquivado",
   "autentique_doc_id": "string | undefined",
-  "dados": "object (conteúdo do draft)",
+  "dados": "object (conteúdo do draft; inclui `_createdBy`, `_completedBy`, `_completedAt`, `_lastPostCompletionEditBy` e `_lastPostCompletionEditAt` para auditoria visual)",
   "created_by": "string",
   "created_at": "string",
   "updated_at": "string",
@@ -938,6 +969,9 @@ GET com filtro `ativa=true`. ✅ OK
 {
   "id": "uuid",
   "createdBy": "string",
+  "updatedBy": "string",
+  "createdAt": "string (ISO datetime)",
+  "updatedAt": "string (ISO datetime)",
   "tipoDocumento": "BONA | REA",
   "numero": "string",
   "data": "string (ISO date)",
@@ -1038,6 +1072,7 @@ GET com filtro `ativa=true`. ✅ OK
 {
   "id": "uuid",
   "createdBy": "string",
+  "updatedBy": "string",
   "createdAt": "string (ISO datetime)",
   "updatedAt": "string (ISO datetime)",
   "numero": "REA-001/2026",
@@ -1454,6 +1489,10 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
 ```json
 {
   "id": "uuid",
+  "createdBy": "string",
+  "updatedBy": "string",
+  "createdAt": "string (ISO datetime)",
+  "updatedAt": "string (ISO datetime)",
   "tipo": "extintor | hidrante | ...",
   "itemId": "string",
   "itemNome": "string",
@@ -2072,7 +2111,7 @@ Polling do estado do documento no Autentique. Actualiza `document_fills.status`.
 | 4 | ✅ RESOLVIDO | `equipamentoService.ts` | `atualizarEquipamento` | Retorna registro atualizado via `.select().single()` |
 | 5 | 🟡 MÉDIO | `epiEstoqueService.ts:110,117` | `baixarEstoque`, `reporEstoque` | Faz `listarEstoque()` completo para encontrar item por id |
 | 6 | 🟡 MÉDIO | `epiService.ts`, `epiEstoqueService.ts` | Vários | Erros silenciosos (`console.error` em vez de `handleSupabaseError`) |
-| 7 | 🟢 LEVE | `certificacaoService.ts`, `certificacaoCursoService.ts`, `ocorrenciaService.ts`, `equipamentoService.ts`, `lroDraftService.ts`, `chatService.ts`, `substituicaoService.ts` | `excluir*`, `atualizarStatus`, `marcarLida` | Não verificam erro após operação de escrita |
+| 7 | 🟢 LEVE | `certificacaoService.ts`, `certificacaoCursoService.ts`, `ocorrenciaService.ts`, `equipamentoService.ts`, `chatService.ts`, `substituicaoService.ts` | `excluir*`, `marcarLida` | Não verificam erro após operação de escrita |
 | 8 | ✅ RESOLVIDO | `usuarioService.ts` | `atualizarUsuario` | Mapeia apenas campos permitidos e retorna `USER_SELECT` |
 
 ---
@@ -2110,7 +2149,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Ficheiro:** `src/services/exercicioPosicionamentoService.ts`  
 **Tipo:** `src/types/exercicioPosicionamento.ts` — `ExercicioPosicionamento`
 
-**Migration:** `supabase/migrations/033_exercicios_posicionamento.sql` + `backend/database/migrations/055_aprovacao_posicionamento_tempo_resposta.sql` + `backend/database/migrations/056_exercicio_posicionamento_gerente.sql`
+**Migration:** `supabase/migrations/033_exercicios_posicionamento.sql` + `backend/database/migrations/055_aprovacao_posicionamento_tempo_resposta.sql` + `backend/database/migrations/056_exercicio_posicionamento_gerente.sql` + `backend/database/migrations/059_auditoria_registros_diarios_treinamentos.sql`
 
 ---
 
@@ -2164,6 +2203,8 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
   "chefeEquipe": "Chefe",
   "gerente": "GS",
   "status": "Rascunho",
+  "createdBy": "string",
+  "updatedBy": "string",
   "aprovadoPor": "",
   "aprovadoPorNome": "",
   "aprovadoEm": "",
@@ -2223,7 +2264,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Response:** `boolean`  
 **Estado:** ✅ OK  
 
-**Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `gerente`, `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
+**Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `gerente`, `createdBy`, `updatedBy`, `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
 
 **PDF:** `exercicioPosicionamentoPdfService.ts` gera client-side o formulário MMS.BR.BA.FOR.006 para visualização e impressão após aprovação.
 
@@ -2235,7 +2276,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Ficheiro:** `src/services/tempoRespostaService.ts`  
 **Tipo:** `src/types/tempoResposta.ts` — `TreinamentoTempoResposta`
 
-**Migration:** `supabase/migrations/034_treinamentos_tempo_resposta.sql` + `backend/database/migrations/055_aprovacao_posicionamento_tempo_resposta.sql`
+**Migration:** `supabase/migrations/034_treinamentos_tempo_resposta.sql` + `backend/database/migrations/055_aprovacao_posicionamento_tempo_resposta.sql` + `backend/database/migrations/059_auditoria_registros_diarios_treinamentos.sql`
 
 ---
 
@@ -2286,7 +2327,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Método HTTP:** DELETE  
 **Estado:** ✅ OK  
 
-**Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
+**Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `createdBy`, `updatedBy`, `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
 
 **PDF:** `tempoRespostaPdfService.ts` gera client-side o formulário MMS.BR.BA.FOR.005 para visualização e impressão após aprovação.
 
@@ -2297,11 +2338,11 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Tabela:** `treinamentos_taf`  
 **Ficheiro:** `src/services/tafService.ts`  
 **Tipo:** `src/types/taf.ts` — `TreinamentoTAF`  
-**Migration:** `supabase/migrations/035_treinamentos_taf.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql`
+**Migration:** `supabase/migrations/035_treinamentos_taf.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql` + `backend/database/migrations/059_auditoria_registros_diarios_treinamentos.sql`
 
 **Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`. PDF só pode ser gerado com registro aprovado.
 
-**Campos de aprovação:** `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`.
+**Campos de auditoria/aprovação:** `createdBy`, `updatedBy`, `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`.
 
 **Funções:** `listarTAFs`, `obterTAF`, `obterProximoNumero`, `criarTAF`, `atualizarTAF`, `excluirTAF` — todas ✅ OK
 
@@ -2312,7 +2353,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Tabela:** `treinamentos_tpepr`
 **Ficheiro:** `src/services/tpeprService.ts`
 **Tipo:** `src/types/tpepr.ts` — `TreinamentoTPEPR`
-**Migration:** `supabase/migrations/045_treinamentos_tpepr.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql`
+**Migration:** `supabase/migrations/045_treinamentos_tpepr.sql` + `backend/database/migrations/053_aprovacao_treinamentos_taf_tpepr.sql` + `backend/database/migrations/059_auditoria_registros_diarios_treinamentos.sql`
 
 **Controle de aprovação:** registros novos entram como `Rascunho`. O formulário pode salvar rascunho ou aprovar; quando `status = "Aprovado"`, edição/exclusão ficam bloqueadas no front para a equipe e liberadas somente para `admin`/`desenvolvedor`. PDF só pode ser gerado com registro aprovado.
 
@@ -2323,6 +2364,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 [{
   "id": "uuid",
   "createdBy": "string",
+  "updatedBy": "string",
   "createdAt": "string (ISO datetime)",
   "updatedAt": "string (ISO datetime)",
   "equipe": "Alfa | Bravo | Charlie | Delta",

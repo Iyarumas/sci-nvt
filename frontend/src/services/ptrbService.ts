@@ -19,6 +19,7 @@ function rowToPTRB(row: Record<string, unknown>): PTRB {
     createdBy: (row.created_by as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
+    updatedBy: (row.updated_by as string) || '',
     data: (row.data as string) || '',
     horaInicio: (row.hora_inicio as string) || '',
     horaTermino: (row.hora_termino as string) || '',
@@ -69,7 +70,7 @@ export async function obterPTRB(id: string): Promise<PTRB | null> {
   return data ? rowToPTRB(data) : null;
 }
 
-export async function criarPTRB(data: Omit<PTRB, 'id' | 'createdAt' | 'updatedAt'>): Promise<PTRB> {
+export async function criarPTRB(data: Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'updatedBy'>): Promise<PTRB> {
   const db = getDb();
   const now = new Date().toISOString();
   const row = {
@@ -103,6 +104,7 @@ export async function atualizarPTRB(id: string, data: Partial<PTRB>): Promise<PT
   if (data.descricao !== undefined) r.descricao = data.descricao;
   if (data.informacoesComplementares !== undefined) r.informacoes_complementares = data.informacoesComplementares;
   if (data.fotos !== undefined) r.fotos = data.fotos;
+  if (data.updatedBy !== undefined) r.updated_by = data.updatedBy;
   const { data: updated, error } = await db.from(TABLE).update(r).eq('id', id).select().single();
   if (error) throw error;
   return updated ? rowToPTRB(updated) : null;

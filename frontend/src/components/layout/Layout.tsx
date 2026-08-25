@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { useSidebar } from '../../hooks/useSidebar';
+import { ChefeRegistrosDiariosAuthAlert } from '../ui/ChefeRegistrosDiariosAuthAlert';
 import { ChefeVencimentosAlert } from '../ui/ChefeVencimentosAlert';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -20,6 +21,7 @@ export function Layout() {
           <Outlet />
         </main>
       </div>
+      <ChefeRegistrosDiariosAuthAlert />
       <ChefeVencimentosAlert />
     </div>
   );

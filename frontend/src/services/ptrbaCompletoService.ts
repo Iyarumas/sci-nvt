@@ -44,6 +44,7 @@ function rowToPTRBACompleto(row: Record<string, unknown>): PTRBACompleto {
     createdBy: (row.created_by as string) || '',
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
+    updatedBy: (row.updated_by as string) || '',
     data: (row.data as string) || '',
     equipe: (row.equipe as string) || '',
     identificacaoAeroporto: (row.identificacao_aeroporto as string) || '',
@@ -61,6 +62,7 @@ function rowToPTRBACompleto(row: Record<string, unknown>): PTRBACompleto {
 function inputToRow(input: Partial<PTRBACompletoInput>): Record<string, unknown> {
   const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (input.createdBy !== undefined) row.created_by = input.createdBy;
+  if (input.updatedBy !== undefined) row.updated_by = input.updatedBy;
   if (input.data !== undefined) row.data = input.data;
   if (input.equipe !== undefined) row.equipe = input.equipe;
   if (input.identificacaoAeroporto !== undefined) row.identificacao_aeroporto = input.identificacaoAeroporto;

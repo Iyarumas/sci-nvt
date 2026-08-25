@@ -22,6 +22,8 @@ export interface TreinamentoTAF {
   observacoes: string;
   chefeEquipe: string;
   status: TreinamentoTAFStatus;
+  createdBy: string;
+  updatedBy?: string;
   aprovadoPor: string;
   aprovadoPorNome: string;
   aprovadoEm: string;

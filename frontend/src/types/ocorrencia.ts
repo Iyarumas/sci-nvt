@@ -115,6 +115,7 @@ export interface Ocorrencia {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  updatedBy?: string;
   tipoDocumento: TipoDocumento;
   numero: string;
   numeroOcorrencia?: string;

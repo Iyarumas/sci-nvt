@@ -10,7 +10,9 @@ import { SearchSelect } from '../../components/ui/SearchSelect';
 import type { AtivoItem } from '../../components/ui/SearchSelect';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { turnoAutoPorEquipe } from '../../types/bombeiro';
+import type { Bombeiro } from '../../types/bombeiro';
 import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorrencia } from '../../services/ocorrenciaService';
+import { listarBombeiros } from '../../services/bombeiroService';
 import { atualizarRea, criarRea, excluirRea, listarReas, obterRea } from '../../services/reaService';
 import { gerarReaPdf, nomeArquivoReaPdf } from '../../services/reaPdfService';
 import { gerarBonaPdf } from '../../services/bonaPdfService';
@@ -24,6 +26,7 @@ import { ReaCard } from './ReaCard';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { PageTour } from '../../components/ui/PageTour';
+import { resumoAuditoria } from '../../utils/auditoria';
 
 const BONA_ULTIMO_NUMERO_LEGADO = 63;
 
@@ -93,7 +96,7 @@ function gerarNumeroRea(existentes: ReaRegistro[]): string {
   return `REA-${String(maior + 1).padStart(3, '0')}/${ano}`;
 }
 
-function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> {
+function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   return {
     tipoDocumento: 'BONA',
     numero: '',
@@ -113,7 +116,7 @@ function emptyOcorrencia(): Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 
   };
 }
 
-type OcorrenciaFormData = Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>;
+type OcorrenciaFormData = Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>;
 
 function bombeirosFromTexto(raw: string): BonaBombeiro[] {
   return raw
@@ -845,6 +848,7 @@ function OcorrenciaCard({
   canDeleteApproved,
   processingPdf,
   approving,
+  auditoriaPessoas,
   onView,
   onPreviewDocument,
   onPrintDocument,
@@ -857,6 +861,7 @@ function OcorrenciaCard({
   canDeleteApproved: boolean;
   processingPdf: boolean;
   approving: boolean;
+  auditoriaPessoas: Bombeiro[];
   onView: () => void;
   onPreviewDocument: () => void;
   onPrintDocument: () => void;
@@ -889,6 +894,7 @@ function OcorrenciaCard({
       <p className={detailValueCls}>{value || '—'}</p>
     </div>
   );
+  const auditoria = resumoAuditoria(o, auditoriaPessoas);
 
   return (
     <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -907,6 +913,7 @@ function OcorrenciaCard({
             <span>Equipe {o.equipe}</span>
             {o.local && <span>· {o.local}</span>}
           </div>
+          <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
         </div>
         <span className="ml-3 flex shrink-0 items-center gap-1 rounded-lg bg-graphite-100 px-2.5 py-1 text-xs font-medium text-graphite-600 dark:bg-surface-hover dark:text-graphite-300">
           Detalhes
@@ -1012,6 +1019,7 @@ export function Ocorrencias() {
 
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [reas, setReas] = useState<ReaRegistro[]>([]);
+  const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [mode, setMode] = useState<'list' | 'form' | 'view'>('list');
   const [editando, setEditando] = useState<Ocorrencia | null>(null);
   const [editandoRea, setEditandoRea] = useState<ReaRegistro | null>(null);
@@ -1043,9 +1051,10 @@ export function Ocorrencias() {
   const inputClass = 'rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all duration-200 hover:border-graphite-400 focus:border-aviation-500 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:placeholder:text-graphite-500 dark:scheme-dark';
 
   async function carregar() {
-    const [ocorrenciasData, reasData] = await Promise.all([listarOcorrencias(), listarReas()]);
+    const [ocorrenciasData, reasData, bombeirosData] = await Promise.all([listarOcorrencias(), listarReas(), listarBombeiros()]);
     setOcorrencias(ocorrenciasData);
     setReas(reasData);
+    setBombeiros(bombeirosData);
   }
   useEffect(() => { carregar(); }, []);
 
@@ -1110,7 +1119,7 @@ export function Ocorrencias() {
         alert('Informe o número do BONA.');
         return;
       }
-      const updated = await atualizarOcorrencia(alvo.id, { numero, status: 'Fechada' });
+      const updated = await atualizarOcorrencia(alvo.id, { numero, status: 'Fechada', updatedBy: username });
       if (updated) {
         setOcorrencias(prev => prev.map(o => o.id === updated.id ? updated : o));
       } else {
@@ -1135,7 +1144,7 @@ export function Ocorrencias() {
     };
     let saved: Ocorrencia | null;
     if (savedId) {
-      saved = await atualizarOcorrencia(savedId, payload);
+      saved = await atualizarOcorrencia(savedId, { ...payload, updatedBy: username });
     } else {
       saved = await criarOcorrencia({ ...payload, createdBy: username });
     }
@@ -1180,6 +1189,7 @@ export function Ocorrencias() {
           status: data.status,
           equipe: editandoRea.equipe,
           dados: data.dados,
+          updatedBy: username,
         });
       } else {
         if (!canManageEquipe(equipeEfetiva)) {
@@ -1434,6 +1444,7 @@ export function Ocorrencias() {
               canDeleteApproved={isAdminSistema}
               processingPdf={processingBonaPdfId === doc.item.id}
               approving={approvingBonaId === doc.item.id}
+              auditoriaPessoas={bombeiros}
               onView={() => { setVisualizando(doc.item); setMode('view'); }}
               onPreviewDocument={() => handlePreviewBona(doc.item)}
               onPrintDocument={() => handlePrintBona(doc.item)}
@@ -1446,6 +1457,7 @@ export function Ocorrencias() {
               downloading={downloadingReaId === doc.item.id}
               processing={processingBonaPdfId === doc.item.id}
               approving={approvingBonaId === doc.item.id}
+              auditoriaPessoas={bombeiros}
               onEdit={() => openReaForm(doc.item)}
               onDelete={() => setConfirmDeleteRea(doc.item.id)}
               onPreview={() => handlePreviewRea(doc.item.id)}

@@ -8,6 +8,7 @@ const CARGOS_RESPONSAVEIS_EQUIPE: readonly Cargo[] = ['BA-CE', 'BA-LR'];
 const CARGOS_VISUALIZAM_ARQUIVO: readonly Cargo[] = ['BA-CE', 'BA-LR'];
 const CARGOS_VISUALIZAM_CERTIFICACOES: readonly Cargo[] = ['BA-CE', 'BA-LR'];
 const CARGOS_VISUALIZAM_RELATORIO_PTRBA: readonly Cargo[] = ['BA-CE', 'BA-LR'];
+const EQUIPES_REGISTROS_DIARIOS: readonly Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 
 export type CadastroModuloRestrito = 'equipamentos' | 'viaturas' | 'extintores' | 'agentesExtintores' | 'hidrantes';
 
@@ -26,10 +27,14 @@ export type AuthUserPermissao = {
 
 export interface ContextoOperacionalPermissao {
   equipe: Equipe | null;
+  equipeFixa: Equipe | null;
   cargo: string | null;
+  cargoFixo: string | null;
   canManageGlobal: boolean;
   isAdministradorSistema: boolean;
   bombeiroId: string | null;
+  autorizadoRegistrosDiarios: boolean;
+  autorizacaoRegistrosDiariosEquipe: Equipe | null;
 }
 
 export function isAdministradorSistema(user: AuthUserPermissao): boolean {
@@ -68,10 +73,14 @@ function contextoBase(user: AuthUserPermissao): ContextoOperacionalPermissao {
   const admin = isAdministradorSistema(user);
   return {
     equipe: equipeValida(user?.pessoa?.equipe),
+    equipeFixa: equipeValida(user?.pessoa?.equipe),
     cargo: user?.pessoa?.funcao || null,
+    cargoFixo: user?.pessoa?.funcao || null,
     canManageGlobal: admin || isGSBase(user),
     isAdministradorSistema: admin,
     bombeiroId: user?.pessoa?.personType === 'bombeiro' ? user.pessoa.id || null : null,
+    autorizadoRegistrosDiarios: false,
+    autorizacaoRegistrosDiariosEquipe: null,
   };
 }
 
@@ -126,21 +135,34 @@ export async function resolverContextoOperacional(user: AuthUserPermissao): Prom
 
     const cargoEfetivo = vigenciaAtual?.cargoExercido || bombeiro.cargo;
     const equipeEfetiva = equipeValida(vigenciaAtual?.equipe) || bombeiro.equipe;
+    const equipeAutorizadaRegistros = equipeValida(bombeiro.autorizacaoRegistrosDiariosEquipe) ||
+      ((EQUIPES_REGISTROS_DIARIOS as readonly string[]).includes(bombeiro.equipe) ? bombeiro.equipe : null);
 
     return {
       equipe: equipeEfetiva,
+      equipeFixa: bombeiro.equipe,
       cargo: cargoEfetivo,
+      cargoFixo: bombeiro.cargo,
       canManageGlobal: cargoEfetivo === 'GS',
       isAdministradorSistema: false,
       bombeiroId: bombeiro.id,
+      autorizadoRegistrosDiarios: bombeiro.autorizadoRegistrosDiarios,
+      autorizacaoRegistrosDiariosEquipe: equipeAutorizadaRegistros,
     };
   } catch {
+    const equipeAutorizadaRegistros = equipeValida(bombeiro.autorizacaoRegistrosDiariosEquipe) ||
+      ((EQUIPES_REGISTROS_DIARIOS as readonly string[]).includes(bombeiro.equipe) ? bombeiro.equipe : null);
+
     return {
       equipe: bombeiro.equipe,
+      equipeFixa: bombeiro.equipe,
       cargo: bombeiro.cargo,
+      cargoFixo: bombeiro.cargo,
       canManageGlobal: bombeiro.cargo === 'GS',
       isAdministradorSistema: false,
       bombeiroId: bombeiro.id,
+      autorizadoRegistrosDiarios: bombeiro.autorizadoRegistrosDiarios,
+      autorizacaoRegistrosDiariosEquipe: equipeAutorizadaRegistros,
     };
   }
 }
@@ -239,13 +261,30 @@ export function equipeEscopoCertificacoes(contexto: ContextoOperacionalPermissao
  * - BA-CE/BA-LR: podem criar em qualquer equipe (trocas de plantão), mas só alteram
  *   os registos que eles próprios criaram; o BA-LR também pode alterar os registos
  *   criados pelo BA-CE (chefe) da equipe do registo
+ * - bombeiros autorizados no cadastro podem criar/editar registros apenas da equipe
+ *   operacional autorizada pelo BA-CE; a permissão não acompanha troca/substituição
+ *   e nunca libera exclusão
  * - demais cargos: apenas visualizam
  */
 
 export function canCriarRegistrosDiarios(contexto: ContextoOperacionalPermissao): boolean {
   if (contexto.isAdministradorSistema) return true;
   if (contexto.cargo === 'GS') return false;
+  return contexto.cargo === 'BA-CE' ||
+    contexto.cargo === 'BA-LR' ||
+    (contexto.autorizadoRegistrosDiarios && !!contexto.autorizacaoRegistrosDiariosEquipe);
+}
+
+export function canEscolherEquipeRegistrosDiarios(contexto: ContextoOperacionalPermissao): boolean {
+  if (contexto.isAdministradorSistema) return true;
+  if (contexto.cargo === 'GS') return false;
   return contexto.cargo === 'BA-CE' || contexto.cargo === 'BA-LR';
+}
+
+export function equipePadraoRegistrosDiarios(contexto: ContextoOperacionalPermissao): Equipe | null {
+  return contexto.autorizadoRegistrosDiarios && !canEscolherEquipeRegistrosDiarios(contexto)
+    ? contexto.autorizacaoRegistrosDiariosEquipe
+    : contexto.equipe;
 }
 
 function nomeIgual(username: string | null | undefined, criadoPor: string | null | undefined): boolean {
@@ -263,16 +302,70 @@ function chefesDaEquipe(
   );
 }
 
+type BombeiroPermissaoRegistroDiario = {
+  nomeGuerra?: string;
+  nomeCompleto?: string;
+  email?: string;
+  cargo?: string;
+  equipe?: string;
+};
+
+function canEditarRegistroDaEquipeAutorizada(
+  contexto: ContextoOperacionalPermissao,
+  registro: { equipe?: string | null },
+): boolean {
+  return !!(
+    contexto.autorizadoRegistrosDiarios &&
+    contexto.autorizacaoRegistrosDiariosEquipe &&
+    registro.equipe &&
+    contexto.autorizacaoRegistrosDiariosEquipe === registro.equipe
+  );
+}
+
 export function canGerenciarRegistroDiario(
   contexto: ContextoOperacionalPermissao,
   registro: { createdBy?: string | null; equipe?: string | null },
   username: string | null | undefined,
-  bombeiros?: { nomeGuerra?: string; nomeCompleto?: string; email?: string; cargo?: string; equipe?: string }[],
+  bombeiros?: BombeiroPermissaoRegistroDiario[],
+): boolean {
+  if (contexto.isAdministradorSistema) return true;
+  if (contexto.cargo === 'GS') return false;
+
+  if (canEditarRegistroDaEquipeAutorizada(contexto, registro)) return true;
+
+  if (contexto.cargo !== 'BA-CE' && contexto.cargo !== 'BA-LR') return false;
+
+  if (nomeIgual(username, registro.createdBy)) return true;
+
+  if (contexto.cargo === 'BA-LR') {
+    return chefesDaEquipe(bombeiros ?? [], registro.equipe).some(c =>
+      nomeIgual(c.nomeGuerra, registro.createdBy) ||
+      nomeIgual(c.nomeCompleto, registro.createdBy) ||
+      nomeIgual(c.email, registro.createdBy)
+    );
+  }
+
+  return false;
+}
+
+export function canEditarRegistroDiario(
+  contexto: ContextoOperacionalPermissao,
+  registro: { createdBy?: string | null; equipe?: string | null },
+  username: string | null | undefined,
+  bombeiros?: BombeiroPermissaoRegistroDiario[],
+): boolean {
+  return canGerenciarRegistroDiario(contexto, registro, username, bombeiros);
+}
+
+export function canExcluirRegistroDiario(
+  contexto: ContextoOperacionalPermissao,
+  registro: { createdBy?: string | null; equipe?: string | null },
+  username: string | null | undefined,
+  bombeiros?: BombeiroPermissaoRegistroDiario[],
 ): boolean {
   if (contexto.isAdministradorSistema) return true;
   if (contexto.cargo === 'GS') return false;
   if (contexto.cargo !== 'BA-CE' && contexto.cargo !== 'BA-LR') return false;
-
   if (nomeIgual(username, registro.createdBy)) return true;
 
   if (contexto.cargo === 'BA-LR') {

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 
 const TABLE = 'bombeiros';
 const PUBLIC_COLUMNS = 'id, matricula, nome_completo, nome_guerra, cargo, equipe, turno, foto, cnh_categoria, cnh_validade, credencial_validade, tipo_sanguineo, data_desligamento, created_at, updated_at';
+const AUTORIZACAO_REGISTROS_DIARIOS_COLUMNS = 'id, matricula, nome_completo, nome_guerra, cargo, equipe, turno, foto, data_desligamento, autorizado_registros_diarios, autorizacao_registros_diarios_equipe, autorizacao_registros_diarios_status, autorizacao_registros_diarios_solicitado_por, autorizacao_registros_diarios_solicitado_em, autorizacao_registros_diarios_decidido_por, autorizacao_registros_diarios_decidido_em, created_at, updated_at';
 
 function getDb() {
   if (!supabase) throw new Error('Supabase não configurado. Verifique as credenciais no arquivo .env');
@@ -54,6 +55,13 @@ function rowToBombeiro(row: Record<string, unknown>): Bombeiro {
     cursoChefeEquipe: row.curso_chefe_equipe as boolean,
     cursoMotoristaCCI: row.curso_motorista_cci as boolean,
     cursoCVE: row.curso_cve as boolean,
+    autorizadoRegistrosDiarios: row.autorizado_registros_diarios as boolean || false,
+    autorizacaoRegistrosDiariosEquipe: (row.autorizacao_registros_diarios_equipe as Bombeiro['autorizacaoRegistrosDiariosEquipe']) || '',
+    autorizacaoRegistrosDiariosStatus: (row.autorizacao_registros_diarios_status as Bombeiro['autorizacaoRegistrosDiariosStatus']) || 'nenhuma',
+    autorizacaoRegistrosDiariosSolicitadoPor: (row.autorizacao_registros_diarios_solicitado_por as string) || '',
+    autorizacaoRegistrosDiariosSolicitadoEm: (row.autorizacao_registros_diarios_solicitado_em as string) || '',
+    autorizacaoRegistrosDiariosDecididoPor: (row.autorizacao_registros_diarios_decidido_por as string) || '',
+    autorizacaoRegistrosDiariosDecididoEm: (row.autorizacao_registros_diarios_decidido_em as string) || '',
     cveValidade: (row.cve_validade as string) || '',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -85,6 +93,13 @@ function rowToBombeiroPublico(row: Record<string, unknown>): Bombeiro {
     curso_chefe_equipe: false,
     curso_motorista_cci: false,
     curso_cve: false,
+    autorizado_registros_diarios: false,
+    autorizacao_registros_diarios_equipe: '',
+    autorizacao_registros_diarios_status: 'nenhuma',
+    autorizacao_registros_diarios_solicitado_por: '',
+    autorizacao_registros_diarios_solicitado_em: '',
+    autorizacao_registros_diarios_decidido_por: '',
+    autorizacao_registros_diarios_decidido_em: '',
     cve_validade: '',
     ...row,
   });
@@ -123,6 +138,13 @@ function bombeiroToRow(data: Omit<Bombeiro, 'id' | 'createdAt' | 'updatedAt'>): 
     curso_chefe_equipe: data.cursoChefeEquipe,
     curso_motorista_cci: data.cursoMotoristaCCI,
     curso_cve: data.cursoCVE,
+    autorizado_registros_diarios: data.autorizadoRegistrosDiarios,
+    autorizacao_registros_diarios_equipe: data.autorizacaoRegistrosDiariosEquipe,
+    autorizacao_registros_diarios_status: data.autorizacaoRegistrosDiariosStatus,
+    autorizacao_registros_diarios_solicitado_por: data.autorizacaoRegistrosDiariosSolicitadoPor,
+    autorizacao_registros_diarios_solicitado_em: data.autorizacaoRegistrosDiariosSolicitadoEm,
+    autorizacao_registros_diarios_decidido_por: data.autorizacaoRegistrosDiariosDecididoPor,
+    autorizacao_registros_diarios_decidido_em: data.autorizacaoRegistrosDiariosDecididoEm,
     cve_validade: data.cveValidade || '',
   };
 }
@@ -151,6 +173,16 @@ export async function listarBombeirosPublico(params?: {
   if (params?.equipe) query = query.eq('equipe', params.equipe);
   if (params?.cargo) query = query.eq('cargo', params.cargo);
   const { data, error } = await query;
+  if (error) handleSupabaseError(error);
+  return (data || []).map(rowToBombeiroPublico);
+}
+
+export async function listarBombeirosParaAutorizacaoRegistrosDiarios(): Promise<Bombeiro[]> {
+  const db = getDb();
+  const { data, error } = await db
+    .from(TABLE)
+    .select(AUTORIZACAO_REGISTROS_DIARIOS_COLUMNS)
+    .order('nome_guerra', { ascending: true });
   if (error) handleSupabaseError(error);
   return (data || []).map(rowToBombeiroPublico);
 }
@@ -259,6 +291,13 @@ export async function atualizarBombeiro(id: string, data: Partial<Bombeiro>): Pr
   if (data.cursoChefeEquipe !== undefined) row.curso_chefe_equipe = data.cursoChefeEquipe;
   if (data.cursoMotoristaCCI !== undefined) row.curso_motorista_cci = data.cursoMotoristaCCI;
   if (data.cursoCVE !== undefined) row.curso_cve = data.cursoCVE;
+  if (data.autorizadoRegistrosDiarios !== undefined) row.autorizado_registros_diarios = data.autorizadoRegistrosDiarios;
+  if (data.autorizacaoRegistrosDiariosEquipe !== undefined) row.autorizacao_registros_diarios_equipe = data.autorizacaoRegistrosDiariosEquipe;
+  if (data.autorizacaoRegistrosDiariosStatus !== undefined) row.autorizacao_registros_diarios_status = data.autorizacaoRegistrosDiariosStatus;
+  if (data.autorizacaoRegistrosDiariosSolicitadoPor !== undefined) row.autorizacao_registros_diarios_solicitado_por = data.autorizacaoRegistrosDiariosSolicitadoPor;
+  if (data.autorizacaoRegistrosDiariosSolicitadoEm !== undefined) row.autorizacao_registros_diarios_solicitado_em = data.autorizacaoRegistrosDiariosSolicitadoEm;
+  if (data.autorizacaoRegistrosDiariosDecididoPor !== undefined) row.autorizacao_registros_diarios_decidido_por = data.autorizacaoRegistrosDiariosDecididoPor;
+  if (data.autorizacaoRegistrosDiariosDecididoEm !== undefined) row.autorizacao_registros_diarios_decidido_em = data.autorizacaoRegistrosDiariosDecididoEm;
   if (data.cveValidade !== undefined) row.cve_validade = data.cveValidade;
   if (data.credencialValidade !== undefined) row.credencial_validade = data.credencialValidade;
   row.updated_at = new Date().toISOString();
@@ -266,6 +305,24 @@ export async function atualizarBombeiro(id: string, data: Partial<Bombeiro>): Pr
   const { data: updated, error } = await db.from(TABLE).update(row).eq('id', id).select().single();
   if (error) handleSupabaseError(error);
   return updated ? rowToBombeiro(updated) : null;
+}
+
+export async function aprovarAutorizacaoRegistrosDiarios(id: string, aprovadoPor: string): Promise<Bombeiro | null> {
+  return atualizarBombeiro(id, {
+    autorizadoRegistrosDiarios: true,
+    autorizacaoRegistrosDiariosStatus: 'aprovado',
+    autorizacaoRegistrosDiariosDecididoPor: aprovadoPor,
+    autorizacaoRegistrosDiariosDecididoEm: new Date().toISOString(),
+  });
+}
+
+export async function rejeitarAutorizacaoRegistrosDiarios(id: string, rejeitadoPor: string): Promise<Bombeiro | null> {
+  return atualizarBombeiro(id, {
+    autorizadoRegistrosDiarios: false,
+    autorizacaoRegistrosDiariosStatus: 'rejeitado',
+    autorizacaoRegistrosDiariosDecididoPor: rejeitadoPor,
+    autorizacaoRegistrosDiariosDecididoEm: new Date().toISOString(),
+  });
 }
 
 export async function excluirBombeiro(id: string): Promise<boolean> {

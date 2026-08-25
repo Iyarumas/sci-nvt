@@ -1,0 +1,20 @@
+ALTER TABLE ptrb_registros ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE ptrba_completo_registros ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE ocorrencias_operacionais ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE rea_registros ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE conferencias ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE treinamentos_taf ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE treinamentos_taf ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE treinamentos_tpepr ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE exercicios_posicionamento ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE exercicios_posicionamento ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE treinamentos_tempo_resposta ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT '';
+ALTER TABLE treinamentos_tempo_resposta ADD COLUMN IF NOT EXISTS updated_by TEXT NOT NULL DEFAULT '';

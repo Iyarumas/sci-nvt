@@ -21,7 +21,7 @@ import type { BonaBombeiro, BonaDados, Ocorrencia, TipoDocumento } from '../../t
 import type { ReaDados, ReaRegistro, ReaStatus } from '../../types/rea';
 import { ReaModal } from './ReaModal';
 import { ReaCard } from './ReaCard';
-import { hojeLocalISO } from '../../utils/datas';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { PageTour } from '../../components/ui/PageTour';
 
@@ -777,7 +777,7 @@ function OcorrenciaView({ ocorrencia, onBack }: { ocorrencia: Ocorrencia; onBack
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge}`}>{ocorrencia.tipoDocumento}</span>
           </div>
           <p className="mt-1 text-sm font-medium text-graphite-600 dark:text-graphite-300">{TIPO_DOCUMENTO[ocorrencia.tipoDocumento]}</p>
-          <p className="mt-0.5 text-sm text-graphite-500 dark:text-graphite-400">{ocorrencia.data} {ocorrencia.hora && `às ${ocorrencia.hora}`}</p>
+          <p className="mt-0.5 text-sm text-graphite-500 dark:text-graphite-400">{formatarDataBR(ocorrencia.data)} {ocorrencia.hora && `às ${ocorrencia.hora}`}</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusColor[ocorrencia.status] || ''}`}>{ocorrencia.status}</span>
       </div>
@@ -902,7 +902,7 @@ function OcorrenciaCard({
             <span className="min-w-0 truncate rounded-full bg-aviation-50 px-2.5 py-0.5 text-[10px] font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{bonaDados.tipoOcorrencia || o.categoria}</span>
           </div>
           <div className="mt-1 flex items-center gap-3 text-xs text-graphite-500 dark:text-graphite-400">
-            <span>{o.data}</span>
+            <span>{formatarDataBR(o.data)}</span>
             {o.hora && <span>às {o.hora}</span>}
             <span>Equipe {o.equipe}</span>
             {o.local && <span>· {o.local}</span>}
@@ -917,7 +917,7 @@ function OcorrenciaCard({
       {expanded && (
         <div className="space-y-4 border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
           <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
-            {detailCard('Data', o.data)}
+            {detailCard('Data', formatarDataBR(o.data))}
             {detailCard('Hora', o.hora)}
             {detailCard('Equipe', o.equipe)}
             {detailCard('Turno', o.turno)}

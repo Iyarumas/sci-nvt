@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { CheckCircle, ChevronDown, ChevronUp, Download, Eye, Pencil, Trash2 } from 'lucide-react';
 import type { ReaRegistro } from '../../types/rea';
+import { formatarDataBR } from '../../utils/datas';
 
-function fmtDate(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || '-';
-  const [year, month, day] = value.split('-');
-  return `${day}/${month}/${year}`;
+function fmtDate(value?: string): string {
+  return formatarDataBR(value);
 }
 
 export function ReaCard({
@@ -59,7 +58,7 @@ export function ReaCard({
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-graphite-500 dark:text-graphite-400">
             <span>{fmtDate(rea.dataAcidente)}</span>
-            {rea.horaAcidente && <span>as {rea.horaAcidente}</span>}
+            {rea.horaAcidente && <span>às {rea.horaAcidente}</span>}
             {rea.aerodromo && <span>{rea.aerodromo}</span>}
             {rea.cidade && <span>{rea.cidade}</span>}
           </div>

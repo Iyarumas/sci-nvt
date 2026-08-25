@@ -2009,7 +2009,7 @@ export function GerarLRO() {
     return value
       .map((item: Partial<TrocaManualLRO>) => {
         const nomes = [item.solicitante, item.solicitado].filter(Boolean).join(' x ');
-        const detalhes = [item.dataFolga ? `Folga: ${item.dataFolga}` : '', item.motivo].filter(Boolean).join(' | ');
+        const detalhes = [item.dataFolga ? `Folga: ${formatarDataBR(item.dataFolga)}` : '', item.motivo].filter(Boolean).join(' | ');
         return [nomes, detalhes].filter(Boolean).join(' - ');
       })
       .filter(Boolean)

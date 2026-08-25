@@ -12,6 +12,8 @@ const R = 205;
 const W = R - L;
 const AIRPORTO_PADRAO = 'AEROPORTO INTERNACIONAL MINISTRO VICTOR KONDER - SBNF';
 const CODIGO_FORMULARIO = 'MMS.BR.BA.FOR.003';
+const TEXT_LINE_HEIGHT_FACTOR = 1.12;
+const TEXT_LINE_HEIGHT_MM = 0.43;
 
 type Align = 'left' | 'center' | 'right';
 type FontStyle = 'normal' | 'bold' | 'italic' | 'bolditalic';
@@ -86,6 +88,28 @@ function wrappedLines(doc: jsPDF, value: string, width: number, size: number, st
   return Array.isArray(lines) ? lines : [String(lines)];
 }
 
+function fitLineWithEllipsis(doc: jsPDF, value: string, width: number): string {
+  const suffix = '...';
+  const clean = texto(value);
+  if (!clean || doc.getTextWidth(clean) <= width) return clean;
+  if (doc.getTextWidth(suffix) > width) return '';
+
+  let result = clean;
+  while (result.length > 0 && doc.getTextWidth(`${result}${suffix}`) > width) {
+    result = result.slice(0, -1).trimEnd();
+  }
+  return result ? `${result}${suffix}` : '';
+}
+
+function clampLinesToHeight(doc: jsPDF, lines: string[], width: number, height: number, size: number): string[] {
+  const maxLines = Math.max(1, Math.floor((height - 2.2) / (size * TEXT_LINE_HEIGHT_MM)));
+  if (lines.length <= maxLines) return lines;
+
+  const visible = lines.slice(0, maxLines);
+  visible[visible.length - 1] = fitLineWithEllipsis(doc, visible[visible.length - 1], width);
+  return visible.filter(Boolean);
+}
+
 function drawWrapped(doc: jsPDF, value: string, x: number, y: number, w: number, h: number, opts: {
   maxSize?: number;
   minSize?: number;
@@ -96,16 +120,18 @@ function drawWrapped(doc: jsPDF, value: string, x: number, y: number, w: number,
   if (!raw) return;
   const style = opts.style || 'italic';
   const minSize = opts.minSize || 6;
+  const textW = Math.max(1, w - 4);
   let size = opts.maxSize || 11;
-  let lines = wrappedLines(doc, raw, w - 2.4, size, style);
-  while (size > minSize && lines.length * size * 0.43 > h - 1.8) {
+  let lines = wrappedLines(doc, raw, textW, size, style);
+  while (size > minSize && lines.length * size * TEXT_LINE_HEIGHT_MM > h - 2.2) {
     size -= 0.3;
-    lines = wrappedLines(doc, raw, w - 2.4, size, style);
+    lines = wrappedLines(doc, raw, textW, size, style);
   }
+  const visibleLines = clampLinesToHeight(doc, lines, textW, h, size);
 
   doc.setFont('helvetica', style);
   doc.setFontSize(size);
-  doc.text(lines, x + 1.2, y + size * 0.38 + 1.2, { lineHeightFactor: 1.12 });
+  doc.text(visibleLines, x + 2, y + size * 0.38 + 1.2, { lineHeightFactor: TEXT_LINE_HEIGHT_FACTOR });
 }
 
 function numeroCurto(numero: string): string {

@@ -8,7 +8,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorrencia } from '../../services/ocorrenciaService';
 import { STATUS_OCORRENCIA, EQUIPES } from '../../types/ocorrencia';
 import type { Ocorrencia } from '../../types/ocorrencia';
-import { hojeLocalISO } from '../../utils/datas';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
 
 const MENSAGEM_OCORRENCIA_LRO_FINALIZADO = 'Esta ocorrência já foi incluída em um LRO finalizado e não pode ser alterada.';
@@ -177,14 +177,14 @@ function OcorrenciaView({ ocorrencia, onBack }: { ocorrencia: Ocorrencia; onBack
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h3 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{ocorrencia.titulo || 'Ocorrência'}</h3>
-          <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">{ocorrencia.data} {ocorrencia.hora && `às ${ocorrencia.hora}`}</p>
+          <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">{formatarDataBR(ocorrencia.data)} {ocorrencia.hora && `às ${ocorrencia.hora}`}</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-medium ${statusColor[ocorrencia.status] || ''}`}>{ocorrencia.status}</span>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div><p className={label}>Equipe</p><p className={value}>{ocorrencia.equipe}</p></div>
-        <div><p className={label}>Data do Turno</p><p className={value}>{ocorrencia.local || '—'}</p></div>
+        <div><p className={label}>Data do Turno</p><p className={value}>{formatarDataBR(ocorrencia.local)}</p></div>
         <div><p className={label}>Tipo</p><p className={value}>{ocorrencia.titulo || '—'}</p></div>
       </div>
 
@@ -225,10 +225,10 @@ function OcorrenciaCard({
             <span className="shrink-0 rounded-full bg-aviation-50 px-2.5 py-0.5 text-[10px] font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{o.titulo || o.categoria}</span>
           </div>
           <div className="mt-1 flex items-center gap-3 text-xs text-graphite-500 dark:text-graphite-400">
-            <span>{o.data}</span>
+            <span>{formatarDataBR(o.data)}</span>
             {o.hora && <span>às {o.hora}</span>}
             <span>Equipe {o.equipe}</span>
-            {o.local && <span>· Turno {o.local}</span>}
+            {o.local && <span>· Turno {formatarDataBR(o.local)}</span>}
           </div>
         </div>
         {expanded ? <ChevronUp className="ml-2 h-4 w-4 shrink-0 text-graphite-400" /> : <ChevronDown className="ml-2 h-4 w-4 shrink-0 text-graphite-400" />}

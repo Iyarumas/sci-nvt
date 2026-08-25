@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Upload } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Upload, Check, Move, RotateCcw, ZoomIn } from 'lucide-react';
 import { capitalizarNome } from '../../utils/capitalize';
 import type { Bombeiro, Cargo, Equipe, Turno, CatCNH, Sexo } from '../../types/bombeiro';
 import {
@@ -61,12 +61,226 @@ const inputClass = "w-full rounded-xl border border-graphite-300/60 bg-white/70 
 const selectClass = "w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-graphite-600 dark:bg-graphite-800 dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-graphite-700";
 const disabledClass = "w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-500 cursor-not-allowed dark:border-graphite-600 dark:bg-graphite-800 dark:text-graphite-400";
 const labelClass = "mb-1 block text-xs font-medium text-graphite-600 dark:text-graphite-400";
+const PHOTO_PREVIEW_SIZE = 280;
+const PHOTO_OUTPUT_SIZE = 512;
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <legend className="mb-3 text-xs font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">
       {children}
     </legend>
+  );
+}
+
+function FotoCropModal({
+  src,
+  onConfirm,
+  onCancel,
+}: {
+  src: string;
+  onConfirm: (foto: string) => void;
+  onCancel: () => void;
+}) {
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    setPosition({ x: 0, y: 0 });
+    setZoom(1);
+  }, [src]);
+
+  const baseScale = imageSize.width && imageSize.height
+    ? Math.max(PHOTO_PREVIEW_SIZE / imageSize.width, PHOTO_PREVIEW_SIZE / imageSize.height)
+    : 1;
+  const renderedWidth = imageSize.width ? imageSize.width * baseScale * zoom : PHOTO_PREVIEW_SIZE;
+  const renderedHeight = imageSize.height ? imageSize.height * baseScale * zoom : PHOTO_PREVIEW_SIZE;
+
+  function clampPosition(next: { x: number; y: number }, nextZoom = zoom) {
+    if (!imageSize.width || !imageSize.height) return { x: 0, y: 0 };
+
+    const scale = baseScale * nextZoom;
+    const width = imageSize.width * scale;
+    const height = imageSize.height * scale;
+    const maxX = Math.max(0, (width - PHOTO_PREVIEW_SIZE) / 2);
+    const maxY = Math.max(0, (height - PHOTO_PREVIEW_SIZE) / 2);
+
+    return {
+      x: Math.min(maxX, Math.max(-maxX, next.x)),
+      y: Math.min(maxY, Math.max(-maxY, next.y)),
+    };
+  }
+
+  function updateZoom(value: number) {
+    const nextZoom = Math.min(3, Math.max(1, value));
+    setZoom(nextZoom);
+    setPosition(current => clampPosition(current, nextZoom));
+  }
+
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: position.x,
+      originY: position.y,
+    };
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+
+    setPosition(clampPosition({
+      x: drag.originX + e.clientX - drag.startX,
+      y: drag.originY + e.clientY - drag.startY,
+    }));
+  }
+
+  function handlePointerEnd(e: React.PointerEvent<HTMLDivElement>) {
+    if (dragRef.current?.pointerId === e.pointerId) {
+      dragRef.current = null;
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  }
+
+  function handleConfirm() {
+    const image = imageRef.current;
+    if (!image || !image.complete) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = PHOTO_OUTPUT_SIZE;
+    canvas.height = PHOTO_OUTPUT_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const outputScale = PHOTO_OUTPUT_SIZE / PHOTO_PREVIEW_SIZE;
+    const imageLeft = (PHOTO_PREVIEW_SIZE - renderedWidth) / 2 + position.x;
+    const imageTop = (PHOTO_PREVIEW_SIZE - renderedHeight) / 2 + position.y;
+
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, PHOTO_OUTPUT_SIZE, PHOTO_OUTPUT_SIZE);
+    ctx.drawImage(
+      image,
+      imageLeft * outputScale,
+      imageTop * outputScale,
+      renderedWidth * outputScale,
+      renderedHeight * outputScale,
+    );
+
+    onConfirm(canvas.toDataURL('image/jpeg', 0.9));
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-2xl rounded-2xl border border-graphite-200 bg-white shadow-2xl dark:border-border-dark dark:bg-surface-elevated">
+        <div className="flex items-center justify-between border-b border-graphite-200 px-5 py-4 dark:border-border-dark">
+          <div>
+            <h3 className="text-base font-bold text-graphite-900 dark:text-graphite-100">Ajustar foto</h3>
+            <p className="text-xs text-graphite-500 dark:text-graphite-400">Arraste para enquadrar e use o zoom se precisar.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl p-1.5 text-graphite-400 transition-all hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover dark:hover:text-graphite-300"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid gap-6 px-5 py-5 md:grid-cols-[auto,1fr]">
+          <div
+            className="relative h-[280px] w-[280px] cursor-grab touch-none overflow-hidden rounded-full border-4 border-aviation-500/70 bg-graphite-900 active:cursor-grabbing"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerEnd}
+            onPointerCancel={handlePointerEnd}
+          >
+            <img
+              ref={imageRef}
+              src={src}
+              alt="Prévia da foto"
+              draggable={false}
+              onLoad={e => {
+                setImageSize({
+                  width: e.currentTarget.naturalWidth,
+                  height: e.currentTarget.naturalHeight,
+                });
+                setPosition({ x: 0, y: 0 });
+                setZoom(1);
+              }}
+              className="pointer-events-none absolute left-1/2 top-1/2 max-w-none select-none"
+              style={{
+                width: renderedWidth,
+                height: renderedHeight,
+                transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px)`,
+              }}
+            />
+            <div className="pointer-events-none absolute inset-0 rounded-full ring-2 ring-white/70 ring-offset-2 ring-offset-graphite-900" />
+          </div>
+
+          <div className="flex flex-col justify-between gap-5">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-graphite-200 bg-graphite-50/70 p-4 dark:border-border-dark dark:bg-surface-card">
+                <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-graphite-800 dark:text-graphite-100">
+                  <Move className="h-4 w-4 text-aviation-500" />
+                  Posição
+                </div>
+                <p className="text-xs text-graphite-500 dark:text-graphite-400">Clique e arraste em cima da foto para deixar o rosto no centro.</p>
+              </div>
+
+              <div>
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">
+                  <ZoomIn className="h-4 w-4" />
+                  Zoom
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="3"
+                  step="0.01"
+                  value={zoom}
+                  onChange={e => updateZoom(Number(e.target.value))}
+                  className="w-full accent-aviation-600"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setPosition({ x: 0, y: 0 });
+                  setZoom(1);
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Centralizar
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600"
+              >
+                <Check className="h-4 w-4" />
+                Usar foto
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -89,6 +303,7 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
   const [cnhValidade, setCnhValidade] = useState('');
   const [credencialValidade, setCredencialValidade] = useState('');
   const [foto, setFoto] = useState('');
+  const [fotoParaAjustar, setFotoParaAjustar] = useState('');
   const [dataDesligamento, setDataDesligamento] = useState('');
   const [showDesligamento, setShowDesligamento] = useState(false);
   const [erro, setErro] = useState('');
@@ -204,8 +419,12 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
   function handleFotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const input = e.currentTarget;
     const reader = new FileReader();
-    reader.onload = () => setFoto(reader.result as string);
+    reader.onload = () => {
+      setFotoParaAjustar(reader.result as string);
+      input.value = '';
+    };
     reader.readAsDataURL(file);
   }
 
@@ -367,10 +586,16 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
                     <input type="file" accept="image/*" onChange={handleFotoChange} className="hidden" />
                   </label>
                   {foto && (
-                    <button type="button" onClick={() => setFoto('')}
-                      className="text-[11px] text-graphite-400 underline transition-colors hover:text-alert-red dark:text-graphite-500">
-                      Remover foto
-                    </button>
+                    <div className="flex flex-col items-center gap-1">
+                      <button type="button" onClick={() => setFotoParaAjustar(foto)}
+                        className="text-[11px] font-medium text-aviation-600 underline transition-colors hover:text-aviation-700 dark:text-aviation-300 dark:hover:text-aviation-200">
+                        Ajustar foto
+                      </button>
+                      <button type="button" onClick={() => setFoto('')}
+                        className="text-[11px] text-graphite-400 underline transition-colors hover:text-alert-red dark:text-graphite-500">
+                        Remover foto
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -601,6 +826,17 @@ export function BombeiroForm({ bombeiro, onSave, onClose, serverError }: Props) 
           </div>
         </form>
       </div>
+
+      {fotoParaAjustar && (
+        <FotoCropModal
+          src={fotoParaAjustar}
+          onCancel={() => setFotoParaAjustar('')}
+          onConfirm={fotoAjustada => {
+            setFoto(fotoAjustada);
+            setFotoParaAjustar('');
+          }}
+        />
+      )}
     </div>
   );
 }

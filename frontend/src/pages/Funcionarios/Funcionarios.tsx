@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Search, AlertCircle, X, Calendar, Shield, Droplets, User, Hash, IdCard, Car, Briefcase, Clock, FileText, Radio, Mail } from 'lucide-react';
+import { Users, Search, AlertCircle, X, Calendar, Shield, Droplets, User, Hash, IdCard, Car, Briefcase, Clock, FileText, Radio, Mail, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import {
@@ -33,6 +33,18 @@ import { PageTour } from '../../components/ui/PageTour';
 
 type Tab = 'todos' | 'bombeiros' | 'apoc' | 'substituicoes';
 type SituacaoBombeiro = 'Ativo' | 'Afastado' | 'Desligado';
+type FuncionariosSortKey = 'nome' | 'cargo';
+type SortDirection = 'asc' | 'desc';
+
+const CARGO_HIERARCHY: Record<string, number> = {
+  GS: 0,
+  'BA-CE': 1,
+  'BA-LR': 2,
+  'BA-MC': 3,
+  'BA-2': 4,
+};
+
+const NOME_COLLATOR = new Intl.Collator('pt-BR', { sensitivity: 'base' });
 
 const FUNCIONARIOS_TOUR_STEPS = [
   {
@@ -57,7 +69,7 @@ const FUNCIONARIOS_TOUR_STEPS = [
     selector: 'main table',
     title: 'Tabelas de pessoas',
     body: 'As tabelas mostram dados resumidos como matrícula, nome, nome de guerra, e-mail quando permitido, cargo, equipe, turno e situação.',
-    detail: 'Ativo, Afastado e Desligado ajudam a entender se a pessoa está disponível para as rotinas do sistema naquele momento.',
+    detail: 'Na tabela de bombeiros, clique em Nome para ordem alfabética ou em Cargo para organizar pela hierarquia GS, BA-CE, BA-LR, BA-MC e BA-2. Ativo, Afastado e Desligado ajudam a entender se a pessoa está disponível.',
   },
   {
     selector: 'main table tbody tr',
@@ -78,6 +90,43 @@ function labelCargo(valor: string) {
 
 function formatDate(d: string) {
   return formatarDataBR(d);
+}
+
+function cargoRank(cargo: string) {
+  return CARGO_HIERARCHY[cargo] ?? 99;
+}
+
+function compareBombeirosByName(a: Bombeiro, b: Bombeiro) {
+  return NOME_COLLATOR.compare(a.nomeCompleto || a.nomeGuerra, b.nomeCompleto || b.nomeGuerra);
+}
+
+function SortHeaderButton({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onClick,
+}: {
+  label: string;
+  sortKey: FuncionariosSortKey;
+  activeKey: FuncionariosSortKey;
+  direction: SortDirection;
+  onClick: () => void;
+}) {
+  const isActive = activeKey === sortKey;
+  const Icon = isActive ? (direction === 'asc' ? ChevronUp : ChevronDown) : ArrowUpDown;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="-ml-2 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-left font-semibold text-graphite-600 transition-colors hover:bg-graphite-200/70 hover:text-aviation-700 dark:text-graphite-300 dark:hover:bg-surface-hover dark:hover:text-aviation-300"
+      title={`Ordenar por ${label.toLowerCase()}`}
+    >
+      <span>{label}</span>
+      <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-aviation-600 dark:text-aviation-300' : 'text-graphite-400 dark:text-graphite-500'}`} />
+    </button>
+  );
 }
 
 function podeVerDetalhesCompletosBase(user: AuthUserPermissao): boolean {
@@ -267,6 +316,10 @@ export function Funcionarios() {
   const [selecionado, setSelecionado] = useState<Bombeiro | APOC | null>(null);
   const [tipoSelecionado, setTipoSelecionado] = useState<'bombeiro' | 'apoc'>('bombeiro');
   const [canViewFullDetails, setCanViewFullDetails] = useState(() => podeVerDetalhesCompletosBase(user));
+  const [sortConfig, setSortConfig] = useState<{ key: FuncionariosSortKey; direction: SortDirection }>({
+    key: 'cargo',
+    direction: 'asc',
+  });
 
   const [allBombeiros, setAllBombeiros] = useState<Bombeiro[]>([]);
   const [allApocs, setAllApocs] = useState<APOC[]>([]);
@@ -333,7 +386,19 @@ export function Funcionarios() {
     load();
   }, [debouncedTermo, allApocs, canViewFullDetails]);
 
-  const filteredBombeiros = tab === 'apoc' ? [] : bombeiros;
+  const filteredBombeiros = useMemo(() => {
+    if (tab === 'apoc') return [];
+
+    const directionMultiplier = sortConfig.direction === 'asc' ? 1 : -1;
+    return [...bombeiros].sort((a, b) => {
+      if (sortConfig.key === 'cargo') {
+        const cargoDiff = cargoRank(a.cargo) - cargoRank(b.cargo);
+        if (cargoDiff !== 0) return cargoDiff * directionMultiplier;
+      }
+
+      return compareBombeirosByName(a, b) * directionMultiplier;
+    });
+  }, [tab, bombeiros, sortConfig]);
   const filteredApocs = tab === 'bombeiros' ? [] : apocs;
   const totalRegistros = filteredBombeiros.length + filteredApocs.length;
   const afastamentosAtivos = useMemo(() => {
@@ -364,6 +429,13 @@ export function Funcionarios() {
     if (!canViewFullDetails) return;
     setSelecionado(a);
     setTipoSelecionado('apoc');
+  }
+
+  function handleSort(key: FuncionariosSortKey) {
+    setSortConfig(current => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
   }
 
   return (
@@ -469,10 +541,26 @@ export function Funcionarios() {
                   <thead>
                     <tr className="border-b border-graphite-200 bg-graphite-50 text-left dark:border-border-dark dark:bg-surface-card">
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Matrícula</th>
-                      <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Nome</th>
+                      <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300" aria-sort={sortConfig.key === 'nome' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                        <SortHeaderButton
+                          label="Nome"
+                          sortKey="nome"
+                          activeKey={sortConfig.key}
+                          direction={sortConfig.direction}
+                          onClick={() => handleSort('nome')}
+                        />
+                      </th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Nome de Guerra</th>
                       {canViewFullDetails && <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">E-mail</th>}
-                      <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Cargo</th>
+                      <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300" aria-sort={sortConfig.key === 'cargo' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                        <SortHeaderButton
+                          label="Cargo"
+                          sortKey="cargo"
+                          activeKey={sortConfig.key}
+                          direction={sortConfig.direction}
+                          onClick={() => handleSort('cargo')}
+                        />
+                      </th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Equipe</th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Turno</th>
                       <th className="px-4 py-3 font-semibold text-graphite-600 dark:text-graphite-300">Situação</th>

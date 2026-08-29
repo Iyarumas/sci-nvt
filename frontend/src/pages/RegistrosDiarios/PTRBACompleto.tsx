@@ -27,6 +27,7 @@ import {
 import { listarAPOCs } from '../../services/apocService';
 import { listarBombeiros } from '../../services/bombeiroService';
 import { listarEscalas } from '../../services/escalaService';
+import { listarFeriasGozo } from '../../services/feriasService';
 import { baixarPTRBACompletoPdf, gerarPTRBACompletoPdf } from '../../services/ptrbaCompletoPdfService';
 import {
   atualizarPTRBACompleto,
@@ -34,14 +35,18 @@ import {
   excluirPTRBACompleto,
   listarPTRBACompletos,
 } from '../../services/ptrbaCompletoService';
+import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
-import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
+import { formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
 import { resumoAuditoria } from '../../utils/auditoria';
+import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import type { APOC } from '../../types/apoc';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import type { EscalaDiaria } from '../../types/escala';
+import type { FeriasGozo } from '../../types/ferias';
 import { ASSUNTOS } from '../../types/ptrb';
+import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import {
   criarEvidenciasPTRBACompletoVazias,
   criarParticipantesPTRBACompletoVazios,
@@ -254,6 +259,8 @@ function PTRBACompletoForm({
   onSave,
   bombeiros,
   apocs,
+  feriasGozo,
+  substituicoesTemporarias,
   escalasDiarias,
   vigencias,
   trocaFills,
@@ -266,6 +273,8 @@ function PTRBACompletoForm({
   onSave: (input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) => void;
   bombeiros: Bombeiro[];
   apocs: APOC[];
+  feriasGozo: FeriasGozo[];
+  substituicoesTemporarias: SubstituicaoTemporaria[];
   escalasDiarias: EscalaDiaria[];
   vigencias: any[];
   trocaFills: any[];
@@ -294,84 +303,16 @@ function PTRBACompletoForm({
   }, [registro, canManageGlobal, equipeEfetiva]);
 
   const opcoesParticipantes: AtivoItem[] = useMemo(() => {
-    const vigenciasDoDia = vigencias.filter(v =>
-      v.ativa &&
-      v.equipe === form.equipe &&
-      (!form.data || estaNoPeriodoISO(form.data, v.dataInicio, v.dataFim))
-    );
-    const substituidos = new Set(vigenciasDoDia.map(v => v.funcionarioOriginalId).filter(Boolean));
-
-    // Trocas de serviço aprovadas (documento):
-    // - data_solicitada: folga do solicitante → solicitado substitui o solicitante
-    // - data_folga_solicitado: folga do solicitado → solicitante substitui o solicitado
-    const porNome = new Map<string, Bombeiro>();
-    bombeiros.forEach(b => {
-      if (b.nomeCompleto) porNome.set(b.nomeCompleto.toLowerCase(), b);
-      if (b.nomeGuerra) porNome.set(b.nomeGuerra.toLowerCase(), b);
+    const efetivo = montarEfetivoOperacional({
+      bombeiros,
+      feriasGozo,
+      vigencias,
+      trocaFills,
+      substituicoesTemporarias,
+      equipe: form.equipe,
+      dataPlantao: form.data,
     });
-    const trocasNoDia = (trocaFills || []).filter(fl => {
-      const fd = fl?.filled_data || {};
-      return (mesmoDiaISO(fd?.data_solicitada, form.data) || mesmoDiaISO(fd?.data_folga_solicitado, form.data)) && fd?.nome_solicitante && fd?.nome_solicitado;
-    });
-    const trocaExcluidos = new Set<string>();
-    const trocaIncluidos: AtivoItem[] = [];
-    trocasNoDia.forEach(fl => {
-      const fd = fl.filled_data || {};
-      const sol = porNome.get(String(fd.nome_solicitante || '').toLowerCase());
-      const solic = porNome.get(String(fd.nome_solicitado || '').toLowerCase());
-      if (!sol || !solic) return;
-      const solDia = mesmoDiaISO(fd?.data_solicitada, form.data);
-      const solicDia = mesmoDiaISO(fd?.data_folga_solicitado, form.data);
-      if (solDia && sol.equipe === form.equipe) {
-        trocaExcluidos.add(sol.id);
-        trocaExcluidos.add(solic.id);
-        trocaIncluidos.push({
-          id: solic.id,
-          nomeGuerra: solic.nomeGuerra,
-          nomeCompleto: solic.nomeCompleto,
-          cargo: sol.cargo,
-          equipe: form.equipe,
-        });
-      } else if (solicDia && solic.equipe === form.equipe) {
-        trocaExcluidos.add(sol.id);
-        trocaExcluidos.add(solic.id);
-        trocaIncluidos.push({
-          id: sol.id,
-          nomeGuerra: sol.nomeGuerra,
-          nomeCompleto: sol.nomeCompleto,
-          cargo: solic.cargo,
-          equipe: form.equipe,
-        });
-      }
-    });
-
-    const idsIncluidos = new Set<string>();
-    const bombeirosList = bombeiros
-      .filter(b => b.equipe === form.equipe && !b.dataDesligamento && !substituidos.has(b.id) && !trocaExcluidos.has(b.id))
-      .map(b => ({
-        id: b.id,
-        nomeGuerra: b.nomeGuerra,
-        nomeCompleto: b.nomeCompleto,
-        cargo: b.cargo,
-        equipe: b.equipe,
-      }));
-    bombeirosList.forEach(item => idsIncluidos.add(item.id));
-    const substitutos = vigenciasDoDia.reduce<AtivoItem[]>((acc, vigencia) => {
-      if (!vigencia.substitutoId || idsIncluidos.has(vigencia.substitutoId)) return acc;
-      const bombeiro = bombeiros.find(b => b.id === vigencia.substitutoId);
-      if (!bombeiro || bombeiro.dataDesligamento) return acc;
-      idsIncluidos.add(bombeiro.id);
-      acc.push({
-        id: bombeiro.id,
-        nomeGuerra: bombeiro.nomeGuerra,
-        nomeCompleto: bombeiro.nomeCompleto,
-        cargo: vigencia.cargoExercido || bombeiro.cargo,
-        equipe: vigencia.equipe || form.equipe,
-      });
-      return acc;
-    }, []);
-    const trocaFinal = trocaIncluidos.filter(t => !idsIncluidos.has(t.id));
-    trocaFinal.forEach(t => idsIncluidos.add(t.id));
+    const bombeirosList = montarOpcoesEfetivoOperacional(efetivo, form.equipe);
     const apocsList = apocs.map(a => ({
       id: a.id,
       nomeGuerra: a.nomeGuerra,
@@ -379,8 +320,8 @@ function PTRBACompletoForm({
       cargo: 'APOC',
       equipe: a.equipe,
     }));
-    return [...bombeirosList, ...substitutos, ...trocaFinal, ...apocsList];
-  }, [bombeiros, apocs, vigencias, trocaFills, form.equipe, form.data]);
+    return [...bombeirosList, ...apocsList];
+  }, [bombeiros, apocs, feriasGozo, vigencias, trocaFills, substituicoesTemporarias, form.equipe, form.data]);
 
   useEffect(() => {
     if (registro) return;
@@ -941,6 +882,8 @@ export function PTRBACompletoPage() {
   const [registros, setRegistros] = useState<PTRBACompleto[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
+  const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
+  const [substituicoesTemporarias, setSubstituicoesTemporarias] = useState<SubstituicaoTemporaria[]>([]);
   const [escalasDiarias, setEscalasDiarias] = useState<EscalaDiaria[]>([]);
   const [vigencias, setVigencias] = useState<any[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
@@ -977,10 +920,12 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const [lista, b, a, v, escalas] = await Promise.all([
+        const [lista, b, a, gozos, substituicoes, v, escalas] = await Promise.all([
           listarPTRBACompletos(),
           listarBombeiros(),
           listarAPOCs(),
+          listarFeriasGozo(),
+          listarSubstituicoesTemporarias(),
           listarVigencias({ ativa: true }),
           listarEscalas(),
         ]);
@@ -988,6 +933,8 @@ export function PTRBACompletoPage() {
         setRegistros(lista);
         setBombeiros(b);
         setApocs(a);
+        setFeriasGozo(gozos);
+        setSubstituicoesTemporarias(substituicoes);
         setVigencias(v);
         setEscalasDiarias(escalas);
         try {
@@ -1089,6 +1036,8 @@ export function PTRBACompletoPage() {
           onSave={handleSave}
           bombeiros={bombeiros}
           apocs={apocs}
+          feriasGozo={feriasGozo}
+          substituicoesTemporarias={substituicoesTemporarias}
           escalasDiarias={escalasDiarias}
           vigencias={vigencias}
           trocaFills={trocaFills}

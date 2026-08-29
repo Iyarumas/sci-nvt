@@ -13,6 +13,7 @@ import {
 } from './vigenciaSubstituicaoService';
 
 const TABLE = 'substituicoes_temporarias';
+const DATA_FIM_INDETERMINADO = '9999-12-31';
 
 function getDb() {
   if (!supabase) throw new Error('Supabase não configurado. Verifique as credenciais no arquivo .env');
@@ -53,6 +54,44 @@ function jsonb(value: unknown): string {
   return JSON.stringify(value ?? []);
 }
 
+function parseDataLocal(value: string): Date | null {
+  const [ano, mes, dia] = value.split('-').map(Number);
+  if (!ano || !mes || !dia) return null;
+  return new Date(ano, mes - 1, dia, 12, 0, 0, 0);
+}
+
+function dataLocalISO(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function somarDias(dataISO: string, dias: number): string {
+  const data = parseDataLocal(dataISO);
+  if (!data) return '';
+  data.setDate(data.getDate() + dias);
+  return dataLocalISO(data);
+}
+
+function isAfastamentoIndeterminado(substituicao: Pick<SubstituicaoTemporaria, 'tipo' | 'motivo' | 'dataFim'>): boolean {
+  return substituicao.tipo === 'Afastamento' &&
+    (substituicao.motivo === 'INSS Indeterminado' || substituicao.dataFim === DATA_FIM_INDETERMINADO);
+}
+
+function temExtrasAfastamento(substituicao: Pick<SubstituicaoTemporaria, 'tipo' | 'cadeiaSubstituicao'>): boolean {
+  return substituicao.tipo === 'Afastamento' &&
+    substituicao.cadeiaSubstituicao.some(elo => elo.tipo === 'extra');
+}
+
+function dataInicioVigenciaFixa(substituicao: SubstituicaoTemporaria): string {
+  if (!isAfastamentoIndeterminado(substituicao)) return substituicao.dataInicio;
+  return somarDias(substituicao.dataInicio, Math.max(0, Number(substituicao.dias) || 0));
+}
+
+function deveProcessarVigencia(substituicao: SubstituicaoTemporaria): boolean {
+  if (substituicao.tipo === 'Substituição') return true;
+  if (isAfastamentoIndeterminado(substituicao)) return !!substituicao.substitutoId;
+  return substituicao.tipo === 'Afastamento' && !temExtrasAfastamento(substituicao);
+}
+
 function parseCadeia(value: unknown): EloCadeiaSubstituicaoTemporaria[] {
   const parsed = typeof value === 'string'
     ? (() => { try { return JSON.parse(value); } catch { return []; } })()
@@ -60,31 +99,48 @@ function parseCadeia(value: unknown): EloCadeiaSubstituicaoTemporaria[] {
   if (!Array.isArray(parsed)) return [];
   return parsed.map(item => {
     const elo = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    const pessoaId = String(elo.pessoaId || elo.pessoa_id || elo.substitutoId || elo.substituto_id || '');
+    const pessoaNome = String(elo.pessoaNome || elo.pessoa_nome || elo.substitutoNome || elo.substituto_nome || '');
+    const pessoaCargo = String(elo.pessoaCargo || elo.pessoa_cargo || elo.substitutoCargo || elo.substituto_cargo || elo.cargoOriginal || elo.cargo_original || '');
+    const pessoaEquipe = String(elo.pessoaEquipe || elo.pessoa_equipe || '');
+    const funcionarioId = String(elo.funcionarioId || elo.funcionario_id || '');
+    const funcionarioNome = String(elo.funcionarioNome || elo.funcionario_nome || '');
+    const funcionarioCargo = String(elo.funcionarioCargo || elo.funcionario_cargo || '');
+    const funcionarioEquipe = String(elo.funcionarioEquipe || elo.funcionario_equipe || '');
+    const substitutoId = String(elo.substitutoId || elo.substituto_id || pessoaId);
+    const substitutoNome = String(elo.substitutoNome || elo.substituto_nome || pessoaNome);
+    const substitutoCargo = String(elo.substitutoCargo || elo.substituto_cargo || pessoaCargo);
+    const dataPlantao = String(elo.dataPlantao || elo.data_plantao || '');
+    const plantaoExtra = elo.plantaoExtra === true || elo.plantao_extra === true;
+    const tipoRaw = String(elo.tipo || '').trim().toLowerCase();
+    const tipo = tipoRaw === 'extra' || (plantaoExtra && dataPlantao) || (dataPlantao && substitutoId)
+      ? 'extra'
+      : 'cadeia';
     return {
-      tipo: (elo.tipo === 'extra' ? 'extra' : 'cadeia') as EloCadeiaSubstituicaoTemporaria['tipo'],
-      pessoaId: String(elo.pessoaId || ''),
-      pessoaNome: String(elo.pessoaNome || ''),
-      pessoaCargo: String(elo.pessoaCargo || elo.cargoOriginal || ''),
-      pessoaEquipe: String(elo.pessoaEquipe || ''),
-      cargoOriginal: String(elo.cargoOriginal || elo.pessoaCargo || ''),
-      cargoVacante: String(elo.cargoVacante || ''),
-      substituindoNome: String(elo.substituindoNome || ''),
-      dataPlantao: String(elo.dataPlantao || ''),
-      funcionarioId: String(elo.funcionarioId || ''),
-      funcionarioNome: String(elo.funcionarioNome || ''),
-      funcionarioCargo: String(elo.funcionarioCargo || ''),
-      funcionarioEquipe: String(elo.funcionarioEquipe || ''),
-      equipePlantao: String(elo.equipePlantao || ''),
-      substituindoId: String(elo.substituindoId || ''),
-      substituindoCargo: String(elo.substituindoCargo || ''),
-      substituindoCoberturaNome: String(elo.substituindoCoberturaNome || ''),
-      substitutoId: String(elo.substitutoId || elo.pessoaId || ''),
-      substitutoNome: String(elo.substitutoNome || elo.pessoaNome || ''),
-      substitutoCargo: String(elo.substitutoCargo || elo.pessoaCargo || elo.cargoOriginal || ''),
-      cargoExercido: String(elo.cargoExercido || elo.cargoVacante || ''),
-      plantaoExtra: elo.plantaoExtra === true,
+      tipo: tipo as EloCadeiaSubstituicaoTemporaria['tipo'],
+      pessoaId,
+      pessoaNome,
+      pessoaCargo,
+      pessoaEquipe,
+      cargoOriginal: String(elo.cargoOriginal || elo.cargo_original || pessoaCargo),
+      cargoVacante: String(elo.cargoVacante || elo.cargo_vacante || ''),
+      substituindoNome: String(elo.substituindoNome || elo.substituindo_nome || ''),
+      dataPlantao,
+      funcionarioId,
+      funcionarioNome,
+      funcionarioCargo,
+      funcionarioEquipe,
+      equipePlantao: String(elo.equipePlantao || elo.equipe_plantao || ''),
+      substituindoId: String(elo.substituindoId || elo.substituindo_id || ''),
+      substituindoCargo: String(elo.substituindoCargo || elo.substituindo_cargo || ''),
+      substituindoCoberturaNome: String(elo.substituindoCoberturaNome || elo.substituindo_cobertura_nome || ''),
+      substitutoId,
+      substitutoNome,
+      substitutoCargo,
+      cargoExercido: String(elo.cargoExercido || elo.cargo_exercido || elo.cargoVacante || elo.cargo_vacante || ''),
+      plantaoExtra,
     };
-  }).filter(elo => elo.pessoaId);
+  }).filter(elo => elo.pessoaId || elo.substitutoId);
 }
 
 function rowToSubstituicao(row: Record<string, unknown>): SubstituicaoTemporaria {
@@ -156,6 +212,8 @@ async function processarVigenciasSubstituicaoTemporaria(
   bombeiros: Bombeiro[],
 ): Promise<void> {
   const funcionario = bombeiros.find(b => b.id === substituicao.funcionarioId);
+  const dataInicioVigencia = dataInicioVigenciaFixa(substituicao);
+  if (!dataInicioVigencia) return;
   const cadeiaInput: EloCadeiaInput[] = substituicao.cadeiaSubstituicao
     .filter(elo => elo.tipo !== 'extra')
     .map(elo => ({
@@ -174,7 +232,7 @@ async function processarVigenciasSubstituicaoTemporaria(
     substitutoId: substituicao.substitutoId,
     substitutoNome: substituicao.substitutoNome,
     funcaoSubstituicao: substituicao.funcionarioCargo,
-    dataInicio: substituicao.dataInicio,
+    dataInicio: dataInicioVigencia,
     dataFim: substituicao.dataFim,
     motivoOrigem: substituicao.tipo === 'Afastamento' ? 'afastamento' : 'substituicao',
   }, substituicao.tipo === 'Afastamento' ? cadeiaInput : undefined, bombeiros);
@@ -289,11 +347,9 @@ export async function atualizarSubstituicaoTemporaria(
   }
 
   const substituicaoAtualizada = updated ? rowToSubstituicao(updated) : null;
-  const afastamentoComExtras = substituicaoAtualizada?.tipo === 'Afastamento' &&
-    substituicaoAtualizada.cadeiaSubstituicao.some(elo => elo.tipo === 'extra');
   if (!deveReaprovar && substituicaoAtualizada?.status === 'Aprovada') {
     await desativarVigencias(id);
-    if (substituicaoAtualizada.tipo === 'Substituição' || (substituicaoAtualizada.tipo === 'Afastamento' && !afastamentoComExtras)) {
+    if (deveProcessarVigencia(substituicaoAtualizada)) {
       await processarVigenciasSubstituicaoTemporaria(substituicaoAtualizada, bombeiros);
     }
   }
@@ -344,9 +400,7 @@ export async function aprovarSubstituicaoTemporaria(
     .single();
   if (error) handleSupabaseError(error);
   const aprovado = updated ? rowToSubstituicao(updated) : null;
-  const afastamentoComExtras = aprovado?.tipo === 'Afastamento' &&
-    aprovado.cadeiaSubstituicao.some(elo => elo.tipo === 'extra');
-  if (aprovado?.tipo === 'Substituição' || (aprovado?.tipo === 'Afastamento' && !afastamentoComExtras)) {
+  if (aprovado && deveProcessarVigencia(aprovado)) {
     try {
       await processarVigenciasSubstituicaoTemporaria(aprovado, bombeiros);
     } catch (err) {

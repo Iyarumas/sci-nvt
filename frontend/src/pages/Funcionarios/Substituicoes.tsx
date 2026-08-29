@@ -151,6 +151,18 @@ function calcularDataFim(dataInicio: string, dias: number): string {
   return dataLocalISO(data);
 }
 
+function somarDias(dataISO: string, dias: number): string {
+  const data = parseDataLocal(dataISO);
+  if (!data) return '';
+  data.setDate(data.getDate() + dias);
+  return dataLocalISO(data);
+}
+
+function dataInicioSubstituicaoIndeterminada(dataInicio: string, diasExtras: number): string {
+  if (!dataInicio) return '';
+  return somarDias(dataInicio, Math.max(0, diasExtras || 0));
+}
+
 function periodoCruzaMes(dataInicio: string, dataFim: string, mes: number, ano: number): boolean {
   const inicio = parseDataLocal(dataInicio);
   const fim = dataFim === DATA_FIM_INDETERMINADO ? new Date(9999, 11, 31, 12) : parseDataLocal(dataFim);
@@ -332,7 +344,7 @@ export function Substituicoes() {
     if (formTipo === 'Substituição') return;
     const found = MOTIVOS_SUBSTITUICAO.find(m => m.value === formMotivo);
     if (found && found.dias > 0) setFormDias(found.dias);
-    if (formMotivo === 'INSS Indeterminado') setFormDias(15);
+    if (formMotivo === 'INSS Indeterminado') setFormDias(0);
   }, [formMotivo, formTipo]);
 
   const afastamentoIndeterminado = formTipo === 'Afastamento' && formMotivo === 'INSS Indeterminado';
@@ -361,6 +373,11 @@ export function Substituicoes() {
     if (formTipo !== 'Afastamento' || !formDataInicio || formDias <= 0) return '';
     return calcularDataFim(formDataInicio, formDias);
   }, [formDataInicio, formDias, formTipo]);
+
+  const dataInicioSubstituicaoFixa = useMemo(() => {
+    if (!afastamentoIndeterminado) return '';
+    return dataInicioSubstituicaoIndeterminada(formDataInicio, formDias);
+  }, [afastamentoIndeterminado, formDataInicio, formDias]);
 
   const plantoesAfastamento = useMemo(() => {
     if (formTipo !== 'Afastamento' || !formSubstituido || !formDataInicio || !dataFimExtrasCalculada) return [];
@@ -448,16 +465,29 @@ export function Substituicoes() {
       formMotivo !== '__placeholder__' &&
       (!afastamentoExigeDescricao || !!formMotivoOutro.trim());
 
+  const exigeExtrasAfastamento = formTipo === 'Afastamento' &&
+    (!afastamentoIndeterminado || formDias > 0);
   const extrasCompletos = formTipo !== 'Afastamento' ||
+    !exigeExtrasAfastamento ||
     (extrasAfastamento.length > 0 && extrasAfastamento.every(extra => extra.substitutoId && extra.cargoExercido));
+  const diasAfastamentoValidos = afastamentoIndeterminado ? formDias >= 0 : diasParaSalvar > 0;
+  const substitutoFixoIndeterminadoValido = !afastamentoIndeterminado ||
+    !!(
+      formSubstituto &&
+      formSubstituido &&
+      formSubstituto.id !== formSubstituido.id &&
+      !bloqueadoPorCurso &&
+      !bloqueadoPorHierarquia
+    );
   const formValid = formTipo === 'Afastamento'
     ? !!(
         formSubstituido &&
         motivoValido &&
         formDataInicio &&
-        diasParaSalvar > 0 &&
+        diasAfastamentoValidos &&
         dataFimCalculada &&
-        extrasCompletos
+        extrasCompletos &&
+        substitutoFixoIndeterminadoValido
       )
     : !!(
         formSubstituido && formSubstituto &&
@@ -644,7 +674,7 @@ export function Substituicoes() {
     setFormMotivoOutro(descricao);
     setFormCidAtestado(cid);
     setFormPlantaoExtra(sub.plantaoExtra || '');
-    setFormDias(Math.max(1, Number(sub.dias) || 1));
+    setFormDias(isIndeterminado(sub) ? Math.max(0, Number(sub.dias) || 0) : Math.max(1, Number(sub.dias) || 1));
     setFormDataInicio(sub.dataInicio || '');
     setExtrasAfastamento(extrasDraftFromSub(sub));
     setFormOpen(true);
@@ -783,21 +813,24 @@ export function Substituicoes() {
       const descricaoMotivo = montarDescricaoMotivo();
       const extrasCadeia = montarExtrasCadeia();
       if (formTipo === 'Afastamento') {
-        if (extrasAfastamento.length === 0) {
+        if (exigeExtrasAfastamento && extrasAfastamento.length === 0) {
           throw new Error('Informe ao menos um plantao extra para o afastamento/atestado.');
         }
         const extraSemSubstituto = extrasAfastamento.find(extra => !extra.substitutoId);
-        if (extraSemSubstituto) {
+        if (exigeExtrasAfastamento && extraSemSubstituto) {
           throw new Error(`Selecione quem fara o extra em ${formatDate(extraSemSubstituto.dataPlantao)}.`);
         }
-        if (extrasCadeia.length !== extrasAfastamento.length) {
+        if (exigeExtrasAfastamento && extrasCadeia.length !== extrasAfastamento.length) {
           throw new Error('Revise os extras do afastamento/atestado antes de salvar.');
+        }
+        if (afastamentoIndeterminado && (!formSubstituto || formSubstituto.id === formSubstituido.id)) {
+          throw new Error('Informe quem ficara no lugar da pessoa afastada por tempo indeterminado.');
         }
       }
       const substitutoPrincipal = formTipo === 'Afastamento'
-        ? pessoaPorId(extrasAfastamento[0]?.substitutoId || '')
+        ? (afastamentoIndeterminado ? formSubstituto : pessoaPorId(extrasAfastamento[0]?.substitutoId || ''))
         : formSubstituto;
-      if (!substitutoPrincipal) throw new Error('Informe quem fara os extras.');
+      if (!substitutoPrincipal) throw new Error(afastamentoIndeterminado ? 'Informe quem ficara no lugar.' : 'Informe quem fara os extras.');
       const payload: Omit<SubstituicaoTemporaria, 'id' | 'createdAt' | 'updatedAt'> = {
         funcionarioId: formSubstituido.id,
         funcionarioNome: formSubstituido.nomeCompleto,
@@ -810,7 +843,7 @@ export function Substituicoes() {
         tipo: formTipo,
         motivo,
         motivoOutro: descricaoMotivo,
-        plantaoExtra: formTipo === 'Afastamento' ? 'Sim' : formPlantaoExtra,
+        plantaoExtra: formTipo === 'Afastamento' ? (extrasAfastamento.length > 0 ? 'Sim' : 'Nao') : formPlantaoExtra,
         dataInicio: formDataInicio,
         dataFim: dataFimCalculada,
         dias: diasParaSalvar,
@@ -986,6 +1019,9 @@ export function Substituicoes() {
             const expanded = expandedId === sub.id;
             const extras = sub.cadeiaSubstituicao.filter(elo => elo.tipo === 'extra');
             const { descricao, cid } = separarDescricaoMotivo(sub);
+            const inicioSubstituicaoFixa = isIndeterminado(sub)
+              ? dataInicioSubstituicaoIndeterminada(sub.dataInicio, Number(sub.dias) || 0)
+              : '';
             return (
               <div key={sub.id}
                 onClick={() => setExpandedId(expanded ? null : sub.id)}
@@ -1013,6 +1049,9 @@ export function Substituicoes() {
                         <span>· {periodoLabel(sub)}</span>
                         {sub.tipo === 'Afastamento' && sub.plantaoExtra === 'Sim' && (
                           <span>· Extras: {extras.length}</span>
+                        )}
+                        {sub.tipo === 'Afastamento' && inicioSubstituicaoFixa && (
+                          <span>· Substituição fixa: {formatDate(inicioSubstituicaoFixa)}</span>
                         )}
                       </div>
                       {sub.tipo === 'Afastamento' && sub.motivoOutro && sub.motivo !== 'Outro' && (
@@ -1098,6 +1137,20 @@ export function Substituicoes() {
                               {extra.equipePlantao ? ` · Equipe ${extra.equipePlantao}` : ''}
                             </p>
                           ))}
+                        </div>
+                      </div>
+                    )}
+                    {sub.tipo === 'Afastamento' && inicioSubstituicaoFixa && sub.substitutoId && (
+                      <div className="mt-3 rounded-xl border border-aviation-200 bg-aviation-50/70 p-3 dark:border-aviation-800/40 dark:bg-aviation-900/20">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Substituição por prazo indeterminado</p>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-aviation-800 dark:text-aviation-100">
+                          <span className="font-semibold">{formatDate(inicioSubstituicaoFixa)}</span>
+                          <span className="text-aviation-400">·</span>
+                          <span>{cargoLabel(sub.funcionarioCargo)} {capitalize(sub.funcionarioNome)}</span>
+                          <ArrowRight className="h-3 w-3 text-aviation-500" />
+                          <span className="font-semibold">
+                            {cargoLabel(sub.funcionarioCargo)} {capitalize(sub.substitutoNome)}
+                          </span>
                         </div>
                       </div>
                     )}
@@ -1337,10 +1390,10 @@ export function Substituicoes() {
                   {afastamentoIndeterminado && (
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Dias iniciais para extras</label>
-                      <input type="number" min={1} value={formDias} onChange={e => setFormDias(Math.max(1, Number(e.target.value)))}
+                      <input type="number" min={0} value={formDias} onChange={e => setFormDias(Math.max(0, Number(e.target.value)))}
                         className={INPUT_CLASS} />
                       <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
-                        O afastamento fica com prazo indeterminado; estes dias definem apenas os plantões extras iniciais.
+                        Use 0 quando não houver extras antes da substituição fixa.
                       </p>
                     </div>
                   )}
@@ -1483,6 +1536,74 @@ export function Substituicoes() {
                   </div>
                 </div>
               )}
+
+              {afastamentoIndeterminado && formSubstituido && formDataInicio && (
+                <div className="md:col-span-2">
+                  <div className="space-y-3 rounded-xl border border-aviation-200 bg-aviation-50/70 p-4 dark:border-aviation-800/40 dark:bg-aviation-900/20">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Substituição por prazo indeterminado</h4>
+                        <p className="mt-1 text-xs text-aviation-600 dark:text-aviation-300">
+                          {formDias > 0
+                            ? 'Começa depois dos dias extras iniciais.'
+                            : 'Começa na própria data de saída porque os dias extras estão zerados.'}
+                        </p>
+                      </div>
+                      {dataInicioSubstituicaoFixa && (
+                        <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-aviation-700 dark:bg-surface-card dark:text-aviation-300">
+                          A partir de {formatDate(dataInicioSubstituicaoFixa)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-[150px_minmax(220px,1fr)_150px] md:items-end">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Início</p>
+                        <p className="rounded-xl border border-graphite-200 bg-white px-3 py-2.5 text-sm font-semibold text-graphite-900 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100">
+                          {dataInicioSubstituicaoFixa ? formatDate(dataInicioSubstituicaoFixa) : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">Quem ficará no lugar</label>
+                        <SearchSelect
+                          value={formSubstituto?.id || ''}
+                          onChange={handleSubstitutoChange}
+                          placeholder="Função, nome de guerra, equipe..."
+                          valueField="id"
+                          options={activeBombeiros}
+                          disabledIds={substitutosBloqueados}
+                          disabledTooltip="Pessoa não pode assumir esta função"
+                          displayMode="operational"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Função</p>
+                        <p className="rounded-xl border border-graphite-200 bg-white px-3 py-2.5 text-sm font-semibold text-graphite-900 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100">
+                          {cargoLabel(formSubstituido.cargo)}
+                        </p>
+                      </div>
+                    </div>
+                    {formSubstituto && (
+                      <p className="text-xs text-graphite-500 dark:text-graphite-400">{nomeOperacional(formSubstituto)}</p>
+                    )}
+                    {formSubstituto && formSubstituido.id === formSubstituto.id && (
+                      <p className="text-xs text-red-500">O substituto não pode ser a mesma pessoa.</p>
+                    )}
+                    {formSubstituto && formSubstituido.id !== formSubstituto.id && (() => {
+                      const aviso = validarCursoParaFuncao(formSubstituto, formSubstituido.cargo as Cargo);
+                      return aviso ? (
+                        <div className={`flex items-start gap-2 rounded-lg px-2.5 py-2 text-[11px] leading-tight ${
+                          aviso.nivel === 'bloqueado'
+                            ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                            : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                        }`}>
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span>{aviso.mensagem}</span>
+                        </div>
+                      ) : null;
+                    })()}
+                  </div>
+                </div>
+              )}
             </div>
 
             {formSubstituido && formDataInicio && dataFimCalculada && (formTipo === 'Afastamento' || formSubstituto) && (
@@ -1514,7 +1635,20 @@ export function Substituicoes() {
                         </div>
                       );
                     }) : (
-                      <p className="text-xs text-graphite-500">Nenhum plantão extra selecionado.</p>
+                      <p className="text-xs text-graphite-500">{afastamentoIndeterminado ? 'Sem extras iniciais.' : 'Nenhum plantão extra selecionado.'}</p>
+                    )}
+                    {afastamentoIndeterminado && dataInicioSubstituicaoFixa && (
+                      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-aviation-200 bg-white px-3 py-2 text-xs dark:border-aviation-800/40 dark:bg-surface-hover">
+                        <span className="font-semibold text-aviation-700 dark:text-aviation-300">Substituição fixa</span>
+                        <span className="text-graphite-400">·</span>
+                        <span className="font-semibold text-graphite-900 dark:text-graphite-100">{formatDate(dataInicioSubstituicaoFixa)}</span>
+                        <span className="text-graphite-400">·</span>
+                        <span>{cargoLabel(formSubstituido.cargo)} {capitalize(formSubstituido.nomeCompleto)}</span>
+                        <ArrowRight className="h-3 w-3 text-aviation-500" />
+                        <span className="font-semibold text-graphite-900 dark:text-graphite-100">
+                          {formSubstituto ? `${cargoLabel(formSubstituido.cargo)} ${capitalize(formSubstituto.nomeCompleto)}` : 'Selecione quem ficará no lugar'}
+                        </span>
+                      </div>
                     )}
                   </div>
                 ) : formSubstituto ? (

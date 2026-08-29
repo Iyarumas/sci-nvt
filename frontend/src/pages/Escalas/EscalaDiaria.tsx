@@ -893,11 +893,26 @@ function EscalaDiariaForm({
         });
       }
 
+      function resolverSubstitutoFinal(substituto: { id: string; nome: string }): { id: string; nome: string } {
+        const visitados = new Set<string>();
+        let atual = substituto;
+        while (atual.id && !visitados.has(atual.id)) {
+          visitados.add(atual.id);
+          const extra = extraPorFuncionario.get(atual.id);
+          if (!extra?.substitutoId) break;
+          atual = {
+            id: extra.substitutoId,
+            nome: extra.nomeEntrandoCompleto || extra.nomeEntrando,
+          };
+        }
+        return atual;
+      }
+
       // Encontrar substituto de uma pessoa (troca → vigência → gozo → item)
       function encontrarSubstituto(bId: string): { id: string; nome: string } | null {
         const extra = extraPorFuncionario.get(bId);
         if (extra?.substitutoId) {
-          return { id: extra.substitutoId, nome: extra.nomeEntrandoCompleto || extra.nomeEntrando };
+          return resolverSubstitutoFinal({ id: extra.substitutoId, nome: extra.nomeEntrandoCompleto || extra.nomeEntrando });
         }
         const pessoa = all.find((bb: any) => bb.id === bId);
         if (pessoa) {
@@ -916,7 +931,7 @@ function EscalaDiariaForm({
             const isSol = String(fd?.nome_solicitante || '').toLowerCase() === pNome || String(fd?.nome_solicitante || '').toLowerCase() === pGuerra;
             const quem = isSol ? fd?.nome_solicitado : fd?.nome_solicitante;
             const sub = all.find((bb: any) => bb.nomeCompleto === quem || bb.nomeGuerra === quem);
-            if (sub) return { id: sub.id, nome: sub.nomeCompleto };
+            if (sub) return resolverSubstitutoFinal({ id: sub.id, nome: sub.nomeCompleto });
           }
         }
         const v = vigs.find((vx: any) =>
@@ -924,20 +939,20 @@ function EscalaDiariaForm({
           vx.ativa &&
           dataNoPeriodo(form.dataPlantao, vx.dataInicio, vx.dataFim)
         );
-        if (v && v.substitutoId) return { id: v.substitutoId, nome: v.substitutoNome };
+        if (v && v.substitutoId) return resolverSubstitutoFinal({ id: v.substitutoId, nome: v.substitutoNome });
         const g = gozos.find((gx: any) =>
           gx.funcionarioId === bId &&
           gx.substitutoId &&
           gx.status !== 'Gozadas' &&
           dataNoPeriodo(form.dataPlantao, gx.dataInicio, gx.dataFim)
         );
-        if (g) return { id: g.substitutoId, nome: g.substitutoNome };
+        if (g) return resolverSubstitutoFinal({ id: g.substitutoId, nome: g.substitutoNome });
         const item = allItems.find((ix: any) =>
           ix.funcionarioId === bId &&
           (ix.substitutoId || ix.feristaId) &&
           dataNoPeriodo(form.dataPlantao, ix.dataInicio, ix.dataFim)
         );
-        if (item) return { id: item.substitutoId || item.feristaId, nome: item.substitutoNome || item.feristaNome };
+        if (item) return resolverSubstitutoFinal({ id: item.substitutoId || item.feristaId, nome: item.substitutoNome || item.feristaNome });
         return null;
       }
 
@@ -1045,7 +1060,15 @@ function EscalaDiariaForm({
         }
       }
       for (const v of vigs) {
-        if (v.ativa && v.equipe === form.equipe && dataNoPeriodo(form.dataPlantao, v.dataInicio, v.dataFim) && !ocupados.has(v.substitutoId) && !usados.has(v.substitutoId)) {
+        if (
+          v.ativa &&
+          v.equipe === form.equipe &&
+          dataNoPeriodo(form.dataPlantao, v.dataInicio, v.dataFim) &&
+          !ocupados.has(v.substitutoId) &&
+          !usados.has(v.substitutoId) &&
+          !afastadosPorExtra.has(v.substitutoId) &&
+          !substitutosPorExtra.has(v.substitutoId)
+        ) {
           const sub = all.find((bb: any) => bb.id === v.substitutoId);
           if (sub) { pool.push({ bombeiro: sub, cargo: v.cargoExercido || sub.cargo }); ocupados.add(sub.id); }
         }

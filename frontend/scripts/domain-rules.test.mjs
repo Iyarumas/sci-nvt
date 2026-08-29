@@ -63,6 +63,7 @@ const {
   normalizarParticipantesTPEPR,
 } = tpepr;
 const {
+  montarEfetivoOperacional,
   montarTrocasServicoDoDia,
 } = efetivoOperacional;
 
@@ -113,10 +114,12 @@ function bombeiro(id, cargo, equipe, nome = id) {
 }
 
 const ce = bombeiro('ce', 'BA-CE', 'Alfa', 'Chefe');
+const lr = bombeiro('lr', 'BA-LR', 'Alfa', 'Lider');
 const ba2 = bombeiro('ba2', 'BA-2', 'Alfa', 'BA2');
 const mc = bombeiro('mc', 'BA-MC', 'Alfa', 'MC');
 const ferista = bombeiro('fer', 'BA-MC', 'Ferista', 'Ferista');
-const bombeiros = [ce, ba2, mc, ferista];
+const apoio = bombeiro('apoio', 'BA-2', 'Bravo', 'Apoio');
+const bombeiros = [ce, lr, ba2, mc, ferista, apoio];
 
 function gozo(funcionario, overrides = {}) {
   return {
@@ -324,6 +327,384 @@ assert.deepEqual(
     dataPlantao: '2026-07-21',
   }),
   [],
+);
+
+const efetivoComAtestado = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [],
+  trocaFills: [],
+  substituicoesTemporarias: [{
+    id: 'afastamento-1',
+    funcionarioId: lr.id,
+    funcionarioNome: lr.nomeCompleto,
+    funcionarioCargo: lr.cargo,
+    substitutoId: apoio.id,
+    substitutoNome: apoio.nomeCompleto,
+    substitutoCargo: apoio.cargo,
+    tipo: 'Afastamento',
+    motivo: 'Atestado Medico',
+    motivoOutro: 'Atestado',
+    plantaoExtra: 'Sim',
+    dataInicio: '2026-07-21',
+    dataFim: '2026-07-21',
+    dias: 1,
+    status: 'Aprovada',
+    observacoesRejeicao: '',
+    criadoPor: 'test',
+    criadoPorNome: 'Test',
+    aprovadoPor: 'admin',
+    aprovadoPorNome: 'Admin',
+    aprovadoEm: '2026-07-21T10:00:00.000Z',
+    cadeiaSubstituicao: [{
+      tipo: 'extra',
+      pessoaId: apoio.id,
+      pessoaNome: apoio.nomeCompleto,
+      pessoaCargo: apoio.cargo,
+      pessoaEquipe: apoio.equipe,
+      cargoOriginal: apoio.cargo,
+      cargoVacante: lr.cargo,
+      substituindoNome: lr.nomeCompleto,
+      dataPlantao: '2026-07-21',
+      funcionarioId: lr.id,
+      funcionarioNome: lr.nomeCompleto,
+      funcionarioCargo: lr.cargo,
+      funcionarioEquipe: lr.equipe,
+      equipePlantao: lr.equipe,
+      substitutoId: apoio.id,
+      substitutoNome: apoio.nomeCompleto,
+      substitutoCargo: apoio.cargo,
+      cargoExercido: lr.cargo,
+      plantaoExtra: true,
+    }],
+    createdAt: '',
+    updatedAt: '',
+  }],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-21',
+});
+assert.equal(efetivoComAtestado.some(entry => entry.bombeiro.id === lr.id), false);
+assert.deepEqual(
+  efetivoComAtestado.find(entry => entry.bombeiro.id === apoio.id),
+  {
+    bombeiro: apoio,
+    cargoExercido: 'BA-LR',
+    substituindo: {
+      id: lr.id,
+      nome: lr.nomeCompleto,
+      cargo: lr.cargo,
+    },
+  },
+);
+
+const vigenciaLiderCobrindoChefe = {
+  id: 'vig-lider',
+  substitutoId: lr.id,
+  substitutoNome: lr.nomeCompleto,
+  cargoOriginalSubstituto: lr.cargo,
+  cargoExercido: ce.cargo,
+  funcionarioOriginalId: ce.id,
+  funcionarioOriginalNome: ce.nomeCompleto,
+  cargoOriginalFuncionario: ce.cargo,
+  equipe: ce.equipe,
+  dataInicio: '2026-07-21',
+  dataFim: '2026-07-21',
+  nivelCascata: 1,
+  motivo: 'ferias',
+  feriasId: 'ferias-ce-lider',
+  ativa: true,
+  createdAt: '',
+};
+const efetivoComAtestadoDeSubstitutoDaEquipe = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [vigenciaLiderCobrindoChefe],
+  trocaFills: [],
+  substituicoesTemporarias: [{
+    id: 'afastamento-lider-em-funcao',
+    funcionarioId: lr.id,
+    funcionarioNome: lr.nomeCompleto,
+    funcionarioCargo: lr.cargo,
+    substitutoId: apoio.id,
+    substitutoNome: apoio.nomeCompleto,
+    substitutoCargo: apoio.cargo,
+    tipo: 'Afastamento',
+    motivo: 'Atestado Medico',
+    motivoOutro: 'Atestado',
+    plantaoExtra: 'Sim',
+    dataInicio: '2026-07-21',
+    dataFim: '2026-07-21',
+    dias: 1,
+    status: 'Aprovada',
+    observacoesRejeicao: '',
+    criadoPor: 'test',
+    criadoPorNome: 'Test',
+    aprovadoPor: 'admin',
+    aprovadoPorNome: 'Admin',
+    aprovadoEm: '2026-07-21T10:00:00.000Z',
+    cadeiaSubstituicao: [{
+      tipo: 'extra',
+      pessoaId: apoio.id,
+      pessoaNome: apoio.nomeCompleto,
+      pessoaCargo: apoio.cargo,
+      pessoaEquipe: apoio.equipe,
+      cargoOriginal: apoio.cargo,
+      cargoVacante: '',
+      substituindoNome: lr.nomeCompleto,
+      dataPlantao: '2026-07-21',
+      funcionarioId: lr.id,
+      funcionarioNome: lr.nomeCompleto,
+      funcionarioCargo: '',
+      funcionarioEquipe: '',
+      equipePlantao: '',
+      substitutoId: apoio.id,
+      substitutoNome: apoio.nomeCompleto,
+      substitutoCargo: apoio.cargo,
+      cargoExercido: '',
+      plantaoExtra: true,
+    }],
+    createdAt: '',
+    updatedAt: '',
+  }],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-21',
+});
+assert.equal(efetivoComAtestadoDeSubstitutoDaEquipe.some(entry => entry.bombeiro.id === lr.id), false);
+assert.deepEqual(
+  efetivoComAtestadoDeSubstitutoDaEquipe.find(entry => entry.bombeiro.id === apoio.id),
+  {
+    bombeiro: apoio,
+    cargoExercido: 'BA-CE',
+    substituindo: {
+      id: lr.id,
+      nome: lr.nomeCompleto,
+      cargo: 'BA-CE',
+    },
+  },
+);
+
+const vigenciaFeristaCobrindoChefe = {
+  id: 'vig-ferista',
+  substitutoId: ferista.id,
+  substitutoNome: ferista.nomeCompleto,
+  cargoOriginalSubstituto: ferista.cargo,
+  cargoExercido: ce.cargo,
+  funcionarioOriginalId: ce.id,
+  funcionarioOriginalNome: ce.nomeCompleto,
+  cargoOriginalFuncionario: ce.cargo,
+  equipe: ce.equipe,
+  dataInicio: '2026-07-21',
+  dataFim: '2026-07-21',
+  nivelCascata: 1,
+  motivo: 'ferias',
+  feriasId: 'ferias-ce',
+  ativa: true,
+  createdAt: '',
+};
+const efetivoComAtestadoDeFeristaEmFuncao = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [vigenciaFeristaCobrindoChefe],
+  trocaFills: [],
+  substituicoesTemporarias: [{
+    id: 'afastamento-ferista',
+    funcionarioId: ferista.id,
+    funcionarioNome: ferista.nomeCompleto,
+    funcionarioCargo: ferista.cargo,
+    substitutoId: apoio.id,
+    substitutoNome: apoio.nomeCompleto,
+    substitutoCargo: apoio.cargo,
+    tipo: 'Afastamento',
+    motivo: 'Atestado Medico',
+    motivoOutro: 'Atestado',
+    plantaoExtra: 'Sim',
+    dataInicio: '2026-07-21',
+    dataFim: '2026-07-21',
+    dias: 1,
+    status: 'Aprovada',
+    observacoesRejeicao: '',
+    criadoPor: 'test',
+    criadoPorNome: 'Test',
+    aprovadoPor: 'admin',
+    aprovadoPorNome: 'Admin',
+    aprovadoEm: '2026-07-21T10:00:00.000Z',
+    cadeiaSubstituicao: [{
+      tipo: 'extra',
+      pessoaId: apoio.id,
+      pessoaNome: apoio.nomeCompleto,
+      pessoaCargo: apoio.cargo,
+      pessoaEquipe: apoio.equipe,
+      cargoOriginal: apoio.cargo,
+      cargoVacante: '',
+      substituindoNome: ferista.nomeCompleto,
+      dataPlantao: '2026-07-21',
+      funcionarioId: ferista.id,
+      funcionarioNome: ferista.nomeCompleto,
+      funcionarioCargo: '',
+      funcionarioEquipe: '',
+      equipePlantao: '',
+      substitutoId: apoio.id,
+      substitutoNome: apoio.nomeCompleto,
+      substitutoCargo: apoio.cargo,
+      cargoExercido: '',
+      plantaoExtra: true,
+    }],
+    createdAt: '',
+    updatedAt: '',
+  }],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-21',
+});
+assert.deepEqual(
+  efetivoComAtestadoDeFeristaEmFuncao.find(entry => entry.bombeiro.id === apoio.id),
+  {
+    bombeiro: apoio,
+    cargoExercido: 'BA-CE',
+    substituindo: {
+      id: ferista.id,
+      nome: ferista.nomeCompleto,
+      cargo: 'BA-CE',
+    },
+  },
+);
+
+const inssIndeterminadoSemExtras = {
+  id: 'inss-sem-extra',
+  funcionarioId: lr.id,
+  funcionarioNome: lr.nomeCompleto,
+  funcionarioCargo: lr.cargo,
+  substitutoId: apoio.id,
+  substitutoNome: apoio.nomeCompleto,
+  substitutoCargo: apoio.cargo,
+  tipo: 'Afastamento',
+  motivo: 'INSS Indeterminado',
+  motivoOutro: 'INSS sem prazo definido',
+  plantaoExtra: 'Nao',
+  dataInicio: '2026-07-21',
+  dataFim: '9999-12-31',
+  dias: 0,
+  status: 'Pendente',
+  observacoesRejeicao: '',
+  criadoPor: 'test',
+  criadoPorNome: 'Test',
+  aprovadoPor: '',
+  aprovadoPorNome: '',
+  aprovadoEm: '',
+  cadeiaSubstituicao: [],
+  createdAt: '',
+  updatedAt: '',
+};
+assert.deepEqual(
+  validarSubstituicaoTemporaria({
+    substituicao: inssIndeterminadoSemExtras,
+    funcionario: lr,
+    substituto: apoio,
+    bombeiros,
+  }),
+  [],
+);
+
+const inssIndeterminadoComExtraInicial = {
+  ...inssIndeterminadoSemExtras,
+  id: 'inss-com-extra',
+  substitutoId: ferista.id,
+  substitutoNome: ferista.nomeCompleto,
+  substitutoCargo: ferista.cargo,
+  plantaoExtra: 'Sim',
+  dias: 2,
+  status: 'Aprovada',
+  cadeiaSubstituicao: [{
+    tipo: 'extra',
+    pessoaId: apoio.id,
+    pessoaNome: apoio.nomeCompleto,
+    pessoaCargo: apoio.cargo,
+    pessoaEquipe: apoio.equipe,
+    cargoOriginal: apoio.cargo,
+    cargoVacante: lr.cargo,
+    substituindoNome: lr.nomeCompleto,
+    dataPlantao: '2026-07-21',
+    funcionarioId: lr.id,
+    funcionarioNome: lr.nomeCompleto,
+    funcionarioCargo: lr.cargo,
+    funcionarioEquipe: lr.equipe,
+    equipePlantao: lr.equipe,
+    substitutoId: apoio.id,
+    substitutoNome: apoio.nomeCompleto,
+    substitutoCargo: apoio.cargo,
+    cargoExercido: lr.cargo,
+    plantaoExtra: true,
+  }],
+};
+assert.deepEqual(
+  validarSubstituicaoTemporaria({
+    substituicao: inssIndeterminadoComExtraInicial,
+    funcionario: lr,
+    substituto: ferista,
+    bombeiros,
+  }),
+  [],
+);
+
+const vigenciaInssFixaDepoisDosExtras = {
+  id: 'vig-inss-fixa',
+  substitutoId: ferista.id,
+  substitutoNome: ferista.nomeCompleto,
+  cargoOriginalSubstituto: ferista.cargo,
+  cargoExercido: lr.cargo,
+  funcionarioOriginalId: lr.id,
+  funcionarioOriginalNome: lr.nomeCompleto,
+  cargoOriginalFuncionario: lr.cargo,
+  equipe: lr.equipe,
+  dataInicio: '2026-07-23',
+  dataFim: '9999-12-31',
+  nivelCascata: 1,
+  motivo: 'afastamento',
+  feriasId: inssIndeterminadoComExtraInicial.id,
+  ativa: true,
+  createdAt: '',
+};
+const efetivoDuranteExtraInicial = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [vigenciaInssFixaDepoisDosExtras],
+  trocaFills: [],
+  substituicoesTemporarias: [inssIndeterminadoComExtraInicial],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-21',
+});
+assert.deepEqual(
+  efetivoDuranteExtraInicial.find(entry => entry.bombeiro.id === apoio.id),
+  {
+    bombeiro: apoio,
+    cargoExercido: 'BA-LR',
+    substituindo: {
+      id: lr.id,
+      nome: lr.nomeCompleto,
+      cargo: lr.cargo,
+    },
+  },
+);
+const efetivoDepoisDosExtras = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [vigenciaInssFixaDepoisDosExtras],
+  trocaFills: [],
+  substituicoesTemporarias: [inssIndeterminadoComExtraInicial],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-23',
+});
+assert.equal(efetivoDepoisDosExtras.some(entry => entry.bombeiro.id === lr.id), false);
+assert.deepEqual(
+  efetivoDepoisDosExtras.find(entry => entry.bombeiro.id === ferista.id),
+  {
+    bombeiro: ferista,
+    cargoExercido: 'BA-LR',
+    substituindo: {
+      id: lr.id,
+      nome: lr.nomeCompleto,
+      cargo: lr.cargo,
+    },
+  },
 );
 
 assert.deepEqual(

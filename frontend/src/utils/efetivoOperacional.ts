@@ -176,6 +176,7 @@ export function montarEfetivoOperacional(params: {
   const extrasAfastamento = montarExtrasAfastamentoResolvidos({
     substituicoes: substituicoesTemporarias,
     porId,
+    vigencias,
     equipe,
     dataPlantao,
   });
@@ -216,6 +217,14 @@ export function montarEfetivoOperacional(params: {
   };
 
   for (const membro of ativos.filter(b => b.equipe === equipe)) {
+    if (
+      afastadosTemporarios.has(membro.id) ||
+      extraAfastados.has(membro.id) ||
+      extraSubstitutos.has(membro.id)
+    ) {
+      continue;
+    }
+
     const substitui = realPorSubstituto.get(membro.id);
     const fallbackSubstitui = fallbackPorSubstituto.get(membro.id);
     if (substitui) {
@@ -356,10 +365,11 @@ function montarAfastamentosResolvidos(params: {
 function montarExtrasAfastamentoResolvidos(params: {
   substituicoes: SubstituicaoTemporaria[];
   porId: Map<string, Bombeiro>;
+  vigencias: VigenciaSubstituicao[];
   equipe: string;
   dataPlantao: string;
 }): ExtraAfastamentoResolvido[] {
-  const { substituicoes, porId, equipe, dataPlantao } = params;
+  const { substituicoes, porId, vigencias, equipe, dataPlantao } = params;
   const data = parseDataLocalISO(dataPlantao);
   if (Number.isNaN(data.getTime()) || !equipeEstaNoPlantao(equipe, data)) return [];
 
@@ -371,18 +381,24 @@ function montarExtrasAfastamentoResolvidos(params: {
       if (elo.tipo !== 'extra') continue;
       if (!mesmoDiaISO(elo.dataPlantao || '', dataPlantao)) continue;
 
-      const equipePlantao = elo.equipePlantao || elo.funcionarioEquipe || '';
+      const contexto = contextoAfastamentoNoPlantao({
+        sub,
+        porId,
+        vigencias,
+        dataPlantao: elo.dataPlantao || dataPlantao,
+      });
+      const equipePlantao = elo.equipePlantao || elo.funcionarioEquipe || contexto?.equipePlantao || '';
       if (equipePlantao && equipePlantao !== equipe) continue;
 
-      const ausente = porId.get(elo.funcionarioId || sub.funcionarioId);
+      const ausente = porId.get(elo.funcionarioId || sub.funcionarioId) || contexto?.ausente;
       const substituto = porId.get(elo.substitutoId || elo.pessoaId || sub.substitutoId);
       if (!ausente || !substituto || ausente.id === substituto.id) continue;
 
       extras.push({
         ausente,
         substituto,
-        cargoAusente: elo.funcionarioCargo || sub.funcionarioCargo || ausente.cargo,
-        cargoExercido: elo.cargoExercido || elo.cargoVacante || sub.funcionarioCargo || ausente.cargo,
+        cargoAusente: elo.funcionarioCargo || contexto?.cargoAusente || sub.funcionarioCargo || ausente.cargo,
+        cargoExercido: elo.cargoExercido || elo.cargoVacante || contexto?.cargoAusente || sub.funcionarioCargo || ausente.cargo,
         equipePlantao: equipePlantao || equipe,
       });
     }

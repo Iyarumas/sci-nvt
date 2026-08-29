@@ -9,6 +9,8 @@ import {
 import { formatarDataBR } from './datas';
 import { equipeEstaNoPlantao } from './equipes';
 
+const DATA_FIM_INDETERMINADO = '9999-12-31';
+
 type BombeiroOperacional = Pick<
   Bombeiro,
   'id' | 'nomeCompleto' | 'nomeGuerra' | 'cargo' | 'equipe' | 'dataDesligamento'
@@ -100,6 +102,11 @@ function pessoaPorId(bombeiros: BombeiroOperacional[] | undefined, id: string | 
 
 function statusGozoBloqueiaAgenda(status: FeriasGozo['status'] | undefined): boolean {
   return status !== 'Gozadas';
+}
+
+function isSubstituicaoTemporariaIndeterminada(substituicao: Pick<SubstituicaoTemporaria, 'tipo' | 'motivo' | 'dataFim'>): boolean {
+  return substituicao.tipo === 'Afastamento' &&
+    (substituicao.motivo === 'INSS Indeterminado' || substituicao.dataFim === DATA_FIM_INDETERMINADO);
 }
 
 function validarDisponibilidadePessoaEmFerias(
@@ -456,6 +463,7 @@ export function validarSubstituicaoTemporaria(params: {
   const { substituicao, substituicoesExistentes, funcionario, substituto, bombeiros, ignoreSubstituicaoId } = params;
   const afastamentoComExtras = substituicao.tipo === 'Afastamento' &&
     (substituicao.cadeiaSubstituicao || []).some(elo => elo.tipo === 'extra');
+  const afastamentoIndeterminado = isSubstituicaoTemporariaIndeterminada(substituicao);
   const diasValidacao = substituicao.motivo === 'INSS Indeterminado' ? undefined : substituicao.dias;
   const errors = validarPeriodoBasico(substituicao.dataInicio, substituicao.dataFim, diasValidacao, 'Substituicao temporaria');
 
@@ -509,6 +517,12 @@ export function validarSubstituicaoTemporaria(params: {
           errors.push(`${nomePessoa(pessoaExtra)} esta desligado e nao pode fazer extra.`);
         }
       }
+
+      if (afastamentoIndeterminado && funcionario && substituto) {
+        errors.push(...validarSubstitutoPermitido(funcionario.cargo, substituto));
+      }
+    } else if (afastamentoIndeterminado && funcionario && substituto) {
+      errors.push(...validarSubstitutoPermitido(funcionario.cargo, substituto));
     } else if (funcionario && substituto) {
       const cadeiaValidacao: EloCadeiaValidacao[] = (substituicao.cadeiaSubstituicao || [])
         .filter(elo => elo.tipo !== 'extra')
@@ -551,6 +565,12 @@ export function validarSubstituicaoTemporaria(params: {
     const ids = new Set<string>();
     if (s.funcionarioId) ids.add(s.funcionarioId);
     if (s.tipo === 'Afastamento' && (s.cadeiaSubstituicao || []).some(elo => elo.tipo === 'extra')) {
+      if (isSubstituicaoTemporariaIndeterminada(s)) {
+        if (s.substitutoId) ids.add(s.substitutoId);
+        for (const elo of s.cadeiaSubstituicao || []) {
+          if (elo.tipo !== 'extra' && elo.pessoaId) ids.add(elo.pessoaId);
+        }
+      }
       return ids;
     }
     if (s.substitutoId) ids.add(s.substitutoId);

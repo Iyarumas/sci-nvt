@@ -292,7 +292,7 @@ export function Sidebar() {
       </div>
       <div className="mx-3 mb-3 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <div className="px-3 pb-3 text-center text-[10px] font-medium uppercase tracking-widest text-aviation-400">
-        {effectiveCollapsed ? '' : 'SCI NVT v1.0'}
+        {effectiveCollapsed ? '' : `SCI NVT v${__APP_VERSION__}`}
       </div>
     </aside>
   );

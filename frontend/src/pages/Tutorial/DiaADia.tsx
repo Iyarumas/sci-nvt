@@ -90,7 +90,7 @@ const TUTORIAL_STEPS: TutorialStep[] = [
     body: 'Em seguida, preencha o PTR-BA para que ele vá automaticamente para o LRO.',
     detail: 'Confira assunto, horário, instrutores e participantes antes de finalizar. O que for lançado aqui será usado na montagem do Livro de Registro Operacional.',
     icon: Radio,
-    actions: [{ label: 'Abrir PTR-BA', path: '/registros-diarios/ptr-ba' }],
+    actions: [{ label: 'Abrir PTR-BA', path: '/registros-diarios/ptr-ba-completo' }],
     activeNodes: ['diaria', 'ptrba'],
     cursor: { x: 92, y: 20 },
     spotlight: { x: 67, y: 8, w: 32, h: 22 },

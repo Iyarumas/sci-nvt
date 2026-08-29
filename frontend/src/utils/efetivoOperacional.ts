@@ -307,9 +307,7 @@ export function montarOpcoesEfetivoOperacional(efetivo: EfetivoOperacionalEntry[
   return efetivo.map(entry => ({
     id: entry.bombeiro.id,
     nomeGuerra: entry.bombeiro.nomeGuerra,
-    nomeCompleto: entry.bombeiro.equipe === equipe
-      ? entry.bombeiro.nomeCompleto
-      : `${entry.bombeiro.nomeCompleto} (${entry.bombeiro.equipe})`,
+    nomeCompleto: entry.bombeiro.nomeCompleto,
     cargo: entry.cargoExercido,
     equipe,
   }));

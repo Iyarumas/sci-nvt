@@ -106,15 +106,14 @@ function calcHorasFromDuracao(duracao: string): number {
 }
 
 function emptyPTRB(): Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
-  const horario = horarioPlantaoPorEquipe('Alfa');
   return {
     data: hojeLocalISO(),
-    horaInicio: horario.horarioInicio,
-    horaTermino: horario.horarioTermino,
-    duracao: '12:00',
-    horas: 12,
-    equipe: 'Alfa',
-    turno: horario.turno,
+    horaInicio: '',
+    horaTermino: '',
+    duracao: '',
+    horas: 0,
+    equipe: '',
+    turno: '',
     participantes: HIERARQUIA_EQUIPE.map(funcao => ({ funcao, nomeCompleto: '', situacao: 'P' })),
     observacoes: '',
     instrutor: '',
@@ -194,6 +193,20 @@ function PTRBAForm({
 
   function updateEquipe(equipe: string) {
     if (!canEscolherEquipe) return;
+    if (!equipe) {
+      setForm(f => ({
+        ...f,
+        equipe: '',
+        turno: '',
+        horaInicio: '',
+        horaTermino: '',
+        duracao: '',
+        horas: 0,
+        participantes: HIERARQUIA_EQUIPE.map(funcao => ({ funcao, nomeCompleto: '', situacao: 'P' })),
+        instrutor: '',
+      }));
+      return;
+    }
     const horario = horarioPlantaoPorEquipe(equipe);
     const duracao = calcDuracao(horario.horarioInicio, horario.horarioTermino);
     setForm(f => ({
@@ -265,6 +278,10 @@ function PTRBAForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.equipe) {
+      alert('Selecione a equipe.');
+      return;
+    }
     onSave(form);
   }
 
@@ -347,6 +364,7 @@ function PTRBAForm({
           <div>
             <label className={label}>Equipe</label>
             <select value={form.equipe} onChange={e => updateEquipe(e.target.value)} className={input} disabled={!canEscolherEquipe}>
+              <option value="">Selecione equipe</option>
               {EQUIPES_FILTRO.filter(eq => canEscolherEquipe || eq === equipeEfetiva).map(eq => <option key={eq} value={eq}>{eq}</option>)}
             </select>
           </div>

@@ -214,7 +214,7 @@ function situacaoInstrutor(numeros: InstrucaoPTRNumero[]): string {
 }
 
 function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
-  const equipe = PTRBA_COMPLETO_EQUIPES.includes(equipePadrao as Equipe) ? equipePadrao as Equipe : 'Alfa';
+  const equipe = PTRBA_COMPLETO_EQUIPES.includes(equipePadrao as Equipe) ? equipePadrao as Equipe : '';
   return {
     data: hojeLocalISO(),
     equipe,
@@ -264,7 +264,6 @@ function PTRBACompletoForm({
   escalasDiarias,
   vigencias,
   trocaFills,
-  canManageGlobal,
   canEscolherEquipe,
   equipeEfetiva,
 }: {
@@ -278,11 +277,10 @@ function PTRBACompletoForm({
   escalasDiarias: EscalaDiaria[];
   vigencias: any[];
   trocaFills: any[];
-  canManageGlobal: boolean;
   canEscolherEquipe: boolean;
   equipeEfetiva: string | null;
 }) {
-  const [form, setForm] = useState(() => montarInicial(canManageGlobal ? null : equipeEfetiva));
+  const [form, setForm] = useState(() => montarInicial(canEscolherEquipe ? null : equipeEfetiva));
   const ultimaAutoFill = useRef('');
   const ultimaEscalaPTRFill = useRef('');
 
@@ -299,8 +297,8 @@ function PTRBACompletoForm({
       });
       return;
     }
-    setForm(montarInicial(canManageGlobal ? null : equipeEfetiva));
-  }, [registro, canManageGlobal, equipeEfetiva]);
+    setForm(montarInicial(canEscolherEquipe ? null : equipeEfetiva));
+  }, [registro, canEscolherEquipe, equipeEfetiva]);
 
   const opcoesParticipantes: AtivoItem[] = useMemo(() => {
     const efetivo = montarEfetivoOperacional({
@@ -325,6 +323,7 @@ function PTRBACompletoForm({
 
   useEffect(() => {
     if (registro) return;
+    if (!form.equipe) return;
     const chave = `${form.equipe}-${form.data}`;
     if (ultimaAutoFill.current === chave) return;
     ultimaAutoFill.current = chave;
@@ -345,6 +344,7 @@ function PTRBACompletoForm({
 
   useEffect(() => {
     if (registro) return;
+    if (!form.equipe) return;
     const escala = escalasDiarias.find(e => e.equipe === form.equipe && mesmoDiaISO(e.dataPlantao, form.data));
     const instrucoesBase = extrairInstrucoesPTREscala(escala);
     if (!escala || instrucoesBase.length === 0) return;
@@ -419,6 +419,17 @@ function PTRBACompletoForm({
 
   function updateEquipe(equipe: string) {
     if (!canEscolherEquipe) return;
+    if (!equipe) {
+      ultimaAutoFill.current = '';
+      ultimaEscalaPTRFill.current = '';
+      setForm(f => ({
+        ...f,
+        equipe: '',
+        chefeEquipe: '',
+        participantes: criarParticipantesPTRBACompletoVazios(),
+      }));
+      return;
+    }
     setForm(f => ({ ...f, equipe }));
   }
 
@@ -470,6 +481,10 @@ function PTRBACompletoForm({
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!form.equipe) {
+      alert('Selecione a equipe.');
+      return;
+    }
     salvarUltimoAeroporto(form.identificacaoAeroporto);
     onSave({
       ...form,
@@ -517,6 +532,7 @@ function PTRBACompletoForm({
           <div>
             <label className={label}>Equipe</label>
             <select value={form.equipe} onChange={e => updateEquipe(e.target.value)} className={input} disabled={!canEscolherEquipe}>
+              <option value="">Selecione equipe</option>
               {PTRBA_COMPLETO_EQUIPES
                 .filter(eq => canEscolherEquipe || eq === equipeEfetiva)
                 .map(eq => <option key={eq} value={eq}>{eq}</option>)}
@@ -873,7 +889,7 @@ function PTRBACompletoPdfPreviewModal({
 }
 
 export function PTRBACompletoPage() {
-  const { user, contexto, canManageGlobal, equipeEfetiva } = useContextoOperacional();
+  const { user, contexto, equipeEfetiva } = useContextoOperacional();
   const username = user?.username || '';
   const podeCriar = canCriarRegistrosDiarios(contexto);
   const canCreate = podeCriar;
@@ -1041,7 +1057,6 @@ export function PTRBACompletoPage() {
           escalasDiarias={escalasDiarias}
           vigencias={vigencias}
           trocaFills={trocaFills}
-          canManageGlobal={canManageGlobal}
           canEscolherEquipe={canEscolherEquipe}
           equipeEfetiva={equipePadrao}
         />

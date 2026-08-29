@@ -164,6 +164,16 @@ function formatDate(d: string) {
   return formatarDataBR(d);
 }
 
+function dataOrdenacaoEscala(escala: EscalaDiaria): number {
+  const candidatos = [escala.createdAt, escala.updatedAt, escala.dataPlantao ? `${escala.dataPlantao}T12:00:00` : ''];
+  for (const valor of candidatos) {
+    if (!valor) continue;
+    const timestamp = new Date(valor).getTime();
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return 0;
+}
+
 function autoPreencher(equipe: string) {
   return horarioPlantaoPorEquipe(equipe);
 }
@@ -1832,7 +1842,7 @@ export function EscalaDiariaView() {
       if (dataInicio) lista = lista.filter(e => e.dataPlantao >= dataInicio);
       if (dataFinal) lista = lista.filter(e => e.dataPlantao <= dataFinal);
     }
-    return lista;
+    return [...lista].sort((a, b) => dataOrdenacaoEscala(b) - dataOrdenacaoEscala(a));
   }, [escalas, filtroEquipe, filterMode, filtroAno, filtroMes, dataInicio, dataFinal]);
 
   function tutorialIndexInicial(): number {

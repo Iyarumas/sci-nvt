@@ -61,14 +61,14 @@ function rowToEscala(row: Record<string, unknown>): EscalaDiaria {
 
 export async function listarEscalas(): Promise<EscalaDiaria[]> {
   const db = getDb();
-  const { data, error } = await db.from(TABLE).select('*');
+  const { data, error } = await db.from(TABLE).select('*').order('created_at', { ascending: false });
   if (error) handleSupabaseError(error);
   return (data || []).map(rowToEscala);
 }
 
 export async function listarEscalasPorUsuario(username: string): Promise<EscalaDiaria[]> {
   const db = getDb();
-  const { data, error } = await db.from(TABLE).select('*').eq('created_by', username);
+  const { data, error } = await db.from(TABLE).select('*').eq('created_by', username).order('created_at', { ascending: false });
   if (error) handleSupabaseError(error);
   return (data || []).map(rowToEscala);
 }

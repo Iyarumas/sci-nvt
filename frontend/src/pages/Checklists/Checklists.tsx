@@ -1757,7 +1757,7 @@ export function Checklists() {
             width: 100%;
             table-layout: fixed;
             border-collapse: collapse;
-            font-size: 5.6pt;
+            font-size: 6.4pt;
             line-height: 1;
           }
 
@@ -1803,7 +1803,7 @@ export function Checklists() {
 
           .checklist-print-table .print-day-group {
             text-align: center;
-            font-size: 5.8pt;
+            font-size: 6.2pt;
             padding: 0.65mm 0;
           }
 
@@ -1816,7 +1816,7 @@ export function Checklists() {
           .checklist-print-table .print-section {
             background: #ffffff !important;
             padding: 0.55mm 1mm;
-            font-size: 6.2pt;
+            font-size: 6.8pt;
             font-weight: 900;
             text-transform: uppercase;
             text-align: center;

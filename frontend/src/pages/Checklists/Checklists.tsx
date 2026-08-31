@@ -1792,6 +1792,13 @@ export function Checklists() {
             font-weight: 700;
           }
 
+          .checklist-print-table tbody .print-qtd,
+          .checklist-print-table tbody .print-exig,
+          .checklist-print-table tbody .print-disp {
+            padding-top: 0.76mm;
+            padding-bottom: 0.64mm;
+          }
+
           .checklist-print-table .print-item {
             width: 26%;
             text-align: left;
@@ -1799,7 +1806,9 @@ export function Checklists() {
 
           .checklist-print-table tbody .print-item {
             font-size: 7pt;
-            line-height: 0.8;
+            line-height: 1;
+            padding-top: 0.53mm;
+            padding-bottom: 0.17mm;
           }
 
           .checklist-print-table .print-item-equipment {
@@ -1820,7 +1829,7 @@ export function Checklists() {
 
           .checklist-print-table .print-section {
             background: #ffffff !important;
-            padding: 0.55mm 1mm;
+            padding: 0.58mm 1mm 0.52mm;
             font-size: 6.2pt;
             font-weight: 900;
             text-transform: uppercase;

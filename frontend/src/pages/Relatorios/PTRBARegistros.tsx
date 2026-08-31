@@ -3,9 +3,7 @@ import { FileText, Printer, Lock, ChevronDown, ChevronUp } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
-import { listarPTRBs } from '../../services/ptrbService';
 import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
-import type { PTRB } from '../../types/ptrb';
 import type { PTRBACompleto, PTRBACompletoEvidencia } from '../../types/ptrbaCompleto';
 import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
 import { EQUIPES } from '../../types/ptrb';
@@ -20,7 +18,7 @@ const PTRBA_REGISTROS_TOUR_STEPS = [
     selector: 'main h1',
     title: 'PTR-BA Registros',
     body: 'Esta página reúne todos os PTR-BAs em uma lista única por ordem de data.',
-    detail: 'Ela junta PTR-BA por instrução e PTR-BA completo. Cada documento conta como um registro, mesmo quando o completo possui várias evidências.',
+    detail: 'Ela usa os documentos do PTR-BA atual. Cada documento conta como um registro, mesmo quando possui várias evidências.',
   },
   {
     selector: 'main select',
@@ -32,18 +30,18 @@ const PTRBA_REGISTROS_TOUR_STEPS = [
     selector: 'main button',
     title: 'Imprimir relatório',
     body: 'O botão Imprimir Relatório gera a versão de impressão da tabela atual.',
-    detail: 'Antes de imprimir, confirme se ano, mês e equipe estão corretos e se as evidências do PTR-BA completo estão expandidas quando necessário.',
+    detail: 'Antes de imprimir, confirme se ano, mês e equipe estão corretos e se as evidências do PTR-BA estão expandidas quando necessário.',
   },
   {
     selector: 'main table',
     title: 'Tabela de documentos',
     body: 'A tabela mostra número da linha, data, equipe, turno, horário, duração, assunto, instrutor e participantes.',
-    detail: 'A linha marcada como COMPLETO representa um PTR-BA completo; clique nela para abrir as evidências/instruções internas.',
+    detail: 'A linha marcada como PTR-BA representa o documento com evidências; clique nela para abrir as instruções internas.',
   },
   {
     selector: 'main img, main .space-y-2',
     title: 'Evidências do completo',
-    body: 'Quando um PTR-BA completo é expandido, aparecem as instruções, horários, descrições e imagens registradas.',
+    body: 'Quando um PTR-BA é expandido, aparecem as instruções, horários, descrições e imagens registradas.',
     detail: 'Isso ajuda a conferir o conteúdo detalhado sem sair do relatório geral.',
   },
 ];
@@ -65,19 +63,6 @@ function calcHoras(inicio: string, termino: string): number {
   return diff / 60;
 }
 
-function parseDuracao(d: string): number {
-  if (!d) return 0;
-  const nums = d.trim().match(/\d+/g);
-  if (!nums) return 0;
-  const h = Number(nums[0]), m = Number(nums[1] ?? 0);
-  if (isNaN(h) || isNaN(m)) return 0;
-  return h + m / 60;
-}
-
-function horasDe(p: PTRB): number {
-  return p.horas || calcHoras(p.horaInicio, p.horaTermino) || parseDuracao(p.duracao);
-}
-
 function horasStr(h: number): string {
   const minTotal = Math.round(h * 60);
   const horas = Math.floor(minTotal / 60);
@@ -97,25 +82,8 @@ interface Linha {
   assunto: string;
   instrutor: string;
   participantesCount: number;
-  tipo: 'ptrb' | 'completo';
+  tipo: 'completo';
   evidencias: PTRBACompletoEvidencia[];
-}
-
-function linhaDePTRB(p: PTRB): Linha {
-  return {
-    id: p.id,
-    data: p.data,
-    equipe: p.equipe,
-    turno: p.turno || '',
-    horaInicio: p.horaInicio,
-    horaTermino: p.horaTermino,
-    horas: horasDe(p),
-    assunto: p.assuntoMinistrado || '—',
-    instrutor: p.instrutor || '',
-    participantesCount: p.participantes?.length || 0,
-    tipo: 'ptrb',
-    evidencias: [],
-  };
 }
 
 function linhaDeCompleto(c: PTRBACompleto): Linha {
@@ -135,7 +103,7 @@ function linhaDeCompleto(c: PTRBACompleto): Linha {
     horaInicio: evidencias[0]?.horaInicio || '',
     horaTermino: evidencias[0]?.horaTermino || '',
     horas: evidencias.reduce((s, e) => s + calcHoras(e.horaInicio, e.horaTermino), 0),
-    assunto: evidencias.map(e => e.assunto).join(' · ') || 'PTR-BA Completo',
+    assunto: evidencias.map(e => e.assunto).join(' · ') || 'PTR-BA',
     instrutor: c.chefeEquipe || '',
     participantesCount: (c.participantes || []).filter(pa => pa.nomeCompleto && pa.nomeCompleto.trim()).length,
     tipo: 'completo',
@@ -147,7 +115,6 @@ const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py
 
 export function PTRBARegistros() {
   const { canVisualizarRelatoriosPtrBa, loadingContexto } = useContextoOperacional();
-  const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
   const [completos, setCompletos] = useState<PTRBACompleto[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtroMes, setFiltroMes] = useState('');
@@ -157,11 +124,8 @@ export function PTRBARegistros() {
   const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
 
   function carregar() {
-    return Promise.all([listarPTRBs(), listarPTRBACompletos()])
-      .then(([p, c]) => {
-        setPtrbs(p);
-        setCompletos(c || []);
-      })
+    return listarPTRBACompletos()
+      .then(c => setCompletos(c || []))
       .catch(() => {});
   }
 
@@ -182,9 +146,9 @@ export function PTRBARegistros() {
   }, [canVisualizarRelatoriosPtrBa, loadingContexto]);
 
   const linhas = useMemo(() => {
-    const todas: Linha[] = [...ptrbs.map(linhaDePTRB), ...completos.map(linhaDeCompleto)];
+    const todas: Linha[] = completos.map(linhaDeCompleto);
     return todas.sort((a, b) => new Date(a.data || '').getTime() - new Date(b.data || '').getTime());
-  }, [ptrbs, completos]);
+  }, [completos]);
 
   const filtradas = useMemo(() => {
     let lista = linhas;
@@ -224,7 +188,7 @@ export function PTRBARegistros() {
     if (l.evidencias.length === 0) return null;
     return (
       <div className="space-y-2 border-t border-graphite-100 bg-graphite-50/50 px-4 py-3 dark:border-border-dark dark:bg-surface-hover">
-        <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">Documentos do PTR-BA Completo ({l.evidencias.length} instrução(ões) em 1 documento)</p>
+        <p className="text-xs font-semibold text-aviation-600 dark:text-aviation-400">Documentos do PTR-BA ({l.evidencias.length} instrução(ões) em 1 documento)</p>
         {l.evidencias.map((ev, i) => (
           <div key={i} className="rounded-xl border border-graphite-200 bg-white p-3 dark:border-border-dark dark:bg-surface-card">
             <div className="flex flex-wrap items-center gap-2">
@@ -347,7 +311,7 @@ export function PTRBARegistros() {
           <td className="px-4 py-3 text-center font-semibold text-emerald-700 dark:text-emerald-400">{horasStr(l.horas)}</td>
           <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">
             <span className="flex items-center gap-1.5">
-              {isCompleto && <span className="shrink-0 rounded bg-aviation-100 px-1.5 py-0.5 text-[9px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">COMPLETO</span>}
+              {isCompleto && <span className="shrink-0 rounded bg-aviation-100 px-1.5 py-0.5 text-[9px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">PTR-BA</span>}
               <span className="min-w-0">{l.assunto}</span>
               {isCompleto && (expanded ? <ChevronUp className="h-3.5 w-3.5 shrink-0 text-graphite-400" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0 text-graphite-400" />)}
             </span>

@@ -192,7 +192,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | Rota | Tela | Descrição |
 |------|------|-----------|
 | `/registros-diarios/ptr-ba` | PTR-BA por Instrução | Registro de PTR-BA por assunto ministrado |
-| `/registros-diarios/ptr-ba-completo` | PTR-BA Completo | Relatório completo de registro PTR-BA com efetivo, evidências e download em PDF |
+| `/registros-diarios/ptr-ba-completo` | PTR-BA | Registro PTR-BA com efetivo, evidências e download em PDF |
 | `/registros-diarios/lro-ocorrencias` | LRO/Ocorrências | Registo de ocorrências do turno |
 | `/registros-diarios/bona-rea` | BONA/REA | Registos de ocorrências operacionais — BONA e REA |
 | `/registros-diarios/inspecoes` | Inspeções | Registos de inspeções operacionais |
@@ -232,8 +232,8 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 |------|------|-----------|
 | `/relatorios/lro` | LRO | Relatório de LRO |
 | `/relatorios/bona` | BONA/REA | Boletim de Ocorrência Não Aeronáutico e Relatório de Registro de Emergências Aeronáuticas (puxa BONAs com `numero` BONA-... e REAs de `rea_registros`; não inclui ocorrências do LRO) |
-| `/relatorios/ptr-ba` | PTR-BA | Relatório de PTR-BA | 
-| `/relatorios/ptr-ba-registros` | PTR-BA Registros | Lista de todos os PTR-BAs (por instrução + completo) por ordem de data, com filtros de mês/ano/equipe e impressão |
+| `/relatorios/ptr-ba` | PTR-BA | Relatório de PTR-BA baseado no módulo atual (`ptrba_completo_registros`) | 
+| `/relatorios/ptr-ba-registros` | PTR-BA Registros | Lista dos PTR-BAs do módulo atual por ordem de data, com filtros de mês/ano/equipe e impressão |
 | `/relatorios/exercicios` | Exercícios | Relatório de exercícios gerais |
 | `/relatorios/exercicios/taf` | TAF | Relatório de TAF |
 | `/relatorios/exercicios/tp-epr` | TP/EPR | Relatório de TP/EPR |
@@ -506,7 +506,7 @@ Referência: **21/07/2026** = Alfa + Bravo
 | EPIs | Todos visualizam e operam estoque/pagamento/devolução; excluir EPI/estoque: apenas Admin/GS |
 | Certificações | Admin/GS visualizam e editam tudo; `BA-CE`/`BA-LR` visualizam somente a equipe efetiva; demais cargos sem acesso |
 | Férias | Botões de cadastro manual, bombeiros e aprovações: apenas Admin/GS; escalas e cards ficam globais para Admin/GS e por equipe efetiva para os demais; Quadro de Efetivos é visível a todos |
-| Registos Diários (PTR-BA Completo, PTR-BA por Instrução, Gerar LRO) | Todos visualizam todas as equipes; criar/editar/excluir em qualquer equipe: apenas Admin/dev e `BA-CE`/`BA-LR` (trocas de plantão); `BA-CE`/`BA-LR` só alteram/excluem o que criaram (e o `BA-LR` também o que o `BA-CE` da equipe criou); bombeiros com `autorizadoRegistrosDiarios` no cadastro podem criar/editar apenas a equipe definida em `autorizacaoRegistrosDiariosEquipe`, mediante aprovação do BA-CE dessa equipe, inclusive para Feristas/apoios; essa autorização nunca libera exclusão e não acompanha troca/substituição; GS apenas visualiza; finalizar/arquivar LRO: apenas Admin/dev |
+| Registos Diários (PTR-BA, PTR-BA por Instrução, Gerar LRO) | Todos visualizam todas as equipes; criar/editar/excluir em qualquer equipe: apenas Admin/dev e `BA-CE`/`BA-LR` (trocas de plantão); `BA-CE`/`BA-LR` só alteram/excluem o que criaram (e o `BA-LR` também o que o `BA-CE` da equipe criou); bombeiros com `autorizadoRegistrosDiarios` no cadastro podem criar/editar apenas a equipe definida em `autorizacaoRegistrosDiariosEquipe`, mediante aprovação do BA-CE dessa equipe, inclusive para Feristas/apoios; essa autorização nunca libera exclusão e não acompanha troca/substituição; GS apenas visualiza; finalizar/arquivar LRO: apenas Admin/dev |
 | Viaturas CCI | Todos visualizam |
 | Documentos > Trocas | Todos visualizam; editar/excluir/arquivar/enviar: apenas quando a troca envolve a equipe efetiva, exceto Admin/GS |
 | Documentos > Checklists | Todos visualizam e imprimem; modelo quinzenal/CHECK LIST TOTAL é alterado apenas por Admin/desenvolvedor; usuários podem criar e alterar seus próprios checklists personalizados |
@@ -514,6 +514,13 @@ Referência: **21/07/2026** = Alfa + Bravo
 | Documentos > Ordens de Serviço | Todos visualizam; criar/editar/excluir: apenas a equipe efetiva, exceto Admin/GS |
 | Treinamentos | Todos visualizam; registros com equipe podem ser criados/editados/excluídos apenas pela equipe efetiva, exceto Admin/GS; registros locais sem equipe usam `createdBy` e legados sem dono só são editáveis por Admin/GS |
 | Relatórios | Relatórios gerais: acesso à sidebar e rotas diretas apenas para Admin/GS; exceção PTR-BA e PTR-BA Registros: Admin/GS/`BA-CE`/`BA-LR` e equipe `Embaixador` visualizam |
+
+### Troca de Substituto em INSS Indeterminado
+
+- Em afastamento `INSS/Indeterminado` aprovado e ativo, a troca de substituto cria uma nova movimentação `Pendente`.
+- A substituição anterior continua valendo até a nova movimentação ser aprovada.
+- Ao aprovar a nova movimentação, o sistema encerra a anterior na véspera da nova data de início, reprocessa a vigência histórica e cria a nova vigência a partir da data aprovada.
+- Os detalhes do afastamento exibem o histórico de substitutos do mesmo afastado, incluindo solicitações pendentes.
 
 ### Horários por Equipa
 

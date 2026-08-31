@@ -85,7 +85,7 @@ export const MOTIVOS_SUBSTITUICAO: { value: MotivoSubstituicao; label: string; d
   { value: 'Casamento', label: 'Casamento', dias: 3 },
   { value: 'Nascimento Filho', label: 'Nascimento de Filho', dias: 5 },
   { value: 'Doacao Sangue', label: 'Doação de Sangue', dias: 1 },
-  { value: 'INSS', label: 'INSS', dias: 15 },
+  { value: 'INSS', label: 'INSS', dias: 0 },
   { value: 'INSS Indeterminado', label: 'INSS/Indeterminado', dias: 0 },
   { value: 'Outro', label: 'Outro', dias: 0 },
 ];

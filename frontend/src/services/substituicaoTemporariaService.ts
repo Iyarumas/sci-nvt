@@ -71,9 +71,19 @@ function somarDias(dataISO: string, dias: number): string {
   return dataLocalISO(data);
 }
 
+function diaAnterior(dataISO: string): string {
+  return somarDias(dataISO, -1);
+}
+
 function isAfastamentoIndeterminado(substituicao: Pick<SubstituicaoTemporaria, 'tipo' | 'motivo' | 'dataFim'>): boolean {
   return substituicao.tipo === 'Afastamento' &&
     (substituicao.motivo === 'INSS Indeterminado' || substituicao.dataFim === DATA_FIM_INDETERMINADO);
+}
+
+function isAfastamentoIndeterminadoAtivo(substituicao: Pick<SubstituicaoTemporaria, 'tipo' | 'motivo' | 'dataFim'>): boolean {
+  return substituicao.tipo === 'Afastamento' &&
+    substituicao.motivo === 'INSS Indeterminado' &&
+    substituicao.dataFim === DATA_FIM_INDETERMINADO;
 }
 
 function temExtrasAfastamento(substituicao: Pick<SubstituicaoTemporaria, 'tipo' | 'cadeiaSubstituicao'>): boolean {
@@ -207,6 +217,46 @@ function contextoValidacao(data: Pick<SubstituicaoTemporaria, 'funcionarioId' | 
   };
 }
 
+function encontrarAfastamentoIndeterminadoAnterior(
+  substituicao: Pick<SubstituicaoTemporaria, 'id' | 'tipo' | 'motivo' | 'dataInicio' | 'dataFim' | 'funcionarioId'> | Omit<SubstituicaoTemporaria, 'id' | 'createdAt' | 'updatedAt'>,
+  existentes: SubstituicaoTemporaria[],
+): SubstituicaoTemporaria | undefined {
+  if (!isAfastamentoIndeterminadoAtivo(substituicao)) return undefined;
+  return existentes
+    .filter(item =>
+      ('id' in substituicao ? item.id !== substituicao.id : true) &&
+      item.status === 'Aprovada' &&
+      item.funcionarioId === substituicao.funcionarioId &&
+      isAfastamentoIndeterminadoAtivo(item) &&
+      item.dataInicio < substituicao.dataInicio
+    )
+    .sort((a, b) => b.dataInicio.localeCompare(a.dataInicio))[0];
+}
+
+function validarDataTrocaIndeterminada(
+  anterior: SubstituicaoTemporaria | undefined,
+  dataInicioNova: string,
+): void {
+  if (!anterior) return;
+  const dataInicioAnterior = dataInicioVigenciaFixa(anterior);
+  if (!dataInicioAnterior || dataInicioNova <= dataInicioAnterior) {
+    throw new Error(`A troca precisa começar depois do início da substituição atual (${dataInicioAnterior || anterior.dataInicio}).`);
+  }
+}
+
+function ajustarExistentesParaValidacaoDeTroca(
+  substituicao: Pick<SubstituicaoTemporaria, 'id' | 'tipo' | 'motivo' | 'dataInicio' | 'dataFim' | 'funcionarioId'> | Omit<SubstituicaoTemporaria, 'id' | 'createdAt' | 'updatedAt'>,
+  existentes: SubstituicaoTemporaria[],
+): SubstituicaoTemporaria[] {
+  const anterior = encontrarAfastamentoIndeterminadoAnterior(substituicao, existentes);
+  validarDataTrocaIndeterminada(anterior, substituicao.dataInicio);
+  if (!anterior) return existentes;
+  const dataFimAnterior = diaAnterior(substituicao.dataInicio);
+  return existentes.map(item =>
+    item.id === anterior.id ? { ...item, dataFim: dataFimAnterior } : item
+  );
+}
+
 async function processarVigenciasSubstituicaoTemporaria(
   substituicao: SubstituicaoTemporaria,
   bombeiros: Bombeiro[],
@@ -269,7 +319,7 @@ export async function criarSubstituicaoTemporaria(
   const contexto = contextoValidacao(data, bombeiros);
   assertSemErros(validarSubstituicaoTemporaria({
     substituicao: data,
-    substituicoesExistentes: existentes,
+    substituicoesExistentes: ajustarExistentesParaValidacaoDeTroca(data, existentes),
     ...contexto,
   }));
   const now = new Date().toISOString();
@@ -285,6 +335,64 @@ export async function criarSubstituicaoTemporaria(
     .single();
   if (error) handleSupabaseError(error);
   return rowToSubstituicao(created);
+}
+
+export async function solicitarTrocaSubstitutoAfastamentoIndeterminado(params: {
+  substituicaoOrigemId: string;
+  dataInicio: string;
+  novoSubstitutoId: string;
+  criadoPor: string;
+  criadoPorNome: string;
+}): Promise<SubstituicaoTemporaria> {
+  const db = getDb();
+  const { data: origemRaw, error } = await db
+    .from(TABLE)
+    .select('*')
+    .eq('id', params.substituicaoOrigemId)
+    .single();
+  if (error) handleSupabaseError(error);
+
+  const origem = rowToSubstituicao(origemRaw);
+  if (!isAfastamentoIndeterminadoAtivo(origem) || origem.status !== 'Aprovada') {
+    throw new Error('A troca de substituto só pode ser solicitada para afastamento INSS indeterminado aprovado e ativo.');
+  }
+  if (!params.dataInicio || params.dataInicio <= dataInicioVigenciaFixa(origem)) {
+    throw new Error(`A nova pessoa precisa começar depois de ${dataInicioVigenciaFixa(origem)}.`);
+  }
+  if (params.novoSubstitutoId === origem.funcionarioId) {
+    throw new Error('A pessoa afastada não pode ser o próprio substituto.');
+  }
+  if (params.novoSubstitutoId === origem.substitutoId) {
+    throw new Error('Selecione uma pessoa diferente da substituição atual.');
+  }
+
+  const bombeiros = await listarAtivos();
+  const novoSubstituto = bombeiros.find(b => b.id === params.novoSubstitutoId);
+  if (!novoSubstituto) throw new Error('Novo substituto não encontrado no cadastro ativo.');
+
+  return criarSubstituicaoTemporaria({
+    funcionarioId: origem.funcionarioId,
+    funcionarioNome: origem.funcionarioNome,
+    funcionarioCargo: origem.funcionarioCargo,
+    substitutoId: novoSubstituto.id,
+    substitutoNome: novoSubstituto.nomeCompleto,
+    substitutoCargo: novoSubstituto.cargo,
+    tipo: 'Afastamento',
+    motivo: 'INSS Indeterminado',
+    motivoOutro: origem.motivoOutro,
+    plantaoExtra: 'Nao',
+    dataInicio: params.dataInicio,
+    dataFim: DATA_FIM_INDETERMINADO,
+    dias: 0,
+    status: 'Pendente',
+    observacoesRejeicao: '',
+    criadoPor: params.criadoPor,
+    criadoPorNome: params.criadoPorNome,
+    aprovadoPor: '',
+    aprovadoPorNome: '',
+    aprovadoEm: '',
+    cadeiaSubstituicao: [],
+  });
 }
 
 export async function atualizarSubstituicaoTemporaria(
@@ -380,11 +488,29 @@ export async function aprovarSubstituicaoTemporaria(
   const contexto = contextoValidacao(atual, bombeiros);
   assertSemErros(validarSubstituicaoTemporaria({
     substituicao: { ...atual, status: 'Aprovada' },
-    substituicoesExistentes: existentes,
+    substituicoesExistentes: ajustarExistentesParaValidacaoDeTroca(atual, existentes),
     ignoreSubstituicaoId: id,
     ...contexto,
   }));
   const now = new Date().toISOString();
+  const anteriorIndeterminado = encontrarAfastamentoIndeterminadoAnterior(atual, existentes);
+  if (anteriorIndeterminado) {
+    const anteriorFechado = {
+      ...anteriorIndeterminado,
+      dataFim: diaAnterior(atual.dataInicio),
+      updatedAt: now,
+    };
+    const { error: fecharError } = await db
+      .from(TABLE)
+      .update({ data_fim: anteriorFechado.dataFim, updated_at: now })
+      .eq('id', anteriorIndeterminado.id);
+    if (fecharError) handleSupabaseError(fecharError);
+    await desativarVigencias(anteriorIndeterminado.id);
+    if (deveProcessarVigencia(anteriorFechado)) {
+      await processarVigenciasSubstituicaoTemporaria(anteriorFechado, bombeiros);
+    }
+  }
+
   const row = {
     status: 'Aprovada',
     aprovado_por: aprovadoPor,

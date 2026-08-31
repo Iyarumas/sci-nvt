@@ -4,7 +4,6 @@ import {
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
-import { listarPTRBs } from '../../services/ptrbService';
 import { listarBombeiros } from '../../services/bombeiroService';
 import { listarAPOCs } from '../../services/apocService';
 import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
@@ -21,7 +20,7 @@ const RELATORIO_PTRBA_TOUR_STEPS = [
     selector: 'main h1',
     title: 'Relatório PTR-BA',
     body: 'Este relatório analisa horas, registros, equipes, pessoas e assuntos de PTR-BA.',
-    detail: 'Ele usa registros de PTR-BA por instrução e também dados do PTR-BA completo quando aplicável.',
+    detail: 'Ele usa os registros do PTR-BA atual, com efetivo e evidências preenchidos no documento.',
   },
   {
     selector: 'main select, main input',
@@ -186,7 +185,7 @@ function expandParticipants(ptrbs: PTRB[]): ExpandedPTRB[] {
   return result;
 }
 
-// Converte um registro PTR-BA Completo em registros de instrução (uma por assunto/par de evidências)
+// Converte um registro PTR-BA com evidências em registros de instrução (uma por assunto/par de evidências)
 function converterCompletoParaPTRBs(c: PTRBACompleto): PTRB[] {
   const participantes = (c.participantes || []).filter(p => p.nomeCompleto && p.nomeCompleto.trim());
   if (participantes.length === 0) return [];
@@ -224,7 +223,7 @@ function converterCompletoParaPTRBs(c: PTRBACompleto): PTRB[] {
     });
   }
   if (resultado.length === 0) {
-    return [{ ...base, id: `completo-${c.id}`, horaInicio: '', horaTermino: '', duracao: '', horas: 0, assuntoMinistrado: 'PTR-BA Completo' }];
+    return [{ ...base, id: `completo-${c.id}`, horaInicio: '', horaTermino: '', duracao: '', horas: 0, assuntoMinistrado: 'PTR-BA' }];
   }
   return resultado;
 }
@@ -381,9 +380,9 @@ export function PTRBA() {
       return;
     }
     setLoading(true);
-    Promise.all([listarPTRBs(), listarPTRBACompletos(), listarBombeiros(), listarAPOCs()]).then(([p, c, b, a]) => {
+    Promise.all([listarPTRBACompletos(), listarBombeiros(), listarAPOCs()]).then(([c, b, a]) => {
       const completos = (c || []).flatMap(converterCompletoParaPTRBs);
-      setPtrbs([...p, ...completos]);
+      setPtrbs(completos);
       const map = new Map<string, PessoaInfo>();
       const indexar = (nome: string, info: PessoaInfo) => {
         const chave = normalizarNome(nome);

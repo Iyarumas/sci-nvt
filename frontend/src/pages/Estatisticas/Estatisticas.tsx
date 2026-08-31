@@ -12,7 +12,6 @@ import { PageTour } from '../../components/ui/PageTour';
 import { listarAtivos } from '../../services/bombeiroService';
 import { listarOcorrencias } from '../../services/ocorrenciaService';
 import { listarReas } from '../../services/reaService';
-import { listarPTRBs } from '../../services/ptrbService';
 import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
 import { listarTPEPRs } from '../../services/tpeprService';
 import { listarTAFs } from '../../services/tafService';
@@ -26,7 +25,6 @@ import { listarTodasPanes } from '../../services/viaturaPaneService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { formatarSegundosTempo, parseTempoParaSegundos } from '../../types/tpepr';
 import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
-import type { PTRB } from '../../types/ptrb';
 import type { PTRBACompleto } from '../../types/ptrbaCompleto';
 import type { TreinamentoTPEPR } from '../../types/tpepr';
 import type { TreinamentoTAF } from '../../types/taf';
@@ -55,8 +53,7 @@ const CATEGORIA_CORES: Record<string, string> = {
 };
 
 const TIPO_TREINO_CORES: Record<string, string> = {
-  'PTR-BA': '#10b981',
-  'PTR-BA Completo': '#059669',
+  'PTR-BA': '#059669',
   'TP/EPR': '#3b82f6',
   'TAF': '#f59e0b',
   'Tempo Resposta': '#8b5cf6',
@@ -238,7 +235,6 @@ function SectionCard({ title, icon: Icon, children, className = '' }: { title: s
 function TabVisaoGeral() {
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [ocorrencias, setOcorrencias] = useState<OcorrenciaDash[]>([]);
-  const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
   const [completos, setCompletos] = useState<PTRBACompleto[]>([]);
   const [certsCount, setCertsCount] = useState(0);
   const [subsCount, setSubsCount] = useState(0);
@@ -246,7 +242,6 @@ function TabVisaoGeral() {
   const [viaturasCount, setViaturasCount] = useState(0);
   useEffect(() => { listarAtivos().then(setBombeiros); }, []);
   useEffect(() => { carregarOcorrencias().then(setOcorrencias); }, []);
-  useEffect(() => { listarPTRBs().then(setPtrbs); }, []);
   useEffect(() => { listarPTRBACompletos().then(setCompletos); }, []);
   useEffect(() => { listarCertificacoes().then(c => setCertsCount(c.length)); }, []);
   useEffect(() => { listarSubstituicoesTemporarias().then(s => { if (Array.isArray(s)) setSubsCount(s.filter((x: any) => x.status === 'Pendente').length); }); }, []);
@@ -277,10 +272,9 @@ function TabVisaoGeral() {
     const mapO: Record<string, number> = {}; meses.forEach(m => mapO[m] = 0);
     const mapT: Record<string, number> = {}; meses.forEach(m => mapT[m] = 0);
     ocorrencias.forEach(o => { const k = chaveMes(o.data); if (k in mapO) mapO[k]++; });
-    ptrbs.forEach(p => { const k = chaveMes(p.data); if (k in mapT) mapT[k]++; });
     completos.forEach(c => { const k = chaveMes(c.data); if (k in mapT) mapT[k]++; });
     return meses.map(m => ({ mes: m, Ocorrências: mapO[m], Treinamentos: mapT[m] }));
-  }, [ocorrencias, ptrbs, completos]);
+  }, [ocorrencias, completos]);
 
   const porCategoria = useMemo(() => {
     const map: Record<string, number> = {};
@@ -376,7 +370,7 @@ function TabVisaoGeral() {
 //  TAB: TREINAMENTOS (todos os tipos)
 // ═══════════════════════════════════════════════════════════
 
-type TipoTreino = 'PTR-BA' | 'PTR-BA Completo' | 'TP/EPR' | 'TAF' | 'Tempo Resposta' | 'Posicionamento';
+type TipoTreino = 'PTR-BA' | 'TP/EPR' | 'TAF' | 'Tempo Resposta' | 'Posicionamento';
 
 interface TreinoItem {
   id: string;
@@ -397,7 +391,6 @@ function tempoParaSegundos(valor: string): number | null {
 }
 
 function montarTreinos(
-  ptrbs: PTRB[],
   completos: PTRBACompleto[],
   tpeprs: TreinamentoTPEPR[],
   tafs: TreinamentoTAF[],
@@ -405,21 +398,6 @@ function montarTreinos(
   exercicios: ExercicioPosicionamento[],
 ): TreinoItem[] {
   const itens: TreinoItem[] = [];
-
-  for (const p of ptrbs) {
-    itens.push({
-      id: `ptrb-${p.id}`,
-      tipo: 'PTR-BA',
-      data: p.data,
-      equipe: p.equipe,
-      horas: p.horas || calcHoras(p.horaInicio, p.horaTermino),
-      instrutor: p.instrutor,
-      instrutores: p.instrutor ? [p.instrutor] : [],
-      participantes: (p.participantes || []).map(x => x.nomeCompleto).filter(Boolean),
-      tempos: [],
-      assuntos: p.assuntoMinistrado ? [p.assuntoMinistrado] : [],
-    });
-  }
 
   for (const c of completos) {
     const assuntos: string[] = [];
@@ -431,7 +409,7 @@ function montarTreinos(
     }
     itens.push({
       id: `completo-${c.id}`,
-      tipo: 'PTR-BA Completo',
+      tipo: 'PTR-BA',
       data: c.data,
       equipe: c.equipe,
       horas: horasPtrbaCompleto(c),
@@ -538,10 +516,10 @@ function TabTreinamentos() {
   useEffect(() => {
     listarAtivos().then(setBombeiros).catch(() => {});
     Promise.all([
-      listarPTRBs(), listarPTRBACompletos(), listarTPEPRs(), listarTAFs(), listarTreinos(), listarExercicios(),
+      listarPTRBACompletos(), listarTPEPRs(), listarTAFs(), listarTreinos(), listarExercicios(),
     ])
-      .then(([ptrbs, completos, tpeprs, tafs, treinosTR, exercicios]) => {
-        setItens(montarTreinos(ptrbs, completos, tpeprs, tafs, treinosTR, exercicios));
+      .then(([completos, tpeprs, tafs, treinosTR, exercicios]) => {
+        setItens(montarTreinos(completos, tpeprs, tafs, treinosTR, exercicios));
       })
       .catch(() => {});
   }, []);
@@ -1072,11 +1050,11 @@ function TabViaturas() {
 // ═══════════════════════════════════════════════════════════
 
 function TabDesempenho() {
-  const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
+  const [ptrbas, setPtrbas] = useState<PTRBACompleto[]>([]);
   const [ocorrencias, setOcorrencias] = useState<OcorrenciaDash[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   useEffect(() => { listarAtivos().then(setBombeiros); }, []);
-  useEffect(() => { listarPTRBs().then(setPtrbs); }, []);
+  useEffect(() => { listarPTRBACompletos().then(setPtrbas); }, []);
   useEffect(() => { carregarOcorrencias().then(setOcorrencias); }, []);
 
   const meses = getMeses();
@@ -1091,12 +1069,12 @@ function TabDesempenho() {
   const ptrbsPorMes = useMemo(() => {
     const map: Record<string, Record<string, number>> = {};
     meses.forEach(m => { map[m] = {}; EQUIPES.forEach(e => { map[m][e] = 0; }); });
-    ptrbs.forEach(p => {
+    ptrbas.forEach(p => {
       const k = chaveMes(p.data);
       if (map[k] && p.equipe in map[k]) map[k][p.equipe]++;
     });
     return meses.map(m => ({ mes: m, ...map[m] }));
-  }, [ptrbs, meses]);
+  }, [ptrbas, meses]);
 
   const statusOcor = useMemo(() => {
     const map: Record<string, number> = {};

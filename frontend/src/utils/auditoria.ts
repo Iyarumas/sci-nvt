@@ -1,7 +1,9 @@
 import type { Bombeiro } from '../types/bombeiro';
 import { formatarDataBR } from './datas';
 
-type PessoaAuditoria = Pick<Bombeiro, 'id' | 'matricula' | 'nome' | 'nomeCompleto' | 'nomeGuerra' | 'email' | 'cargo'>;
+type PessoaAuditoria = Pick<Bombeiro, 'id' | 'matricula' | 'nome' | 'nomeCompleto' | 'nomeGuerra' | 'email' | 'cargo'> & {
+  username?: string;
+};
 
 export type RegistroAuditavel = {
   createdBy?: string;
@@ -42,14 +44,22 @@ function statusEhConcluido(status?: string): boolean {
     .includes(normalizar(status));
 }
 
+function normalizarUsernameCurto(value: unknown): string {
+  return normalizar(value)
+    .replace(/^\d+[._-]*/, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
 export function formatarUsuarioAuditoria(value: unknown, pessoas: PessoaAuditoria[] = []): string {
   const raw = String(value || '').trim();
   const alvo = normalizar(raw);
+  const alvoCurto = normalizarUsernameCurto(raw);
   if (!alvo) return 'Não informado';
 
   const pessoa = pessoas.find(p =>
     normalizar(p.id) === alvo ||
     normalizar(p.matricula) === alvo ||
+    normalizar(p.username) === alvo ||
     normalizar(p.nomeGuerra) === alvo ||
     normalizar(p.nomeCompleto) === alvo ||
     normalizar(p.nome) === alvo ||
@@ -57,7 +67,11 @@ export function formatarUsuarioAuditoria(value: unknown, pessoas: PessoaAuditori
   ) || pessoas.find(p =>
     ` ${normalizar(p.nomeGuerra)} `.includes(` ${alvo} `) ||
     ` ${normalizar(p.nomeCompleto)} `.includes(` ${alvo} `)
-  );
+  ) || (alvoCurto.length >= 3 ? pessoas.find(p => {
+    const partesNomeCompleto = normalizar(p.nomeCompleto).split(/\s+/).map(normalizarUsernameCurto);
+    return normalizarUsernameCurto(p.nomeGuerra).startsWith(alvoCurto) ||
+      partesNomeCompleto.some(parte => parte.startsWith(alvoCurto));
+  }) : undefined);
 
   if (!pessoa) return raw;
   const nome = pessoa.nomeGuerra || pessoa.nomeCompleto || raw;

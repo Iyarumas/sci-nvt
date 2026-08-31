@@ -253,7 +253,7 @@ function getPageTitle(pathname: string): string {
     'relatorios/substituicoes': 'Substituições',
     'relatorios/trocas': 'Trocas',
     'registros-diarios/ptr-ba': 'PTR-BA por Instrução',
-    'registros-diarios/ptr-ba-completo': 'PTR-BA Completo',
+    'registros-diarios/ptr-ba-completo': 'PTR-BA',
     'registros-diarios/lro-ocorrencias': 'LRO/Ocorrências',
     'registros-diarios/bona-rea': 'BONA/REA',
     'registros-diarios/inspecoes': 'Inspeções',

@@ -23,6 +23,7 @@ import {
   aprovarSubstituicaoTemporaria,
   rejeitarSubstituicaoTemporaria,
   excluirSubstituicaoTemporaria,
+  solicitarTrocaSubstitutoAfastamentoIndeterminado,
 } from '../../services/substituicaoTemporariaService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { capitalizarNome } from '../../utils/capitalize';
@@ -132,6 +133,10 @@ function tipoOptionLabel(tipo: TipoSubstituicao): string {
 
 function isIndeterminado(sub: Pick<SubstituicaoTemporaria, 'motivo' | 'dataFim'>): boolean {
   return sub.motivo === 'INSS Indeterminado' || sub.dataFim === DATA_FIM_INDETERMINADO;
+}
+
+function isIndeterminadoAtivo(sub: Pick<SubstituicaoTemporaria, 'motivo' | 'dataFim'>): boolean {
+  return sub.motivo === 'INSS Indeterminado' && sub.dataFim === DATA_FIM_INDETERMINADO;
 }
 
 function dataLocalISO(date: Date): string {
@@ -244,8 +249,15 @@ function motivoLabel(sub: SubstituicaoTemporaria): string {
 }
 
 function periodoLabel(sub: SubstituicaoTemporaria): string {
-  if (isIndeterminado(sub)) return `a partir de ${formatDate(sub.dataInicio)} · prazo indeterminado`;
+  if (isIndeterminadoAtivo(sub)) return `a partir de ${formatDate(sub.dataInicio)} · prazo indeterminado`;
+  if (sub.motivo === 'INSS Indeterminado') return `${formatDate(sub.dataInicio)} a ${formatDate(sub.dataFim)} · INSS encerrado`;
   return `${formatDate(sub.dataInicio)} a ${formatDate(sub.dataFim)} (${sub.dias} dias)`;
+}
+
+function tempoLabel(sub: SubstituicaoTemporaria): string {
+  if (isIndeterminadoAtivo(sub)) return 'Prazo indeterminado';
+  if (sub.motivo === 'INSS Indeterminado') return 'Período encerrado';
+  return `${sub.dias} dias`;
 }
 
 function TipoBadge({ tipo }: { tipo: TipoSubstituicao }) {
@@ -298,6 +310,11 @@ export function Substituicoes() {
   const [relatorioAno, setRelatorioAno] = useState(String(new Date().getFullYear()));
   const [printingMonthly, setPrintingMonthly] = useState(false);
   const [printingSub, setPrintingSub] = useState<SubstituicaoTemporaria | null>(null);
+  const [trocaSub, setTrocaSub] = useState<SubstituicaoTemporaria | null>(null);
+  const [trocaDataInicio, setTrocaDataInicio] = useState('');
+  const [trocaNovoSubstituto, setTrocaNovoSubstituto] = useState<Bombeiro | null>(null);
+  const [trocaSaving, setTrocaSaving] = useState(false);
+  const [trocaError, setTrocaError] = useState('');
 
   const [formTipo, setFormTipo] = useState<TipoSubstituicao>('Substituição');
   const [formSubstituido, setFormSubstituido] = useState<Bombeiro | null>(null);
@@ -455,6 +472,16 @@ export function Substituicoes() {
     return blocked;
   }, [activeBombeiros, formSubstituido]);
 
+  const trocaSubstitutosBloqueados = useMemo(() => {
+    if (!trocaSub) return new Set<string>();
+    const blocked = new Set<string>([trocaSub.funcionarioId, trocaSub.substitutoId]);
+    for (const b of activeBombeiros) {
+      const aviso = validarCursoParaFuncao(b, trocaSub.funcionarioCargo as Cargo);
+      if (aviso && aviso.nivel === 'bloqueado') blocked.add(b.id);
+    }
+    return blocked;
+  }, [activeBombeiros, trocaSub]);
+
   const cadeiaCompleta = true;
 
   const afastamentoExigeDescricao = formTipo === 'Afastamento' &&
@@ -580,7 +607,7 @@ export function Substituicoes() {
           </div>
           <div>
             <p className="font-bold uppercase text-slate-500">Tempo</p>
-            <p className="mt-1 font-semibold text-slate-950">{isIndeterminado(sub) ? 'Prazo indeterminado' : `${sub.dias} dias`}</p>
+            <p className="mt-1 font-semibold text-slate-950">{tempoLabel(sub)}</p>
           </div>
           <div>
             <p className="font-bold uppercase text-slate-500">Criado por</p>
@@ -688,7 +715,7 @@ export function Substituicoes() {
     setFormMotivoOutro('');
     setFormCidAtestado('');
     setFormPlantaoExtra('');
-    setFormDias(15);
+    setFormDias(tipo === 'Afastamento' ? 1 : 15);
     setExtrasAfastamento([]);
   }
 
@@ -716,6 +743,86 @@ export function Substituicoes() {
 
   function pessoaPorId(id: string): Bombeiro | undefined {
     return activeBombeiros.find(b => b.id === id);
+  }
+
+  function dataInicioFixaSubstituicao(sub: SubstituicaoTemporaria): string {
+    return isIndeterminado(sub)
+      ? dataInicioSubstituicaoIndeterminada(sub.dataInicio, Number(sub.dias) || 0)
+      : sub.dataInicio;
+  }
+
+  function dataMinimaTrocaSubstituto(sub: SubstituicaoTemporaria): string {
+    const inicioFixo = dataInicioFixaSubstituicao(sub);
+    return inicioFixo ? somarDias(inicioFixo, 1) : '';
+  }
+
+  function podeSolicitarTrocaSubstituto(sub: SubstituicaoTemporaria): boolean {
+    return !isRelatorioRoute &&
+      canApprove &&
+      sub.tipo === 'Afastamento' &&
+      sub.status === 'Aprovada' &&
+      isIndeterminadoAtivo(sub) &&
+      !!sub.substitutoId;
+  }
+
+  function historicoSubstituicaoIndeterminada(sub: SubstituicaoTemporaria): SubstituicaoTemporaria[] {
+    if (sub.tipo !== 'Afastamento' || sub.motivo !== 'INSS Indeterminado') return [];
+    return subs
+      .filter(item =>
+        item.tipo === 'Afastamento' &&
+        item.motivo === 'INSS Indeterminado' &&
+        item.funcionarioId === sub.funcionarioId &&
+        item.status !== 'Rejeitada'
+      )
+      .sort((a, b) => dataInicioFixaSubstituicao(a).localeCompare(dataInicioFixaSubstituicao(b)));
+  }
+
+  function periodoHistoricoSubstituto(sub: SubstituicaoTemporaria): string {
+    const inicio = dataInicioFixaSubstituicao(sub) || sub.dataInicio;
+    if (sub.dataFim === DATA_FIM_INDETERMINADO) return `a partir de ${formatDate(inicio)}`;
+    return `${formatDate(inicio)} a ${formatDate(sub.dataFim)}`;
+  }
+
+  function abrirTrocaSubstituto(sub: SubstituicaoTemporaria) {
+    const dataMinima = dataMinimaTrocaSubstituto(sub);
+    const hoje = dataLocalISO(new Date());
+    setTrocaSub(sub);
+    setTrocaDataInicio(hoje > dataMinima ? hoje : dataMinima);
+    setTrocaNovoSubstituto(null);
+    setTrocaError('');
+  }
+
+  function fecharTrocaSubstituto() {
+    setTrocaSub(null);
+    setTrocaDataInicio('');
+    setTrocaNovoSubstituto(null);
+    setTrocaError('');
+  }
+
+  async function handleSolicitarTrocaSubstituto() {
+    if (!trocaSub || !trocaNovoSubstituto || trocaSaving) return;
+    const dataMinima = dataMinimaTrocaSubstituto(trocaSub);
+    if (!trocaDataInicio || trocaDataInicio < dataMinima) {
+      setTrocaError(`Informe uma data a partir de ${formatDate(dataMinima)}.`);
+      return;
+    }
+    setTrocaSaving(true);
+    setTrocaError('');
+    try {
+      await solicitarTrocaSubstitutoAfastamentoIndeterminado({
+        substituicaoOrigemId: trocaSub.id,
+        dataInicio: trocaDataInicio,
+        novoSubstitutoId: trocaNovoSubstituto.id,
+        criadoPor: user?.username || '',
+        criadoPorNome: user?.name || '',
+      });
+      fecharTrocaSubstituto();
+      await carregar();
+    } catch (err) {
+      setTrocaError(err instanceof Error ? err.message : 'Erro ao solicitar troca de substituto.');
+    } finally {
+      setTrocaSaving(false);
+    }
   }
 
   function montarExtrasCadeia(): EloCadeiaSubstituicaoTemporaria[] {
@@ -920,6 +1027,16 @@ export function Substituicoes() {
     return <Clock className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />;
   }
 
+  const trocaDataMinima = trocaSub ? dataMinimaTrocaSubstituto(trocaSub) : '';
+  const trocaAvisoCurso = trocaSub && trocaNovoSubstituto && trocaNovoSubstituto.id !== trocaSub.funcionarioId
+    ? validarCursoParaFuncao(trocaNovoSubstituto, trocaSub.funcionarioCargo as Cargo)
+    : null;
+  const trocaPodeSalvar = !!trocaSub &&
+    !!trocaNovoSubstituto &&
+    !!trocaDataInicio &&
+    (!trocaDataMinima || trocaDataInicio >= trocaDataMinima) &&
+    trocaAvisoCurso?.nivel !== 'bloqueado';
+
   return (
     <PageContainer>
       <div className="mb-6 flex items-center justify-between">
@@ -1022,6 +1139,8 @@ export function Substituicoes() {
             const inicioSubstituicaoFixa = isIndeterminado(sub)
               ? dataInicioSubstituicaoIndeterminada(sub.dataInicio, Number(sub.dias) || 0)
               : '';
+            const podeTrocarSubstituto = podeSolicitarTrocaSubstituto(sub);
+            const historicoIndeterminado = historicoSubstituicaoIndeterminada(sub);
             return (
               <div key={sub.id}
                 onClick={() => setExpandedId(expanded ? null : sub.id)}
@@ -1123,7 +1242,19 @@ export function Substituicoes() {
                     )}
                     {descricao && (
                       <div className="mt-3 rounded-xl border border-graphite-200 bg-graphite-50/80 p-3 dark:border-border-dark dark:bg-surface-hover/50">
-                        <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-graphite-400">Descrição</p>
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-graphite-400">Descrição</p>
+                          {podeTrocarSubstituto && (
+                            <button
+                              type="button"
+                              onClick={event => { event.stopPropagation(); abrirTrocaSubstituto(sub); }}
+                              className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-aviation-50 hover:text-aviation-600 dark:hover:bg-aviation-900/20 dark:hover:text-aviation-300"
+                              title="Trocar substituto a partir de uma data"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                         <p className="whitespace-pre-line text-graphite-700 dark:text-graphite-200">{descricao}</p>
                       </div>
                     )}
@@ -1142,15 +1273,36 @@ export function Substituicoes() {
                     )}
                     {sub.tipo === 'Afastamento' && inicioSubstituicaoFixa && sub.substitutoId && (
                       <div className="mt-3 rounded-xl border border-aviation-200 bg-aviation-50/70 p-3 dark:border-aviation-800/40 dark:bg-aviation-900/20">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Substituição por prazo indeterminado</p>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-aviation-800 dark:text-aviation-100">
-                          <span className="font-semibold">{formatDate(inicioSubstituicaoFixa)}</span>
-                          <span className="text-aviation-400">·</span>
-                          <span>{cargoLabel(sub.funcionarioCargo)} {capitalize(sub.funcionarioNome)}</span>
-                          <ArrowRight className="h-3 w-3 text-aviation-500" />
-                          <span className="font-semibold">
-                            {cargoLabel(sub.funcionarioCargo)} {capitalize(sub.substitutoNome)}
-                          </span>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Substituição por prazo indeterminado</p>
+                          {!descricao && podeTrocarSubstituto && (
+                            <button
+                              type="button"
+                              onClick={event => { event.stopPropagation(); abrirTrocaSubstituto(sub); }}
+                              className="rounded-lg p-1.5 text-aviation-500 transition-colors hover:bg-aviation-100 hover:text-aviation-700 dark:hover:bg-aviation-900/30 dark:hover:text-aviation-200"
+                              title="Trocar substituto a partir de uma data"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5">
+                          {(historicoIndeterminado.length > 0 ? historicoIndeterminado : [sub]).map(item => (
+                            <div key={item.id} className="flex flex-wrap items-center gap-2 text-xs text-aviation-800 dark:text-aviation-100">
+                              <span className="font-semibold">{periodoHistoricoSubstituto(item)}</span>
+                              <span className="text-aviation-400">·</span>
+                              <span>{cargoLabel(item.funcionarioCargo)} {capitalize(item.funcionarioNome)}</span>
+                              <ArrowRight className="h-3 w-3 text-aviation-500" />
+                              <span className="font-semibold">
+                                {cargoLabel(item.funcionarioCargo)} {capitalize(item.substitutoNome)}
+                              </span>
+                              {item.status === 'Pendente' && (
+                                <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
+                                  Pendente
+                                </span>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -1708,6 +1860,94 @@ export function Substituicoes() {
               <button onClick={handleConfirmRejeitar} disabled={!rejectReason.trim() || rejectSaving}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50">
                 {rejectSaving ? 'Rejeitando...' : 'Confirmar Rejeição'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {trocaSub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={fecharTrocaSubstituto}>
+          <div className="w-full max-w-xl rounded-2xl bg-white/95 p-6 shadow-2xl backdrop-blur-sm dark:bg-surface-elevated/95" onClick={e => e.stopPropagation()}>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Solicitar aprovação</p>
+                <h3 className="mt-1 text-lg font-bold text-graphite-900 dark:text-graphite-100">Trocar substituto do INSS</h3>
+                <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">
+                  A substituição atual só será encerrada quando esta troca for aprovada.
+                </p>
+              </div>
+              <button type="button" onClick={fecharTrocaSubstituto}
+                className="rounded-lg p-2 text-graphite-400 transition-colors hover:bg-graphite-100 hover:text-graphite-700 dark:hover:bg-surface-hover dark:hover:text-graphite-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-graphite-200 bg-graphite-50/80 p-3 text-sm dark:border-border-dark dark:bg-surface-card/60">
+              <p className="text-xs font-semibold uppercase tracking-wider text-graphite-400">Atual</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-graphite-800 dark:text-graphite-100">
+                <span>{cargoLabel(trocaSub.funcionarioCargo)} {capitalize(trocaSub.funcionarioNome)}</span>
+                <ArrowRight className="h-3.5 w-3.5 text-aviation-500" />
+                <span className="font-semibold">{cargoLabel(trocaSub.funcionarioCargo)} {capitalize(trocaSub.substitutoNome)}</span>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[160px_minmax(220px,1fr)] md:items-end">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Início da troca</label>
+                <input
+                  type="date"
+                  min={trocaDataMinima}
+                  value={trocaDataInicio}
+                  onChange={e => setTrocaDataInicio(e.target.value)}
+                  className={INPUT_CLASS}
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Nova pessoa</label>
+                <SearchSelect
+                  value={trocaNovoSubstituto?.id || ''}
+                  onChange={value => setTrocaNovoSubstituto(activeBombeiros.find(b => b.id === value) || null)}
+                  placeholder="Função, nome de guerra, equipe..."
+                  valueField="id"
+                  options={activeBombeiros}
+                  disabledIds={trocaSubstitutosBloqueados}
+                  disabledTooltip="Pessoa não pode assumir esta função ou já é a substituição atual"
+                  displayMode="operational"
+                />
+              </div>
+            </div>
+
+            {trocaNovoSubstituto && (
+              <p className="mt-2 text-xs text-graphite-500 dark:text-graphite-400">{nomeOperacional(trocaNovoSubstituto)}</p>
+            )}
+            {trocaDataMinima && trocaDataInicio && trocaDataInicio < trocaDataMinima && (
+              <p className="mt-2 text-xs text-red-500">A troca precisa começar a partir de {formatDate(trocaDataMinima)}.</p>
+            )}
+            {trocaAvisoCurso && (
+              <div className={`mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+                trocaAvisoCurso.nivel === 'bloqueado'
+                  ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+              }`}>
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{trocaAvisoCurso.mensagem}</span>
+              </div>
+            )}
+            {trocaError && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300">
+                {trocaError}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={fecharTrocaSubstituto}
+                className="rounded-xl px-4 py-2.5 text-sm font-medium text-graphite-600 transition-colors hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover">
+                Cancelar
+              </button>
+              <button type="button" onClick={handleSolicitarTrocaSubstituto} disabled={!trocaPodeSalvar || trocaSaving}
+                className="rounded-xl bg-aviation-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-aviation-700 disabled:opacity-50 dark:bg-aviation-500 dark:hover:bg-aviation-600">
+                {trocaSaving ? 'Enviando...' : 'Enviar para aprovação'}
               </button>
             </div>
           </div>

@@ -82,20 +82,20 @@ const SITUACOES_TOOLTIP = PTRBA_COMPLETO_SITUACOES
 const PTRBA_COMPLETO_TOUR_STEPS = [
   {
     selector: 'main h1',
-    title: 'PTR-BA completo',
-    body: 'Esta página registra o PTR-BA completo do plantão, com efetivo, instruções e evidências.',
-    detail: 'Diferente do PTR-BA por instrução, aqui o documento reúne o conjunto completo do dia e pode gerar PDF com as informações e imagens.',
+    title: 'PTR-BA',
+    body: 'Esta página registra o PTR-BA do plantão, com efetivo, instruções e evidências.',
+    detail: 'Aqui o documento reúne o conjunto do dia e pode gerar PDF com as informações e imagens.',
   },
   {
     selector: 'main select',
     title: 'Filtros de registros',
-    body: 'Filtre por ano, mês e equipe para encontrar PTR-BAs completos já feitos.',
+    body: 'Filtre por ano, mês e equipe para encontrar PTR-BAs já feitos.',
     detail: 'Use a lista para abrir, baixar PDF, editar ou excluir registros conforme sua permissão.',
   },
   {
     selector: 'main button',
-    title: 'Novo PTR-BA completo',
-    body: 'O botão abre o formulário completo do PTR-BA.',
+    title: 'Novo PTR-BA',
+    body: 'O botão abre o formulário do PTR-BA.',
     detail: 'O sistema pode usar a escala diária, trocas e vigências para ajudar a montar participantes e informações do plantão.',
   },
   {
@@ -656,7 +656,7 @@ function PTRBACompletoForm({
           Cancelar
         </button>
         <button type="submit" className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
-          <Save className="h-4 w-4" /> {registro ? 'Salvar Alterações' : 'Criar PTR-BA Completo'}
+          <Save className="h-4 w-4" /> {registro ? 'Salvar Alterações' : 'Criar PTR-BA'}
         </button>
       </div>
     </form>
@@ -712,7 +712,7 @@ function PTRBACompletoCard({
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h3 className="text-base font-bold text-graphite-900 dark:text-graphite-100">
-              PTR-BA Completo - {registro.equipe} - {formatDate(registro.data)}
+              PTR-BA - {registro.equipe} - {formatDate(registro.data)}
             </h3>
             <span className="rounded-full bg-aviation-50 px-2.5 py-1 text-xs font-semibold text-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               {evidenciasPreenchidas.length} evidência(s)
@@ -962,7 +962,7 @@ export function PTRBACompletoPage() {
           }
         } catch { /* trocas são opcionais */ }
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Erro ao carregar PTR-BA completo.');
+        alert(err instanceof Error ? err.message : 'Erro ao carregar PTR-BA.');
       } finally {
         if (!cancelado) setLoading(false);
       }
@@ -975,11 +975,11 @@ export function PTRBACompletoPage() {
     try {
       if (editando?.id) {
         if (!canEditarRegistroDiario(contexto, editando, username, bombeiros)) {
-          alert('Você só pode editar PTR-BA completo que você criou, que foi criado pelo chefe no caso de BA-LR, ou que pertence à sua equipe fixa autorizada.');
+          alert('Você só pode editar PTR-BA que você criou, que foi criado pelo chefe no caso de BA-LR, ou que pertence à sua equipe fixa autorizada.');
           return;
         }
       } else if (!canCriarRegistrosDiarios(contexto)) {
-        alert('Você não tem permissão para criar PTR-BA completo.');
+        alert('Você não tem permissão para criar PTR-BA.');
         return;
       }
       const equipeAlvo = canEscolherEquipe ? input.equipe : equipePadrao || input.equipe;
@@ -993,7 +993,7 @@ export function PTRBACompletoPage() {
       await carregar();
       setMode('list');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao salvar PTR-BA completo.');
+      alert(err instanceof Error ? err.message : 'Erro ao salvar PTR-BA.');
     }
   }
 
@@ -1001,7 +1001,7 @@ export function PTRBACompletoPage() {
     try {
       const alvo = registros.find(registro => registro.id === id);
       if (!alvo || !canExcluirRegistroDiario(contexto, alvo, username, bombeiros)) {
-        alert('Você só pode excluir PTR-BA completo que você criou (ou que seu chefe de equipe criou, no caso de BA-LR).');
+        alert('Você só pode excluir PTR-BA que você criou (ou que seu chefe de equipe criou, no caso de BA-LR).');
         setConfirmDelete(null);
         return;
       }
@@ -1029,7 +1029,7 @@ export function PTRBACompletoPage() {
       setPreviewingId(registro.id);
       const blob = await gerarPTRBACompletoPdf(registro);
       setPreviewPdfData(await blob.arrayBuffer());
-      setPreviewPdfTitle(`PTR-BA Completo - ${registro.equipe} - ${formatDate(registro.data)}`);
+      setPreviewPdfTitle(`PTR-BA - ${registro.equipe} - ${formatDate(registro.data)}`);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao visualizar PDF.');
     } finally {
@@ -1045,7 +1045,7 @@ export function PTRBACompletoPage() {
   if (mode === 'form') {
     return (
       <PageContainer>
-        <PageTitle icon={FileText} title={`PTR-BA Completo - ${editando ? 'Editar' : 'Novo'} Registro`} />
+        <PageTitle icon={FileText} title={`PTR-BA - ${editando ? 'Editar' : 'Novo'} Registro`} />
         <PTRBACompletoForm
           registro={editando || undefined}
           onCancel={() => { setMode('list'); setEditando(null); }}
@@ -1067,7 +1067,7 @@ export function PTRBACompletoPage() {
   if (loading) {
     return (
       <PageContainer>
-        <PageTitle icon={FileText} title="PTR-BA Completo" />
+        <PageTitle icon={FileText} title="PTR-BA" />
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-aviation-500 border-t-transparent" />
         </div>
@@ -1077,7 +1077,7 @@ export function PTRBACompletoPage() {
 
   return (
     <PageContainer>
-      <PageTitle icon={FileText} title="PTR-BA Completo" />
+      <PageTitle icon={FileText} title="PTR-BA" />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -1097,7 +1097,7 @@ export function PTRBACompletoPage() {
         </div>
         {canCreate && (
           <button onClick={() => { setEditando(null); setMode('form'); }} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
-            <Plus className="h-4 w-4" /> Novo PTR-BA Completo
+            <Plus className="h-4 w-4" /> Novo PTR-BA
           </button>
         )}
       </div>
@@ -1106,7 +1106,7 @@ export function PTRBACompletoPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300/60 bg-white/50 p-12 text-center backdrop-blur-sm dark:border-border-dark dark:bg-surface-card">
           <FileText className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhum registro encontrado</h3>
-          <p className="text-sm text-graphite-400">{canCreate ? 'Clique em "Novo PTR-BA Completo" para criar o primeiro.' : 'Nenhum registro disponível.'}</p>
+          <p className="text-sm text-graphite-400">{canCreate ? 'Clique em "Novo PTR-BA" para criar o primeiro.' : 'Nenhum registro disponível.'}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -1136,7 +1136,7 @@ export function PTRBACompletoPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white/95 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:bg-surface-elevated/95">
             <h3 className="mb-2 text-lg font-bold text-graphite-900 dark:text-graphite-100">Confirmar exclusão</h3>
-            <p className="mb-6 text-sm text-graphite-500 dark:text-graphite-400">Tem certeza que deseja excluir este PTR-BA completo?</p>
+            <p className="mb-6 text-sm text-graphite-500 dark:text-graphite-400">Tem certeza que deseja excluir este PTR-BA?</p>
             <div className="flex justify-end gap-3">
               <button onClick={() => setConfirmDelete(null)} className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2 text-sm font-medium text-graphite-700 shadow-sm backdrop-blur-sm transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card/80 dark:text-graphite-200">
                 Cancelar
@@ -1152,7 +1152,7 @@ export function PTRBACompletoPage() {
       <PageTour
         steps={PTRBA_COMPLETO_TOUR_STEPS}
         targetAttribute="data-ptrba-completo-tour"
-        title="Abrir tutorial de PTR-BA Completo"
+        title="Abrir tutorial de PTR-BA"
         detailLabel="PDF"
       />
     </PageContainer>

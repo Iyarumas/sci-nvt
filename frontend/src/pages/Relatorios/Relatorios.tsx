@@ -8,7 +8,7 @@ import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarOcorrencias } from '../../services/ocorrenciaService';
-import { listarPTRBs } from '../../services/ptrbService';
+import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
 import { listarLROs } from '../../services/lroService';
 import { listarBombeiros } from '../../services/bombeiroService';
 
@@ -32,7 +32,7 @@ export function Relatorios() {
   useEffect(() => {
     if (loadingContexto || !canVisualizarRelatorios) return;
     listarOcorrencias({ numeroPrefixo: 'BONA' }).then(o => setOcorrenciasCount(o.length)).catch(() => {});
-    listarPTRBs().then(p => setPtrbCount(p.length)).catch(() => {});
+    listarPTRBACompletos().then(p => setPtrbCount(p.length)).catch(() => {});
     listarLROs().then(l => setLroCount(l.length)).catch(() => {});
     listarBombeiros().then(b => setEfetivoCount(b.length)).catch(() => {});
   }, [canVisualizarRelatorios, loadingContexto]);

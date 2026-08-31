@@ -1797,6 +1797,11 @@ export function Checklists() {
             text-align: left;
           }
 
+          .checklist-print-table tbody .print-item {
+            font-size: 7pt;
+            line-height: 0.8;
+          }
+
           .checklist-print-table .print-item-equipment {
             width: 24%;
           }

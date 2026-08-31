@@ -22,13 +22,15 @@ import type { DocumentWithFields, DocumentField, DocumentFill } from '../../type
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarBombeiros } from '../../services/bombeiroService';
 import { listarAPOCs } from '../../services/apocService';
+import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import type { Bombeiro } from '../../types/bombeiro';
 import { CARGO_OPTIONS, EQUIPE_OPTIONS } from '../../types/bombeiro';
 import type { APOC } from '../../types/apoc';
-import { formatarDataBR, formatarDataHoraBR, hojeLocalISO } from '../../utils/datas';
+import { estaNoPeriodoISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO } from '../../utils/datas';
 import { nomeArquivoTrocaServicoPdf } from '../../utils/documentFileNames';
 type SubView = 'list' | 'form';
 type ViewMode = 'list' | 'report';
+type PessoaTroca = { id: string; tipo: 'bombeiro' | 'apoc'; cargo: string; nomeGuerra: string; nomeCompleto: string; equipe: string; turno: string };
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
@@ -522,6 +524,7 @@ export function Trocas() {
   const [showAutorizacaoAviso, setShowAutorizacaoAviso] = useState(false);
   const [bombeirosList, setBombeirosList] = useState<Bombeiro[]>([]);
   const [apocsList, setApocsList] = useState<APOC[]>([]);
+  const [vigenciasList, setVigenciasList] = useState<VigenciaSubstituicao[]>([]);
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState<number>(now.getMonth());
   const [filterYear, setFilterYear] = useState<number>(now.getFullYear());
@@ -754,17 +757,14 @@ export function Trocas() {
     const ids = new Set<string>();
     filteredFills.forEach(f => {
       const fd = f.filled_data as Record<string, string>;
-      const p1 = getPessoaByNome(fd.nome_solicitante || '');
-      const p2 = getPessoaByNome(fd.nome_solicitado || '');
-      const cargo1 = p1?.cargo || (fd.funcao_solicitante || '').split(' - ')[0] || '';
-      const cargo2 = p2?.cargo || (fd.funcao_solicitado || '').split(' - ')[0] || '';
+      const { pessoaSol: p1, pessoaSolic: p2, cargoSolPlantao: cargo1, cargoSolicPlantao: cargo2 } = getFuncoesTroca(fd);
       if (cargo1 && cargo2 && cargo1 !== cargo2) ids.add(f.id);
       if (p1?.turno && p2?.turno && !mesmoTurnoEfetivo(p1, p2)) ids.add(f.id);
       if (fd.troca_emergencial === 'SIM') ids.add(f.id);
     });
     getExcessoLimiteFillIds(filteredFills).forEach(id => ids.add(id));
     return ids;
-  }, [filteredFills, bombeirosList, apocsList]);
+  }, [filteredFills, bombeirosList, apocsList, vigenciasList]);
 
   const excessoLimiteIds = useMemo(() => {
     return getExcessoLimiteFillIds(filteredFills);
@@ -819,13 +819,15 @@ export function Trocas() {
   async function init() {
     try {
       setLoading(true);
-      const [docs, bombeiros, apocs] = await Promise.all([
+      const [docs, bombeiros, apocs, vigencias] = await Promise.all([
         listarDocumentos(),
         listarBombeiros().catch(() => { try { return JSON.parse(localStorage.getItem('sescinc-bombeiros') || '[]'); } catch { return []; } }),
         listarAPOCs(),
+        listarVigencias({ ativa: true }).catch(() => []),
       ]);
       setBombeirosList(bombeiros);
       setApocsList(apocs);
+      setVigenciasList(vigencias);
       const trocaDoc = docs.find(d => d.source_module === 'trocas') || docs.find(d => findTemplate(d.name) !== null);
       if (trocaDoc) {
         const full = await buscarDocumento(trocaDoc.id);
@@ -913,7 +915,7 @@ export function Trocas() {
     return CARGO_OPTIONS.find(c => c.value === cargo)?.label || cargo;
   }
 
-  function getPessoaByNome(nome: string): { cargo: string; nomeGuerra: string; nomeCompleto: string; equipe: string; turno: string } | null {
+  function getPessoaByNome(nome: string): PessoaTroca | null {
     if (!nome) return null;
     const all = getAllFuncionarios();
     const lower = nome.toLowerCase().trim();
@@ -929,9 +931,39 @@ export function Trocas() {
     });
     if (!match) return null;
     if (match._type === 'bombeiro') {
-      return { cargo: match._raw.cargo || '', nomeGuerra: match._raw.nomeGuerra || '', nomeCompleto: match._raw.nomeCompleto || '', equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
+      return { id: match._raw.id || '', tipo: 'bombeiro', cargo: match._raw.cargo || '', nomeGuerra: match._raw.nomeGuerra || '', nomeCompleto: match._raw.nomeCompleto || '', equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
     }
-    return { cargo: match._raw.funcao || 'APOC', nomeGuerra: match._raw.nomeGuerra || match.label, nomeCompleto: match._raw.nomeCompleto || match.label, equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
+    return { id: match._raw.id || '', tipo: 'apoc', cargo: match._raw.funcao || 'APOC', nomeGuerra: match._raw.nomeGuerra || match.label, nomeCompleto: match._raw.nomeCompleto || match.label, equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
+  }
+
+  function getCargoBaseTroca(pessoa: PessoaTroca | null, funcaoFallback = ''): string {
+    return pessoa?.cargo || String(funcaoFallback || '').split(' - ')[0] || '';
+  }
+
+  function getCargoEfetivoNaData(pessoa: PessoaTroca | null, data: string, funcaoFallback = ''): string {
+    const cargoBase = getCargoBaseTroca(pessoa, funcaoFallback);
+    if (!pessoa?.id || pessoa.tipo !== 'bombeiro' || !data) return cargoBase;
+
+    const vigencia = vigenciasList
+      .filter(v =>
+        v.substitutoId === pessoa.id &&
+        v.substitutoId !== v.funcionarioOriginalId &&
+        estaNoPeriodoISO(data, v.dataInicio, v.dataFim)
+      )
+      .sort((a, b) => a.nivelCascata - b.nivelCascata)[0];
+
+    return vigencia?.cargoExercido || cargoBase;
+  }
+
+  function getFuncoesTroca(data: Record<string, string>) {
+    const pessoaSol = getPessoaByNome(data.nome_solicitante || '');
+    const pessoaSolic = getPessoaByNome(data.nome_solicitado || '');
+    return {
+      pessoaSol,
+      pessoaSolic,
+      cargoSolPlantao: getCargoEfetivoNaData(pessoaSol, data.data_solicitada || '', data.funcao_solicitante || ''),
+      cargoSolicPlantao: getCargoEfetivoNaData(pessoaSolic, data.data_folga_solicitado || '', data.funcao_solicitado || ''),
+    };
   }
 
   function normalizarChavePessoaTroca(value: string): string {
@@ -1054,7 +1086,9 @@ export function Trocas() {
     return false;
   }
 
-  function precisaAutorizacaoGerente(nomeSol: string, nomeSolic: string, existingFills?: DocumentFill[]): boolean {
+  function precisaAutorizacaoGerente(data: Record<string, string>, existingFills?: DocumentFill[]): boolean {
+    const nomeSol = data.nome_solicitante || '';
+    const nomeSolic = data.nome_solicitado || '';
     const pSol = getPessoaByNome(nomeSol);
     const pSolic = getPessoaByNome(nomeSolic);
     if (!pSol || !pSolic) return false;
@@ -1078,7 +1112,8 @@ export function Trocas() {
 
     if (pSol.turno && pSolic.turno && !mesmoTurnoEfetivo(pSol, pSolic)) return true;
 
-    if (pSol.cargo && pSolic.cargo && pSol.cargo !== pSolic.cargo) return true;
+    const { cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(data);
+    if (cargoSolPlantao && cargoSolicPlantao && cargoSolPlantao !== cargoSolicPlantao) return true;
 
     return false;
   }
@@ -1154,6 +1189,9 @@ export function Trocas() {
 
   function prepareFormDataWithAuth(data: Record<string, string>): Record<string, string> {
     const result = { ...data };
+    const { cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(result);
+    if (cargoSolPlantao) result.funcao_solicitante = cargoSolPlantao;
+    if (cargoSolicPlantao) result.funcao_solicitado = cargoSolicPlantao;
     const criarNome = user?.pessoa?.nomeGuerra || user?.name || '';
     const criarCargo = user?.pessoa?.funcao || '';
     result.criado_por = criarCargo ? `${criarCargo} ${criarNome}` : criarNome;
@@ -1188,6 +1226,9 @@ export function Trocas() {
     dadosStr.check_deferido = 'V';
     dadosStr.check_indeferido = '';
     dadosStr.logo_med_group = '/assets/med-group-logo.png';
+    const { cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(data);
+    if (cargoSolPlantao) dadosStr.funcao_solicitante = cargoSolPlantao;
+    if (cargoSolicPlantao) dadosStr.funcao_solicitado = cargoSolicPlantao;
 
     return dadosStr;
   }
@@ -1292,7 +1333,7 @@ export function Trocas() {
       setShowNotifPopup({ msg: 'Você só pode aprovar trocas vinculadas à sua equipe efetiva.', type: 'error' });
       return;
     }
-    if (precisaAutorizacaoGerente(formData.nome_solicitante || '', formData.nome_solicitado || '')) {
+    if (precisaAutorizacaoGerente(formData)) {
       setShowAutorizacaoAviso(true);
     } else {
       setShowConfirmPdf(true);
@@ -1488,7 +1529,11 @@ export function Trocas() {
     }
 
     if (field.field_name === 'funcao_solicitante' || field.field_name === 'funcao_solicitado') {
-      const fullLabel = CARGO_OPTIONS.find(c => c.value === value)?.label || value;
+      const { cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(formData);
+      const displayValue = field.field_name === 'funcao_solicitante'
+        ? cargoSolPlantao || value
+        : cargoSolicPlantao || value;
+      const fullLabel = CARGO_OPTIONS.find(c => c.value === displayValue)?.label || displayValue;
       return <input type="text" value={fullLabel} readOnly className={`${readonlyBase} ${cls}`} />;
     }
 
@@ -1945,12 +1990,9 @@ export function Trocas() {
         const funcWarnings: string[] = [];
         filteredFills.forEach(fill => {
           const fd = fill.filled_data as Record<string, string>;
-          const p1 = getPessoaByNome(fd.nome_solicitante || '');
-          const p2 = getPessoaByNome(fd.nome_solicitado || '');
-          const cargo1 = p1?.cargo || (fd.funcao_solicitante || '').split(' - ')[0] || '';
-          const cargo2 = p2?.cargo || (fd.funcao_solicitado || '').split(' - ')[0] || '';
-          const label1 = getPessoaTrocaInfo(fd.nome_solicitante || '', fd.funcao_solicitante || '')?.label || [cargo1, fd.nome_solicitante].filter(Boolean).join(' ');
-          const label2 = getPessoaTrocaInfo(fd.nome_solicitado || '', fd.funcao_solicitado || '')?.label || [cargo2, fd.nome_solicitado].filter(Boolean).join(' ');
+          const { pessoaSol: p1, pessoaSolic: p2, cargoSolPlantao: cargo1, cargoSolicPlantao: cargo2 } = getFuncoesTroca(fd);
+          const label1 = [cargo1, p1?.nomeGuerra || fd.nome_solicitante].filter(Boolean).join(' ');
+          const label2 = [cargo2, p2?.nomeGuerra || fd.nome_solicitado].filter(Boolean).join(' ');
           if (p1?.turno && p2?.turno && !mesmoTurnoEfetivo(p1, p2)) {
             const label = `${label1} x ${label2} (${p1.turno} x ${p2.turno})`;
             if (!turnWarnings.includes(label)) turnWarnings.push(label);
@@ -2141,8 +2183,7 @@ export function Trocas() {
             const data = fill.filled_data as Record<string, string>;
             const nomeSol = data.nome_solicitante || '';
             const nomeSolic = data.nome_solicitado || '';
-            const pessoaSol = getPessoaByNome(nomeSol);
-            const pessoaSolic = getPessoaByNome(nomeSolic);
+            const { pessoaSol, pessoaSolic, cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(data);
             const isExcessoLimite = excessoLimiteIds.has(fill.id);
 
             let dotColor = 'bg-yellow-500 dark:bg-yellow-400';
@@ -2160,8 +2201,8 @@ export function Trocas() {
 
             const displaySol = displayNomeTroca(nomeSol);
             const displaySolic = displayNomeTroca(nomeSolic);
-            const cargoSolAbr = pessoaSol?.cargo || (data.funcao_solicitante || '').split(' - ')[0] || '';
-            const cargoSolicAbr = pessoaSolic?.cargo || (data.funcao_solicitado || '').split(' - ')[0] || '';
+            const cargoSolAbr = cargoSolPlantao;
+            const cargoSolicAbr = cargoSolicPlantao;
             const turnoSol = pessoaSol?.turno || bombeirosList.find((b: any) => nomeSol.includes(b.nomeGuerra))?.turno || '';
             const turnoSolic = pessoaSolic?.turno || bombeirosList.find((b: any) => nomeSolic.includes(b.nomeGuerra))?.turno || '';
             const isFerista = pessoaSol?.equipe === 'Ferista' || pessoaSolic?.equipe === 'Ferista' || bombeirosList.some((b: any) => (nomeSol.includes(b.nomeGuerra) || nomeSolic.includes(b.nomeGuerra)) && b.equipe === 'Ferista');

@@ -241,10 +241,10 @@ export const menuItems: MenuItem[] = [
         adminOnly: true,
       },
       {
-        label: 'PTR-BA Completo',
+        label: 'PTR-BA',
         icon: ClipboardList,
         path: '/registros-diarios/ptr-ba-completo',
-        description: 'Relatório completo de registro PTR-BA com efetivo, evidências e PDF.',
+        description: 'Registro PTR-BA com efetivo, evidências e PDF.',
       },
       {
         label: 'LRO/Ocorrências',

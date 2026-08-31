@@ -1,7 +1,7 @@
 # API Endpoints — SESCINC Manager
 
 > **Data:** 2026-08-25
-> **Total de serviços:** 45 ficheiros em `src/services/`
+> **Total de serviços:** 46 ficheiros em `src/services/`
 > **Comunicação com Supabase:** 34 ficheiros
 > **Total de funções:** ~202
 > **Serviços externos:** 1 (Autentique GraphQL)  
@@ -2426,6 +2426,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 | `htmlPdfService.ts` | HTML → PDF com html-to-image + jspdf |
 | `reaPdfService.ts` | Preenchimento do PDF-template REA com pdf-lib |
 | `ptrbaCompletoPdfService.ts` | Geração client-side do PDF PTR-BA completo com jspdf |
+| `trocasMensalPdfService.ts` | Geração client-side do relatório mensal de trocas/permutas com jspdf |
 | `tpeprPdfService.ts` | Geração client-side do PDF TP/EPR em A4 paisagem com área de assinaturas em branco |
 | `autentiqueService.ts` | API externa Autentique (GraphQL) — sem Supabase |
 | `menuData.ts` | Configuração estática do menu de navegação |

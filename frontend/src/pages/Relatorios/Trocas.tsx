@@ -18,6 +18,10 @@ import {
 import { preencherPdf } from '../../services/pdfService';
 import { DOCUMENT_TEMPLATES, findTemplate } from '../../data/documentTemplates';
 import type { TemplateFieldDef } from '../../data/documentTemplates';
+import {
+  gerarRelatorioTrocasMensalPdf,
+  nomeArquivoRelatorioTrocasMensal,
+} from '../../services/trocasMensalPdfService';
 import type { DocumentWithFields, DocumentField, DocumentFill } from '../../types/document';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarBombeiros } from '../../services/bombeiroService';
@@ -26,14 +30,14 @@ import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigen
 import type { Bombeiro } from '../../types/bombeiro';
 import { CARGO_OPTIONS, EQUIPE_OPTIONS } from '../../types/bombeiro';
 import type { APOC } from '../../types/apoc';
-import { estaNoPeriodoISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO } from '../../utils/datas';
+import { estaNoPeriodoISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, normalizarDataISO } from '../../utils/datas';
 import { nomeArquivoTrocaServicoPdf } from '../../utils/documentFileNames';
 type SubView = 'list' | 'form';
 type ViewMode = 'list' | 'report';
 type PessoaTroca = { id: string; tipo: 'bombeiro' | 'apoc'; cargo: string; nomeGuerra: string; nomeCompleto: string; equipe: string; turno: string };
 
 const MONTH_NAMES = [
-  'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho',
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
@@ -521,6 +525,9 @@ export function Trocas() {
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfName, setPreviewPdfName] = useState('');
   const [previewAllowDownload, setPreviewAllowDownload] = useState(false);
+  const [showRelatorioMensalModal, setShowRelatorioMensalModal] = useState(false);
+  const [relatorioMensalObs, setRelatorioMensalObs] = useState('');
+  const [gerandoRelatorioMensal, setGerandoRelatorioMensal] = useState(false);
   const [showAutorizacaoAviso, setShowAutorizacaoAviso] = useState(false);
   const [bombeirosList, setBombeirosList] = useState<Bombeiro[]>([]);
   const [apocsList, setApocsList] = useState<APOC[]>([]);
@@ -657,6 +664,38 @@ export function Trocas() {
       iframe.contentWindow?.print();
       window.setTimeout(() => iframe.remove(), 1000);
     };
+  }
+
+  function abrirRelatorioMensalModal() {
+    setRelatorioMensalObs('');
+    setShowRelatorioMensalModal(true);
+  }
+
+  async function handleGerarRelatorioMensal() {
+    try {
+      setGerandoRelatorioMensal(true);
+      const rows = trocasMensaisAprovadas.map(fill => {
+        const data = fill.filled_data as Record<string, string>;
+        return {
+          nomeSolicitante: getNomeCompletoRelatorio(data.nome_solicitante || ''),
+          dataSolicitada: data.data_solicitada || '',
+          dataATrabalhar: data.data_folga_solicitado || '',
+          nomeSolicitado: getNomeCompletoRelatorio(data.nome_solicitado || ''),
+        };
+      });
+      const blob = await gerarRelatorioTrocasMensalPdf({
+        mes: filterMonth,
+        ano: filterYear,
+        rows,
+        observacao: relatorioMensalObs,
+      });
+      abrirPdfPreview(blob, nomeArquivoRelatorioTrocasMensal(filterMonth, filterYear), true);
+      setShowRelatorioMensalModal(false);
+    } catch {
+      setShowNotifPopup({ msg: 'Erro ao gerar relatório mensal de trocas.', type: 'error' });
+    } finally {
+      setGerandoRelatorioMensal(false);
+    }
   }
 
   function renderPdfPreviewModal() {
@@ -1042,6 +1081,28 @@ export function Trocas() {
     if (!nome) return '-';
     return getPessoaByNome(nome)?.nomeCompleto || nome;
   }
+
+  function ordenarTrocasMensais(a: DocumentFill, b: DocumentFill): number {
+    const dataA = a.filled_data as Record<string, string>;
+    const dataB = b.filled_data as Record<string, string>;
+    const nomeA = getNomeCompletoRelatorio(dataA.nome_solicitante || '').toLocaleLowerCase('pt-BR');
+    const nomeB = getNomeCompletoRelatorio(dataB.nome_solicitante || '').toLocaleLowerCase('pt-BR');
+    const byName = nomeA.localeCompare(nomeB, 'pt-BR');
+    if (byName !== 0) return byName;
+
+    const dateA = normalizarDataISO(dataA.data_solicitada) || normalizarDataISO(dataA.data_folga_solicitado) || '';
+    const dateB = normalizarDataISO(dataB.data_solicitada) || normalizarDataISO(dataB.data_folga_solicitado) || '';
+    const byDate = dateA.localeCompare(dateB);
+    if (byDate !== 0) return byDate;
+
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  }
+
+  const trocasMensaisAprovadas = useMemo(() => {
+    return filteredFills
+      .filter(fill => fill.status === 'signed')
+      .sort(ordenarTrocasMensais);
+  }, [filteredFills, bombeirosList, apocsList]);
 
   function getFillEquipes(fill: DocumentFill): string[] {
     const data = fill.filled_data as Record<string, string>;
@@ -1954,11 +2015,15 @@ export function Trocas() {
           <option value="">Todas as Equipes</option>
           {EQUIPE_OPTIONS.map(eq => (<option key={eq} value={eq}>{eq}</option>))}
         </select>
-        {isRelatorioRoute && (
-          <button onClick={() => window.print()}
-            className="flex items-center gap-1 rounded-lg border border-graphite-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover">
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-            Imprimir Relatório
+        {viewMode === 'report' && (
+          <button
+            type="button"
+            onClick={abrirRelatorioMensalModal}
+            disabled={gerandoRelatorioMensal}
+            className="flex items-center gap-1 rounded-lg border border-graphite-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-graphite-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover"
+          >
+            {gerandoRelatorioMensal ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+            Gerar Relatório Mensal
           </button>
         )}
         <span className="ml-auto text-xs text-graphite-500 dark:text-graphite-400">{filteredFills.length} troca(s) encontrada(s)</span>
@@ -2048,22 +2113,7 @@ export function Trocas() {
           const baseList = isRelatorioRoute
             ? filteredFills.filter(f => f.status === 'signed')
             : filteredFills;
-          // Remove duplicates (same solicitante + same solicitado)
-          const unique = new Map<string, typeof baseList[0]>();
-          baseList.forEach(f => {
-            const fd = f.filled_data as Record<string, string>;
-            const key = `${fd.nome_solicitante || ''}|${fd.nome_solicitado || ''}`.toLowerCase();
-            if (!unique.has(key) || new Date(f.created_at) > new Date(unique.get(key)!.created_at)) {
-              unique.set(key, f);
-            }
-          });
-          const alfabetico = [...unique.values()].sort((a, b) => {
-            const nomeA = getNomeCompletoRelatorio((a.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
-            const nomeB = getNomeCompletoRelatorio((b.filled_data as Record<string, string>)?.nome_solicitante || '').toLowerCase();
-            const cmp = nomeA.localeCompare(nomeB);
-            if (cmp !== 0) return cmp;
-            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-          });
+          const alfabetico = [...baseList].sort(ordenarTrocasMensais);
           const assinados = alfabetico.filter(f => f.status === 'signed');
           const naoAssinados = alfabetico.filter(f => f.status !== 'signed');
           return (
@@ -2082,10 +2132,12 @@ export function Trocas() {
                       <thead>
                         <tr className="border-b border-graphite-200 bg-graphite-50 dark:border-border-dark dark:bg-surface-hover">
                           <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Solicitante</th>
-                          <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Solicitado</th>
                           <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Data Solicitada</th>
                           <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Data a Trabalhar</th>
-                          <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Status</th>
+                          <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Solicitado</th>
+                          {!isRelatorioRoute && (
+                            <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Status</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -2094,9 +2146,10 @@ export function Trocas() {
                         return (
                           <tr key={fill.id} className={`border-b border-graphite-100 dark:border-border-dark ${idx === arr.length - 1 ? 'border-b-0' : ''}`}>
                             <td className="px-4 py-3 text-graphite-900 dark:text-graphite-100">{getNomeCompletoRelatorio(da.nome_solicitante || '')}</td>
-                            <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{getNomeCompletoRelatorio(da.nome_solicitado || '')}</td>
                             <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_solicitada)}</td>
                             <td className="px-4 py-3 text-xs text-graphite-500 dark:text-graphite-400">{formatarDataBR(da.data_folga_solicitado)}</td>
+                            <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{getNomeCompletoRelatorio(da.nome_solicitado || '')}</td>
+                            {!isRelatorioRoute && (
                             <td className="px-4 py-3 text-center">
                               <div className="flex items-center justify-center gap-1">
                               <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
@@ -2115,6 +2168,7 @@ export function Trocas() {
                               </a>
                               </div>
                             </td>
+                            )}
                           </tr>
                         );
                       })}
@@ -2406,6 +2460,64 @@ export function Trocas() {
       )}
 
       {renderPdfPreviewModal()}
+
+      {showRelatorioMensalModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !gerandoRelatorioMensal && setShowRelatorioMensalModal(false)}>
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-2xl dark:bg-surface-elevated" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-aviation-600 dark:text-aviation-300">Relatório mensal</p>
+                <h3 className="mt-1 text-lg font-bold text-graphite-900 dark:text-graphite-100">
+                  Trocas de {MONTH_NAMES[filterMonth]} de {filterYear}
+                </h3>
+                <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">
+                  {trocasMensaisAprovadas.length} permuta(s) aprovada(s)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRelatorioMensalModal(false)}
+                disabled={gerandoRelatorioMensal}
+                className="rounded-xl border border-graphite-200 p-2 text-graphite-500 transition-all hover:bg-graphite-50 disabled:opacity-50 dark:border-border-dark dark:text-graphite-300 dark:hover:bg-surface-hover"
+                title="Fechar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Obs.</span>
+              <textarea
+                value={relatorioMensalObs}
+                onChange={e => setRelatorioMensalObs(e.target.value)}
+                rows={4}
+                placeholder="Digite a observação que deve aparecer no rodapé do relatório."
+                className="w-full resize-none rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:ring-aviation-400/10"
+              />
+            </label>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowRelatorioMensalModal(false)}
+                disabled={gerandoRelatorioMensal}
+                className="rounded-xl border border-graphite-300 bg-white px-4 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleGerarRelatorioMensal}
+                disabled={gerandoRelatorioMensal}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60"
+              >
+                {gerandoRelatorioMensal ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                Gerar PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showJustificativaPopup && (() => {
         const fill = filteredFills.find(f => f.id === showJustificativaPopup);

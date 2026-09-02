@@ -7,12 +7,15 @@ import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorrencia } from '../../services/ocorrenciaService';
 import { listarBombeiros } from '../../services/bombeiroService';
+import { listarUsuarios } from '../../services/usuarioService';
+import type { Usuario } from '../../services/usuarioService';
 import { STATUS_OCORRENCIA, EQUIPES } from '../../types/ocorrencia';
 import type { Ocorrencia } from '../../types/ocorrencia';
 import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
 import { resumoAuditoria } from '../../utils/auditoria';
+import type { PessoaAuditoria } from '../../utils/auditoria';
 import {
   canCriarRegistrosDiarios,
   canEditarRegistroDiario,
@@ -215,7 +218,7 @@ function OcorrenciaCard({
   o, canEdit, canDelete, auditoriaPessoas, onView, onEdit, onDelete,
 }: {
   o: Ocorrencia; canEdit: boolean; canDelete: boolean;
-  auditoriaPessoas: Bombeiro[];
+  auditoriaPessoas: PessoaAuditoria[];
   onView: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -284,6 +287,7 @@ export function LROOcorrencias() {
 
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [mode, setMode] = useState<'list' | 'form' | 'view'>('list');
   const [editando, setEditando] = useState<Ocorrencia | null>(null);
   const [visualizando, setVisualizando] = useState<Ocorrencia | null>(null);
@@ -299,11 +303,45 @@ export function LROOcorrencias() {
   const inputClass = 'rounded-xl border border-graphite-300/70 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 
   async function carregar() {
-    const [registros, bombeirosAtivos] = await Promise.all([listarOcorrencias(), listarBombeiros()]);
+    const [registros, bombeirosAtivos, usuariosCadastrados] = await Promise.all([
+      listarOcorrencias(),
+      listarBombeiros(),
+      listarUsuarios().catch(() => []),
+    ]);
     setOcorrencias(registros.filter(ocorrenciaPertenceAoLRO));
     setBombeiros(bombeirosAtivos);
+    setUsuarios(usuariosCadastrados);
   }
   useEffect(() => { carregar(); }, []);
+
+  const auditoriaPessoas = useMemo<PessoaAuditoria[]>(() => {
+    const bombeirosPorId = new Map(bombeiros.map(b => [b.id, b]));
+    const pessoas: PessoaAuditoria[] = [...bombeiros];
+
+    usuarios.forEach(usuario => {
+      if (!usuario.username) return;
+      const pessoaVinculada = usuario.personType === 'bombeiro' && usuario.personId
+        ? bombeirosPorId.get(usuario.personId)
+        : undefined;
+
+      if (pessoaVinculada) {
+        pessoas.push({ ...pessoaVinculada, username: usuario.username, nome: usuario.name || pessoaVinculada.nomeCompleto });
+        return;
+      }
+
+      pessoas.push({
+        id: usuario.id,
+        matricula: '',
+        nome: usuario.name || usuario.username,
+        nomeCompleto: usuario.name || usuario.username,
+        nomeGuerra: usuario.name || usuario.username,
+        email: '',
+        username: usuario.username,
+      });
+    });
+
+    return pessoas;
+  }, [bombeiros, usuarios]);
 
   const filtradas = useMemo(() => {
     let list = ocorrencias.filter(ocorrenciaPertenceAoLRO);
@@ -465,7 +503,7 @@ export function LROOcorrencias() {
             <OcorrenciaCard key={o.id} o={o}
               canEdit={canEditarRegistroDiario(contexto, o, username, bombeiros) && !ocorrenciaBloqueadaPorLRO(o)}
               canDelete={canExcluirRegistroDiario(contexto, o, username, bombeiros) && !ocorrenciaBloqueadaPorLRO(o)}
-              auditoriaPessoas={bombeiros}
+              auditoriaPessoas={auditoriaPessoas}
               onView={() => { setVisualizando(o); setMode('view'); }}
               onEdit={() => handleEdit(o)}
               onDelete={() => handleConfirmDelete(o)}

@@ -19,6 +19,8 @@ import { listarAPOCs } from '../../services/apocService';
 import { listarConferencias } from '../../services/conferenciaService';
 import { atualizarOcorrencia, listarOcorrencias } from '../../services/ocorrenciaService';
 import { listarReas } from '../../services/reaService';
+import { listarUsuarios } from '../../services/usuarioService';
+import type { Usuario } from '../../services/usuarioService';
 import { salvarDraft, listarDrafts, excluirDraft, atualizarStatus, type LRODraft, type LRODraftStatus } from '../../services/lroDraftService';
 import { gerarPDF, dividirEmLancamentos } from '../../services/lroGenerator';
 import type { Bombeiro } from '../../types/bombeiro';
@@ -38,6 +40,8 @@ import {
   equipePadraoRegistrosDiarios,
 } from '../../utils/permissoes';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
+import { formatarUsuarioAuditoria, montarPessoasAuditoria } from '../../utils/auditoria';
+import type { PessoaAuditoria } from '../../utils/auditoria';
 
 function SearchSelect({ options, value, onChange, placeholder, label }: {
   options: { value: string; label: string }[];
@@ -498,6 +502,7 @@ export function GerarLRO() {
 
   const [step, setStep] = useState<Step>('equipe');
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
   const [todasSubstituicoes, setTodasSubstituicoes] = useState<any[]>([]);
@@ -569,6 +574,10 @@ export function GerarLRO() {
     if (canEscolherEquipe) return ['Alfa', 'Bravo', 'Charlie', 'Delta'] as EquipeOpcao[];
     return equipePadrao ? [equipePadrao as EquipeOpcao] : [];
   }, [canEscolherEquipe, equipePadrao]);
+  const auditoriaPessoas = useMemo<PessoaAuditoria[]>(
+    () => montarPessoasAuditoria(bombeiros, usuarios),
+    [bombeiros, usuarios],
+  );
   const inputClass = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400 dark:focus:ring-aviation-400/10';
   const [view, setView] = useState<'lista' | 'wizard'>('lista');
   const [showTutorial, setShowTutorial] = useState(false);
@@ -778,8 +787,9 @@ export function GerarLRO() {
   useEffect(() => {
     async function load() {
       try {
-        const [b, f, docs, a, ptrbRegistros, ptrbaCompletoRegistros, conferenciaRegistros, ocorrenciaRegistros, reaRegistros, escalasCompletasRegistros, escalasConfigsRegistros] = await Promise.all([
+        const [b, usuariosCadastrados, f, docs, a, ptrbRegistros, ptrbaCompletoRegistros, conferenciaRegistros, ocorrenciaRegistros, reaRegistros, escalasCompletasRegistros, escalasConfigsRegistros] = await Promise.all([
           listarAtivos(),
+          listarUsuarios().catch(() => []),
           listarFeriasGozo(),
           listarDocumentos(),
           listarAPOCs(),
@@ -793,6 +803,7 @@ export function GerarLRO() {
         ]);
         setApocs(a);
         setBombeiros(b);
+        setUsuarios(usuariosCadastrados);
         setFeriasGozo(f);
         setPtrbs(ptrbRegistros);
         setPtrbaCompletos(ptrbaCompletoRegistros);
@@ -2059,34 +2070,9 @@ export function GerarLRO() {
     return String(value || '').trim();
   }
 
-  function buscarBombeiroAuditoria(value: unknown): Bombeiro | undefined {
-    const raw = valorAuditoria(value);
-    const alvo = normalizarPessoaTexto(raw);
-    const email = raw.toLocaleLowerCase('pt-BR');
-    if (!alvo) return undefined;
-
-    const exato = bombeiros.find(p =>
-      normalizarPessoaTexto(p.id) === alvo ||
-      normalizarPessoaTexto(p.matricula) === alvo ||
-      normalizarPessoaTexto(p.nomeGuerra) === alvo ||
-      normalizarPessoaTexto(p.nomeCompleto) === alvo ||
-      normalizarPessoaTexto(p.nome) === alvo ||
-      normalizarPessoaTexto(p.email) === alvo ||
-      String(p.email || '').trim().toLocaleLowerCase('pt-BR') === email
-    );
-    if (exato) return exato;
-
-    return buscarBombeiroPorTexto(raw, bombeiros);
-  }
-
   function usuarioAuditoria(value: unknown): string {
     const raw = valorAuditoria(value);
-    const bombeiro = buscarBombeiroAuditoria(raw);
-    if (bombeiro) {
-      const nome = bombeiro.nomeGuerra || bombeiro.nomeCompleto;
-      return [bombeiro.cargo, nome].filter(Boolean).join(' ');
-    }
-    return raw || 'Não informado';
+    return formatarUsuarioAuditoria(raw, auditoriaPessoas);
   }
 
   function dadosAuditoriaDraft(draft: LRODraft): Record<string, unknown> {
@@ -2096,6 +2082,36 @@ export function GerarLRO() {
   function draftCriadoPor(draft: LRODraft): string {
     const dados = dadosAuditoriaDraft(draft);
     return usuarioAuditoria(draft.created_by || dados._createdBy);
+  }
+
+  function draftFinalizadoPor(draft: LRODraft): string {
+    return usuarioAuditoria(draftFinalizadoPorRaw(draft));
+  }
+
+  function draftFinalizadoPorRaw(draft: LRODraft): string {
+    const dados = dadosAuditoriaDraft(draft);
+    return valorAuditoria(dados._completedBy);
+  }
+
+  function draftFinalizadoEm(draft: LRODraft): string {
+    const dados = dadosAuditoriaDraft(draft);
+    return valorAuditoria(dados._completedAt);
+  }
+
+  function draftTemFinalizacao(draft: LRODraft): boolean {
+    return !!draftFinalizadoPorRaw(draft) && !!draftFinalizadoEm(draft);
+  }
+
+  function draftAuditoriaPrincipalLabel(draft: LRODraft): string {
+    return draftTemFinalizacao(draft) ? 'Finalizado por' : 'Criado por';
+  }
+
+  function draftAuditoriaPrincipalPor(draft: LRODraft): string {
+    return draftTemFinalizacao(draft) ? draftFinalizadoPor(draft) : draftCriadoPor(draft);
+  }
+
+  function draftAuditoriaPrincipalEm(draft: LRODraft): string {
+    return draftTemFinalizacao(draft) ? draftFinalizadoEm(draft) : draft.created_at;
   }
 
   function draftEditadoPor(draft: LRODraft): string {
@@ -2323,7 +2339,7 @@ export function GerarLRO() {
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-graphite-500 dark:text-graphite-400">
                         <span>{formatarDataBR(d.data_plantao)}</span>
-                        <span>· Criado por {draftCriadoPor(d)} em {formatarDataBR(d.created_at)}</span>
+                        <span>· {draftAuditoriaPrincipalLabel(d)} {draftAuditoriaPrincipalPor(d)} em {formatarDataBR(draftAuditoriaPrincipalEm(d))}</span>
                         {draftTemEdicao(d) && (
                           <span>· Editado por {draftEditadoPor(d)} em {formatarDataBR(draftEditadoEm(d))}</span>
                         )}
@@ -2346,6 +2362,7 @@ export function GerarLRO() {
                   <div className="space-y-4 border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
                     <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-3">
                       {lroDetailCard('Criado por', `${draftCriadoPor(d)} em ${dataHoraAuditoria(d.created_at)}`)}
+                      {draftTemFinalizacao(d) && lroDetailCard('Finalizado por', `${draftFinalizadoPor(d)} em ${dataHoraAuditoria(draftFinalizadoEm(d))}`)}
                       {draftTemEdicao(d) && lroDetailCard('Editado por', `${draftEditadoPor(d)} em ${dataHoraAuditoria(draftEditadoEm(d))}`)}
                       {lroDetailCard('Status', STATUS_LABELS[d.status] || d.status)}
                     </div>

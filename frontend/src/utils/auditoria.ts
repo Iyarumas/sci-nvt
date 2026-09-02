@@ -5,6 +5,14 @@ export type PessoaAuditoria = Partial<Pick<Bombeiro, 'id' | 'matricula' | 'nome'
   username?: string;
 };
 
+export type UsuarioAuditoria = {
+  id?: string;
+  username?: string;
+  name?: string;
+  personId?: string;
+  personType?: string;
+};
+
 export type RegistroAuditavel = {
   createdBy?: string;
   createdAt?: string;
@@ -42,6 +50,59 @@ function statusEhRascunho(status?: string): boolean {
 function statusEhConcluido(status?: string): boolean {
   return ['aprovado', 'concluido', 'fechada', 'fechado', 'assinado', 'finalizado', 'arquivado', 'signed', 'archived']
     .includes(normalizar(status));
+}
+
+function mesmoValor(a: unknown, b: unknown): boolean {
+  const na = normalizar(a);
+  const nb = normalizar(b);
+  return !!na && !!nb && na === nb;
+}
+
+function buscarBombeiroParaUsuario(usuario: UsuarioAuditoria, bombeiros: PessoaAuditoria[]): PessoaAuditoria | undefined {
+  if (usuario.personType === 'bombeiro' && usuario.personId) {
+    const vinculado = bombeiros.find(b => mesmoValor(b.id, usuario.personId));
+    if (vinculado) return vinculado;
+  }
+
+  return bombeiros.find(b =>
+    mesmoValor(b.nomeCompleto, usuario.name) ||
+    mesmoValor(b.nomeGuerra, usuario.name) ||
+    mesmoValor(b.nome, usuario.name) ||
+    mesmoValor(b.email, usuario.username)
+  );
+}
+
+export function montarPessoasAuditoria(
+  bombeiros: PessoaAuditoria[] = [],
+  usuarios: UsuarioAuditoria[] = [],
+): PessoaAuditoria[] {
+  const pessoas: PessoaAuditoria[] = [...bombeiros];
+
+  usuarios.forEach(usuario => {
+    if (!usuario.username) return;
+    const pessoaVinculada = buscarBombeiroParaUsuario(usuario, bombeiros);
+
+    if (pessoaVinculada) {
+      pessoas.push({
+        ...pessoaVinculada,
+        username: usuario.username,
+        nome: usuario.name || pessoaVinculada.nome || pessoaVinculada.nomeCompleto,
+      });
+      return;
+    }
+
+    pessoas.push({
+      id: usuario.id,
+      matricula: '',
+      nome: usuario.name || usuario.username,
+      nomeCompleto: usuario.name || usuario.username,
+      nomeGuerra: usuario.name || usuario.username,
+      email: '',
+      username: usuario.username,
+    });
+  });
+
+  return pessoas;
 }
 
 export function formatarUsuarioAuditoria(value: unknown, pessoas: PessoaAuditoria[] = []): string {

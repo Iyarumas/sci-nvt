@@ -14,7 +14,7 @@ import type { Ocorrencia } from '../../types/ocorrencia';
 import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
-import { resumoAuditoria } from '../../utils/auditoria';
+import { montarPessoasAuditoria, resumoAuditoria } from '../../utils/auditoria';
 import type { PessoaAuditoria } from '../../utils/auditoria';
 import {
   canCriarRegistrosDiarios,
@@ -314,34 +314,10 @@ export function LROOcorrencias() {
   }
   useEffect(() => { carregar(); }, []);
 
-  const auditoriaPessoas = useMemo<PessoaAuditoria[]>(() => {
-    const bombeirosPorId = new Map(bombeiros.map(b => [b.id, b]));
-    const pessoas: PessoaAuditoria[] = [...bombeiros];
-
-    usuarios.forEach(usuario => {
-      if (!usuario.username) return;
-      const pessoaVinculada = usuario.personType === 'bombeiro' && usuario.personId
-        ? bombeirosPorId.get(usuario.personId)
-        : undefined;
-
-      if (pessoaVinculada) {
-        pessoas.push({ ...pessoaVinculada, username: usuario.username, nome: usuario.name || pessoaVinculada.nomeCompleto });
-        return;
-      }
-
-      pessoas.push({
-        id: usuario.id,
-        matricula: '',
-        nome: usuario.name || usuario.username,
-        nomeCompleto: usuario.name || usuario.username,
-        nomeGuerra: usuario.name || usuario.username,
-        email: '',
-        username: usuario.username,
-      });
-    });
-
-    return pessoas;
-  }, [bombeiros, usuarios]);
+  const auditoriaPessoas = useMemo<PessoaAuditoria[]>(
+    () => montarPessoasAuditoria(bombeiros, usuarios),
+    [bombeiros, usuarios],
+  );
 
   const filtradas = useMemo(() => {
     let list = ocorrencias.filter(ocorrenciaPertenceAoLRO);

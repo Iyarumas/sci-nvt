@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertCircle, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -34,6 +34,11 @@ import { canGerenciarCadastroModulo, resolverContextoOperacional } from '../../u
 import { formatarDataBR } from '../../utils/datas';
 
 type AgenteExtintorForm = Omit<AgenteExtintor, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>;
+type CampoObrigatorio = {
+  key: keyof AgenteExtintorForm;
+  label: string;
+  isMissing?: (value: AgenteExtintorForm[keyof AgenteExtintorForm]) => boolean;
+};
 
 const INPUT_CLASS = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const LABEL_CLASS = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
@@ -99,6 +104,40 @@ const AGENTES_EXTINTORES_TOUR_STEPS = [
   },
 ];
 
+const CAMPOS_BASE_OBRIGATORIOS: CampoObrigatorio[] = [
+  { key: 'produto', label: 'Produto' },
+  { key: 'tipo', label: 'Tipo' },
+  { key: 'marcaAgente', label: 'Marca do Agente' },
+  { key: 'lote', label: 'Lote' },
+  { key: 'fabricacao', label: 'Fabricação' },
+  {
+    key: 'quantidade',
+    label: 'Quantidade',
+    isMissing: value => typeof value !== 'number' || !Number.isFinite(value) || value <= 0,
+  },
+  { key: 'unidade', label: 'Unidade' },
+  { key: 'status', label: 'Status' },
+  { key: 'observacoes', label: 'Observações' },
+];
+
+const CAMPOS_OBRIGATORIOS_POR_PRODUTO: Record<ProdutoAgenteExtintor, CampoObrigatorio[]> = {
+  LGE: [
+    { key: 'dosagem', label: 'Dosagem' },
+    { key: 'classe', label: 'Classe' },
+    { key: 'validadeEnsaioLaboratorial', label: 'Validade do Ensaio Laboratorial' },
+    { key: 'validadeEnsaioFogo', label: 'Validade do Ensaio de Fogo' },
+  ],
+  'Pó Químico Seco': [
+    { key: 'composicao', label: 'Composição' },
+    { key: 'validade', label: 'Validade' },
+  ],
+  Nitrogênio: [
+    { key: 'testeHidrostatico', label: 'Teste Hidrostático' },
+    { key: 'validadeTesteHidrostatico', label: 'Validade do Teste Hidrostático' },
+    { key: 'validadeCilindro', label: 'Validade Cilindro' },
+  ],
+};
+
 function formatDate(value: string): string {
   return formatarDataBR(value);
 }
@@ -133,6 +172,27 @@ function limparCamposNaoUsados(produto: ProdutoAgenteExtintor, form: AgenteExtin
   };
 }
 
+function campoEstaVazio(value: AgenteExtintorForm[keyof AgenteExtintorForm]): boolean {
+  if (typeof value === 'number') return !Number.isFinite(value);
+  return String(value || '').trim() === '';
+}
+
+function camposObrigatorios(produto: ProdutoAgenteExtintor): CampoObrigatorio[] {
+  return [
+    ...CAMPOS_BASE_OBRIGATORIOS,
+    ...CAMPOS_OBRIGATORIOS_POR_PRODUTO[produto],
+  ];
+}
+
+function validarCamposObrigatorios(form: AgenteExtintorForm): string {
+  const faltando = camposObrigatorios(form.produto)
+    .filter(campo => (campo.isMissing ? campo.isMissing(form[campo.key]) : campoEstaVazio(form[campo.key])))
+    .map(campo => campo.label);
+
+  if (!faltando.length) return '';
+  return `Preencha os campos obrigatórios: ${faltando.join(', ')}.`;
+}
+
 function resumoValidade(item: AgenteExtintor): string {
   if (item.produto === 'LGE') {
     const partes = [
@@ -163,6 +223,7 @@ export function AgentesExtintores() {
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<AgenteExtintor | null>(null);
   const [form, setForm] = useState<AgenteExtintorForm>(EMPTY);
+  const [formError, setFormError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const debouncedTermo = useDebounce(termo, 400);
 
@@ -205,12 +266,14 @@ export function AgentesExtintores() {
     if (!canManage) return;
     setEditando(null);
     setForm(EMPTY);
+    setFormError('');
     setFormOpen(true);
   }
 
   function openEdit(item: AgenteExtintor) {
     if (!canManage) return;
     setEditando(item);
+    setFormError('');
     setForm(limparCamposNaoUsados(item.produto, {
       marcaAgente: item.marcaAgente,
       produto: item.produto,
@@ -235,9 +298,17 @@ export function AgentesExtintores() {
     setFormOpen(true);
   }
 
-  async function handleSave() {
+  async function handleSave(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (!canManage) return;
     const payload = limparCamposNaoUsados(form.produto, form);
+    const validationError = validarCamposObrigatorios(payload);
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+
+    setFormError('');
     try {
       if (editando) {
         await atualizarAgenteExtintor(editando.id, payload);
@@ -263,10 +334,12 @@ export function AgentesExtintores() {
   }
 
   function updateField<K extends keyof AgenteExtintorForm>(key: K, value: AgenteExtintorForm[K]) {
+    setFormError('');
     setForm(prev => ({ ...prev, [key]: value }));
   }
 
   function updateProduto(produto: ProdutoAgenteExtintor) {
+    setFormError('');
     setForm(prev => limparCamposNaoUsados(produto, prev));
   }
 
@@ -371,51 +444,59 @@ export function AgentesExtintores() {
               <button onClick={() => setFormOpen(false)} className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover"><X className="h-5 w-5" /></button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <form onSubmit={handleSave}>
+              {formError && (
+                <div className="mb-4 flex items-start gap-3 rounded-xl border border-alert-red/30 bg-alert-red/10 p-3 text-sm text-alert-red dark:border-alert-red/40 dark:bg-alert-red/10">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label className={LABEL_CLASS}>Produto</label>
-                <select value={form.produto} onChange={e => updateProduto(e.target.value as ProdutoAgenteExtintor)} className={INPUT_CLASS}>
+                <select value={form.produto} onChange={e => updateProduto(e.target.value as ProdutoAgenteExtintor)} className={INPUT_CLASS} required>
                   {PRODUTO_AGENTE_EXTINTOR_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className={LABEL_CLASS}>Tipo</label>
-                <input value={form.tipo} readOnly className={inputReadOnlyClass} />
+                <input value={form.tipo} readOnly className={inputReadOnlyClass} required />
               </div>
               <div>
                 <label className={LABEL_CLASS}>Marca do Agente</label>
-                <input value={form.marcaAgente} onChange={e => updateField('marcaAgente', e.target.value)} className={INPUT_CLASS} placeholder="Ex: Buckeye, Amerex, Kidde..." />
+                <input value={form.marcaAgente} onChange={e => updateField('marcaAgente', e.target.value)} className={INPUT_CLASS} placeholder="Ex: Buckeye, Amerex, Kidde..." required />
               </div>
               <div>
                 <label className={LABEL_CLASS}>Lote</label>
-                <input value={form.lote} onChange={e => updateField('lote', e.target.value)} className={INPUT_CLASS} />
+                <input value={form.lote} onChange={e => updateField('lote', e.target.value)} className={INPUT_CLASS} required />
               </div>
 
               {form.produto === 'LGE' && (
                 <>
                   <div>
                     <label className={LABEL_CLASS}>Dosagem</label>
-                    <select value={form.dosagem} onChange={e => updateField('dosagem', e.target.value as DosagemAgenteExtintor)} className={INPUT_CLASS}>
+                    <select value={form.dosagem} onChange={e => updateField('dosagem', e.target.value as DosagemAgenteExtintor)} className={INPUT_CLASS} required>
                       {DOSAGEM_AGENTE_EXTINTOR_OPTIONS.map(o => <option key={o.value || 'empty'} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Classe</label>
-                    <select value={form.classe} onChange={e => updateField('classe', e.target.value as ClasseAgenteExtintor)} className={INPUT_CLASS}>
+                    <select value={form.classe} onChange={e => updateField('classe', e.target.value as ClasseAgenteExtintor)} className={INPUT_CLASS} required>
                       {CLASSE_AGENTE_EXTINTOR_OPTIONS.map(o => <option key={o.value || 'empty'} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Validade do Ensaio Laboratorial</label>
-                    <input type="date" value={form.validadeEnsaioLaboratorial} onChange={e => updateField('validadeEnsaioLaboratorial', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.validadeEnsaioLaboratorial} onChange={e => updateField('validadeEnsaioLaboratorial', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Validade do Ensaio de Fogo</label>
-                    <input type="date" value={form.validadeEnsaioFogo} onChange={e => updateField('validadeEnsaioFogo', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.validadeEnsaioFogo} onChange={e => updateField('validadeEnsaioFogo', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Fabricação</label>
-                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                 </>
               )}
@@ -424,17 +505,17 @@ export function AgentesExtintores() {
                 <>
                   <div>
                     <label className={LABEL_CLASS}>Composição</label>
-                    <select value={form.composicao} onChange={e => updateField('composicao', e.target.value as ComposicaoAgenteExtintor)} className={INPUT_CLASS}>
+                    <select value={form.composicao} onChange={e => updateField('composicao', e.target.value as ComposicaoAgenteExtintor)} className={INPUT_CLASS} required>
                       {COMPOSICAO_AGENTE_EXTINTOR_OPTIONS.map(o => <option key={o.value || 'empty'} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Fabricação</label>
-                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Validade</label>
-                    <input type="date" value={form.validade} onChange={e => updateField('validade', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.validade} onChange={e => updateField('validade', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                 </>
               )}
@@ -443,51 +524,52 @@ export function AgentesExtintores() {
                 <>
                   <div>
                     <label className={LABEL_CLASS}>Fabricação</label>
-                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Teste Hidrostático</label>
-                    <input type="date" value={form.testeHidrostatico} onChange={e => updateField('testeHidrostatico', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.testeHidrostatico} onChange={e => updateField('testeHidrostatico', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Validade do Teste Hidrostático</label>
-                    <input type="date" value={form.validadeTesteHidrostatico} onChange={e => updateField('validadeTesteHidrostatico', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.validadeTesteHidrostatico} onChange={e => updateField('validadeTesteHidrostatico', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                   <div>
                     <label className={LABEL_CLASS}>Validade Cilindro</label>
-                    <input type="date" value={form.validadeCilindro} onChange={e => updateField('validadeCilindro', e.target.value)} className={INPUT_CLASS} />
+                    <input type="date" value={form.validadeCilindro} onChange={e => updateField('validadeCilindro', e.target.value)} className={INPUT_CLASS} required />
                   </div>
                 </>
               )}
 
               <div>
                 <label className={LABEL_CLASS}>Quantidade</label>
-                <input type="number" min="0" step="0.01" value={form.quantidade} onChange={e => updateField('quantidade', Number(e.target.value || 0))} className={INPUT_CLASS} />
+                <input type="number" min="0.01" step="0.01" value={form.quantidade} onChange={e => updateField('quantidade', Number(e.target.value || 0))} className={INPUT_CLASS} required />
               </div>
               <div>
                 <label className={LABEL_CLASS}>Unidade</label>
-                <select value={form.unidade} onChange={e => updateField('unidade', e.target.value as UnidadeAgenteExtintor)} className={INPUT_CLASS}>
+                <select value={form.unidade} onChange={e => updateField('unidade', e.target.value as UnidadeAgenteExtintor)} className={INPUT_CLASS} required>
                   {unidadeOptions(form.produto).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className={LABEL_CLASS}>Status</label>
-                <select value={form.status} onChange={e => updateField('status', e.target.value as StatusAgenteExtintor)} className={INPUT_CLASS}>
+                <select value={form.status} onChange={e => updateField('status', e.target.value as StatusAgenteExtintor)} className={INPUT_CLASS} required>
                   {STATUS_AGENTE_EXTINTOR_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div className="md:col-span-2">
                 <label className={LABEL_CLASS}>Observações</label>
-                <textarea value={form.observacoes} onChange={e => updateField('observacoes', e.target.value)} className={INPUT_CLASS} rows={3} />
+                <textarea value={form.observacoes} onChange={e => updateField('observacoes', e.target.value)} className={INPUT_CLASS} rows={3} required />
               </div>
-            </div>
+              </div>
 
-            <div className="mt-6 flex justify-end gap-3">
-              <button onClick={() => setFormOpen(false)} className="rounded-xl px-4 py-2.5 text-sm font-medium text-graphite-600 transition-colors hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover">Cancelar</button>
-              <button onClick={handleSave} className="rounded-xl bg-aviation-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-aviation-700 dark:bg-aviation-500 dark:hover:bg-aviation-600">
-                {editando ? 'Salvar' : 'Criar'}
-              </button>
-            </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setFormOpen(false)} className="rounded-xl px-4 py-2.5 text-sm font-medium text-graphite-600 transition-colors hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover">Cancelar</button>
+                <button type="submit" className="rounded-xl bg-aviation-600 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-aviation-700 dark:bg-aviation-500 dark:hover:bg-aviation-600">
+                  {editando ? 'Salvar' : 'Criar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

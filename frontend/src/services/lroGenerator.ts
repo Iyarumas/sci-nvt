@@ -34,7 +34,7 @@ function motivoSubstituicaoLabel(motivo: string | undefined): string {
   if (motivo === 'ferias') return 'Férias';
   if (motivo === 'afastamento') return 'Afastamento';
   if (motivo === 'substituicao') return 'Substituição';
-  return 'Cascata';
+  return 'Corrente de férias';
 }
 
 export function dividirEmLancamentos(texto: string): string[] {
@@ -128,8 +128,8 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
   const cci3 = (dados.cci3 as Array<Record<string, string>>) || [];
   const crs = (dados.crs as Array<Record<string, string>>) || [];
   const temEmergencia = dados.emergenciaXI as string | undefined;
-  const temSubstituicao = substituicao.length > 0;
   const temSubstituicoesAtivas = substituicoesAtivas.length > 0;
+  const temSubstituicao = substituicao.length > 0 || temSubstituicoesAtivas;
   const ocorrenciasNA = e('ocorrenciasNA');
   const inspecoes = e('inspecoes');
 

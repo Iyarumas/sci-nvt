@@ -3,7 +3,7 @@ import {
   Calendar, Shield, Users, Plus, Trash2, FileText, Radio,
   ChevronDown, ChevronUp, Save, Pencil, Copy, Printer,
   AlertTriangle,
-  ArrowRightLeft, ArrowRight, Sparkles, HelpCircle,
+  ArrowRightLeft, ArrowRight, Sparkles, HelpCircle, Filter,
 } from 'lucide-react';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
 import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
@@ -33,7 +33,6 @@ import { RegraNegocioError } from '../../utils/regrasOperacionais';
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 
 const optionCls = 'dark:bg-graphite-700 dark:text-graphite-100';
-const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
 const INSTRUTOR_SECTIONS = [
@@ -54,7 +53,7 @@ const ESCALA_DIARIA_TOUR_STEPS: EscalaDiariaTourStep[] = [
     target: 'diaria-lista-filtros',
     mode: 'list',
     title: 'Lista das escalas diárias',
-    body: 'Aqui você filtra as escalas já criadas por mês, ano, período e equipe.',
+    body: 'Aqui você filtra as escalas já criadas por mês, ano e equipe.',
     detail: 'Use essa lista para conferir se o plantão do dia já foi montado antes de criar outro registro.',
   },
   {
@@ -243,11 +242,64 @@ function trocasIguais(a: TrocaSlot[], b: TrocaSlot[]): boolean {
   });
 }
 
+const MOTIVO_SUBSTITUICAO_LABELS: Record<string, string> = {
+  'ferias': 'Férias',
+  'cascata': 'Férias',
+  'afastamento': 'Afastamento',
+  'substituicao': 'Substituição',
+  'atestado medico': 'Atestado médico',
+  'falecimento conjuge': 'Falecimento cônjuge',
+  'falecimento pai mae': 'Falecimento pai/mãe',
+  'falecimento filho': 'Falecimento filho',
+  'casamento': 'Casamento',
+  'nascimento filho': 'Nascimento de filho',
+  'doacao sangue': 'Doação de sangue',
+  'inss': 'Afastamento INSS',
+  'inss indeterminado': 'Afastamento INSS',
+  'inss/indeterminado': 'Afastamento INSS',
+};
+
+function normalizarMotivoSubstituicao(value?: string): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function motivoSubstituicaoLabel(motivo?: string): string {
+  const texto = String(motivo || '').trim();
+  const normalizado = normalizarMotivoSubstituicao(texto);
+  if (!normalizado) return 'Substituição';
+  if (MOTIVO_SUBSTITUICAO_LABELS[normalizado]) return MOTIVO_SUBSTITUICAO_LABELS[normalizado];
+  return texto;
+}
+
 function motivoAfastamentoLabel(sub: SubstituicaoTemporaria): string {
-  if (sub.motivo === 'Atestado Medico') return 'Atestado medico';
-  if (sub.motivo === 'INSS Indeterminado') return 'INSS/Indeterminado';
   if (sub.motivo === 'Outro') return sub.motivoOutro || 'Outro';
-  return sub.motivo;
+  return motivoSubstituicaoLabel(sub.motivo);
+}
+
+function motivoSubstituicaoBadgeClasses(motivo?: string): string {
+  const normalizado = normalizarMotivoSubstituicao(motivoSubstituicaoLabel(motivo));
+  if (normalizado === 'ferias') {
+    return 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 print:border-0 print:bg-transparent print:text-graphite-700';
+  }
+  if (normalizado.includes('inss')) {
+    return 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-700 dark:bg-rose-900/20 dark:text-rose-300 print:border-0 print:bg-transparent print:text-graphite-700';
+  }
+  if (normalizado.includes('atestado')) {
+    return 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300 print:border-0 print:bg-transparent print:text-graphite-700';
+  }
+  return 'border-aviation-300 bg-aviation-50 text-aviation-700 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300 print:border-0 print:bg-transparent print:text-graphite-700';
+}
+
+function MotivoSubstituicaoBadge({ motivo }: { motivo?: string }) {
+  return (
+    <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none print:px-0 print:py-0 print:text-[9px] ${motivoSubstituicaoBadgeClasses(motivo)}`}>
+      ({motivoSubstituicaoLabel(motivo)})
+    </span>
+  );
 }
 
 function afastadoEstaNoPlantao(sub: SubstituicaoTemporaria, equipe: string, dataPlantao: string): boolean {
@@ -348,6 +400,7 @@ function montarExtrasAfastamentoDoDia(params: {
         equipePlantao: contexto.equipePlantao,
         funcionarioId: sub.funcionarioId,
         substitutoId: substituto?.id || elo.substitutoId || elo.pessoaId,
+        motivo: motivoAfastamentoLabel(sub),
         funcaoSaindo: contexto.cargoAfastado,
         nomeSaindo: contexto.afastado?.nomeGuerra || elo.funcionarioNome || sub.funcionarioNome,
         nomeSaindoCompleto: contexto.afastado?.nomeCompleto || elo.funcionarioNome || sub.funcionarioNome,
@@ -1456,6 +1509,7 @@ function EscalaDiariaForm({
                       <span className="mx-1.5 text-graphite-400">({funcaoLabel}) substitui</span>
                       <span className="font-medium text-graphite-900 dark:text-graphite-100">{extra.nomeSaindoCompleto || extra.nomeSaindo}</span>
                       <span className="mx-1.5 text-graphite-400">({extra.funcaoSaindo})</span>
+                      <MotivoSubstituicaoBadge motivo={extra.motivo} />
                     </div>
                   </div>
                 );
@@ -1682,6 +1736,7 @@ function EscalaDetalhesConteudo({ escala, printable = false }: { escala: EscalaD
                   <span className="font-semibold">{v.substitutoNome}</span>
                   <span className="text-graphite-400"> ({v.cargoExercido}) substitui </span>
                   <span className="font-semibold">{v.funcionarioOriginalNome}</span>
+                  <MotivoSubstituicaoBadge motivo={v.motivo} />
                 </p>
               ))}
             </div>
@@ -1710,6 +1765,7 @@ function EscalaDetalhesConteudo({ escala, printable = false }: { escala: EscalaD
                 return (
                   <p key={index} className="text-sm text-graphite-900 dark:text-graphite-100 print:text-[9px] print:text-graphite-950">
                     {funcaoLabel} {extra.nomeEntrandoCompleto || extra.nomeEntrando} substitui {extra.funcaoSaindo} {extra.nomeSaindoCompleto || extra.nomeSaindo}
+                    <MotivoSubstituicaoBadge motivo={extra.motivo} />
                   </p>
                 );
               })}
@@ -1817,12 +1873,10 @@ export function EscalaDiariaView() {
   const [editando, setEditando] = useState<EscalaDiaria | null>(null);
   const [visualizando, setVisualizando] = useState<EscalaDiaria | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const now = new Date();
   const [filtroEquipe, setFiltroEquipe] = useState('');
-  const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
-  const [filtroMes, setFiltroMes] = useState('');
-  const [filtroAno, setFiltroAno] = useState('');
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFinal, setDataFinal] = useState('');
+  const [filtroMes, setFiltroMes] = useState(String(now.getMonth() + 1));
+  const [filtroAno, setFiltroAno] = useState(String(now.getFullYear()));
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
   const tutorialOrigemRef = useRef<{
@@ -1835,15 +1889,10 @@ export function EscalaDiariaView() {
   const escalasFiltradas = useMemo(() => {
     let lista = escalas;
     if (filtroEquipe) lista = lista.filter(e => e.equipe === filtroEquipe);
-    if (filterMode === 'mes-ano') {
-      if (filtroAno) lista = lista.filter(e => e.dataPlantao?.startsWith(filtroAno));
-      if (filtroMes) lista = lista.filter(e => (parseDataLocalISO(e.dataPlantao).getMonth() + 1).toString() === filtroMes);
-    } else {
-      if (dataInicio) lista = lista.filter(e => e.dataPlantao >= dataInicio);
-      if (dataFinal) lista = lista.filter(e => e.dataPlantao <= dataFinal);
-    }
+    if (filtroAno) lista = lista.filter(e => e.dataPlantao?.startsWith(filtroAno));
+    if (filtroMes) lista = lista.filter(e => (parseDataLocalISO(e.dataPlantao).getMonth() + 1).toString() === filtroMes);
     return [...lista].sort((a, b) => dataOrdenacaoEscala(b) - dataOrdenacaoEscala(a));
-  }, [escalas, filtroEquipe, filterMode, filtroAno, filtroMes, dataInicio, dataFinal]);
+  }, [escalas, filtroEquipe, filtroAno, filtroMes]);
 
   function tutorialIndexInicial(): number {
     const formIndex = ESCALA_DIARIA_TOUR_STEPS.findIndex(step => step.mode === 'form');
@@ -2057,53 +2106,26 @@ export function EscalaDiariaView() {
   return (
     <div>
       {renderBotaoTutorialDiaria()}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4" data-escala-diaria-tour="diaria-lista-filtros">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex overflow-hidden rounded-xl border border-graphite-300/60 bg-white/70 text-xs font-medium dark:border-border-dark dark:bg-surface-card">
-            <button onClick={() => setFilterMode('mes-ano')}
-              className={`px-3 py-2 transition-colors ${filterMode === 'mes-ano' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
-              Mês/Ano
-            </button>
-            <button onClick={() => setFilterMode('periodo')}
-              className={`px-3 py-2 transition-colors ${filterMode === 'periodo' ? 'bg-aviation-600 text-white' : 'text-graphite-600 hover:bg-graphite-100 dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
-              Período
-            </button>
-          </div>
-          {filterMode === 'mes-ano' ? (
-            <>
-              <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={inputClass}>
-                <option value="">Todos</option>
-                {ANOS.map(a => <option key={a} value={a} className={optionCls}>{a}</option>)}
-              </select>
-              <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={inputClass}>
-                <option value="">Todos os meses</option>
-                {MESES.slice(1).map((m, i) => <option key={i + 1} value={i + 1} className={optionCls}>{m}</option>)}
-              </select>
-            </>
-          ) : (
-            <>
-              <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className={inputClass} placeholder="Data início" />
-              <span className="text-xs text-graphite-400">a</span>
-              <input type="date" value={dataFinal} onChange={e => setDataFinal(e.target.value)} className={inputClass} placeholder="Data fim" />
-            </>
-          )}
-          <select value={filtroEquipe} onChange={e => setFiltroEquipe(e.target.value)} className={inputClass}>
-            <option value="" className={optionCls}>Todas as equipes</option>
-            {EQUIPES.map(eq => <option key={eq} value={eq} className={optionCls}>{eq}</option>)}
-          </select>
-          <p className="text-sm text-graphite-500 dark:text-graphite-400">
-            {escalasFiltradas.length} escala(s)
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {canCreate && (
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-graphite-400 bg-white p-3 dark:border-graphite-500 dark:bg-graphite-800" data-escala-diaria-tour="diaria-lista-filtros">
+        <Filter className="h-4 w-4 text-graphite-400 dark:text-graphite-500" />
+        <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className="rounded-lg border border-graphite-400 bg-white px-3 py-1.5 text-sm text-graphite-700 dark:border-graphite-500 dark:bg-graphite-700 dark:text-graphite-200">
+          {MESES.slice(1).map((m, i) => <option key={i + 1} value={String(i + 1)} className={optionCls}>{m}</option>)}
+        </select>
+        <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className="rounded-lg border border-graphite-200 bg-white px-3 py-1.5 text-sm text-graphite-700 dark:border-graphite-600 dark:bg-graphite-700 dark:text-graphite-200">
+          {ANOS.map(a => <option key={a} value={a} className={optionCls}>{a}</option>)}
+        </select>
+        <select value={filtroEquipe} onChange={e => setFiltroEquipe(e.target.value)} className="rounded-lg border border-graphite-200 bg-white px-3 py-1.5 text-sm text-graphite-700 dark:border-graphite-600 dark:bg-graphite-700 dark:text-graphite-200">
+          <option value="" className={optionCls}>Todas as Equipes</option>
+          {EQUIPES.map(eq => <option key={eq} value={eq} className={optionCls}>{eq}</option>)}
+        </select>
+        <span className="ml-auto text-xs text-graphite-500 dark:text-graphite-400">{escalasFiltradas.length} escala(s) encontrada(s)</span>
+        {canCreate && (
           <button onClick={() => { setEditando(null); setMode('form'); }}
             data-escala-diaria-tour="diaria-nova"
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all duration-200 hover:shadow-xl hover:shadow-aviation-500/30 hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
             <Plus className="h-4 w-4" /> Nova Escala Diária
           </button>
-          )}
-        </div>
+        )}
       </div>
 
       {escalasFiltradas.length === 0 ? (

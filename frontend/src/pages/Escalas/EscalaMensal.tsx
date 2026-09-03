@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Calendar, ChevronDown, ChevronUp, Save, Printer, Pencil,
   Trash2, Radio, Shield, Users, ClipboardList,
-  Sparkles, AlertTriangle, X, Eye, Image, HelpCircle,
+  Sparkles, AlertTriangle, X, Eye, Image, HelpCircle, Filter,
 } from 'lucide-react';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
 import { AlertModal } from '../../components/ui/AlertModal';
@@ -518,9 +518,10 @@ export function EscalaMensal() {
   const [mode, setMode] = useState<'view' | 'setup' | 'list'>('list');
   const [msg, setMsg] = useState<string | null>(null);
 
+  const agora = new Date();
   const [equipe, setEquipe] = useState('');
-  const [mes, setMes] = useState(new Date().getMonth() + 1);
-  const [ano, setAno] = useState(new Date().getFullYear());
+  const [mes, setMes] = useState(agora.getMonth() + 1);
+  const [ano, setAno] = useState(agora.getFullYear());
   const [paridade, setParidade] = useState<'par' | 'impar'>('impar');
   const [pessoas, setPessoas] = useState<(Partial<PessoaEscala> | null)[]>(SLOTS.map(() => null));
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
@@ -528,8 +529,8 @@ export function EscalaMensal() {
   const [responsabilidadesManual, setResponsabilidadesManual] = useState<Record<string, string>>({});
   const [radioManual, setRadioManual] = useState<RadioManualState>(() => criarRadioManualVazio());
   const [filterListEquipe, setFilterListEquipe] = useState('');
-  const [filterListMes] = useState('');
-  const [filterListAno] = useState('');
+  const [filterListMes, setFilterListMes] = useState(String(agora.getMonth() + 1));
+  const [filterListAno, setFilterListAno] = useState(String(agora.getFullYear()));
   const [faxinaExpanded, setFaxinaExpanded] = useState(true);
   const [responsabilidadesExpanded, setResponsabilidadesExpanded] = useState(true);
   const [radioExpanded, setRadioExpanded] = useState(true);
@@ -783,19 +784,19 @@ export function EscalaMensal() {
       return `${label}: ${nomeExibido(nome)}`;
     };
     return (
-      <div className="rounded border-2 border-graphite-300 bg-white/80 p-1 print:border-graphite-500 print:bg-white">
+      <div className="monthly-screen-panel rounded border-2 border-graphite-300 bg-white/80 p-1 dark:border-graphite-600 dark:bg-surface-card print:border-graphite-500 print:bg-white">
         <div className="mb-0.5 flex items-center gap-1">
-          <Shield className="h-3.5 w-3.5 text-aviation-600 print:text-graphite-800" />
-          <span className="text-[12px] font-bold text-graphite-800 print:text-graphite-900">Guarnições</span>
+          <Shield className="h-3.5 w-3.5 text-aviation-600 dark:text-aviation-400 print:text-graphite-800" />
+          <span className="text-[12px] font-bold text-graphite-800 dark:text-graphite-100 print:text-graphite-900">Guarnições</span>
         </div>
         <div className="flex gap-2">
           {[
-            { nome: 'CRS', cor: 'border-blue-400 print:border-blue-600', itens: [linha('BA-MC', v?.crs?.baMc || '-'), linha('BA-LR', v?.crs?.baLr || '-'), linha('BA-2', v?.crs?.ba2_1 || '-'), linha('BA-2', v?.crs?.ba2_2 || '-')] },
-            { nome: 'CCI F2', cor: 'border-amber-400 print:border-amber-600', itens: [linha('BA-MC', v?.cciF2?.baMc || '-'), linha('BA-CE', v?.cciF2?.baCe || '-'), linha('BA-2', v?.cciF2?.ba2 || '-')] },
-            { nome: 'CCI F3', cor: 'border-emerald-400 print:border-emerald-600', itens: [linha('BA-MC', v?.cciF3?.baMc || '-'), linha('BA-2', v?.cciF3?.ba2_1 || '-'), linha('BA-2', v?.cciF3?.ba2_2 || '-')] },
+            { nome: 'CRS', cor: 'border-blue-400 dark:border-blue-700 print:border-blue-600', itens: [linha('BA-MC', v?.crs?.baMc || '-'), linha('BA-LR', v?.crs?.baLr || '-'), linha('BA-2', v?.crs?.ba2_1 || '-'), linha('BA-2', v?.crs?.ba2_2 || '-')] },
+            { nome: 'CCI F2', cor: 'border-amber-400 dark:border-amber-700 print:border-amber-600', itens: [linha('BA-MC', v?.cciF2?.baMc || '-'), linha('BA-CE', v?.cciF2?.baCe || '-'), linha('BA-2', v?.cciF2?.ba2 || '-')] },
+            { nome: 'CCI F3', cor: 'border-emerald-400 dark:border-emerald-700 print:border-emerald-600', itens: [linha('BA-MC', v?.cciF3?.baMc || '-'), linha('BA-2', v?.cciF3?.ba2_1 || '-'), linha('BA-2', v?.cciF3?.ba2_2 || '-')] },
           ].map(c => (
-            <div key={c.nome} className={`flex-1 rounded border-2 ${c.cor} bg-graphite-50/30 px-2 py-0.5 print:bg-white`}>
-              <p className="text-[11px] font-bold uppercase text-graphite-600 print:text-graphite-700">{c.nome}</p>
+            <div key={c.nome} className={`monthly-screen-panel flex-1 rounded border-2 ${c.cor} bg-graphite-50/30 px-2 py-0.5 dark:bg-surface-hover/50 print:bg-white`}>
+              <p className="text-[11px] font-bold uppercase text-graphite-600 dark:text-graphite-300 print:text-graphite-700">{c.nome}</p>
               {c.itens.map((item, i) => {
                 const [label, ...nomeParts] = item.split(': ');
                 const nomeKey = (() => {
@@ -812,7 +813,7 @@ export function EscalaMensal() {
                   return v.cciF3?.[keys[i]] || '';
                 })();
                 const nome = nomeParts.join(': ');
-                return <p key={i} className="text-[11px] font-semibold leading-snug text-graphite-800 print:font-bold print:text-graphite-900"
+                return <p key={i} className="text-[11px] font-semibold leading-snug text-graphite-800 dark:text-graphite-100 print:font-bold print:text-graphite-900"
                   title={nome !== '-' ? `${nomeKey || nome} · Função: ${label}` : ''}>{item}</p>;
               })}
             </div>
@@ -824,6 +825,15 @@ export function EscalaMensal() {
   const slotsRadioView = completaAtual ? getSlotsRadio(completaAtual.config.equipe) : [];
 
   const qtdPessoas = pessoas.filter(pessoaValida).length;
+
+  const anosFiltro = useMemo(() => {
+    const anoAtual = new Date().getFullYear();
+    const anos = new Set([
+      ...Array.from({ length: 5 }, (_, i) => anoAtual - i),
+      ...completas.map(c => c.config.ano),
+    ]);
+    return [...anos].sort((a, b) => b - a);
+  }, [completas]);
 
   const completasFiltradas = useMemo(() => {
     let lista = completas;
@@ -1270,7 +1280,7 @@ export function EscalaMensal() {
           <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">Escala Mensal</h2>
           {canCreate && (
             <button title="Criar uma nova escala mensal" onClick={() => {
-              setEquipe(isGlobal ? '' : equipeEfetiva || ''); setMes(new Date().getMonth() + 1); setAno(new Date().getFullYear());
+              setEquipe(isGlobal ? '' : equipeEfetiva || ''); setMes(Number(filterListMes) || new Date().getMonth() + 1); setAno(Number(filterListAno) || new Date().getFullYear());
               setParidade('impar'); setPessoas(SLOTS.map(() => null)); setFaxinaManual({}); setResponsabilidadesManual({}); setRadioManual(criarRadioManualVazio()); setMode('setup');
               setEditingId(null); setAutoPreencherSetup(true);
             }}
@@ -1653,13 +1663,13 @@ export function EscalaMensal() {
 
       {/* View mode */}
       {mode === 'view' && completaAtual && (
-        <div id="print-area" className="space-y-0.5" style={{ background: '#ffffff', color: '#1a1a1a', overflow: 'hidden', textTransform: 'uppercase' }}>
+        <div id="print-area" className="space-y-0.5 text-graphite-900 dark:text-graphite-100 print:bg-white print:text-graphite-900" style={{ overflow: 'hidden', textTransform: 'uppercase' }}>
           <style>{`
             @media print {
               @page {size: landscape; margin: 0.5cm}
               body * {visibility: hidden !important}
               #print-area, #print-area * {visibility: visible !important}
-              #print-area {position: absolute; left: 0; top: 0; width: 100%; text-transform: uppercase !important}
+              #print-area {background: #ffffff !important; color: #1a1a1a !important; position: absolute; left: 0; top: 0; width: 100%; text-transform: uppercase !important}
               .print-hide {display: none !important}
             }
             #print-area {
@@ -1709,6 +1719,22 @@ export function EscalaMensal() {
             .linha-radio-escura > td {
               background-color: #e8ebf0 !important;
             }
+            .dark #print-area .escala-radio-mensal th,
+            .dark #print-area .escala-radio-mensal td {
+              border-bottom-color: #334155;
+              color: #f8fafc !important;
+            }
+            .dark #print-area .escala-radio-mensal thead th {
+              color: #cbd5e1 !important;
+            }
+            .dark #print-area .linha-radio-clara,
+            .dark #print-area .linha-radio-clara > td {
+              background-color: #111827 !important;
+            }
+            .dark #print-area .linha-radio-escura,
+            .dark #print-area .linha-radio-escura > td {
+              background-color: #1f2937 !important;
+            }
             @media print {
               .escala-radio-mensal {
                 font-size: 9px;
@@ -1735,6 +1761,32 @@ export function EscalaMensal() {
               .linha-radio-escura > td {
                 background-color: #dfe3ea !important;
               }
+              .dark #print-area .escala-radio-mensal th,
+              .dark #print-area .escala-radio-mensal td {
+                border-bottom-color: #94a3b8 !important;
+                color: #111827 !important;
+              }
+              .dark #print-area .escala-radio-mensal thead th {
+                color: #374151 !important;
+              }
+              .dark #print-area .linha-radio-clara,
+              .dark #print-area .linha-radio-clara > td {
+                background-color: #ffffff !important;
+              }
+              .dark #print-area .linha-radio-escura,
+              .dark #print-area .linha-radio-escura > td {
+                background-color: #dfe3ea !important;
+              }
+              #print-area,
+              #print-area .monthly-screen-panel,
+              #print-area .monthly-screen-cell {
+                background-color: #ffffff !important;
+                color: #111827 !important;
+              }
+              #print-area .monthly-screen-muted-cell {
+                background-color: #f3f4f6 !important;
+                color: #111827 !important;
+              }
             }
             #print-area.png-exporting,
             #print-area.png-exporting * {
@@ -1742,14 +1794,34 @@ export function EscalaMensal() {
               scrollbar-width: none !important;
               -ms-overflow-style: none !important;
             }
+            #print-area.png-exporting,
+            #print-area.png-exporting .monthly-screen-panel,
+            #print-area.png-exporting .monthly-screen-cell {
+              background-color: #ffffff !important;
+              color: #111827 !important;
+            }
+            #print-area.png-exporting .monthly-screen-muted-cell {
+              background-color: #f3f4f6 !important;
+              color: #111827 !important;
+            }
+            #print-area.png-exporting .linha-radio-clara,
+            #print-area.png-exporting .linha-radio-clara > td {
+              background-color: #ffffff !important;
+              color: #111827 !important;
+            }
+            #print-area.png-exporting .linha-radio-escura,
+            #print-area.png-exporting .linha-radio-escura > td {
+              background-color: #dfe3ea !important;
+              color: #111827 !important;
+            }
             #print-area.png-exporting *::-webkit-scrollbar {
               display: none !important;
               width: 0 !important;
               height: 0 !important;
             }
           `}</style>
-          <div className="rounded border-2 border-graphite-300 bg-white/80 px-3 py-1 text-center uppercase">
-            <div className="space-x-6 text-[13px] font-bold uppercase text-graphite-700">
+          <div className="monthly-screen-panel rounded border-2 border-graphite-300 bg-white/80 px-3 py-1 text-center uppercase dark:border-graphite-600 dark:bg-surface-card print:border-graphite-300 print:bg-white">
+            <div className="space-x-6 text-[13px] font-bold uppercase text-graphite-700 dark:text-graphite-100 print:text-graphite-700">
               <span>EQUIPE: {completaAtual.config.equipe.toUpperCase()}</span>
               <span>{MESES[completaAtual.config.mes - 1].toUpperCase()} {completaAtual.config.ano}</span>
               <span>{completaAtual.paradas.length} PLANTÕES</span>
@@ -1759,20 +1831,20 @@ export function EscalaMensal() {
           {veiculosView}
 
           {/* Rádio */}
-          <div className="rounded border-2 border-graphite-300 bg-white/80 p-0.5 print:overflow-visible">
+          <div className="monthly-screen-panel rounded border-2 border-graphite-300 bg-white/80 p-0.5 dark:border-graphite-600 dark:bg-surface-card print:bg-white print:overflow-visible">
             <div className="mb-px flex items-center gap-0.5">
-              <Radio className="h-3 w-3 text-aviation-600" />
-              <span className="text-[12px] font-bold text-graphite-800">Rádio</span>
+              <Radio className="h-3 w-3 text-aviation-600 dark:text-aviation-400 print:text-aviation-600" />
+              <span className="text-[12px] font-bold text-graphite-800 dark:text-graphite-100 print:text-graphite-800">Rádio</span>
             </div>
             <div className="overflow-x-auto print:overflow-visible">
               <table className="escala-radio-mensal w-full">
                 <thead>
-                  <tr className="border-b-2 border-graphite-300">
-                    <th className="escala-radio-horario-label w-12 bg-white px-0.5 py-0.5 text-left font-bold text-graphite-600 print:text-graphite-800">Horário</th>
+                  <tr className="border-b-2 border-graphite-300 dark:border-graphite-600 print:border-graphite-300">
+                    <th className="escala-radio-horario-label w-12 bg-white px-0.5 py-0.5 text-left font-bold text-graphite-600 dark:bg-surface-card dark:text-graphite-300 print:bg-white print:text-graphite-800">Horário</th>
                     {completaAtual.paradas.map(plantao => (
                       <th
                         key={plantao.data}
-                        className="escala-radio-data px-0.5 py-0.5 text-left font-bold text-graphite-700 print:text-graphite-900"
+                        className="escala-radio-data px-0.5 py-0.5 text-left font-bold text-graphite-700 dark:text-graphite-200 print:text-graphite-900"
                         title={formatarDataBR(plantao.data)}
                       >
                         {formatarDataRadioMensal(plantao.data)}
@@ -1785,9 +1857,9 @@ export function EscalaMensal() {
                     const linhaAlternada = slotIndex % 2 === 0 ? 'linha-radio-clara' : 'linha-radio-escura';
                     return (
                     <tr key={`${slot.horario}-${slotIndex}`} className={`border-b border-graphite-300 print:border-graphite-400 ${linhaAlternada}`}>
-                      <td className="px-0.5 py-0.5 font-bold text-graphite-600 print:text-graphite-800 whitespace-nowrap">{slot.horario}</td>
+                      <td className="px-0.5 py-0.5 font-bold text-graphite-600 dark:text-graphite-300 print:text-graphite-800 whitespace-nowrap">{slot.horario}</td>
                       {completaAtual.paradas.map(plantao => (
-                        <td key={`${slot.horario}-${plantao.data}`} className="px-0.5 py-0.5 text-left font-bold text-graphite-900 whitespace-nowrap">
+                        <td key={`${slot.horario}-${plantao.data}`} className="px-0.5 py-0.5 text-left font-bold text-graphite-900 dark:text-graphite-100 print:text-graphite-900 whitespace-nowrap">
                           {plantao.radio[slotIndex]?.pessoaNomeGuerra || '-'}
                         </td>
                       ))}
@@ -1800,36 +1872,36 @@ export function EscalaMensal() {
           </div>
 
           {/* Faxina */}
-          <div className="rounded border-2 border-graphite-400 bg-white p-1">
+          <div className="monthly-screen-panel rounded border-2 border-graphite-400 bg-white p-1 dark:border-graphite-600 dark:bg-surface-card print:bg-white">
             <div className="mb-px flex items-center gap-0.5">
-              <ClipboardList className="h-3 w-3 text-aviation-600" />
-              <span className="text-[12px] font-bold text-graphite-900">Faxina</span>
+              <ClipboardList className="h-3 w-3 text-aviation-600 dark:text-aviation-400 print:text-aviation-600" />
+              <span className="text-[12px] font-bold text-graphite-900 dark:text-graphite-100 print:text-graphite-900">Faxina</span>
             </div>
             <div className="grid grid-cols-5 gap-px text-[10px]">
               {completaAtual.faxinaMensal.map((f, i) => (
-                <div key={i} className={`rounded border-2 px-1.5 py-0.5 font-semibold ${
-                  f.local === 'Sala e WC Liderança' ? 'border-amber-500 bg-amber-50' :
-                  f.local === 'Lixo' ? 'border-red-500 bg-red-50' :
-                  'border-graphite-400 bg-graphite-100'
+                <div key={i} className={`monthly-screen-cell rounded border-2 px-1.5 py-0.5 font-semibold ${
+                  f.local === 'Sala e WC Liderança' ? 'border-amber-500 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 print:border-amber-500 print:bg-amber-50' :
+                  f.local === 'Lixo' ? 'border-red-500 bg-red-50 dark:border-red-700 dark:bg-red-900/20 print:border-red-500 print:bg-red-50' :
+                  'monthly-screen-muted-cell border-graphite-400 bg-graphite-100 dark:border-graphite-600 dark:bg-surface-hover/60 print:border-graphite-400 print:bg-graphite-100'
                 }`}>
-                  <p className="text-graphite-700 font-semibold">{f.local}</p>
-                  <p className="font-bold text-graphite-900">{f.pessoaNomeGuerra}</p>
+                  <p className="text-graphite-700 font-semibold dark:text-graphite-300 print:text-graphite-700">{f.local}</p>
+                  <p className="font-bold text-graphite-900 dark:text-graphite-100 print:text-graphite-900">{f.pessoaNomeGuerra}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Responsabilidades */}
-          <div className="rounded border-2 border-graphite-400 bg-white p-1">
+          <div className="monthly-screen-panel rounded border-2 border-graphite-400 bg-white p-1 dark:border-graphite-600 dark:bg-surface-card print:bg-white">
             <div className="mb-px flex items-center gap-0.5">
-              <Users className="h-3 w-3 text-aviation-600" />
-              <span className="text-[12px] font-bold text-graphite-900">Responsabilidades</span>
+              <Users className="h-3 w-3 text-aviation-600 dark:text-aviation-400 print:text-aviation-600" />
+              <span className="text-[12px] font-bold text-graphite-900 dark:text-graphite-100 print:text-graphite-900">Responsabilidades</span>
             </div>
             <div className="grid grid-cols-2 gap-x-1 gap-y-px text-[10px]">
               {completaAtual.responsabilidades.map((r, i) => (
-                <div key={i} className="flex items-center justify-between rounded border-2 border-graphite-400 bg-graphite-100 px-1.5 py-0.5 font-semibold">
-                  <span className="text-graphite-800 truncate">{r.descricao}</span>
-                  <span className="ml-1 font-bold text-graphite-900 shrink-0">{r.pessoaNomeGuerra}</span>
+                <div key={i} className="monthly-screen-muted-cell flex items-center justify-between rounded border-2 border-graphite-400 bg-graphite-100 px-1.5 py-0.5 font-semibold dark:border-graphite-600 dark:bg-surface-hover/60 print:border-graphite-400 print:bg-graphite-100">
+                  <span className="text-graphite-800 truncate dark:text-graphite-200 print:text-graphite-800">{r.descricao}</span>
+                  <span className="ml-1 font-bold text-graphite-900 shrink-0 dark:text-graphite-100 print:text-graphite-900">{r.pessoaNomeGuerra}</span>
                 </div>
               ))}
             </div>
@@ -1839,18 +1911,18 @@ export function EscalaMensal() {
           <div className="space-y-px">
             <div className="grid gap-1 text-center text-[10px] font-bold leading-tight" style={{ gridTemplateColumns: '0.82fr 2.18fr' }}>
               <div className="grid gap-px">
-                <div className="rounded border-2 border-amber-600 bg-amber-100 px-2 py-1 text-center text-amber-900">
+                <div className="rounded border-2 border-amber-600 bg-amber-100 px-2 py-1 text-center text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200 print:border-amber-600 print:bg-amber-100 print:text-amber-900">
                   EXECUTAR A HIGIENIZAÇÃO DAS ÁREAS, APÓS AS 06:00 HORAS
                 </div>
-                <div className="rounded border-2 border-emerald-600 bg-emerald-100 px-2 py-1 text-center text-emerald-900">
+                <div className="rounded border-2 border-emerald-600 bg-emerald-100 px-2 py-1 text-center text-emerald-900 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-200 print:border-emerald-600 print:bg-emerald-100 print:text-emerald-900">
                   HIGIENIZAÇÃO CONFORME POP 006
                 </div>
               </div>
-              <div className="flex items-center justify-center rounded border-2 border-sky-600 bg-sky-100 px-2 py-1 text-center text-sky-900">
+              <div className="flex items-center justify-center rounded border-2 border-sky-600 bg-sky-100 px-2 py-1 text-center text-sky-900 dark:border-sky-700 dark:bg-sky-900/20 dark:text-sky-200 print:border-sky-600 print:bg-sky-100 print:text-sky-900">
                 CCI's podem ser higienizados internamente antes das 06 mas devem ser higienizados por dentro e por fora todos os turnos, e nos para-lamas deve ser passo pano após a varredura da garagem para não ficar pó sobre os mesmos
               </div>
             </div>
-            <div className="rounded border-2 border-red-700 bg-red-100 px-2 py-1 text-center text-[7px] font-bold leading-snug text-red-900">
+            <div className="rounded border-2 border-red-700 bg-red-100 px-2 py-1 text-center text-[7px] font-bold leading-snug text-red-900 dark:border-red-700 dark:bg-red-900/20 dark:text-red-200 print:border-red-700 print:bg-red-100 print:text-red-900">
               ATENÇÃO: AS HIGIENIZAÇÕES DEVER SER EXECUTADAS POR TODOS, CASO ESTEJAM PEGANDO SUJO COBREM DO TURNO ANTERIOR ASSIM COMO ESTÁ PREVISTO NO POP, POIS IREMOS COBRAR DA NOSSA EQUIPE, SEM EXCEÇÕES
             </div>
           </div>
@@ -1860,13 +1932,22 @@ export function EscalaMensal() {
       {/* List mode */}
       {mode === 'list' && (
         <>
-          <div className="flex items-center gap-2" data-escala-mensal-tour="mensal-lista-filtros">
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-graphite-400 bg-white p-3 dark:border-graphite-500 dark:bg-graphite-800" data-escala-mensal-tour="mensal-lista-filtros">
+            <Filter className="h-4 w-4 text-graphite-400 dark:text-graphite-500" />
+            <select value={filterListMes} onChange={e => setFilterListMes(e.target.value)}
+              className="rounded-lg border border-graphite-400 bg-white px-3 py-1.5 text-sm text-graphite-700 dark:border-graphite-500 dark:bg-graphite-700 dark:text-graphite-200">
+              {MESES.map((m, i) => <option key={i + 1} value={String(i + 1)}>{m}</option>)}
+            </select>
+            <select value={filterListAno} onChange={e => setFilterListAno(e.target.value)}
+              className="rounded-lg border border-graphite-200 bg-white px-3 py-1.5 text-sm text-graphite-700 dark:border-graphite-600 dark:bg-graphite-700 dark:text-graphite-200">
+              {anosFiltro.map(a => <option key={a} value={String(a)}>{a}</option>)}
+            </select>
             <select value={filterListEquipe} onChange={e => setFilterListEquipe(e.target.value)}
-              className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100">
-              <option value="">Todas as equipes</option>
+              className="rounded-lg border border-graphite-200 bg-white px-3 py-1.5 text-sm text-graphite-700 dark:border-graphite-600 dark:bg-graphite-700 dark:text-graphite-200">
+              <option value="">Todas as Equipes</option>
               {['Alfa','Bravo','Charlie','Delta'].map(eq => <option key={eq} value={eq}>{eq}</option>)}
             </select>
-            <span className="text-xs text-graphite-400">{completasFiltradas.length} escala(s)</span>
+            <span className="ml-auto text-xs text-graphite-500 dark:text-graphite-400">{completasFiltradas.length} escala(s) encontrada(s)</span>
           </div>
           {completasFiltradas.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300/60 bg-white/50 p-12 text-center dark:border-border-dark dark:bg-surface-card">

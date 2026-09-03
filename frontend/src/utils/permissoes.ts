@@ -112,7 +112,7 @@ async function resolverBombeiroVinculado(user: AuthUserPermissao): Promise<Bombe
 export async function resolverContextoOperacional(user: AuthUserPermissao): Promise<ContextoOperacionalPermissao> {
   const base = contextoBase(user);
 
-  if (!user || base.isAdministradorSistema || user.pessoa?.personType !== 'bombeiro') {
+  if (!user || user.pessoa?.personType !== 'bombeiro') {
     return base;
   }
 
@@ -143,8 +143,8 @@ export async function resolverContextoOperacional(user: AuthUserPermissao): Prom
       equipeFixa: bombeiro.equipe,
       cargo: cargoEfetivo,
       cargoFixo: bombeiro.cargo,
-      canManageGlobal: cargoEfetivo === 'GS',
-      isAdministradorSistema: false,
+      canManageGlobal: base.isAdministradorSistema || cargoEfetivo === 'GS',
+      isAdministradorSistema: base.isAdministradorSistema,
       bombeiroId: bombeiro.id,
       autorizadoRegistrosDiarios: bombeiro.autorizadoRegistrosDiarios,
       autorizacaoRegistrosDiariosEquipe: equipeAutorizadaRegistros,
@@ -158,8 +158,8 @@ export async function resolverContextoOperacional(user: AuthUserPermissao): Prom
       equipeFixa: bombeiro.equipe,
       cargo: bombeiro.cargo,
       cargoFixo: bombeiro.cargo,
-      canManageGlobal: bombeiro.cargo === 'GS',
-      isAdministradorSistema: false,
+      canManageGlobal: base.isAdministradorSistema || bombeiro.cargo === 'GS',
+      isAdministradorSistema: base.isAdministradorSistema,
       bombeiroId: bombeiro.id,
       autorizadoRegistrosDiarios: bombeiro.autorizadoRegistrosDiarios,
       autorizacaoRegistrosDiariosEquipe: equipeAutorizadaRegistros,

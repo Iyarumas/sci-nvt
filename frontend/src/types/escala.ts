@@ -35,6 +35,7 @@ export interface ExtraSlot {
   equipePlantao?: string;
   funcionarioId?: string;
   substitutoId?: string;
+  motivo?: string;
   funcaoSaindo: string;
   nomeSaindo: string;
   nomeSaindoCompleto?: string;

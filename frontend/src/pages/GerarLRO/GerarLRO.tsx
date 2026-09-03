@@ -8,7 +8,7 @@ import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarAtivos } from '../../services/bombeiroService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
-import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
+import { listarVigencias, type MotivoVigenciaSubstituicao, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import { listarDocumentos, listarPreenchimentos, criarPreenchimento, criarDocumento } from '../../services/documentoService';
 import { listarViaturas } from '../../services/viaturaService';
 import { listarPTRBs } from '../../services/ptrbService';
@@ -434,20 +434,82 @@ type TrocaManualLRO = {
   motivo: string;
   documentoFillId?: string;
 };
+type SubstituicaoOrigem = MotivoVigenciaSubstituicao | 'troca' | 'manual';
 type SubstituicaoInfo = {
   substitutoNome: string;
   substitutoId: string;
   tipo: 'troca' | 'substituicao';
+  origem: SubstituicaoOrigem;
   substituidoId: string;
   substituidoNome: string;
   cargoSubstituido?: string;
   equipeSubstituido?: string;
   cargoExercido?: string;
+  substituidoSaiDoPlantao: boolean;
 };
 type EfetivoDisponivel = {
   bombeiro: Bombeiro;
   cargoExercido: string;
 };
+
+function substituicaoVemDeFerias(origem: SubstituicaoOrigem | string | undefined): boolean {
+  return origem === 'ferias' || origem === 'cascata';
+}
+
+function visualSubstituicaoLRO(info?: Pick<SubstituicaoInfo, 'tipo' | 'origem'>) {
+  if (!info) {
+    return {
+      label: '',
+      cardClass: 'border-graphite-100 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-hover/30',
+      badgeClass: '',
+      hoverBadgeClass: '',
+      nameClass: 'text-graphite-900 dark:text-graphite-100',
+      detailClass: 'text-graphite-500',
+    };
+  }
+
+  if (info.tipo === 'troca' || info.origem === 'troca' || info.origem === 'manual') {
+    return {
+      label: info.origem === 'manual' ? 'EMERGENCIAL' : 'TROCA',
+      cardClass: 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/10',
+      badgeClass: 'bg-amber-200 text-amber-800 dark:bg-amber-800/40 dark:text-amber-300',
+      hoverBadgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-800/30 dark:text-amber-300',
+      nameClass: 'text-amber-700 dark:text-amber-300',
+      detailClass: 'text-amber-600 dark:text-amber-400',
+    };
+  }
+
+  if (substituicaoVemDeFerias(info.origem)) {
+    return {
+      label: info.origem === 'cascata' ? 'CORRENTE DE FERIAS' : 'FERIAS',
+      cardClass: 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/10',
+      badgeClass: 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800/40 dark:text-emerald-300',
+      hoverBadgeClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-800/30 dark:text-emerald-300',
+      nameClass: 'text-emerald-700 dark:text-emerald-300',
+      detailClass: 'text-emerald-600 dark:text-emerald-400',
+    };
+  }
+
+  if (info.origem === 'afastamento') {
+    return {
+      label: 'AFASTAMENTO',
+      cardClass: 'border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-900/10',
+      badgeClass: 'bg-rose-200 text-rose-800 dark:bg-rose-800/40 dark:text-rose-300',
+      hoverBadgeClass: 'bg-rose-100 text-rose-700 dark:bg-rose-800/30 dark:text-rose-300',
+      nameClass: 'text-rose-700 dark:text-rose-300',
+      detailClass: 'text-rose-600 dark:text-rose-400',
+    };
+  }
+
+  return {
+    label: 'SUBSTITUICAO',
+    cardClass: 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/10',
+    badgeClass: 'bg-blue-200 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300',
+    hoverBadgeClass: 'bg-blue-100 text-blue-700 dark:bg-blue-800/30 dark:text-blue-300',
+    nameClass: 'text-blue-700 dark:text-blue-300',
+    detailClass: 'text-blue-600 dark:text-blue-400',
+  };
+}
 const EMPTY_FROTA_LINHA: FrotaLinhaDados = {
   viaturaId: '',
   prefixo: '',
@@ -775,7 +837,7 @@ export function GerarLRO() {
     return () => clearInterval(interval);
   }, [drafts]);
 
-  const [vigencias, setVigencias] = useState<any[]>([]);
+  const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [vigenciasLoaded, setVigenciasLoaded] = useState(false);
   const carregarVigencias = useCallback(async () => {
     if (vigenciasLoaded) return;
@@ -1245,6 +1307,8 @@ export function GerarLRO() {
     return bombeiros.filter(b => b.equipe === equipe && !b.dataDesligamento);
   }, [bombeiros, equipe]);
 
+  const bombeiroPorId = useMemo(() => new Map(bombeiros.map(b => [b.id, b])), [bombeiros]);
+
   const emFerias = useMemo(() => {
     return feriasGozo.filter(f =>
       f.equipe === equipe &&
@@ -1252,6 +1316,15 @@ export function GerarLRO() {
       estaNoPeriodoISO(dataInicio, f.dataInicio, f.dataFim)
     );
   }, [feriasGozo, equipe, dataInicio]);
+
+  const feriasIds = useMemo(() => new Set(emFerias.map(f => f.funcionarioId)), [emFerias]);
+
+  const formatarFeriasComCargo = useCallback((ferias: FeriasGozo): string => {
+    const bombeiro = bombeiroPorId.get(ferias.funcionarioId);
+    const cargo = ferias.funcaoSubstituicao || bombeiro?.cargo || '';
+    const nome = bombeiro?.nomeGuerra || ferias.funcionarioNome;
+    return cargo ? `${cargo} ${nome}` : nome;
+  }, [bombeiroPorId]);
 
   function getNomeGuerra(nome: string): string {
     if (!nome) return '';
@@ -1279,17 +1352,21 @@ export function GerarLRO() {
       tipo: 'troca' | 'substituicao',
       cargoExercido?: string,
       substituidoEfetivo?: Partial<Pick<SubstituicaoInfo, 'substituidoId' | 'substituidoNome' | 'cargoSubstituido' | 'equipeSubstituido'>>,
+      origem: SubstituicaoOrigem = tipo,
+      substituidoSaiDoPlantao = origem !== 'cascata',
     ) => {
       if (!ausente || !substituto || ausente.id === substituto.id) return;
       map[ausente.id] = {
         substitutoNome: substituto.nomeGuerra || substituto.nomeCompleto,
         substitutoId: substituto.id,
         tipo,
+        origem,
         substituidoId: substituidoEfetivo?.substituidoId || ausente.id,
         substituidoNome: substituidoEfetivo?.substituidoNome || ausente.nomeGuerra || ausente.nomeCompleto,
         cargoSubstituido: substituidoEfetivo?.cargoSubstituido || ausente.cargo,
         equipeSubstituido: substituidoEfetivo?.equipeSubstituido || ausente.equipe,
         cargoExercido: cargoExercido || substituidoEfetivo?.cargoSubstituido || ausente.cargo,
+        substituidoSaiDoPlantao,
       };
     };
 
@@ -1300,12 +1377,13 @@ export function GerarLRO() {
       const original = bombeiros.find((b: any) => b.id === v.funcionarioOriginalId);
       const substituto = bombeiros.find((b: any) => b.id === v.substitutoId || b.nomeGuerra === v.substitutoNome || b.nomeCompleto === v.substitutoNome);
       if ((original?.equipe || v.equipe) !== equipe) return;
+      const origem = (v.motivo || 'substituicao') as SubstituicaoOrigem;
       registrar(original, substituto, 'substituicao', v.cargoExercido, {
         substituidoId: v.funcionarioOriginalId,
         substituidoNome: v.funcionarioOriginalNome,
         cargoSubstituido: v.cargoOriginalFuncionario,
         equipeSubstituido: original?.equipe || v.equipe,
-      });
+      }, origem, origem !== 'cascata');
     });
     // De todasSubstituicoes (substituições temporárias) — filtra pelo período do plantão
     todasSubstituicoes.forEach((s: any) => {
@@ -1335,7 +1413,7 @@ export function GerarLRO() {
             substituidoNome: ausente?.nomeGuerra || ausente?.nomeCompleto,
             cargoSubstituido: elo.funcionarioCargo || elo.funcionario_cargo || s.funcionarioCargo || s.funcionario_cargo || ausente?.cargo,
             equipeSubstituido: equipePlantao || ausente?.equipe,
-          });
+          }, 'afastamento');
         });
         return;
       }
@@ -1349,7 +1427,7 @@ export function GerarLRO() {
         b.nomeGuerra === (s.substitutoNome || s.substituto_nome) ||
         b.nomeCompleto === (s.substitutoNome || s.substituto_nome)
       );
-      registrar(ausente, substituto, 'substituicao', s.funcionarioCargo || s.funcionario_cargo || ausente?.cargo);
+      registrar(ausente, substituto, 'substituicao', s.funcionarioCargo || s.funcionario_cargo || ausente?.cargo, undefined, 'substituicao');
     });
     // De trocas detectadas (aprovadas ou pendentes no LRO) — solicitante/solicitado alternam conforme a data
     substituicoesDetectadas
@@ -1362,7 +1440,7 @@ export function GerarLRO() {
           : undefined;
         const equipeEfetivaAusente = coberturaAnterior?.equipeSubstituido || ausente?.equipe;
         if (equipeEfetivaAusente !== equipe) return;
-        registrar(ausente, substituto, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || ausente?.cargo, coberturaAnterior);
+        registrar(ausente, substituto, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || ausente?.cargo, coberturaAnterior, 'troca');
     });
     // De trocasManuais (troca emergencial) — solicitante sai, solicitado entra
     trocasManuais.forEach(tm => {
@@ -1373,7 +1451,7 @@ export function GerarLRO() {
         : undefined;
       const equipeEfetivaSolicitante = coberturaAnterior?.equipeSubstituido || solicitante?.equipe;
       if (equipeEfetivaSolicitante !== equipe) return;
-      registrar(solicitante, solicitado, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || solicitante?.cargo, coberturaAnterior);
+      registrar(solicitante, solicitado, 'troca', coberturaAnterior?.cargoExercido || coberturaAnterior?.cargoSubstituido || solicitante?.cargo, coberturaAnterior, 'manual');
     });
     return map;
   }, [dataInicio, vigencias, todasSubstituicoes, substituicoesDetectadas, trocasManuais, bombeiros, equipe]);
@@ -1386,19 +1464,28 @@ export function GerarLRO() {
     return map;
   }, [substituicoesMap]);
 
+  const substituidosAusentesIds = useMemo(() => {
+    return new Set(
+      Object.entries(substituicoesMap)
+        .filter(([, sub]) => sub.substituidoSaiDoPlantao !== false)
+        .map(([id]) => id)
+    );
+  }, [substituicoesMap]);
+
+  const pessoaSaiuDoPlantao = useCallback((bombeiro?: Bombeiro): boolean => {
+    return !!bombeiro && (feriasIds.has(bombeiro.id) || substituidosAusentesIds.has(bombeiro.id));
+  }, [feriasIds, substituidosAusentesIds]);
+
   const disponiveis = useMemo(() => {
-    const feriasIds = new Set(emFerias.map(f => f.funcionarioId));
-    const substituidoIds = new Set(Object.keys(substituicoesMap));
     const idsAdicionados = new Set<string>();
     const presentes = membrosEquipe.filter(b => {
-      if (feriasIds.has(b.id) || substituidoIds.has(b.id)) return false;
+      if (feriasIds.has(b.id) || substituidosAusentesIds.has(b.id)) return false;
       idsAdicionados.add(b.id);
       return true;
     });
-    Object.entries(substituicoesMap).forEach(([ausenteId, sub]) => {
-      if (idsAdicionados.has(ausenteId)) return;
-      if (substituidoIds.has(sub.substitutoId)) return;
+    Object.values(substituicoesMap).forEach(sub => {
       if ((sub.equipeSubstituido || '') !== equipe) return;
+      if (feriasIds.has(sub.substitutoId) || substituidosAusentesIds.has(sub.substitutoId)) return;
       const substituto = bombeiros.find((b: any) =>
         b.id === sub.substitutoId ||
         b.nomeGuerra === sub.substitutoNome ||
@@ -1410,7 +1497,7 @@ export function GerarLRO() {
       }
     });
     return presentes;
-  }, [membrosEquipe, emFerias, substituicoesMap, bombeiros, equipe]);
+  }, [membrosEquipe, feriasIds, substituidosAusentesIds, substituicoesMap, bombeiros, equipe]);
 
   const efetivoDisponivel = useMemo<EfetivoDisponivel[]>(() => {
     return disponiveis.map(bombeiro => {
@@ -1472,7 +1559,6 @@ export function GerarLRO() {
   }, []);
 
   const substituicoesAtivas = useMemo(() => {
-    const bombeiroPorId = new Map(bombeiros.map(b => [b.id, b]));
     return vigencias.filter(v => {
       const original = bombeiroPorId.get(v.funcionarioOriginalId);
       return v.ativa &&
@@ -1488,7 +1574,13 @@ export function GerarLRO() {
       motivo: v.motivo,
       nivel: v.nivelCascata,
     }));
-  }, [vigencias, bombeiros, equipe, dataInicio]);
+  }, [vigencias, bombeiroPorId, equipe, dataInicio]);
+
+  const temSubstituicoesBa = useMemo(() => {
+    return substituicoesAtivas.length > 0 ||
+      substituicoesDetectadas.some(s => s.tipo === 'troca' && s.confirmada !== false) ||
+      trocasManuais.length > 0;
+  }, [substituicoesAtivas, substituicoesDetectadas, trocasManuais]);
 
   // Auto-preenche o Chefe de Equipe, BA-OC e a equipagem (CCI 2, CCI 3, CRS) a partir da escala mensal do dia,
   // aplicando trocas/substituições no lugar das pessoas substituídas
@@ -1507,7 +1599,7 @@ export function GerarLRO() {
       if (!b) return nomeGuerra || '';
       if (visitados.has(b.id)) return b.nomeGuerra || nomeGuerra || '';
       const sub = substituicoesMap[b.id];
-      if (sub) {
+      if (sub && sub.substituidoSaiDoPlantao !== false) {
         const substituto = bombeiros.find((x: any) =>
           x.id === sub.substitutoId ||
           x.nomeGuerra === sub.substitutoNome ||
@@ -1541,7 +1633,7 @@ export function GerarLRO() {
     })();
     const nomeChefeEfetivo = efetivoDisponivel.find(entry => entry.cargoExercido === 'BA-CE')?.bombeiro.nomeGuerra || '';
     const chefeAtual = buscarBombeiroPorNome(chefeEquipe);
-    const chefeAtualSaiu = !!chefeAtual && !!substituicoesMap[chefeAtual.id];
+    const chefeAtualSaiu = pessoaSaiuDoPlantao(chefeAtual);
     const chefeAtualPresente = !!chefeAtual && disponiveis.some(b => b.id === chefeAtual.id);
     const candidatoChefe = [nomeChefeDaEscala, nomeChefeEfetivo].find(Boolean) || '';
     if (!campoEquipeFoiEditado('chefeEquipe') && candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente) && candidatoChefe !== chefeEquipe) {
@@ -1550,7 +1642,7 @@ export function GerarLRO() {
 
     // 1.2 Comunicação BA-OC — comunicante do plantão (rádio fixo da parada do dia)
     const comunicacaoAtual = buscarBombeiroPorNome(comunicacao);
-    const comunicacaoAtualSaiu = !!comunicacaoAtual && !!substituicoesMap[comunicacaoAtual.id];
+    const comunicacaoAtualSaiu = pessoaSaiuDoPlantao(comunicacaoAtual);
     if (!campoEquipeFoiEditado('comunicacao') && (!comunicacao || comunicacaoAtualSaiu) && parada?.radio) {
       const radioOrdenada = [
         ...parada.radio.filter(r => r.fixo),
@@ -1632,7 +1724,7 @@ export function GerarLRO() {
         const nomeFinal = novo[key] || '';
         const valorAtual = next[key] || '';
         const bombeiroAtual = buscarBombeiroPorNome(valorAtual);
-        const atualSaiu = !!bombeiroAtual && !!substituicoesMap[bombeiroAtual.id];
+        const atualSaiu = pessoaSaiuDoPlantao(bombeiroAtual);
         if (nomeFinal && (!valorAtual || valorAtual === original[key] || atualSaiu || !bombeiroAtual)) {
           next[key] = nomeFinal;
         } else if (!nomeFinal && atualSaiu) {
@@ -1653,7 +1745,7 @@ export function GerarLRO() {
     if (!registrosIguais(nextCCI, equipagemCCI)) setEquipagemCCI(nextCCI);
     if (!registrosIguais(nextCCIRT, equipagemCCIRT)) setEquipagemCCIRT(nextCCIRT);
     if (!registrosIguais(nextCRS, equipagemCRS)) setEquipagemCRS(nextCRS);
-  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, efetivoDisponivel, cargoExercidoNoPlantao, buscarEfetivoDisponivelPorNome, podeAtuarComoComunicacao, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
+  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, efetivoDisponivel, cargoExercidoNoPlantao, buscarEfetivoDisponivelPorNome, podeAtuarComoComunicacao, pessoaSaiuDoPlantao, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
 
   function montarSubstituicoesLRO() {
     const cargoNoPlantao = (pessoa?: Bombeiro) => pessoa ? (cargoExercidoNoPlantao(pessoa) || pessoa.cargo) : 'BA-2';
@@ -2687,7 +2779,7 @@ export function GerarLRO() {
             </h3>
             {emFerias.length > 0 && (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800/30 dark:bg-amber-900/10 dark:text-amber-400">
-                <span className="font-semibold">Em férias:</span> {emFerias.map(f => f.funcionarioNome).join(', ')}
+                <span className="font-semibold">Em férias:</span> {emFerias.map(formatarFeriasComCargo).join(', ')}
               </div>
             )}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
@@ -2699,19 +2791,20 @@ export function GerarLRO() {
               }).map(b => {
                 const sub = substituicoesPorSubstituto[b.id];
                 const cargoExercido = sub?.cargoExercido || sub?.cargoSubstituido || b.cargo;
+                const visual = visualSubstituicaoLRO(sub);
                 return (
-                  <div key={b.id} className={`group relative rounded-xl border p-2 transition-all ${sub ? (sub.tipo === 'troca' ? 'border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/10' : 'border-blue-300 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/10') : 'border-graphite-100 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-hover/30'}`}>
+                  <div key={b.id} className={`group relative rounded-xl border p-2 transition-all ${visual.cardClass}`}>
                     {sub ? (
                       <div className="relative min-h-[52px] flex flex-col items-center justify-center">
                         <div className="flex flex-col items-center transition-all duration-300 group-hover:opacity-0 group-hover:scale-95">
-                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-bold mb-0.5 ${sub.tipo === 'troca' ? 'bg-amber-200 text-amber-800 dark:bg-amber-800/40 dark:text-amber-300' : 'bg-blue-200 text-blue-800 dark:bg-blue-800/40 dark:text-blue-300'}`}>
-                            {sub.tipo === 'troca' ? '↔ TROCA' : '↔ SUBSTITUIÇÃO'}
+                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-bold mb-0.5 ${visual.badgeClass}`}>
+                            {visual.label}
                           </span>
-                          <p className={`text-xs font-bold ${sub.tipo === 'troca' ? 'text-amber-700 dark:text-amber-300' : 'text-blue-700 dark:text-blue-300'}`}>{b.nomeGuerra}</p>
-                          <p className={`text-[9px] ${sub.tipo === 'troca' ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>como {cargoExercido}</p>
+                          <p className={`text-xs font-bold ${visual.nameClass}`}>{b.nomeGuerra}</p>
+                          <p className={`text-[9px] ${visual.detailClass}`}>como {cargoExercido}</p>
                         </div>
                         <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:scale-100 scale-90">
-                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-bold mb-0.5 ${sub.tipo === 'troca' ? 'bg-amber-100 text-amber-700 dark:bg-amber-800/30 dark:text-amber-300' : 'bg-blue-100 text-blue-700 dark:bg-blue-800/30 dark:text-blue-300'}`}>
+                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-bold mb-0.5 ${visual.hoverBadgeClass}`}>
                             SUBSTITUI
                           </span>
                           <p className="text-xs font-bold text-graphite-600 dark:text-graphite-400">{getNomeGuerra(sub.substituidoNome)}</p>
@@ -2761,7 +2854,7 @@ export function GerarLRO() {
               <div className="flex flex-wrap gap-2">
                 {emFerias.map(f => (
                   <span key={f.funcionarioId} className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                    {f.funcionarioNome}
+                    {formatarFeriasComCargo(f)}
                   </span>
                 ))}
               </div>
@@ -3204,14 +3297,37 @@ export function GerarLRO() {
             <h3 className="mb-4 font-bold text-graphite-900 dark:text-graphite-100">1.3 Substituições de BA</h3>
             <div className="flex items-center gap-6 mb-4">
               <label className="flex items-center gap-2 text-sm text-graphite-700 dark:text-graphite-300">
-                <input type="checkbox" checked={substituicoesDetectadas.some(s => s.tipo === 'troca' && s.confirmada !== false) || trocasManuais.length > 0} readOnly className="h-4 w-4 rounded border-graphite-300 text-aviation-600" />
+                <input type="checkbox" checked={temSubstituicoesBa} readOnly className="h-4 w-4 rounded border-graphite-300 text-aviation-600" />
                 ABAIXO
               </label>
               <label className="flex items-center gap-2 text-sm text-graphite-700 dark:text-graphite-300">
-                <input type="checkbox" checked={!substituicoesDetectadas.some(s => s.tipo === 'troca' && s.confirmada !== false) && trocasManuais.length === 0} readOnly className="h-4 w-4 rounded border-graphite-300 text-aviation-600" />
+                <input type="checkbox" checked={!temSubstituicoesBa} readOnly className="h-4 w-4 rounded border-graphite-300 text-aviation-600" />
                 NÃO HOUVE
               </label>
             </div>
+            {substituicoesAtivas.map((sub, idx) => {
+              const visual = visualSubstituicaoLRO({ tipo: 'substituicao', origem: (sub.motivo || 'substituicao') as SubstituicaoOrigem });
+              return (
+                <div key={`ativa-${idx}-${sub.nomeAusente}-${sub.nomePresente}`} className={`mb-2 rounded-lg border p-3 ${visual.cardClass}`}>
+                  <div className="mb-2">
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${visual.badgeClass}`}>
+                      {visual.label}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-graphite-800 dark:text-graphite-200">{sub.nomeAusente || '—'}</p>
+                      <p className="text-xs text-graphite-500">{sub.cargoAusente || 'BA-2'}</p>
+                    </div>
+                    <div className="text-graphite-400 text-xs font-bold shrink-0 pt-1">→</div>
+                    <div className="text-left min-w-0 flex-1">
+                      <p className={`font-bold ${visual.nameClass}`}>{sub.nomePresente || '—'}</p>
+                      <p className={`text-xs ${visual.detailClass}`}>como {sub.cargoPresente || 'BA-2'} · Nível {sub.nivel || 1}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
             {substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(sub => {
               const findB = (nome: string) => buscarBombeiroPorNome(nome);
               const p1 = findB(sub.substituido);

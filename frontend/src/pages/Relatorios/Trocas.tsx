@@ -42,6 +42,18 @@ const MONTH_NAMES = [
 ];
 
 const MAX_TROCAS_PER_MONTH = 3;
+const AUDITORIA_CARGO_PREFIXES = [
+  'SUPERVISOR',
+  'FERISTA',
+  'BA-CE',
+  'BA-LR',
+  'BA-MC',
+  'BA-RE',
+  'BA-2',
+  'APOC',
+  'GS',
+  'OC',
+];
 
 function getDataPlantaoTrocaData(data: Record<string, unknown>): string {
   return normalizarDataISO(data.data_solicitada) || normalizarDataISO(data.data_folga_solicitado);
@@ -953,6 +965,45 @@ export function Trocas() {
     return CARGO_OPTIONS.find(c => c.value === cargo)?.label || cargo;
   }
 
+  function pessoaTrocaFromBombeiro(bombeiro: Bombeiro): PessoaTroca {
+    return {
+      id: bombeiro.id || '',
+      tipo: 'bombeiro',
+      cargo: bombeiro.cargo || '',
+      nomeGuerra: bombeiro.nomeGuerra || '',
+      nomeCompleto: bombeiro.nomeCompleto || '',
+      equipe: bombeiro.equipe || '',
+      turno: bombeiro.turno || '',
+    };
+  }
+
+  function pessoaTrocaFromApoc(apoc: APOC): PessoaTroca {
+    return {
+      id: apoc.id || '',
+      tipo: 'apoc',
+      cargo: apoc.funcao || 'APOC',
+      nomeGuerra: apoc.nomeGuerra || apoc.nomeCompleto || '',
+      nomeCompleto: apoc.nomeCompleto || apoc.nomeGuerra || '',
+      equipe: apoc.equipe || '',
+      turno: apoc.turno || '',
+    };
+  }
+
+  function extrairCargoAuditoria(value: string): string {
+    const raw = String(value || '').trim();
+    const upper = raw.toUpperCase();
+    return AUDITORIA_CARGO_PREFIXES.find(cargo =>
+      upper === cargo || upper.startsWith(`${cargo} `) || upper.startsWith(`${cargo} -`)
+    ) || '';
+  }
+
+  function removerCargoAuditoria(value: string): string {
+    const raw = String(value || '').trim();
+    const cargo = extrairCargoAuditoria(raw);
+    if (!cargo) return raw;
+    return raw.slice(cargo.length).replace(/^(\s*-\s*|\s+)/, '').trim();
+  }
+
   function getPessoaByNome(nome: string): PessoaTroca | null {
     if (!nome) return null;
     const all = getAllFuncionarios();
@@ -969,9 +1020,9 @@ export function Trocas() {
     });
     if (!match) return null;
     if (match._type === 'bombeiro') {
-      return { id: match._raw.id || '', tipo: 'bombeiro', cargo: match._raw.cargo || '', nomeGuerra: match._raw.nomeGuerra || '', nomeCompleto: match._raw.nomeCompleto || '', equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
+      return pessoaTrocaFromBombeiro(match._raw);
     }
-    return { id: match._raw.id || '', tipo: 'apoc', cargo: match._raw.funcao || 'APOC', nomeGuerra: match._raw.nomeGuerra || match.label, nomeCompleto: match._raw.nomeCompleto || match.label, equipe: match._raw.equipe || '', turno: match._raw.turno || '' };
+    return pessoaTrocaFromApoc(match._raw);
   }
 
   function getCargoBaseTroca(pessoa: PessoaTroca | null, funcaoFallback = ''): string {
@@ -991,6 +1042,77 @@ export function Trocas() {
       .sort((a, b) => a.nivelCascata - b.nivelCascata)[0];
 
     return vigencia?.cargoExercido || cargoBase;
+  }
+
+  function getPessoaByAuditoria(value: string): PessoaTroca | null {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    const nomeSemCargo = removerCargoAuditoria(raw);
+    const porNome = getPessoaByNome(nomeSemCargo) || getPessoaByNome(raw);
+    if (porNome) return porNome;
+
+    const chave = normalizarChavePessoaTroca(nomeSemCargo || raw);
+    if (!chave) return null;
+
+    const bombeiro = bombeirosList.find(b =>
+      [b.id, b.matricula, b.email, b.nomeGuerra, b.nomeCompleto]
+        .some(campo => normalizarChavePessoaTroca(campo || '') === chave)
+    );
+    if (bombeiro) return pessoaTrocaFromBombeiro(bombeiro);
+
+    const apoc = apocsList.find(a =>
+      [a.id, a.email, a.nomeGuerra, a.nomeCompleto]
+        .some(campo => normalizarChavePessoaTroca(campo || '') === chave)
+    );
+    return apoc ? pessoaTrocaFromApoc(apoc) : null;
+  }
+
+  function getPessoaUsuarioAtualTroca(): PessoaTroca | null {
+    const pessoaId = user?.pessoa?.id || '';
+    if (pessoaId) {
+      const bombeiro = bombeirosList.find(b => b.id === pessoaId);
+      if (bombeiro) return pessoaTrocaFromBombeiro(bombeiro);
+
+      const apoc = apocsList.find(a => a.id === pessoaId);
+      if (apoc) return pessoaTrocaFromApoc(apoc);
+    }
+
+    return getPessoaByAuditoria(user?.pessoa?.nomeGuerra || user?.name || user?.username || '');
+  }
+
+  function formatarPessoaAuditoriaNaData(value: string, dataReferencia: string, fallback = 'Desconhecido'): string {
+    const raw = String(value || fallback || '').trim();
+    if (!raw) return 'Desconhecido';
+
+    const pessoa = getPessoaByAuditoria(raw);
+    if (!pessoa) return raw;
+
+    const cargoFallback = extrairCargoAuditoria(raw) || pessoa.cargo;
+    const cargo = getCargoEfetivoNaData(pessoa, dataReferencia, cargoFallback);
+    const nome = pessoa.nomeGuerra || removerCargoAuditoria(raw) || pessoa.nomeCompleto;
+    return [cargo, nome].filter(Boolean).join(' ');
+  }
+
+  function formatarUsuarioAtualComCargoEfetivo(data: Record<string, string>): string {
+    const dataReferencia = getDataPlantaoTrocaData(data) || hojeLocalISO();
+    const pessoa = getPessoaUsuarioAtualTroca();
+    const nome = pessoa?.nomeGuerra || user?.pessoa?.nomeGuerra || user?.name || user?.username || '';
+    const cargoFallback = pessoa?.cargo || user?.pessoa?.funcao || '';
+    const cargo = pessoa ? getCargoEfetivoNaData(pessoa, dataReferencia, cargoFallback) : cargoFallback;
+    return [cargo, nome].filter(Boolean).join(' ');
+  }
+
+  function formatarCriadoPorTroca(fill: DocumentFill): string {
+    const data = fill.filled_data as Record<string, string>;
+    const raw = data.criado_por || fill.filled_by || '';
+    return formatarPessoaAuditoriaNaData(raw, getDataPlantaoTroca(fill), raw || 'Desconhecido');
+  }
+
+  function formatarAutorizadoPorTroca(data: Record<string, string>, dataReferencia?: string): string {
+    const raw = data.autorizado_por || '';
+    if (!raw) return '';
+    return formatarPessoaAuditoriaNaData(raw, dataReferencia || getDataPlantaoTrocaData(data) || hojeLocalISO(), raw);
   }
 
   function getFuncoesTroca(data: Record<string, string>) {
@@ -1244,13 +1366,9 @@ export function Trocas() {
     const { cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(result);
     if (cargoSolPlantao) result.funcao_solicitante = cargoSolPlantao;
     if (cargoSolicPlantao) result.funcao_solicitado = cargoSolicPlantao;
-    const criarNome = user?.pessoa?.nomeGuerra || user?.name || '';
-    const criarCargo = user?.pessoa?.funcao || '';
-    result.criado_por = criarCargo ? `${criarCargo} ${criarNome}` : criarNome;
+    result.criado_por = formatarUsuarioAtualComCargoEfetivo(result) || result.criado_por || '';
     if (result.deferido_indeferido === 'DEFERIDO' || result.deferido_indeferido === 'INDEFERIDO') {
-      const autorNome = user?.pessoa?.nomeGuerra || user?.name || '';
-      const autorCargo = user?.pessoa?.funcao || '';
-      result.autorizado_por = autorCargo ? `${autorCargo} ${autorNome}` : autorNome;
+      result.autorizado_por = formatarUsuarioAtualComCargoEfetivo(result) || result.autorizado_por || '';
       result.data_autorizacao = hojeLocalISO();
     }
     return result;
@@ -1278,6 +1396,13 @@ export function Trocas() {
     dadosStr.check_deferido = 'V';
     dadosStr.check_indeferido = '';
     dadosStr.logo_med_group = '/assets/med-group-logo.png';
+    const dataReferenciaAuditoria = getDataPlantaoTrocaData(data) || hojeLocalISO();
+    if (dadosStr.criado_por) {
+      dadosStr.criado_por = formatarPessoaAuditoriaNaData(dadosStr.criado_por, dataReferenciaAuditoria, dadosStr.criado_por);
+    }
+    if (dadosStr.autorizado_por) {
+      dadosStr.autorizado_por = formatarPessoaAuditoriaNaData(dadosStr.autorizado_por, dataReferenciaAuditoria, dadosStr.autorizado_por);
+    }
     const { cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(data);
     if (cargoSolPlantao) dadosStr.funcao_solicitante = cargoSolPlantao;
     if (cargoSolicPlantao) dadosStr.funcao_solicitado = cargoSolicPlantao;
@@ -1303,13 +1428,9 @@ export function Trocas() {
       const doc = await ensureDocumentExists();
       if (!doc) return;
 
-      // Aprovação automática: marca como DEFERIDO e registra quem autorizou
-      const autorNome = user?.pessoa?.nomeGuerra || user?.name || '';
-      const autorCargo = user?.pessoa?.funcao || '';
       const dadosAprovados: Record<string, string> = {
         ...formData,
         deferido_indeferido: 'DEFERIDO',
-        autorizado_por: autorCargo ? `${autorCargo} ${autorNome}` : autorNome,
         data_autorizacao: hojeLocalISO(),
       };
       const formDataToSave = prepareFormDataWithAuth(dadosAprovados);
@@ -1317,7 +1438,7 @@ export function Trocas() {
       const blob = await getTrocaPdfBlob(doc);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
-      const dadosStr = buildPdfData(dadosAprovados);
+      const dadosStr = buildPdfData(formDataToSave);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
 
       if (editingFillId) {
@@ -1335,7 +1456,7 @@ export function Trocas() {
         });
       }
 
-      abrirPdfPreview(pdfBlob, nomeArquivoTroca(dadosAprovados), true);
+      abrirPdfPreview(pdfBlob, nomeArquivoTroca(formDataToSave), true);
 
       const docFills = await listarPreenchimentos(doc.id);
       setFills(docFills);
@@ -1368,7 +1489,7 @@ export function Trocas() {
       const blob = await getTrocaPdfBlob(doc);
       if (!blob) { setShowNotifPopup({ msg: 'PDF template nao encontrado.', type: 'error' }); return; }
       const pdfBytes = await blob.arrayBuffer();
-      const dadosStr = buildPdfData(formData);
+      const dadosStr = buildPdfData(prepareFormDataWithAuth(formData));
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
       abrirPdfPreview(pdfBlob, 'PRE-VISUALIZACAO TROCA DE SERVICO.pdf', false);
     } catch (err) {
@@ -1415,9 +1536,14 @@ export function Trocas() {
       }
       const pdfBytes = await blob.arrayBuffer();
       const data = fill.filled_data as Record<string, string>;
-      const dadosStr = buildPdfData(data);
+      const dadosComAuditoria = {
+        ...data,
+        criado_por: formatarCriadoPorTroca(fill),
+        autorizado_por: formatarAutorizadoPorTroca(data, getDataPlantaoTroca(fill)) || data.autorizado_por || '',
+      };
+      const dadosStr = buildPdfData(dadosComAuditoria);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
-      abrirPdfPreview(pdfBlob, nomeArquivoTroca(data), fill.status === 'signed');
+      abrirPdfPreview(pdfBlob, nomeArquivoTroca(dadosComAuditoria), fill.status === 'signed');
     } catch (err) {
       closePdfPreview();
       console.error('Erro ao visualizar PDF:', err);
@@ -2183,6 +2309,8 @@ export function Trocas() {
 
             const displaySol = displayNomeTroca(nomeSol);
             const displaySolic = displayNomeTroca(nomeSolic);
+            const criadoPorLabel = formatarCriadoPorTroca(fill);
+            const autorizadoPorLabel = formatarAutorizadoPorTroca(data, dataPlantaoTroca);
             const cargoSolAbr = cargoSolPlantao;
             const cargoSolicAbr = cargoSolicPlantao;
             const turnoSol = pessoaSol?.turno || bombeirosList.find((b: any) => nomeSol.includes(b.nomeGuerra))?.turno || '';
@@ -2219,7 +2347,7 @@ export function Trocas() {
                       <div className="text-xs text-graphite-500 dark:text-graphite-400 mt-0.5">
                         Plantão: {formatarDataBR(dataPlantaoTroca)}
                         {' '}&bull;{' '}
-                        Criado por: {data.criado_por || fill.filled_by || 'Desconhecido'} em {formatarDataBR(fill.created_at)}
+                        Criado por: {criadoPorLabel} em {formatarDataBR(fill.created_at)}
                         {!pessoaSol?.cargo && data.funcao_solicitante && <span className="ml-2 text-graphite-400">({getCargoLabel(data.funcao_solicitante)})</span>}
                       </div>
                     </div>
@@ -2327,7 +2455,7 @@ export function Trocas() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Datas</span>
                         {data.data_solicitada && <p className="mt-1 text-graphite-900 dark:text-graphite-100">Folga do Solicitante: {formatarDataBR(data.data_solicitada)}</p>}
                         {data.data_folga_solicitado && <p className="text-graphite-900 dark:text-graphite-100">Folga do Solicitado: {formatarDataBR(data.data_folga_solicitado)}</p>}
-                        <p className="mt-1 text-xs text-graphite-500">Documento criado por {data.criado_por || fill.filled_by || 'Desconhecido'} em {formatarDataHoraBR(fill.created_at)}</p>
+                        <p className="mt-1 text-xs text-graphite-500">Documento criado por {criadoPorLabel} em {formatarDataHoraBR(fill.created_at)}</p>
                       </div>
                       <div className="rounded-lg border border-graphite-100 bg-graphite-50/50 p-3 dark:border-graphite-600 dark:bg-graphite-700/30">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Status</span>
@@ -2359,14 +2487,14 @@ export function Trocas() {
                                 </p>
                                 {(data.criado_por || fill.filled_by) && (
                                   <p className="text-[10px] font-semibold text-green-700 dark:text-green-300">
-                                    Criado por {data.criado_por || fill.filled_by}
+                                    Criado por {criadoPorLabel}
                                   </p>
                                 )}
                               </>
                             ) : (
                               <p className="text-[10px] text-green-600 dark:text-green-400">
                                 {data.data_autorizacao ? formatarDataBR(data.data_autorizacao) : formatarDataBR(fill.created_at)}
-                                {data.autorizado_por ? ` · ${data.autorizado_por}` : ''}
+                                {autorizadoPorLabel ? ` · ${autorizadoPorLabel}` : ''}
                               </p>
                             )}
                           </div>

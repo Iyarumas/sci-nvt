@@ -53,6 +53,30 @@ const inputCls =
 
 const labelCls = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 
+const avatarFeriasToneClasses = {
+  amber: 'bg-gradient-to-br from-amber-500 to-amber-600',
+  green: 'bg-gradient-to-br from-green-500 to-green-600 shadow-md shadow-green-500/30',
+  red: 'bg-gradient-to-br from-red-500 to-red-600 shadow-md shadow-red-500/30',
+  yellow: 'bg-gradient-to-br from-yellow-400 to-yellow-500',
+} as const;
+
+function AvatarPessoaFerias({
+  pessoa,
+  fallback,
+  tone,
+}: {
+  pessoa?: Pick<Bombeiro, 'foto' | 'nomeGuerra' | 'nomeCompleto'> | null;
+  fallback?: string;
+  tone: keyof typeof avatarFeriasToneClasses;
+}) {
+  const inicial = (pessoa?.nomeGuerra || pessoa?.nomeCompleto || fallback || '?').trim().charAt(0).toUpperCase() || '?';
+  return (
+    <div className={`flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg text-[10px] font-bold text-white ${avatarFeriasToneClasses[tone]}`}>
+      {pessoa?.foto ? <img src={pessoa.foto} alt="" className="h-full w-full rounded-lg object-cover" /> : inicial}
+    </div>
+  );
+}
+
 const EQUIPES: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
 
 const PERIODO_STATUS_COLORS: Record<string, string> = {
@@ -3175,36 +3199,50 @@ function TabQuadroEfetivos() {
                                 titleNome: `${sb.nomeGuerra} (${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido})`,
                                 initial: sb.nomeGuerra.charAt(0).toUpperCase(),
                                 nomeDisplay: `${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido} ${sb.nomeGuerra}`,
+                                pessoa: sb,
                               };
                               return {
                                 titleNome: vigSub.substitutoNome,
                                 initial: vigSub.substitutoNome.charAt(0),
                                 nomeDisplay: vigSub.substitutoNome,
+                                pessoa: null,
                               };
                             }
                             if (item?.substitutoNome) {
-                              const sb = bombeiros.find(bb => bb.nomeCompleto === item.substitutoNome);
+                              const sb = bombeiros.find(bb =>
+                                bb.id === item.substitutoId ||
+                                bb.nomeCompleto === item.substitutoNome ||
+                                bb.nomeGuerra === item.substitutoNome
+                              );
                               const cargoExibido = item.funcaoSubstituicao || sb?.cargo || '';
                               if (sb) return {
                                 titleNome: `${sb.nomeGuerra} (${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido})`,
                                 initial: sb.nomeGuerra.charAt(0).toUpperCase(),
                                 nomeDisplay: `${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido} ${sb.nomeGuerra}`,
+                                pessoa: sb,
                               };
                               return {
                                 titleNome: item.substitutoNome,
                                 initial: item.substitutoNome.charAt(0),
                                 nomeDisplay: item.substitutoNome,
+                                pessoa: null,
                               };
                             }
                             if (ferista?.feristaNome) {
+                              const feristaBombeiro = bombeiros.find(bb =>
+                                bb.id === ferista.feristaId ||
+                                bb.nomeCompleto === ferista.feristaNome ||
+                                bb.nomeGuerra === ferista.feristaNome
+                              );
                               const cargoFerista = item?.funcaoSubstituicao || '';
                               return {
                                 titleNome: `${ferista.feristaNome}${cargoFerista ? ` (${cargoFerista})` : ''}`,
                                 initial: ferista.feristaNome.charAt(0),
                                 nomeDisplay: cargoFerista ? `${cargoFerista} ${ferista.feristaNome}` : ferista.feristaNome,
+                                pessoa: feristaBombeiro || null,
                               };
                             }
-                            return { titleNome: '', initial: 'S', nomeDisplay: '' };
+                            return { titleNome: '', initial: 'S', nomeDisplay: '', pessoa: null };
                           })();
 
                           if (temSub) {
@@ -3214,9 +3252,7 @@ function TabQuadroEfetivos() {
                               <div key={m.id} className="group relative rounded-xl border border-amber-300 bg-amber-50/50 px-3 py-2 transition-all dark:border-amber-700 dark:bg-amber-900/10"
                                 title={`${ABBR_CARGO[m.cargo] || m.cargo} ${m.nomeGuerra} · Substituído por ${subDisplayInfo.titleNome}`}>
                                 <div className="flex items-center gap-2.5 transition-all duration-300 group-hover:opacity-0 group-hover:scale-95">
-                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-[10px] font-bold text-white">
-                                    {subDisplayInfo.initial}
-                                  </div>
+                                  <AvatarPessoaFerias pessoa={subDisplayInfo.pessoa} fallback={subDisplayInfo.initial || subDisplayInfo.nomeDisplay} tone="amber" />
                                   <div className="min-w-0 flex-1">
                                     <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100 truncate flex items-center gap-1">
                                       {subDisplayInfo.nomeDisplay}
@@ -3235,9 +3271,7 @@ function TabQuadroEfetivos() {
                                   </div>
                                 </div>
                                 <div className="absolute inset-0 flex items-center gap-2.5 rounded-xl opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:scale-100 scale-90">
-                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-xs font-bold text-white shadow-md shadow-green-500/30">
-                                    {m.nomeGuerra.charAt(0)}
-                                  </div>
+                                  <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="green" />
                                   <div className="min-w-0 flex-1">
                                     <p className="text-xs font-bold text-green-700 dark:text-green-300 truncate">
                                       {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
@@ -3262,9 +3296,7 @@ function TabQuadroEfetivos() {
                               <div key={m.id} className="group relative rounded-xl border border-amber-300 bg-amber-50/50 px-3 py-2 transition-all dark:border-amber-700 dark:bg-amber-900/10"
                                 title={`${ABBR_CARGO[cargoExibido] || cargoExibido} ${m.nomeGuerra} substituindo ${func.nomeGuerra} (${ABBR_CARGO[cargoExibido] || cargoExibido})`}>
                                 <div className="flex items-center gap-2.5 transition-all duration-300 group-hover:opacity-0 group-hover:scale-95">
-                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-[10px] font-bold text-white">
-                                    {m.nomeGuerra.charAt(0)}
-                                  </div>
+                                  <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="amber" />
                                   <div className="min-w-0 flex-1">
                                     <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100 truncate">
                                       {ABBR_CARGO[cargoExibido] || cargoExibido} {m.nomeGuerra}
@@ -3276,9 +3308,7 @@ function TabQuadroEfetivos() {
                                   </div>
                                 </div>
                                 <div className="absolute inset-0 flex items-center gap-2.5 rounded-xl opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:scale-100 scale-90 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
-                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-red-500 to-red-600 text-xs font-bold text-white shadow-md shadow-red-500/30">
-                                    {func.nomeGuerra.charAt(0)}
-                                  </div>
+                                  <AvatarPessoaFerias pessoa={func} fallback={func.nomeGuerra} tone="red" />
                                   <div className="min-w-0 flex-1">
                                     <p className="text-xs font-bold text-red-700 dark:text-red-300 truncate">
                                       {ABBR_CARGO[cargoExibido] || cargoExibido} {func.nomeGuerra}
@@ -3305,9 +3335,7 @@ function TabQuadroEfetivos() {
                               {temSub ? (
                                 <div className="group relative" title={`${ABBR_CARGO[m.cargo] || m.cargo} ${m.nomeGuerra} · Substituído por ${subDisplayInfo.titleNome}`}>
                                   <div className="flex items-center gap-2.5 transition-all duration-300 group-hover:opacity-0 group-hover:scale-95">
-                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 text-[10px] font-bold text-white">
-                                      {subDisplayInfo.initial}
-                                    </div>
+                                    <AvatarPessoaFerias pessoa={subDisplayInfo.pessoa} fallback={subDisplayInfo.initial || subDisplayInfo.nomeDisplay} tone="amber" />
                                     <div className="min-w-0 flex-1">
                                       <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100 truncate flex items-center gap-1">
                                         {subDisplayInfo.nomeDisplay}
@@ -3326,9 +3354,7 @@ function TabQuadroEfetivos() {
                                     </div>
                                   </div>
                                   <div className="absolute inset-0 flex items-center gap-2.5 rounded-xl opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:scale-100 scale-90">
-                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-xs font-bold text-white shadow-md shadow-green-500/30">
-                                      {m.nomeGuerra.charAt(0)}
-                                    </div>
+                                    <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="green" />
                                     <div className="min-w-0 flex-1">
                                       <p className="text-xs font-bold text-green-700 dark:text-green-300 truncate">
                                         {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
@@ -3347,9 +3373,7 @@ function TabQuadroEfetivos() {
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2.5">
-                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-green-600 text-[10px] font-bold text-white">
-                                    {m.foto ? <img src={m.foto} alt="" className="h-full w-full rounded-lg object-cover" /> : m.nomeGuerra.charAt(0)}
-                                  </div>
+                                  <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="green" />
                                   <div className="min-w-0 flex-1">
                                     <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100 truncate">
                                       {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
@@ -3375,9 +3399,7 @@ function TabQuadroEfetivos() {
                           return (
                             <div key={m.id} className="flex items-center gap-2.5 rounded-xl border border-yellow-200 bg-yellow-50/50 px-3 py-2 opacity-70 dark:border-yellow-800/30 dark:bg-yellow-900/10"
                               title={gozo?.substitutoNome ? `${m.nomeGuerra} (${ABBR_CARGO[m.cargo] || m.cargo}) em gozo · Substituído por ${(() => { const sb = bombeiros.find(bb => bb.nomeCompleto === gozo?.substitutoNome); return sb ? `${sb.nomeGuerra} (${ABBR_CARGO[sb.cargo]})` : gozo?.substitutoNome; })()}` : `${m.nomeGuerra} (${ABBR_CARGO[m.cargo] || m.cargo}) em gozo`}>
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-500 text-[10px] font-bold text-white">
-                                {m.nomeGuerra.charAt(0)}
-                              </div>
+                              <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="yellow" />
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-bold text-graphite-700 dark:text-graphite-300 truncate line-through">
                                   {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}

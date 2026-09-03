@@ -2213,9 +2213,10 @@ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void
             background: #060f1f !important;
             color: #ffffff !important;
             border-color: #060f1f !important;
-            border-radius: 12px 12px 0 0 !important;
+            border-radius: 12px !important;
             flex: 0 0 auto !important;
-            padding: 7mm 8mm 7mm !important;
+            margin: 0 8mm !important;
+            padding: 5mm 6mm !important;
           }
           #print-area.daily-scale-print-area .daily-print-header h1,
           #print-area.daily-scale-print-area .daily-print-header p {
@@ -2228,8 +2229,8 @@ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void
             text-align: center !important;
           }
           #print-area.daily-scale-print-area .daily-print-team-logo {
-            height: 18mm !important;
-            width: 18mm !important;
+            height: 22mm !important;
+            width: 22mm !important;
           }
           #print-area.daily-scale-print-area .daily-scale-print-body {
             background: #ffffff !important;
@@ -2319,20 +2320,22 @@ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void
         </div>
       </div>
       <div id="print-area" className="daily-scale-print-area overflow-hidden rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card print:border-0 print:bg-white print:shadow-none">
-        <div className="daily-print-header border-b border-aviation-900 bg-aviation-900 px-6 py-5 text-white print:px-3 print:py-2">
-          <div className="relative flex min-h-[72px] flex-wrap items-center justify-between gap-4 print:min-h-[54px] print:gap-2">
+        <div className="daily-print-header mx-6 mt-5 rounded-2xl border-b border-aviation-900 bg-aviation-900 px-6 py-5 text-white print:mx-3 print:mt-2 print:rounded-xl print:px-3 print:py-2">
+          <div className="relative flex min-h-[88px] flex-wrap items-center justify-between gap-4 print:min-h-[64px] print:gap-2">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-aviation-100 print:text-[9px]">SESCINC</p>
               <h1 className="mt-1 text-2xl font-bold print:text-lg">Escala Diária</h1>
             </div>
-            {equipeLogo && (
-              <div className="daily-print-team-logo absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-white/30 print:h-16 print:w-16 print:p-1">
+            <div className={`daily-print-team-logo absolute left-1/2 top-1/2 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full shadow-lg ring-1 ring-white/30 print:h-20 print:w-20 ${equipeLogo ? 'bg-white/95 p-1.5 print:p-1' : 'bg-aviation-600 text-2xl font-black text-white print:text-xl'}`}>
+              {equipeLogo ? (
                 <img src={equipeLogo} alt={`Logo Equipe ${escala.equipe}`} className="h-full w-full rounded-full object-cover" />
-              </div>
-            )}
-            <div className="daily-print-team-badge flex min-w-[72px] flex-col items-center justify-center rounded-xl bg-aviation-600 px-4 py-2 text-center text-white shadow-sm print:min-w-[54px] print:px-2 print:py-1">
-              <p className="text-xs font-semibold uppercase tracking-wider text-aviation-100 print:text-[9px]">Equipe</p>
-              <p className="text-lg font-bold print:text-sm">{escala.equipe}</p>
+              ) : (
+                escala.equipe.charAt(0)
+              )}
+            </div>
+            <div className="daily-print-team-badge flex min-w-[112px] flex-col items-center justify-center rounded-xl bg-aviation-600 px-6 py-3.5 text-center text-white shadow-sm print:min-w-[76px] print:px-4 print:py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-aviation-100 print:text-[10px]">Equipe</p>
+              <p className="text-2xl font-bold print:text-lg">{escala.equipe}</p>
             </div>
           </div>
         </div>

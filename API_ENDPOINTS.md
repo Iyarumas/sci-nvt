@@ -1415,6 +1415,7 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
 **Tabela:** `agentes_extintores`
 **Ficheiro:** `src/services/agenteExtintorService.ts`
 **Tipo:** `src/types/agenteExtintor.ts` — `AgenteExtintor`
+**Migrations:** `063_agentes_extintores_campos_produto.sql` + `064_agentes_extintores_schema_compat.sql`
 
 ---
 

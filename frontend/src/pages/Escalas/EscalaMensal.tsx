@@ -51,6 +51,10 @@ const SLOTS: SlotDef[] = [
 
 const RADIO_SELECT_COUNT = 4;
 
+function formatarDataRadioMensal(data: unknown): string {
+  return formatarDataBR(data);
+}
+
 const RESPONSABILIDADES_SELECTS = [
   {
     key: RESPONSABILIDADES_MENSAIS[0],
@@ -779,10 +783,10 @@ export function EscalaMensal() {
       return `${label}: ${nomeExibido(nome)}`;
     };
     return (
-      <div className="rounded border-2 border-graphite-300 bg-white/80 p-1 print:border-graphite-500 print:bg-white dark:border-border-dark dark:bg-surface-card">
-        <div className="flex items-center gap-1 mb-0.5">
+      <div className="rounded border-2 border-graphite-300 bg-white/80 p-1 print:border-graphite-500 print:bg-white">
+        <div className="mb-0.5 flex items-center gap-1">
           <Shield className="h-3.5 w-3.5 text-aviation-600 print:text-graphite-800" />
-          <span className="text-[12px] font-bold text-graphite-800 print:text-graphite-900 dark:text-graphite-200">Guarnições</span>
+          <span className="text-[12px] font-bold text-graphite-800 print:text-graphite-900">Guarnições</span>
         </div>
         <div className="flex gap-2">
           {[
@@ -790,8 +794,8 @@ export function EscalaMensal() {
             { nome: 'CCI F2', cor: 'border-amber-400 print:border-amber-600', itens: [linha('BA-MC', v?.cciF2?.baMc || '-'), linha('BA-CE', v?.cciF2?.baCe || '-'), linha('BA-2', v?.cciF2?.ba2 || '-')] },
             { nome: 'CCI F3', cor: 'border-emerald-400 print:border-emerald-600', itens: [linha('BA-MC', v?.cciF3?.baMc || '-'), linha('BA-2', v?.cciF3?.ba2_1 || '-'), linha('BA-2', v?.cciF3?.ba2_2 || '-')] },
           ].map(c => (
-            <div key={c.nome} className={`flex-1 rounded border-2 ${c.cor} bg-graphite-50/30 px-2 py-0.5 print:bg-white dark:border-border-dark dark:bg-surface-card/30`}>
-              <p className="text-[11px] font-bold text-graphite-600 print:text-graphite-700 uppercase">{c.nome}</p>
+            <div key={c.nome} className={`flex-1 rounded border-2 ${c.cor} bg-graphite-50/30 px-2 py-0.5 print:bg-white`}>
+              <p className="text-[11px] font-bold uppercase text-graphite-600 print:text-graphite-700">{c.nome}</p>
               {c.itens.map((item, i) => {
                 const [label, ...nomeParts] = item.split(': ');
                 const nomeKey = (() => {
@@ -808,7 +812,7 @@ export function EscalaMensal() {
                   return v.cciF3?.[keys[i]] || '';
                 })();
                 const nome = nomeParts.join(': ');
-                return <p key={i} className="text-[11px] font-semibold print:font-bold leading-snug text-graphite-800 print:text-graphite-900 dark:text-graphite-200"
+                return <p key={i} className="text-[11px] font-semibold leading-snug text-graphite-800 print:font-bold print:text-graphite-900"
                   title={nome !== '-' ? `${nomeKey || nome} · Função: ${label}` : ''}>{item}</p>;
               })}
             </div>
@@ -817,6 +821,7 @@ export function EscalaMensal() {
       </div>
     );
   }, [completaAtual]);
+  const slotsRadioView = completaAtual ? getSlotsRadio(completaAtual.config.equipe) : [];
 
   const qtdPessoas = pessoas.filter(pessoaValida).length;
 
@@ -1649,56 +1654,156 @@ export function EscalaMensal() {
       {/* View mode */}
       {mode === 'view' && completaAtual && (
         <div id="print-area" className="space-y-0.5" style={{ background: '#ffffff', color: '#1a1a1a', overflow: 'hidden', textTransform: 'uppercase' }}>
-          <style>{'@media print {@page {size: landscape; margin: 0.5cm} body * {visibility: hidden !important} #print-area, #print-area * {visibility: visible !important} #print-area {position: absolute; left: 0; top: 0; width: 100%; text-transform: uppercase !important} .print-hide {display: none !important}} #print-area.png-exporting, #print-area.png-exporting * {overflow: visible !important; scrollbar-width: none !important; -ms-overflow-style: none !important} #print-area.png-exporting *::-webkit-scrollbar {display: none !important; width: 0 !important; height: 0 !important}'}</style>
-          <div className="rounded border-2 border-graphite-300 bg-white/80 px-3 py-1 text-center uppercase dark:border-border-dark dark:bg-surface-card">
-            <div className="text-[13px] font-bold text-graphite-700 dark:text-graphite-300 space-x-6 uppercase">
+          <style>{`
+            @media print {
+              @page {size: landscape; margin: 0.5cm}
+              body * {visibility: hidden !important}
+              #print-area, #print-area * {visibility: visible !important}
+              #print-area {position: absolute; left: 0; top: 0; width: 100%; text-transform: uppercase !important}
+              .print-hide {display: none !important}
+            }
+            #print-area {
+              print-color-adjust: exact;
+              -webkit-print-color-adjust: exact;
+            }
+            .escala-radio-mensal {
+              border-collapse: collapse;
+              font-size: 10px;
+              line-height: 1.18;
+              table-layout: fixed;
+              print-color-adjust: exact;
+              -webkit-print-color-adjust: exact;
+            }
+            .escala-radio-mensal th,
+            .escala-radio-mensal td {
+              border-bottom: 1px solid #cbd5e1;
+              color: #111827 !important;
+              height: 20px;
+              overflow: hidden;
+              padding: 3px 2px;
+              print-color-adjust: exact;
+              text-overflow: clip;
+              -webkit-print-color-adjust: exact;
+              white-space: nowrap;
+            }
+            .escala-radio-mensal thead th {
+              color: #374151 !important;
+            }
+            .escala-radio-mensal tbody td {
+              text-align: left;
+            }
+            .escala-radio-data {
+              font-size: 10px;
+              line-height: 1;
+              text-align: left;
+              white-space: nowrap;
+            }
+            .escala-radio-horario-label {
+              font-size: 8px;
+            }
+            .linha-radio-clara,
+            .linha-radio-clara > td {
+              background-color: #ffffff !important;
+            }
+            .linha-radio-escura,
+            .linha-radio-escura > td {
+              background-color: #e8ebf0 !important;
+            }
+            @media print {
+              .escala-radio-mensal {
+                font-size: 9px;
+                line-height: 1.14;
+              }
+              .escala-radio-data {
+                font-size: 8.4px;
+              }
+              .escala-radio-horario-label {
+                font-size: 7.4px;
+              }
+              .escala-radio-mensal th,
+              .escala-radio-mensal td {
+                border-bottom-color: #94a3b8 !important;
+                height: 18px;
+                padding-bottom: 3px;
+                padding-top: 3px;
+              }
+              .linha-radio-clara,
+              .linha-radio-clara > td {
+                background-color: #ffffff !important;
+              }
+              .linha-radio-escura,
+              .linha-radio-escura > td {
+                background-color: #dfe3ea !important;
+              }
+            }
+            #print-area.png-exporting,
+            #print-area.png-exporting * {
+              overflow: visible !important;
+              scrollbar-width: none !important;
+              -ms-overflow-style: none !important;
+            }
+            #print-area.png-exporting *::-webkit-scrollbar {
+              display: none !important;
+              width: 0 !important;
+              height: 0 !important;
+            }
+          `}</style>
+          <div className="rounded border-2 border-graphite-300 bg-white/80 px-3 py-1 text-center uppercase">
+            <div className="space-x-6 text-[13px] font-bold uppercase text-graphite-700">
               <span>EQUIPE: {completaAtual.config.equipe.toUpperCase()}</span>
               <span>{MESES[completaAtual.config.mes - 1].toUpperCase()} {completaAtual.config.ano}</span>
-              <span>{completaAtual.paradas.length} DIAS</span>
+              <span>{completaAtual.paradas.length} PLANTÕES</span>
             </div>
           </div>
 
           {veiculosView}
 
           {/* Rádio */}
-          <div className="rounded border-2 border-graphite-300 bg-white/80 p-1 dark:border-border-dark dark:bg-surface-card print:overflow-visible">
-            <div className="flex items-center gap-0.5 mb-px">
+          <div className="rounded border-2 border-graphite-300 bg-white/80 p-0.5 print:overflow-visible">
+            <div className="mb-px flex items-center gap-0.5">
               <Radio className="h-3 w-3 text-aviation-600" />
-              <span className="text-[12px] font-bold text-graphite-800 dark:text-graphite-200">Rádio</span>
+              <span className="text-[12px] font-bold text-graphite-800">Rádio</span>
             </div>
             <div className="overflow-x-auto print:overflow-visible">
-              <table className="w-full text-[10px] leading-snug print:text-[9px]">
+              <table className="escala-radio-mensal w-full">
                 <thead>
-                  <tr className="border-b-2 border-graphite-300 dark:border-border-dark">
-                    <th className="bg-white px-0.5 py-0 text-left font-bold text-graphite-600 print:text-graphite-800 dark:bg-surface-card">#</th>
-                    <th className="bg-white px-0.5 py-0 text-left font-bold text-graphite-600 print:text-graphite-800 dark:bg-surface-card">Data</th>
-                    {getSlotsRadio(equipe).map((s, i) => (
-                      <th key={i} className="px-0.5 py-0 text-left font-bold text-graphite-600 print:text-graphite-800">
-                        {s.horario}
+                  <tr className="border-b-2 border-graphite-300">
+                    <th className="escala-radio-horario-label w-12 bg-white px-0.5 py-0.5 text-left font-bold text-graphite-600 print:text-graphite-800">Horário</th>
+                    {completaAtual.paradas.map(plantao => (
+                      <th
+                        key={plantao.data}
+                        className="escala-radio-data px-0.5 py-0.5 text-left font-bold text-graphite-700 print:text-graphite-900"
+                        title={formatarDataBR(plantao.data)}
+                      >
+                        {formatarDataRadioMensal(plantao.data)}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {completaAtual.paradas.map(p => (
-                    <tr key={p.dia} className="border-b border-graphite-200 print:border-graphite-300 dark:border-border-dark">
-                      <td className="bg-white px-0.5 py-0 font-semibold print:font-bold text-graphite-600 print:text-graphite-800 dark:bg-surface-card whitespace-nowrap">{p.dia}</td>
-                      <td className="bg-white px-0.5 py-0 text-graphite-500 print:font-bold print:text-graphite-700 dark:bg-surface-card whitespace-nowrap">{formatarDataBR(p.data)}</td>
-                      {p.radio.map((r, i) => (
-                        <td key={i} className="px-0.5 py-0 font-semibold print:font-bold text-graphite-800 print:text-graphite-900 dark:text-graphite-200 whitespace-nowrap">{r.pessoaNomeGuerra}</td>
+                  {slotsRadioView.map((slot, slotIndex) => {
+                    const linhaAlternada = slotIndex % 2 === 0 ? 'linha-radio-clara' : 'linha-radio-escura';
+                    return (
+                    <tr key={`${slot.horario}-${slotIndex}`} className={`border-b border-graphite-300 print:border-graphite-400 ${linhaAlternada}`}>
+                      <td className="px-0.5 py-0.5 font-bold text-graphite-600 print:text-graphite-800 whitespace-nowrap">{slot.horario}</td>
+                      {completaAtual.paradas.map(plantao => (
+                        <td key={`${slot.horario}-${plantao.data}`} className="px-0.5 py-0.5 text-left font-bold text-graphite-900 whitespace-nowrap">
+                          {plantao.radio[slotIndex]?.pessoaNomeGuerra || '-'}
+                        </td>
                       ))}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
 
           {/* Faxina */}
-          <div className="rounded border-2 border-graphite-400 bg-white p-1 dark:border-border-dark dark:bg-surface-card">
-            <div className="flex items-center gap-0.5 mb-px">
+          <div className="rounded border-2 border-graphite-400 bg-white p-1">
+            <div className="mb-px flex items-center gap-0.5">
               <ClipboardList className="h-3 w-3 text-aviation-600" />
-              <span className="text-[12px] font-bold text-graphite-900 dark:text-graphite-200">Faxina</span>
+              <span className="text-[12px] font-bold text-graphite-900">Faxina</span>
             </div>
             <div className="grid grid-cols-5 gap-px text-[10px]">
               {completaAtual.faxinaMensal.map((f, i) => (
@@ -1715,10 +1820,10 @@ export function EscalaMensal() {
           </div>
 
           {/* Responsabilidades */}
-          <div className="rounded border-2 border-graphite-400 bg-white p-1 dark:border-border-dark dark:bg-surface-card">
-            <div className="flex items-center gap-0.5 mb-px">
+          <div className="rounded border-2 border-graphite-400 bg-white p-1">
+            <div className="mb-px flex items-center gap-0.5">
               <Users className="h-3 w-3 text-aviation-600" />
-              <span className="text-[12px] font-bold text-graphite-900 dark:text-graphite-200">Responsabilidades</span>
+              <span className="text-[12px] font-bold text-graphite-900">Responsabilidades</span>
             </div>
             <div className="grid grid-cols-2 gap-x-1 gap-y-px text-[10px]">
               {completaAtual.responsabilidades.map((r, i) => (
@@ -1732,18 +1837,20 @@ export function EscalaMensal() {
 
           {/* Avisos */}
           <div className="space-y-px">
-            <div className="grid grid-cols-3 gap-1 text-center text-[10px] font-bold leading-tight">
-              <div className="rounded border-2 border-amber-600 bg-amber-100 px-2 py-1 text-amber-900 text-center">
-                EXECUTAR A HIGIENIZAÇÃO DAS ÁREAS, APÓS AS 06:00 HORAS
+            <div className="grid gap-1 text-center text-[10px] font-bold leading-tight" style={{ gridTemplateColumns: '0.82fr 2.18fr' }}>
+              <div className="grid gap-px">
+                <div className="rounded border-2 border-amber-600 bg-amber-100 px-2 py-1 text-center text-amber-900">
+                  EXECUTAR A HIGIENIZAÇÃO DAS ÁREAS, APÓS AS 06:00 HORAS
+                </div>
+                <div className="rounded border-2 border-emerald-600 bg-emerald-100 px-2 py-1 text-center text-emerald-900">
+                  HIGIENIZAÇÃO CONFORME POP 006
+                </div>
               </div>
-              <div className="rounded border-2 border-sky-600 bg-sky-100 px-2 py-1 text-sky-900 text-center">
+              <div className="flex items-center justify-center rounded border-2 border-sky-600 bg-sky-100 px-2 py-1 text-center text-sky-900">
                 CCI's podem ser higienizados internamente antes das 06 mas devem ser higienizados por dentro e por fora todos os turnos, e nos para-lamas deve ser passo pano após a varredura da garagem para não ficar pó sobre os mesmos
               </div>
-              <div className="rounded border-2 border-emerald-600 bg-emerald-100 px-2 py-1 text-emerald-900 text-center">
-                HIGIENIZAÇÃO CONFORME POP 006
-              </div>
             </div>
-            <div className="rounded border-2 border-red-700 bg-red-100 px-2 py-1 text-[7px] font-bold leading-snug text-red-900 text-center whitespace-nowrap">
+            <div className="rounded border-2 border-red-700 bg-red-100 px-2 py-1 text-center text-[7px] font-bold leading-snug text-red-900">
               ATENÇÃO: AS HIGIENIZAÇÕES DEVER SER EXECUTADAS POR TODOS, CASO ESTEJAM PEGANDO SUJO COBREM DO TURNO ANTERIOR ASSIM COMO ESTÁ PREVISTO NO POP, POIS IREMOS COBRAR DA NOSSA EQUIPE, SEM EXCEÇÕES
             </div>
           </div>

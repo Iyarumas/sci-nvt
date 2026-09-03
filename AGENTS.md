@@ -75,7 +75,7 @@ Frontend components → frontend/src/services/*.ts → frontend/src/lib/supabase
 - Back-end: módulos em `backend/src/<dominio>/`, DTOs em `dto/`, services e controllers por domínio
 - Tabelas: `snake_case` na BD → `camelCase` no TypeScript (usar helpers `rowTo*` / `*ToRow`)
 - Comandos do projeto: usar `npm` na raiz (`npm run dev:frontend`, `npm run dev:backend`, `npm run db:migrate`, `npm run db:import:supabase -- -ReplaceLocalData`, `npm run db:export:local`, `npm run prod:up`, `npm run prod:migrate`); no PowerShell do Windows, preferir `npm.cmd` se `npm` cair no shim `npm.ps1`.
-- Versionamento visual: a cada alteração entregue no sistema, atualizar a versão do front em `frontend/package.json` e no `package-lock.json`. A interface deve exibir a versão via `__APP_VERSION__`, nunca como texto fixo.
+- Versionamento visual: só atualizar a versão do front em `frontend/package.json` e no `package-lock.json` depois de aprovação explícita do usuário para subir o número do sistema. A interface deve exibir a versão via `__APP_VERSION__`, nunca como texto fixo.
 
 ### Regras de Negócio — Corrente de Substituição (Férias)
 

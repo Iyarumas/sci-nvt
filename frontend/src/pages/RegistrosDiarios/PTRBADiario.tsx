@@ -11,9 +11,11 @@ import { listarPTRBs, criarPTRB, atualizarPTRB, excluirPTRB } from '../../servic
 import { listarBombeiros } from '../../services/bombeiroService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
-import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
+import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
 import { listarAPOCs } from '../../services/apocService';
+import { listarUsuarios } from '../../services/usuarioService';
+import type { Usuario } from '../../services/usuarioService';
 import { CARGO_OPTIONS } from '../../types/bombeiro';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import type { FeriasGozo } from '../../types/ferias';
@@ -32,7 +34,8 @@ import {
 } from '../../utils/permissoes';
 import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { PageTour } from '../../components/ui/PageTour';
-import { resumoAuditoria } from '../../utils/auditoria';
+import { montarPessoasAuditoria, resumoAuditoria } from '../../utils/auditoria';
+import type { PessoaAuditoria } from '../../utils/auditoria';
 
 const EQUIPES_FILTRO = EQUIPES.filter(eq => eq !== 'Ferista');
 const SITUACOES_TOOLTIP = SITUACOES
@@ -161,7 +164,7 @@ function PTRBAForm({
   feriasGozo: FeriasGozo[];
   substituicoesTemporarias: SubstituicaoTemporaria[];
   trocaFills: any[];
-  vigencias: any[];
+  vigencias: VigenciaSubstituicao[];
   apocs: APOC[];
   canEscolherEquipe: boolean;
   equipeEfetiva: string | null;
@@ -501,7 +504,7 @@ function PTRBCard({ ptrb, onView, onEdit, onDelete, onClone, canEdit, canClone, 
   canEdit: boolean;
   canClone: boolean;
   canDelete: boolean;
-  auditoriaPessoas: Bombeiro[];
+  auditoriaPessoas: PessoaAuditoria[];
 }) {
   const [expanded, setExpanded] = useState(false);
   const auditoria = resumoAuditoria(ptrb, auditoriaPessoas);
@@ -614,7 +617,7 @@ function PTRBCard({ ptrb, onView, onEdit, onDelete, onClone, canEdit, canClone, 
 }
 
 // ─── VIEW MODE ──────────────────────────────────────────────
-function ViewMode({ ptrb, onBack, auditoriaPessoas }: { ptrb: PTRB; onBack: () => void; auditoriaPessoas: Bombeiro[] }) {
+function ViewMode({ ptrb, onBack, auditoriaPessoas }: { ptrb: PTRB; onBack: () => void; auditoriaPessoas: PessoaAuditoria[] }) {
   const auditoria = resumoAuditoria(ptrb, auditoriaPessoas);
   return (
     <div>
@@ -743,10 +746,11 @@ export function PTRBADiario() {
   const equipePadrao = equipePadraoRegistrosDiarios(contexto) || equipeEfetiva;
   const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
   const [substituicoesTemporarias, setSubstituicoesTemporarias] = useState<SubstituicaoTemporaria[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
-  const [vigencias, setVigencias] = useState<any[]>([]);
+  const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'list' | 'form' | 'view'>('list');
@@ -759,6 +763,14 @@ export function PTRBADiario() {
   const MESES = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
   const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
+
+  function montarAuditoriaPessoasDoRegistro(registro: Pick<PTRB, 'data' | 'equipe'>): PessoaAuditoria[] {
+    return montarPessoasAuditoria(bombeiros, usuarios, {
+      vigencias,
+      dataReferencia: registro.data,
+      equipeReferencia: registro.equipe,
+    });
+  }
 
   const ptrbsFiltradas = ptrbs.filter(e => {
     if (filtroEquipe && e.equipe !== filtroEquipe) return false;
@@ -781,15 +793,17 @@ export function PTRBADiario() {
 
   async function carregarApoio() {
     try {
-      const [b, f, subs, docs, a, vigs] = await Promise.all([
+      const [b, f, subs, docs, a, vigs, usuariosCadastrados] = await Promise.all([
         listarBombeiros(),
         listarFeriasGozo(),
         listarSubstituicoesTemporarias(),
         listarDocumentos(),
         listarAPOCs(),
         listarVigencias({ ativa: true }),
+        listarUsuarios().catch(() => []),
       ]);
       setBombeiros(b);
+      setUsuarios(usuariosCadastrados);
       setFeriasGozo(f);
       setSubstituicoesTemporarias(subs);
       setApocs(a);
@@ -927,7 +941,7 @@ export function PTRBADiario() {
   if (mode === 'view' && visualizando) {
     return (
       <PageContainer>
-        <ViewMode ptrb={visualizando} auditoriaPessoas={bombeiros} onBack={() => setMode('list')} />
+        <ViewMode ptrb={visualizando} auditoriaPessoas={montarAuditoriaPessoasDoRegistro(visualizando)} onBack={() => setMode('list')} />
       </PageContainer>
     );
   }
@@ -990,7 +1004,7 @@ export function PTRBADiario() {
                 canEdit={podeAlterar}
                 canClone={podeAlterar && canCriarRegistrosDiarios(contexto)}
                 canDelete={podeExcluir}
-                auditoriaPessoas={bombeiros}
+                auditoriaPessoas={montarAuditoriaPessoasDoRegistro(e)}
                 onView={() => { setVisualizando(e); setMode('view'); }}
                 onEdit={() => { setEditando(e); setMode('form'); }}
                 onClone={() => handleClone(e)}

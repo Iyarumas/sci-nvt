@@ -36,10 +36,13 @@ import {
   listarPTRBACompletos,
 } from '../../services/ptrbaCompletoService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
-import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
+import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
+import { listarUsuarios } from '../../services/usuarioService';
+import type { Usuario } from '../../services/usuarioService';
 import { formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
-import { resumoAuditoria } from '../../utils/auditoria';
+import { montarPessoasAuditoria, resumoAuditoria } from '../../utils/auditoria';
+import type { PessoaAuditoria } from '../../utils/auditoria';
 import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import type { APOC } from '../../types/apoc';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
@@ -275,7 +278,7 @@ function PTRBACompletoForm({
   feriasGozo: FeriasGozo[];
   substituicoesTemporarias: SubstituicaoTemporaria[];
   escalasDiarias: EscalaDiaria[];
-  vigencias: any[];
+  vigencias: VigenciaSubstituicao[];
   trocaFills: any[];
   canEscolherEquipe: boolean;
   equipeEfetiva: string | null;
@@ -680,7 +683,7 @@ function PTRBACompletoCard({
   canDelete: boolean;
   downloading: boolean;
   previewing: boolean;
-  auditoriaPessoas: Bombeiro[];
+  auditoriaPessoas: PessoaAuditoria[];
   onPreviewDocument: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -897,11 +900,12 @@ export function PTRBACompletoPage() {
   const equipePadrao = equipePadraoRegistrosDiarios(contexto) || equipeEfetiva;
   const [registros, setRegistros] = useState<PTRBACompleto[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
   const [substituicoesTemporarias, setSubstituicoesTemporarias] = useState<SubstituicaoTemporaria[]>([]);
   const [escalasDiarias, setEscalasDiarias] = useState<EscalaDiaria[]>([]);
-  const [vigencias, setVigencias] = useState<any[]>([]);
+  const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<'list' | 'form'>('list');
@@ -915,6 +919,14 @@ export function PTRBACompletoPage() {
   const [filtroMes, setFiltroMes] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
+
+  function montarAuditoriaPessoasDoRegistro(registro: Pick<PTRBACompleto, 'data' | 'equipe'>): PessoaAuditoria[] {
+    return montarPessoasAuditoria(bombeiros, usuarios, {
+      vigencias,
+      dataReferencia: registro.data,
+      equipeReferencia: registro.equipe,
+    });
+  }
 
   const registrosFiltrados = registros.filter(registro => {
     if (filtroEquipe && registro.equipe !== filtroEquipe) return false;
@@ -936,7 +948,7 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const [lista, b, a, gozos, substituicoes, v, escalas] = await Promise.all([
+        const [lista, b, a, gozos, substituicoes, v, escalas, usuariosCadastrados] = await Promise.all([
           listarPTRBACompletos(),
           listarBombeiros(),
           listarAPOCs(),
@@ -944,10 +956,12 @@ export function PTRBACompletoPage() {
           listarSubstituicoesTemporarias(),
           listarVigencias({ ativa: true }),
           listarEscalas(),
+          listarUsuarios().catch(() => []),
         ]);
         if (cancelado) return;
         setRegistros(lista);
         setBombeiros(b);
+        setUsuarios(usuariosCadastrados);
         setApocs(a);
         setFeriasGozo(gozos);
         setSubstituicoesTemporarias(substituicoes);
@@ -1121,7 +1135,7 @@ export function PTRBACompletoPage() {
                 canDelete={podeExcluir}
                 downloading={downloadingId === registro.id}
                 previewing={previewingId === registro.id}
-                auditoriaPessoas={bombeiros}
+                auditoriaPessoas={montarAuditoriaPessoasDoRegistro(registro)}
                 onPreviewDocument={() => handlePreviewPdf(registro)}
                 onEdit={() => { setEditando(registro); setMode('form'); }}
                 onDelete={() => setConfirmDelete(registro.id)}

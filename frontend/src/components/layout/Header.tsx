@@ -13,7 +13,8 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useTheme } from '../../hooks/useTheme';
-import { useAuth, ROLE_LABELS } from '../../context/AuthContext';
+import { cargoParaUserRole, useAuth, ROLE_LABELS } from '../../context/AuthContext';
+import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { Breadcrumb } from './Breadcrumb';
 import { RightPanel } from './RightPanel';
 import { CARGO_OPTIONS } from '../../types/bombeiro';
@@ -24,6 +25,7 @@ import { contarNaoLidas as contarChatNaoLidas } from '../../services/chatService
 export function Header() {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const { contexto } = useContextoOperacional();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -58,11 +60,20 @@ export function Header() {
 
   const pessoa = user?.pessoa;
   const displayName = pessoa?.nomeGuerra || user?.name || 'Usuário';
-  const displayRole = ROLE_LABELS[user?.role || 'chefe'];
+  const cargoEfetivo = pessoa?.personType === 'bombeiro'
+    ? contexto.cargo || pessoa.funcao
+    : pessoa?.funcao || '';
+  const roleEfetiva = pessoa?.personType === 'bombeiro' && cargoEfetivo
+    ? cargoParaUserRole(cargoEfetivo)
+    : user?.role || 'chefe';
+  const roleParaExibir = user?.role === 'desenvolvedor' || user?.role === 'admin'
+    ? user.role
+    : roleEfetiva;
+  const displayRole = ROLE_LABELS[roleParaExibir];
   const cargoLabel = pessoa
     ? (pessoa.personType === 'bombeiro'
-        ? CARGO_OPTIONS.find(c => c.value === pessoa.funcao)?.label
-        : FUNCAO_APOC_OPTIONS.find(f => f.value === pessoa.funcao)?.label) || undefined
+        ? CARGO_OPTIONS.find(c => c.value === cargoEfetivo)?.label || cargoEfetivo
+        : FUNCAO_APOC_OPTIONS.find(f => f.value === cargoEfetivo)?.label || cargoEfetivo) || undefined
     : undefined;
   const displayPhoto = pessoa?.foto || null;
   const fullName = pessoa?.nomeGuerra ? (user?.name || '') : '';

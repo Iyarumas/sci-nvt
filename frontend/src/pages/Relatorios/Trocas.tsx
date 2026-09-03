@@ -43,6 +43,27 @@ const MONTH_NAMES = [
 
 const MAX_TROCAS_PER_MONTH = 3;
 
+function getDataPlantaoTrocaData(data: Record<string, unknown>): string {
+  return normalizarDataISO(data.data_solicitada) || normalizarDataISO(data.data_folga_solicitado);
+}
+
+function getDataPlantaoTroca(fill: DocumentFill): string {
+  return getDataPlantaoTrocaData(fill.filled_data || {}) || normalizarDataISO(fill.created_at);
+}
+
+function pertenceAoMesAnoTroca(fill: DocumentFill, mes: number, ano: number): boolean {
+  const dataPlantao = getDataPlantaoTroca(fill);
+  return dataPlantao.startsWith(`${ano}-${String(mes + 1).padStart(2, '0')}-`);
+}
+
+function compararTrocasPorPlantaoDesc(a: DocumentFill, b: DocumentFill): number {
+  const dataA = getDataPlantaoTroca(a);
+  const dataB = getDataPlantaoTroca(b);
+  const byPlantao = dataB.localeCompare(dataA);
+  if (byPlantao !== 0) return byPlantao;
+  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+}
+
 const template = DOCUMENT_TEMPLATES[0];
 const TROCA_TEMPLATE_PDF_URL = '/templates/troca.pdf';
 const MM_TO_VIEWPORT = 2.8346 * 1.5;
@@ -508,9 +529,6 @@ export function Trocas() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [showConfirmPdf, setShowConfirmPdf] = useState(false);
-  const [showLimitPopup, setShowLimitPopup] = useState(false);
-  const [limitPopupData, setLimitPopupData] = useState<{ count: number; targetName: string }>({ count: 0, targetName: '' });
-  const [overrideName, setOverrideName] = useState('');
   const [editingFillId, setEditingFillId] = useState<string | null>(null);
   const [draftCountdowns, setDraftCountdowns] = useState<Record<string, number>>({});
   const [missingFields, setMissingFields] = useState<string[]>([]);
@@ -777,7 +795,6 @@ export function Trocas() {
   const filteredFills = useMemo(() => {
     return fills.filter(fill => {
       if (fill.status === 'archived') return false;
-      const d = new Date(fill.created_at);
       if (filterEquipe) {
         const data = fill.filled_data as Record<string, string>;
         const p1 = getPessoaByNome(data.nome_solicitante || '');
@@ -786,10 +803,8 @@ export function Trocas() {
         const eq2 = p2?.equipe || '';
         if (eq1 !== filterEquipe && eq2 !== filterEquipe) return false;
       }
-      return d.getMonth() === filterMonth && d.getFullYear() === filterYear;
-    }).sort((a, b) => {
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+      return pertenceAoMesAnoTroca(fill, filterMonth, filterYear);
+    }).sort(compararTrocasPorPlantaoDesc);
   }, [fills, filterMonth, filterYear, filterEquipe]);
 
   const violationFillIds = useMemo(() => {
@@ -808,17 +823,6 @@ export function Trocas() {
   const excessoLimiteIds = useMemo(() => {
     return getExcessoLimiteFillIds(filteredFills);
   }, [filteredFills, bombeirosList, apocsList]);
-
-  const currentUserTrocasThisMonth = useMemo(() => {
-    const now2 = new Date();
-    const currentKeys = getCurrentUserTrocaKeys();
-    return fills.filter(fill => {
-      const d = new Date(fill.created_at);
-      if (d.getMonth() !== now2.getMonth() || d.getFullYear() !== now2.getFullYear()) return false;
-      if (currentKeys.size === 0) return fill.filled_by === user?.username;
-      return getPessoasTrocaDoFill(fill).some(pessoa => currentKeys.has(pessoa.key));
-    }).length;
-  }, [fills, user, bombeirosList, apocsList]);
 
   useEffect(() => {
     if (isRelatorioRoute && loadingContexto) return;
@@ -911,11 +915,6 @@ export function Trocas() {
   function startNewTroca() {
     if (!canCreateTroca) {
       setShowNotifPopup({ msg: 'Você precisa ter uma equipe efetiva para criar trocas.', type: 'error' });
-      return;
-    }
-    if (currentUserTrocasThisMonth >= MAX_TROCAS_PER_MONTH && !canManageGlobal) {
-      setLimitPopupData({ count: currentUserTrocasThisMonth, targetName: '' });
-      setShowLimitPopup(true);
       return;
     }
     const initialData: Record<string, string> = {};
@@ -1031,8 +1030,9 @@ export function Trocas() {
     };
   }
 
-  function getPessoasTrocaDoFill(fill: DocumentFill): { key: string; label: string; created_at: string; id: string }[] {
+  function getPessoasTrocaDoFill(fill: DocumentFill): { key: string; label: string; dataPlantao: string; created_at: string; id: string }[] {
     const data = fill.filled_data as Record<string, string>;
+    const dataPlantao = getDataPlantaoTroca(fill);
     const pessoas = [
       getPessoaTrocaInfo(data.nome_solicitante || '', data.funcao_solicitante || ''),
       getPessoaTrocaInfo(data.nome_solicitado || '', data.funcao_solicitado || ''),
@@ -1044,37 +1044,29 @@ export function Trocas() {
         vistos.add(pessoa.key);
         return true;
       })
-      .map(pessoa => ({ ...pessoa, created_at: fill.created_at, id: fill.id }));
+      .map(pessoa => ({ ...pessoa, dataPlantao, created_at: fill.created_at, id: fill.id }));
   }
 
   function getExcessoLimiteFillIds(sourceFills: DocumentFill[]): Set<string> {
-    const pessoaFills: Record<string, { id: string; created_at: string }[]> = {};
+    const pessoaFills: Record<string, { id: string; dataPlantao: string; created_at: string }[]> = {};
     const ids = new Set<string>();
     sourceFills.forEach(fill => {
       getPessoasTrocaDoFill(fill).forEach(pessoa => {
         if (!pessoaFills[pessoa.key]) pessoaFills[pessoa.key] = [];
-        pessoaFills[pessoa.key].push({ id: pessoa.id, created_at: pessoa.created_at });
+        pessoaFills[pessoa.key].push({ id: pessoa.id, dataPlantao: pessoa.dataPlantao, created_at: pessoa.created_at });
       });
     });
-    Object.values(pessoaFills).forEach(arr => arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()));
+    Object.values(pessoaFills).forEach(arr => arr.sort((a, b) => {
+      const byPlantao = a.dataPlantao.localeCompare(b.dataPlantao);
+      if (byPlantao !== 0) return byPlantao;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    }));
     Object.values(pessoaFills).forEach(arr => {
       arr.forEach((fill, index) => {
         if (index >= MAX_TROCAS_PER_MONTH) ids.add(fill.id);
       });
     });
     return ids;
-  }
-
-  function getCurrentUserTrocaKeys(): Set<string> {
-    const pessoaUsuario = user?.pessoa as { nomeCompleto?: string; nomeGuerra?: string } | undefined;
-    return new Set([
-      pessoaUsuario?.nomeCompleto,
-      pessoaUsuario?.nomeGuerra,
-      user?.name,
-      user?.username,
-    ]
-      .map(nome => getPessoaTrocaInfo(String(nome || ''))?.key || '')
-      .filter(Boolean));
   }
 
   function getNomeCompletoRelatorio(nome: string): string {
@@ -1154,7 +1146,7 @@ export function Trocas() {
     const pSolic = getPessoaByNome(nomeSolic);
     if (!pSol || !pSolic) return false;
 
-    const now = new Date();
+    const dataPlantao = getDataPlantaoTrocaData(data);
     const sourceFills = existingFills || fills;
 
     const pessoaKeys = new Set([
@@ -1163,9 +1155,8 @@ export function Trocas() {
     ].filter(Boolean));
     for (const key of pessoaKeys) {
       const count = sourceFills.filter(f => {
-        const d = new Date(f.created_at);
-        return d.getMonth() === now.getMonth() &&
-          d.getFullYear() === now.getFullYear() &&
+        if (editingFillId && f.id === editingFillId) return false;
+        return getDataPlantaoTroca(f).slice(0, 7) === dataPlantao.slice(0, 7) &&
           getPessoasTrocaDoFill(f).some(pessoa => pessoa.key === key);
       }).length;
       if (count >= MAX_TROCAS_PER_MONTH) return true;
@@ -1434,35 +1425,6 @@ export function Trocas() {
     } finally {
       setSaving(false);
     }
-  }
-
-  async function handleOverrideLimit() {
-    if (!overrideName.trim()) {
-      setShowNotifPopup({ msg: 'Informe o nome da pessoa para a qual a troca esta sendo realizada.', type: 'error' });
-      return;
-    }
-    setLimitPopupData(prev => ({ ...prev, targetName: overrideName.trim() }));
-    setShowLimitPopup(false);
-    setOverrideName('');
-    const initialData: Record<string, string> = {};
-    displayFields.forEach(f => { initialData[f.field_name] = ''; });
-    setFormData(initialData);
-    setSubView('form');
-    setShowNotifPopup({ msg: `Aviso enviado ao gerente: ${user?.username} esta realizando uma troca adicional para ${overrideName.trim()}.`, type: 'info' });
-    try {
-      const existing = JSON.parse(localStorage.getItem('sescinc-notificacoes') || '[]');
-      existing.push({
-        id: crypto.randomUUID(),
-        titulo: 'Limite de Trocas Excedido',
-        descricao: `${user?.name} (${user?.username}) realizou ${limitPopupData.count + 1} trocas no mês e está realizando mais uma troca para ${overrideName.trim()}.`,
-        tipo: 'alerta',
-        lida: false,
-        equipe: '',
-        origem: 'substituicao',
-        createdAt: new Date().toISOString(),
-      });
-      localStorage.setItem('sescinc-notificacoes', JSON.stringify(existing));
-    } catch { /* ignore */ }
   }
 
   function handleEditFill(fill: DocumentFill) {
@@ -1835,41 +1797,6 @@ export function Trocas() {
           </div>
         )}
 
-        {showLimitPopup && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-graphite-800">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/40">
-                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-graphite-900 dark:text-graphite-100">Limite de Trocas Atingido</h3>
-              </div>
-              <p className="mb-4 text-sm text-graphite-600 dark:text-graphite-300">
-                Voce ja realizou <strong>{limitPopupData.count} trocas</strong> este mes. O limite e de <strong>{MAX_TROCAS_PER_MONTH} trocas por mes</strong>.
-              </p>
-              <p className="mb-4 text-sm text-graphite-600 dark:text-graphite-300">
-                Caso deseje continuar, um aviso sera enviado ao gerente informando que voce esta realizando uma troca adicional.
-              </p>
-              <div className="mb-6">
-                <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">
-                  Informe o nome da pessoa para a qual a troca esta sendo realizada:
-                </label>
-                <input type="text" value={overrideName} onChange={e => setOverrideName(e.target.value)}
-                  placeholder="Nome completo..."
-                  className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm text-graphite-900 placeholder-graphite-400 dark:border-graphite-600 dark:bg-graphite-700 dark:text-graphite-100 dark:placeholder-graphite-400" />
-              </div>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => { setShowLimitPopup(false); setOverrideName(''); }} className="rounded-lg border border-graphite-200 px-4 py-2 text-sm font-medium text-graphite-700 hover:bg-graphite-50 dark:border-graphite-600 dark:text-graphite-200 dark:hover:bg-graphite-700">
-                  Cancelar
-                </button>
-                <button onClick={handleOverrideLimit} className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
-                  Continuar e Enviar Aviso
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {showPreviewInfo && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowPreviewInfo(false)}>
             <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-graphite-800" onClick={e => e.stopPropagation()}>
@@ -2235,6 +2162,7 @@ export function Trocas() {
           {filteredFills.map(fill => {
             const isExpanded = expandedFill === fill.id;
             const data = fill.filled_data as Record<string, string>;
+            const dataPlantaoTroca = getDataPlantaoTroca(fill);
             const nomeSol = data.nome_solicitante || '';
             const nomeSolic = data.nome_solicitado || '';
             const { pessoaSol, pessoaSolic, cargoSolPlantao, cargoSolicPlantao } = getFuncoesTroca(data);
@@ -2289,9 +2217,9 @@ export function Trocas() {
                         {funcoesDiferentes && <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"><AlertTriangle className="h-2.5 w-2.5" /> FUNÇÕES</span>}
                       </div>
                       <div className="text-xs text-graphite-500 dark:text-graphite-400 mt-0.5">
-                        Criado por: {data.criado_por || fill.filled_by || 'Desconhecido'}
+                        Plantão: {formatarDataBR(dataPlantaoTroca)}
                         {' '}&bull;{' '}
-                        {formatarDataBR(fill.created_at)}
+                        Criado por: {data.criado_por || fill.filled_by || 'Desconhecido'} em {formatarDataBR(fill.created_at)}
                         {!pessoaSol?.cargo && data.funcao_solicitante && <span className="ml-2 text-graphite-400">({getCargoLabel(data.funcao_solicitante)})</span>}
                       </div>
                     </div>

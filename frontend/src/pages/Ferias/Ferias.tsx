@@ -79,6 +79,10 @@ function AvatarPessoaFerias({
 
 const EQUIPES: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
 
+const EQUIPE_LOGOS: Partial<Record<Equipe, string>> = {
+  Alfa: '/assets/equipe-alfa-logo.jpeg',
+};
+
 const PERIODO_STATUS_COLORS: Record<string, string> = {
   'Nao Adquirido': 'bg-graphite-100 text-graphite-600 dark:bg-graphite-700 dark:text-graphite-300',
   'Disponivel': 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
@@ -3152,13 +3156,18 @@ function TabQuadroEfetivos() {
           const ordenados = [...disponiveis].sort((a, b) => {
             return (CARGO_PRIORITY[a.cargo] ?? 99) - (CARGO_PRIORITY[b.cargo] ?? 99);
           });
+          const equipeLogo = EQUIPE_LOGOS[eq];
 
           return (
             <div key={eq} className="rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
               <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3 dark:border-border-dark">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-aviation-500 to-aviation-700 text-[10px] font-bold text-white">
-                    {eq.charAt(0)}
+                  <div className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg text-[10px] font-bold text-white ${equipeLogo ? 'h-9 w-9 bg-graphite-950 ring-1 ring-white/10' : 'h-7 w-7 bg-gradient-to-br from-aviation-500 to-aviation-700'}`}>
+                    {equipeLogo ? (
+                      <img src={equipeLogo} alt={`Logo Equipe ${eq}`} className="h-full w-full object-cover" />
+                    ) : (
+                      eq.charAt(0)
+                    )}
                   </div>
                   <h4 className="text-sm font-bold text-graphite-900 dark:text-graphite-100">Equipe {eq}</h4>
                 </div>

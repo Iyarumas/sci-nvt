@@ -32,6 +32,16 @@ import { RegraNegocioError } from '../../utils/regrasOperacionais';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 
+type EquipeEscalaDiaria = (typeof EQUIPES)[number];
+
+const EQUIPE_LOGOS: Partial<Record<EquipeEscalaDiaria, string>> = {
+  Alfa: '/assets/equipe-alfa-logo.jpeg',
+};
+
+function getEquipeLogo(equipe: string): string | undefined {
+  return EQUIPE_LOGOS[equipe as EquipeEscalaDiaria];
+}
+
 const optionCls = 'dark:bg-graphite-700 dark:text-graphite-100';
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
@@ -2174,6 +2184,8 @@ export function EscalaDiariaView() {
 }
 
 function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void }) {
+  const equipeLogo = getEquipeLogo(escala.equipe);
+
   return (
     <div className="mx-auto max-w-5xl">
       <style>{`
@@ -2213,6 +2225,11 @@ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void
             background: #1e3a6e !important;
             border-color: rgba(255, 255, 255, 0.1) !important;
             color: #ffffff !important;
+            text-align: center !important;
+          }
+          #print-area.daily-scale-print-area .daily-print-team-logo {
+            height: 18mm !important;
+            width: 18mm !important;
           }
           #print-area.daily-scale-print-area .daily-scale-print-body {
             background: #ffffff !important;
@@ -2303,12 +2320,17 @@ function ViewMode({ escala, onBack }: { escala: EscalaDiaria; onBack: () => void
       </div>
       <div id="print-area" className="daily-scale-print-area overflow-hidden rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card print:border-0 print:bg-white print:shadow-none">
         <div className="daily-print-header border-b border-aviation-900 bg-aviation-900 px-6 py-5 text-white print:px-3 print:py-2">
-          <div className="flex flex-wrap items-start justify-between gap-4 print:gap-2">
+          <div className="relative flex min-h-[72px] flex-wrap items-center justify-between gap-4 print:min-h-[54px] print:gap-2">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-aviation-100 print:text-[9px]">SESCINC</p>
               <h1 className="mt-1 text-2xl font-bold print:text-lg">Escala Diária</h1>
             </div>
-            <div className="daily-print-team-badge rounded-xl bg-aviation-600 px-4 py-2 text-right text-white shadow-sm print:px-2 print:py-1">
+            {equipeLogo && (
+              <div className="daily-print-team-logo absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-white/30 print:h-16 print:w-16 print:p-1">
+                <img src={equipeLogo} alt={`Logo Equipe ${escala.equipe}`} className="h-full w-full rounded-full object-cover" />
+              </div>
+            )}
+            <div className="daily-print-team-badge flex min-w-[72px] flex-col items-center justify-center rounded-xl bg-aviation-600 px-4 py-2 text-center text-white shadow-sm print:min-w-[54px] print:px-2 print:py-1">
               <p className="text-xs font-semibold uppercase tracking-wider text-aviation-100 print:text-[9px]">Equipe</p>
               <p className="text-lg font-bold print:text-sm">{escala.equipe}</p>
             </div>

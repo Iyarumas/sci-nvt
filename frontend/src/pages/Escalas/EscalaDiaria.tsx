@@ -36,6 +36,7 @@ type EquipeEscalaDiaria = (typeof EQUIPES)[number];
 
 const EQUIPE_LOGOS: Partial<Record<EquipeEscalaDiaria, string>> = {
   Alfa: '/assets/equipe-alfa-logo.jpeg',
+  Delta: '/assets/equipe-delta-logo.jpeg',
 };
 
 function getEquipeLogo(equipe: string): string | undefined {

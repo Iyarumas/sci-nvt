@@ -81,6 +81,7 @@ const EQUIPES: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
 
 const EQUIPE_LOGOS: Partial<Record<Equipe, string>> = {
   Alfa: '/assets/equipe-alfa-logo.jpeg',
+  Delta: '/assets/equipe-delta-logo.jpeg',
 };
 
 const PERIODO_STATUS_COLORS: Record<string, string> = {

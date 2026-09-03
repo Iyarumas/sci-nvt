@@ -23,7 +23,7 @@ import type { ReaRegistro } from '../../types/rea';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import type { CertificacaoNR } from '../../types/certificacao';
 import type { CertificacaoCurso } from '../../types/certificacaoCurso';
-import { formatarDataBR } from '../../utils/datas';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 function fmt(d?: string) {
   return formatarDataBR(d);
@@ -210,13 +210,18 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
       return v > new Date() && v < new Date(Date.now() + 30 * 86400000);
     });
 
+    const hoje = hojeLocalISO();
+    const vagasPendentesAtivas = vagasPendentes.filter(v =>
+      !v.dataFim || v.dataFim >= hoje
+    );
+
     return {
       totalBombeiros: bombeiros.length,
       emGozo: emGozo.length,
       programadas: programadas.length,
       ocorrenciasAbertas,
       substPendentes: substPendentes.length,
-      vagasPendentes: vagasPendentes.length,
+      vagasPendentes: vagasPendentesAtivas.length,
       certVencendo: certVencendo.length + cursosVencendo.length,
       equipes: ['Alfa', 'Bravo', 'Charlie', 'Delta'].map(eq => ({
         nome: eq, total: bombeiros.filter(b => b.equipe === eq).length,

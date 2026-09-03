@@ -118,6 +118,8 @@ function normalizarNome(nome: string): string {
 }
 
 export interface PessoaInfo {
+  key: string;
+  nomeCompleto: string;
   nomeGuerra: string;
   cargo: string;
   equipe: string;
@@ -347,7 +349,7 @@ function imprimirHTMLEfetivo(titulo: string, allAssuntos: string[], equipes: { e
 export function PTRBA() {
   const { canVisualizarRelatoriosPtrBa, loadingContexto } = useContextoOperacional();
   const [ptrbs, setPtrbs] = useState<PTRB[]>([]);
-  const [bombeiros, setBombeiros] = useState<Map<string, { nomeGuerra: string; cargo: string; equipe: string }>>(new Map());
+  const [bombeiros, setBombeiros] = useState<Map<string, PessoaInfo>>(new Map());
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewLevel>('summary');
   const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
@@ -389,12 +391,24 @@ export function PTRBA() {
         if (chave && !map.has(chave)) map.set(chave, info);
       };
       for (const bom of b) {
-        const info = { nomeGuerra: bom.nomeGuerra, cargo: bom.cargo, equipe: bom.equipe };
+        const info = {
+          key: normalizarNome(bom.nomeCompleto || bom.nomeGuerra),
+          nomeCompleto: bom.nomeCompleto || bom.nomeGuerra,
+          nomeGuerra: bom.nomeGuerra,
+          cargo: bom.cargo,
+          equipe: bom.equipe,
+        };
         indexar(bom.nomeCompleto, info);
         indexar(bom.nomeGuerra, info);
       }
       for (const ap of a || []) {
-        const info = { nomeGuerra: ap.nomeGuerra, cargo: ap.funcao || '', equipe: ap.equipe || '' };
+        const info = {
+          key: normalizarNome(ap.nomeCompleto || ap.nomeGuerra),
+          nomeCompleto: ap.nomeCompleto || ap.nomeGuerra,
+          nomeGuerra: ap.nomeGuerra,
+          cargo: ap.funcao || '',
+          equipe: ap.equipe || '',
+        };
         indexar(ap.nomeCompleto, info);
         indexar(ap.nomeGuerra, info);
       }
@@ -441,28 +455,31 @@ export function PTRBA() {
     if (filtroEquipe) lista = lista.filter(p => p.equipe?.trim() === filtroEquipe);
     if (filtroAssunto) lista = lista.filter(p => p.assuntoMinistrado?.trim() === filtroAssunto);
   if (filtroPessoa) {
-    const nomeBusca = filtroPessoa.trim().toLowerCase();
+    const nomeBusca = filtroPessoa.trim();
     lista = lista.filter(p =>
-      p.participantes.some(part => part.nomeCompleto.trim().toLowerCase() === nomeBusca)
+      p.participantes.some(part => mesmaPessoaRelatorio(part.nomeCompleto, nomeBusca))
     );
   }
     lista = applyPeriodFilter(lista);
   if (view === 'detail' && selectedPessoa) {
-    const nomeBusca = selectedPessoa.trim().toLowerCase();
+    const nomeBusca = selectedPessoa.trim();
     lista = lista.filter(p =>
-      p.participantes.some(part => part.nomeCompleto.trim().toLowerCase() === nomeBusca)
+      p.participantes.some(part => mesmaPessoaRelatorio(part.nomeCompleto, nomeBusca))
     );
   }
     return lista.sort((a, b) => new Date(b.data || '').getTime() - new Date(a.data || '').getTime());
-  }, [ptrbs, filtroMes, filtroAno, dataInicio, dataFinal, filterMode, filtroEquipe, filtroAssunto, filtroPessoa, view, selectedPessoa]);
+  }, [ptrbs, filtroMes, filtroAno, dataInicio, dataFinal, filterMode, filtroEquipe, filtroAssunto, filtroPessoa, view, selectedPessoa, bombeiros]);
 
   const expanded = useMemo(() => expandParticipants(filtered), [filtered]);
 
   const pessoasFiltro = useMemo(() => {
     const nomes = new Set<string>();
+    const vistos = new Set<string>();
     for (const [nome, info] of bombeiros) {
       if (filtroEquipe && info.equipe !== filtroEquipe) continue;
-      nomes.add(nome);
+      if (vistos.has(info.key)) continue;
+      vistos.add(info.key);
+      nomes.add(info.nomeCompleto || nome);
     }
     return [...nomes].sort();
   }, [bombeiros, filtroEquipe]);
@@ -488,6 +505,24 @@ export function PTRBA() {
 
   function getEquipe(nomeCompleto: string): string {
     return lookupPessoa(nomeCompleto)?.equipe || '';
+  }
+
+  function getPessoaRelatorio(nome: string): string {
+    return lookupPessoa(nome)?.nomeCompleto || nome;
+  }
+
+  function getPessoaKey(nome: string): string {
+    return lookupPessoa(nome)?.key || normalizarNome(nome);
+  }
+
+  function getFuncaoRelatorio(nome: string, fallback = ''): string {
+    return lookupPessoa(nome)?.cargo || fallback;
+  }
+
+  function mesmaPessoaRelatorio(nomeRegistro: string, nomeFiltro: string): boolean {
+    const keyRegistro = getPessoaKey(nomeRegistro);
+    const keyFiltro = getPessoaKey(nomeFiltro);
+    return !!keyRegistro && !!keyFiltro && keyRegistro === keyFiltro;
   }
 
   function goToSummary() {
@@ -553,7 +588,7 @@ export function PTRBA() {
     const nomes = new Set<string>();
     const equipes = new Set<string>();
     for (const e of expanded) {
-      nomes.add(e.nome);
+      nomes.add(getPessoaKey(e.nome));
       equipes.add(e.ptrb.equipe || '(sem equipe)');
     }
     const totalBombeiros = filtroEquipe
@@ -574,14 +609,17 @@ export function PTRBA() {
     for (const e of expanded) {
       // Equipe de CADASTRO da pessoa (troca/substituição não muda a equipe dela)
       const eq = getEquipe(e.nome) || e.ptrb.equipe || '(sem equipe)';
+      const pessoa = getPessoaRelatorio(e.nome);
+      const funcao = getFuncaoRelatorio(e.nome, e.funcao);
       const as = (e.ptrb.assuntoMinistrado || '(sem assunto)').trim();
       if (!eqMap.has(eq)) eqMap.set(eq, new Map());
       const pesMap = eqMap.get(eq)!;
-      if (!pesMap.has(e.nome)) pesMap.set(e.nome, new Map());
-      const asMap = pesMap.get(e.nome)!;
-      const cur = asMap.get(as) || { horas: 0, qtd: 0, funcao: e.funcao };
+      if (!pesMap.has(pessoa)) pesMap.set(pessoa, new Map());
+      const asMap = pesMap.get(pessoa)!;
+      const cur = asMap.get(as) || { horas: 0, qtd: 0, funcao };
       cur.horas += e.horas;
       cur.qtd += 1;
+      cur.funcao = funcao;
       asMap.set(as, cur);
     }
     const grupos = [...eqMap.entries()].map(([equipe, pesMap]) => {
@@ -604,17 +642,20 @@ export function PTRBA() {
     const pessoaFuncoes = new Map<string, Map<string, number>>();
     for (const e of expanded) {
       const as = e.ptrb.assuntoMinistrado || '(sem assunto)';
-      if (!map.has(e.nome)) map.set(e.nome, new Map());
-      const sub = map.get(e.nome)!;
+      const pessoa = getPessoaRelatorio(e.nome);
+      const funcao = getFuncaoRelatorio(e.nome, e.funcao);
+      if (!map.has(pessoa)) map.set(pessoa, new Map());
+      const sub = map.get(pessoa)!;
       const homeEquipe = getEquipe(e.nome) || e.ptrb.equipe;
-      if (!sub.has(as)) sub.set(as, { horas: 0, qtd: 0, funcao: e.funcao, equipe: homeEquipe });
+      if (!sub.has(as)) sub.set(as, { horas: 0, qtd: 0, funcao, equipe: homeEquipe });
       const item = sub.get(as)!;
       item.horas += e.horas;
       item.qtd++;
-      if (e.funcao) {
-        if (!pessoaFuncoes.has(e.nome)) pessoaFuncoes.set(e.nome, new Map());
-        const fc = pessoaFuncoes.get(e.nome)!;
-        fc.set(e.funcao, (fc.get(e.funcao) || 0) + 1);
+      item.funcao = funcao;
+      if (funcao) {
+        if (!pessoaFuncoes.has(pessoa)) pessoaFuncoes.set(pessoa, new Map());
+        const fc = pessoaFuncoes.get(pessoa)!;
+        fc.set(funcao, (fc.get(funcao) || 0) + 1);
       }
     }
 
@@ -627,16 +668,17 @@ export function PTRBA() {
       }
     }
     return rows;
-  }, [expanded]);
+  }, [expanded, bombeiros]);
 
   // Visão Individual: cada pessoa com a lista detalhada das atividades que frequentou
   const individuos = useMemo(() => {
     type Reg = { data: string; assunto: string; horaInicio: string; horaTermino: string; duracao: string; horas: number; instrutor: string };
     const map = new Map<string, { pessoa: string; funcao: string; equipe: string; registros: Reg[] }>();
     for (const e of expanded) {
-      const it = map.get(e.nome) || {
-        pessoa: e.nome,
-        funcao: e.funcao,
+      const pessoa = getPessoaRelatorio(e.nome);
+      const it = map.get(pessoa) || {
+        pessoa,
+        funcao: getFuncaoRelatorio(e.nome, e.funcao),
         equipe: getEquipe(e.nome) || e.ptrb.equipe || '(sem equipe)',
         registros: [],
       };
@@ -649,7 +691,7 @@ export function PTRBA() {
         horas: e.horas,
         instrutor: e.ptrb.instrutor || '',
       });
-      map.set(e.nome, it);
+      map.set(pessoa, it);
     }
     const list = [...map.values()];
     for (const it of list) {
@@ -716,14 +758,17 @@ export function PTRBA() {
     for (const e of expanded) {
       const as = (e.ptrb.assuntoMinistrado || '(sem assunto)').trim();
       if (filtroAssunto && as !== filtroAssunto) continue;
-      if (!pesMap.has(e.nome)) pesMap.set(e.nome, { funcao: e.funcao, equipe: e.ptrb.equipe, valores: new Map() });
-      const item = pesMap.get(e.nome)!;
+      const pessoa = getPessoaRelatorio(e.nome);
+      const funcao = getFuncaoRelatorio(e.nome, e.funcao);
+      if (!pesMap.has(pessoa)) pesMap.set(pessoa, { funcao, equipe: e.ptrb.equipe, valores: new Map() });
+      const item = pesMap.get(pessoa)!;
       item.valores.set(as, (item.valores.get(as) || 0) + e.horas);
       item.equipe = e.ptrb.equipe || item.equipe;
-      if (e.funcao) {
-        if (!funcaoCount.has(e.nome)) funcaoCount.set(e.nome, new Map());
-        const fc = funcaoCount.get(e.nome)!;
-        fc.set(e.funcao, (fc.get(e.funcao) || 0) + 1);
+      item.funcao = funcao;
+      if (funcao) {
+        if (!funcaoCount.has(pessoa)) funcaoCount.set(pessoa, new Map());
+        const fc = funcaoCount.get(pessoa)!;
+        fc.set(funcao, (fc.get(funcao) || 0) + 1);
       }
     }
     const pesEntries = [...pesMap.entries()].map(([nome, item]) => {

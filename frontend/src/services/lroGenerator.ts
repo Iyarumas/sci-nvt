@@ -30,13 +30,6 @@ function secaoCheckbox(titulo: string, temAlteracao: boolean, texto: string): st
   </table>`;
 }
 
-function motivoSubstituicaoLabel(motivo: string | undefined): string {
-  if (motivo === 'ferias') return 'Férias';
-  if (motivo === 'afastamento') return 'Afastamento';
-  if (motivo === 'substituicao') return 'Substituição';
-  return 'Corrente de férias';
-}
-
 export function dividirEmLancamentos(texto: string): string[] {
   const linhas = texto.split('\n');
   const blocos: string[] = [];
@@ -123,13 +116,11 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
     ? dividirEmLancamentos((dados.solicitacoes as string[]).join('\n\n'))
     : dividirEmLancamentos(String(dados.solicitacoes || ''));
   const substituicao = (dados.substituicao as Array<Record<string, string>>) || [];
-  const substituicoesAtivas = (dados.substituicoesAtivas as Array<Record<string, string>>) || [];
   const cci2 = (dados.cci2 as Array<Record<string, string>>) || [];
   const cci3 = (dados.cci3 as Array<Record<string, string>>) || [];
   const crs = (dados.crs as Array<Record<string, string>>) || [];
   const temEmergencia = dados.emergenciaXI as string | undefined;
-  const temSubstituicoesAtivas = substituicoesAtivas.length > 0;
-  const temSubstituicao = substituicao.length > 0 || temSubstituicoesAtivas;
+  const temSubstituicao = substituicao.length > 0;
   const ocorrenciasNA = e('ocorrenciasNA');
   const inspecoes = e('inspecoes');
 
@@ -156,13 +147,6 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
     ? substituicao.map(s => `
       <tr><td colspan="7" style="border-top:none; border-bottom:none; border-left:1px solid #000; border-right:1px solid #000; padding:3px 4px; font-size:11px;"><div style="display:grid; grid-template-columns:2fr 1fr 2fr; text-align:center;"><div><span class="b" style="font-size:11px;">${s.funcao1 || 'BA-2'}</span> <span style="font-size:11px;">${(s.nome1 || '').toUpperCase()}</span></div><div style="align-self:center;"><span style="font-size:14px;">→</span></div><div><span class="b" style="font-size:11px;">${s.funcao2 || 'BA-2'}</span> <span style="font-size:11px;">${(s.nome2 || '').toUpperCase()}</span></div></div></td></tr>
     `).join('')
-    : '';
-
-  const substituicoesAtivasHTML = temSubstituicoesAtivas
-    ? `<tr><td style="border-top:1px solid #000; border-bottom:1px solid #000; padding:2px 3px; font-weight:bold; font-size:11px; background:#d4d4d4; text-align:center;" colspan="7">CADEIA DE SUBSTITUIÇÕES (FÉRIAS / TEMPORÁRIAS / CASCATA)</td></tr>
-${substituicoesAtivas.map(s => `
-    <tr><td colspan="7" style="border-top:none; border-bottom:none; border-left:1px solid #000; border-right:1px solid #000; padding:3px 4px; font-size:11px;"><div style="display:grid; grid-template-columns:2fr 1fr 2fr; text-align:center; align-items:center;"><div><span class="b" style="font-size:11px;">${s.cargoAusente || ''}</span> <span style="font-size:11px;">${(s.nomeAusente || '').toUpperCase()}</span></div><div style="align-self:center;"><span style="font-size:14px;">→</span></div><div><span class="b" style="font-size:11px;">${s.cargoPresente || ''}</span> <span style="font-size:11px;">${(s.nomePresente || '').toUpperCase()}</span></div></div><div style="font-size:10px; color:#555; text-align:center; margin-top:2px;">${motivoSubstituicaoLabel(s.motivo)} · Nível ${s.nivel || 1}</div></td></tr>
-  `).join('')}`
     : '';
 
   const ocorrenciasHTML = ocorrenciasXII.length > 0
@@ -255,7 +239,6 @@ ${substituicoesAtivas.map(s => `
     <tr><td class="b" style="font-size:11px; white-space:nowrap; border-top:none; border-right:none;">CRS</td><td colspan="6" style="font-size:11px; border-top:none; border-left:none;">${crsHTML}</td></tr>
     <tr><td class="b" colspan="7" style="font-size:11px;">1.3. Substituições de BA: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${cb(temSubstituicao)} ABAIXO &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${cb(!temSubstituicao)} NÃO HOUVE</td></tr>
     ${subHTML}
-    ${substituicoesAtivasHTML}
     <tr><td style="border-top:1px solid #000; border-bottom:1px solid #000; padding:2px 3px; font-weight:bold; font-size:11px; background:#d4d4d4; text-align:center;" colspan="7">II. INSTRUÇÕES</td></tr>
     ${instrucoesHTML}
     <tr class="sec-title"><td colspan="7">III. SITUAÇÃO OPERACIONAL DA FROTA DO SESCINC:</td></tr>

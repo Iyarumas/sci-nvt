@@ -1558,29 +1558,14 @@ export function GerarLRO() {
     return entry.cargoExercido !== 'BA-CE' && entry.cargoExercido !== 'BA-LR';
   }, []);
 
-  const substituicoesAtivas = useMemo(() => {
-    return vigencias.filter(v => {
-      const original = bombeiroPorId.get(v.funcionarioOriginalId);
-      return v.ativa &&
-        v.substitutoId &&
-        v.substitutoId !== v.funcionarioOriginalId &&
-        estaNoPeriodoISO(dataInicio, v.dataInicio, v.dataFim) &&
-        (original?.equipe || v.equipe) === equipe;
-    }).map(v => ({
-      nomeAusente: v.funcionarioOriginalNome,
-      cargoAusente: v.cargoOriginalFuncionario,
-      nomePresente: v.substitutoNome,
-      cargoPresente: v.cargoExercido,
-      motivo: v.motivo,
-      nivel: v.nivelCascata,
-    }));
-  }, [vigencias, bombeiroPorId, equipe, dataInicio]);
+  const trocasServicoLRO = useMemo(
+    () => substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false),
+    [substituicoesDetectadas]
+  );
 
   const temSubstituicoesBa = useMemo(() => {
-    return substituicoesAtivas.length > 0 ||
-      substituicoesDetectadas.some(s => s.tipo === 'troca' && s.confirmada !== false) ||
-      trocasManuais.length > 0;
-  }, [substituicoesAtivas, substituicoesDetectadas, trocasManuais]);
+    return trocasServicoLRO.length > 0 || trocasManuais.length > 0;
+  }, [trocasServicoLRO, trocasManuais]);
 
   // Auto-preenche o Chefe de Equipe, BA-OC e a equipagem (CCI 2, CCI 3, CRS) a partir da escala mensal do dia,
   // aplicando trocas/substituições no lugar das pessoas substituídas
@@ -1590,8 +1575,8 @@ export function GerarLRO() {
     const ano = parseInt(dataInicio.substring(0, 4), 10);
     const configEscala = escalasConfigs.find(c => c.equipe === equipe && c.mes === mes && c.ano === ano);
     const completa = escalasCompletas.find(c => c.config?.equipe === equipe && c.config?.mes === mes && c.config?.ano === ano);
-    const parada = completa?.paradas.find(p => mesmoDiaISO(p.data, dataInicio)) || completa?.paradas[0];
-    const pessoas = configEscala?.pessoas || completa?.config?.pessoas || [];
+    const parada = completa?.paradas.find(p => mesmoDiaISO(p.data, dataInicio));
+    const pessoas = configEscala?.pessoas?.length ? configEscala.pessoas : (completa?.config?.pessoas || []);
 
     const resolvePessoa = (id: string | undefined, nomeGuerra: string | undefined, visitados = new Set<string>()): string => {
       const b = (id ? bombeiros.find((x: any) => x.id === id) : undefined) ||
@@ -1643,11 +1628,13 @@ export function GerarLRO() {
     // 1.2 Comunicação BA-OC — comunicante do plantão (rádio fixo da parada do dia)
     const comunicacaoAtual = buscarBombeiroPorNome(comunicacao);
     const comunicacaoAtualSaiu = pessoaSaiuDoPlantao(comunicacaoAtual);
-    if (!campoEquipeFoiEditado('comunicacao') && (!comunicacao || comunicacaoAtualSaiu) && parada?.radio) {
-      const radioOrdenada = [
-        ...parada.radio.filter(r => r.fixo),
-        ...parada.radio.filter(r => !r.fixo),
-      ];
+    if (!campoEquipeFoiEditado('comunicacao') && (!comunicacao || comunicacaoAtualSaiu)) {
+      const radioOrdenada = parada?.radio
+        ? [
+            ...parada.radio.filter(r => r.fixo),
+            ...parada.radio.filter(r => !r.fixo),
+          ]
+        : [];
       const comunicante = radioOrdenada.find(r => {
         const nomeReal = resolvePessoa(undefined, r.pessoaNomeGuerra);
         const entry = buscarEfetivoDisponivelPorNome(nomeReal);
@@ -1665,8 +1652,6 @@ export function GerarLRO() {
     }
 
     // 1.3 Equipagem dos CCI — pessoas da escala (CCI F2, CCI F3, CRS), aplicando trocas
-    if (!pessoas.length) return;
-
     const slotPorFuncao: Record<string, Record<string, string>> = {
       cciF2: { BaCe: 'BA-CE_0', BaMc: 'BA-MC_1', Ba2: 'BA-2_2' },
       cciF3: { BaMc: 'BA-MC_0', 'Ba2-1': 'BA-2_1', 'Ba2-2': 'BA-2_2' },
@@ -1756,7 +1741,7 @@ export function GerarLRO() {
     );
 
     return [
-      ...substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(s => {
+      ...trocasServicoLRO.map(s => {
         const p1 = porTexto(s.substituido);
         const p2 = porTexto(s.substituto);
         return { funcao1: cargoNoPlantao(p1), nome1: p1?.nomeCompleto || s.substituido, funcao2: cargoNoPlantao(p2), nome2: p2?.nomeCompleto || s.substituto };
@@ -1803,9 +1788,8 @@ export function GerarLRO() {
         gerenteAssinatura: bombeiros.find((b: any) => b.cargo === 'GS')?.nomeCompleto || bombeiros.find((b: any) => b.cargo === 'GS')?.nomeGuerra || '',
         coordenadorAssinatura: apocs.find((a: any) => a.funcao === 'SUPERVISOR')?.nomeCompleto || '',
         _trocasManuais: trocasManuais,
-        _substituicoesDetectadas: substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false),
+        _substituicoesDetectadas: trocasServicoLRO,
         _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
-        substituicoesAtivas,
       };
       const saved = await salvarDraft(dados, equipe, dataInicio, username, draftId || undefined);
       setDraftId(saved.id);
@@ -1854,7 +1838,6 @@ export function GerarLRO() {
         dataAssinatura: formatarDataBR(new Date()),
         chefeAssinatura: bombeiros.find((b: any) => b.nomeGuerra === chefeEquipe || b.nomeCompleto === chefeEquipe)?.nomeCompleto || chefeEquipe,
         _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
-        substituicoesAtivas,
       };
 
       if (draftId) {
@@ -1918,7 +1901,6 @@ export function GerarLRO() {
       cidade: 'NAVEGANTES',
       uf: 'SC',
       _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
-      substituicoesAtivas,
       _lroExportavel: true,
     };
     navigate('/registros-diarios/preview-lro', { state: dados });
@@ -1960,9 +1942,8 @@ export function GerarLRO() {
         cidade: 'NAVEGANTES',
         uf: 'SC',
         _trocasManuais: trocasManuais,
-        _substituicoesDetectadas: substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false),
+        _substituicoesDetectadas: trocasServicoLRO,
         _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
-        substituicoesAtivas,
       };
       const saved = await salvarDraft(dados, equipe, dataInicio, username, draftId || undefined);
       setDraftId(saved.id);
@@ -3305,30 +3286,7 @@ export function GerarLRO() {
                 NÃO HOUVE
               </label>
             </div>
-            {substituicoesAtivas.map((sub, idx) => {
-              const visual = visualSubstituicaoLRO({ tipo: 'substituicao', origem: (sub.motivo || 'substituicao') as SubstituicaoOrigem });
-              return (
-                <div key={`ativa-${idx}-${sub.nomeAusente}-${sub.nomePresente}`} className={`mb-2 rounded-lg border p-3 ${visual.cardClass}`}>
-                  <div className="mb-2">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${visual.badgeClass}`}>
-                      {visual.label}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-4">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-graphite-800 dark:text-graphite-200">{sub.nomeAusente || '—'}</p>
-                      <p className="text-xs text-graphite-500">{sub.cargoAusente || 'BA-2'}</p>
-                    </div>
-                    <div className="text-graphite-400 text-xs font-bold shrink-0 pt-1">→</div>
-                    <div className="text-left min-w-0 flex-1">
-                      <p className={`font-bold ${visual.nameClass}`}>{sub.nomePresente || '—'}</p>
-                      <p className={`text-xs ${visual.detailClass}`}>como {sub.cargoPresente || 'BA-2'} · Nível {sub.nivel || 1}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {substituicoesDetectadas.filter(s => s.tipo === 'troca' && s.confirmada !== false).map(sub => {
+            {trocasServicoLRO.map(sub => {
               const findB = (nome: string) => buscarBombeiroPorNome(nome);
               const p1 = findB(sub.substituido);
               const p2 = findB(sub.substituto);

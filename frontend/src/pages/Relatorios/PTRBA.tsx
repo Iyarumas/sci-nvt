@@ -353,8 +353,8 @@ export function PTRBA() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewLevel>('summary');
   const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
-  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
-  const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroAno, setFiltroAno] = useState('');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFinal, setDataFinal] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');

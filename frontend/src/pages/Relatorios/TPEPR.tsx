@@ -33,7 +33,7 @@ import {
 } from '../../services/tpeprService';
 import { baixarTPEPRPdf, gerarTPEPRPdf, nomeArquivoTPEPRPdf } from '../../services/tpeprPdfService';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
-import { formatarDataBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import {
   calcularQuartaTomada,
   criarParticipantesTPEPRVazios,
@@ -50,7 +50,6 @@ import { resumoAuditoria } from '../../utils/auditoria';
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
-const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 const TPEPR_TOUR_STEPS = [
   {
@@ -158,7 +157,6 @@ export function TPEPR() {
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
-  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TreinamentoTPEPR | null>(null);
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
@@ -314,7 +312,6 @@ export function TPEPR() {
   const filtered = useMemo(() => {
     let lista = registros;
     if (filtroEquipe) lista = lista.filter(r => r.equipe === filtroEquipe);
-    if (filtroMes) lista = lista.filter(r => String(parseDataLocalISO(r.data).getMonth() + 1) === filtroMes);
     if (search) {
       const termo = search.toLowerCase();
       lista = lista.filter(r => {
@@ -324,13 +321,12 @@ export function TPEPR() {
       });
     }
     return lista;
-  }, [registros, filtroEquipe, search, filtroMes]);
+  }, [registros, filtroEquipe, search]);
 
   const stats = useMemo(() => ({
-    total: filtered.length,
-    participantes: filtered.reduce((acc, item) => acc + item.participantes.filter(participantePreenchido).length, 0),
-  }), [filtered]);
-  const periodoLabel = filtroMes ? `${MESES[Number(filtroMes)]} ${filtroAno}`.trim() : (filtroAno || 'Todos');
+    total: registros.length,
+    participantes: registros.reduce((acc, item) => acc + item.participantes.filter(participantePreenchido).length, 0),
+  }), [registros]);
 
   function registroAprovado(registro?: Pick<TreinamentoTPEPR, 'status'> | null) {
     return registro?.status === 'Aprovado';
@@ -676,7 +672,7 @@ export function TPEPR() {
           <div className="flex flex-wrap items-center gap-2">
             <div className="rounded-xl border border-aviation-200 bg-aviation-50 px-4 py-2 text-center dark:border-aviation-800 dark:bg-aviation-900/20">
               <p className="text-xl font-black text-aviation-700 dark:text-aviation-300">{stats.total}</p>
-              <p className="text-[9px] font-bold uppercase tracking-wider text-aviation-500">TP/EPR {periodoLabel}</p>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-aviation-500">TP/EPR {filtroAno}</p>
             </div>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-center dark:border-emerald-800 dark:bg-emerald-900/20">
               <p className="text-xl font-black text-emerald-700 dark:text-emerald-300">{stats.participantes}</p>
@@ -704,12 +700,7 @@ export function TPEPR() {
             {TPEPR_EQUIPES.map(eq => <option key={eq} value={eq}>{eq}</option>)}
           </select>
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
-            <option value="">Todos os anos</option>
             {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(ano => <option key={ano} value={ano.toString()}>{ano}</option>)}
-          </select>
-          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`}>
-            <option value="">Todos os meses</option>
-            {MESES.slice(1).map((mes, index) => <option key={index + 1} value={(index + 1).toString()}>{mes}</option>)}
           </select>
         </div>
 

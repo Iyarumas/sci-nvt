@@ -652,7 +652,7 @@ export function GerarLRO() {
   const [trocaConfirmadaIdx, setTrocaConfirmadaIdx] = useState<number | null>(null);
   const [showConfirmAdicionar, setShowConfirmAdicionar] = useState(false);
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
-  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
+  const [filtroMes, setFiltroMes] = useState('');
   const [filtroEquipeLista, setFiltroEquipeLista] = useState('');
   const [cloneOrigem, setCloneOrigem] = useState<LRODraft | null>(null);
   const [draftCountdowns, setDraftCountdowns] = useState<Record<string, string>>({});

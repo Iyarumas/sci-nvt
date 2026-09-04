@@ -758,7 +758,7 @@ export function PTRBADiario() {
   const [visualizando, setVisualizando] = useState<PTRB | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [filtroEquipe, setFiltroEquipe] = useState('');
-  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
+  const [filtroMes, setFiltroMes] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const MESES = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());

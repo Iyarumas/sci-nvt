@@ -17,7 +17,7 @@ import {
 import { listarAtivos } from '../../services/bombeiroService';
 import { gerarExercicioPosicionamentoPdf } from '../../services/exercicioPosicionamentoPdfService';
 import type { ExercicioPosicionamento, ExercicioPosicionamentoInput } from '../../types/exercicioPosicionamento';
-import { formatarDataBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
+import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { imprimirPdfBlob } from '../../utils/pdfPrint';
 import { PageTour } from '../../components/ui/PageTour';
@@ -25,7 +25,6 @@ import { resumoAuditoria } from '../../utils/auditoria';
 import type { Bombeiro } from '../../types/bombeiro';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
-const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const CARGOS_CRS_BA_RE = ['BA-RE', 'BA-2'] as const;
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
@@ -86,7 +85,6 @@ export default function Posicionamento() {
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
-  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<ExercicioPosicionamento | null>(null);
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
@@ -169,7 +167,6 @@ export default function Posicionamento() {
   const filtered = useMemo(() => {
     let lista = exercicios;
     if (filtroEquipe) lista = lista.filter(e => e.equipe === filtroEquipe);
-    if (filtroMes) lista = lista.filter(e => String(parseDataLocalISO(e.data).getMonth() + 1) === filtroMes);
     if (search) {
       const t = search.toLowerCase();
       lista = lista.filter(e =>
@@ -179,16 +176,15 @@ export default function Posicionamento() {
       );
     }
     return lista;
-  }, [exercicios, search, filtroEquipe, filtroMes]);
+  }, [exercicios, search, filtroEquipe]);
 
   const stats = useMemo(() => ({
-    total: filtered.length,
+    total: exercicios.length,
     porEquipe: EQUIPES.map(eq => ({
       equipe: eq,
-      count: filtered.filter(ex => ex.equipe === eq).length,
+      count: exercicios.filter(ex => ex.equipe === eq).length,
     })),
-  }), [filtered]);
-  const periodoLabel = filtroMes ? `${MESES[Number(filtroMes)]} ${filtroAno}`.trim() : (filtroAno || 'Todos');
+  }), [exercicios]);
 
   function registroAprovado(registro?: Pick<ExercicioPosicionamento, 'status'> | null) {
     return registro?.status === 'Aprovado';
@@ -577,7 +573,7 @@ export default function Posicionamento() {
           <div className="flex items-center gap-2">
             <div className="rounded-xl border border-aviation-200 bg-aviation-50 px-4 py-2 text-center dark:border-aviation-800 dark:bg-aviation-900/20">
               <p className="text-xl font-black text-aviation-700 dark:text-aviation-300">{stats.total}</p>
-              <p className="text-[9px] font-bold uppercase tracking-wider text-aviation-500">{periodoLabel}</p>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-aviation-500">{filtroAno}</p>
             </div>
             {stats.porEquipe.map(s => s.count > 0 && (
               <div key={s.equipe} className="rounded-xl border border-graphite-200 bg-white px-3 py-2 text-center dark:border-border-dark dark:bg-surface-card">
@@ -606,14 +602,9 @@ export default function Posicionamento() {
             {EQUIPES.map(eq => <option key={eq} value={eq}>{eq}</option>)}
           </select>
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
-            <option value="">Todos os anos</option>
             {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(a =>
               <option key={a} value={a.toString()}>{a}</option>
             )}
-          </select>
-          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`}>
-            <option value="">Todos os meses</option>
-            {MESES.slice(1).map((mes, index) => <option key={index + 1} value={(index + 1).toString()}>{mes}</option>)}
           </select>
         </div>
 

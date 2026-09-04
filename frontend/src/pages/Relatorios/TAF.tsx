@@ -16,12 +16,13 @@ import { listarTAFs, criarTAF, atualizarTAF, excluirTAF, obterProximoNumero } fr
 import { baixarTAFPdf, gerarTAFPdf, nomeArquivoTAFPdf } from '../../services/tafPdfService';
 import type { TAFInput, TreinamentoTAF } from '../../types/taf';
 import type { Bombeiro } from '../../types/bombeiro';
-import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
+import { formatarDataBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
 import { PageTour } from '../../components/ui/PageTour';
 import { resumoAuditoria } from '../../utils/auditoria';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
+const MESES = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const TIPO_TAF = ['TAF-1', 'TAF-2'];
 const SLOTS = [
   { i: 1, label: 'BA-CE', cargo: 'BA-CE' }, { i: 2, label: 'BA-LR', cargo: 'BA-LR' },
@@ -209,6 +210,7 @@ export function TAF() {
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TreinamentoTAF | null>(null);
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
@@ -255,11 +257,13 @@ export function TAF() {
   const filtered = useMemo(() => {
     let l = registros;
     if (filtroEquipe) l = l.filter(r => r.equipe === filtroEquipe);
+    if (filtroMes) l = l.filter(r => String(parseDataLocalISO(r.data).getMonth() + 1) === filtroMes);
     if (search) { const s = search.toLowerCase(); l = l.filter(r => `${String(r.numero).padStart(3,'0')}/${r.ano}`.includes(s) || r.equipe.toLowerCase().includes(s) || r.tipoTaf.toLowerCase().includes(s)); }
     return l;
-  }, [registros, search, filtroEquipe]);
+  }, [registros, search, filtroEquipe, filtroMes]);
 
-  const stats = useMemo(() => ({ total: registros.length }), [registros]);
+  const stats = useMemo(() => ({ total: filtered.length }), [filtered]);
+  const periodoLabel = filtroMes ? `${MESES[Number(filtroMes)]} ${filtroAno}`.trim() : (filtroAno || 'Todos');
 
   function registroAprovado(registro?: Pick<TreinamentoTAF, 'status'> | null) {
     return registro?.status === 'Aprovado';
@@ -552,7 +556,7 @@ export function TAF() {
           <div className="flex items-center gap-2">
             <div className="rounded-xl border border-aviation-200 bg-aviation-50 px-4 py-2 text-center dark:border-aviation-800 dark:bg-aviation-900/20">
               <p className="text-xl font-black text-aviation-700 dark:text-aviation-300">{stats.total}</p>
-              <p className="text-[9px] font-bold uppercase tracking-wider text-aviation-500">{filtroAno}</p>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-aviation-500">{periodoLabel}</p>
             </div>
           </div>
           {canCreate && (
@@ -573,7 +577,12 @@ export function TAF() {
             {EQUIPES.map(eq => <option key={eq} value={eq}>{eq}</option>)}
           </select>
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
+            <option value="">Todos os anos</option>
             {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(a => <option key={a} value={a.toString()}>{a}</option>)}
+          </select>
+          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`}>
+            <option value="">Todos os meses</option>
+            {MESES.slice(1).map((mes, index) => <option key={index + 1} value={(index + 1).toString()}>{mes}</option>)}
           </select>
         </div>
 

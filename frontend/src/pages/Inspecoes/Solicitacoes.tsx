@@ -72,8 +72,8 @@ export function Solicitacoes() {
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [filtroEquipe, setFiltroEquipe] = useState<Equipe | ''>('');
   const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
-  const [filtroMes, setFiltroMes] = useState('');
-  const [filtroAno, setFiltroAno] = useState('');
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
+  const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [dataInicio, setDataInicio] = useState('');
   const [dataFinal, setDataFinal] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);

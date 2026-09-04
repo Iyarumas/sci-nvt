@@ -1039,8 +1039,8 @@ export function Ocorrencias() {
   function clearSuccess() { setSuccessMsg(''); }
   useEffect(() => { if (successMsg) { const t = setTimeout(clearSuccess, 3000); return () => clearTimeout(t); } }, [successMsg]);
 
-  const [filtroAno, setFiltroAno] = useState('');
-  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
   const [dataInicio, setDataInicio] = useState('');
   const [dataFinal, setDataFinal] = useState('');

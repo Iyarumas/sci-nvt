@@ -209,6 +209,11 @@ function valorEscala(value?: string): string {
   return texto || '-';
 }
 
+function nomeEscalaMensal(value?: string): string {
+  const texto = String(value || '').trim();
+  return texto && texto !== '-' ? texto : '';
+}
+
 function gruposGuarnicaoDetalhe(escala: EscalaDiaria): GrupoEscalaDetalhe[] {
   return [
     {
@@ -1043,43 +1048,161 @@ function EscalaDiariaForm({
       let slotCci02BaMc = '', slotCci02BaCe = '', slotCci02Ba2 = '';
       let slotCci03BaMc = '', slotCci03Ba2_1 = '', slotCci03Ba2_2 = '';
       const usados = new Set<string>();
+      const efetivoBaseDoDia = montarEfetivoOperacional({
+        bombeiros: all,
+        feriasGozo: gozos,
+        vigencias: vigs,
+        trocaFills: [],
+        substituicoesTemporarias: substituicoesAprovadas,
+        equipe: form.equipe,
+        dataPlantao: form.dataPlantao,
+      });
+
+      const pessoaPorNomeEscala = (nome?: string): any | null => {
+        const alvo = normalizarNomeComparacao(nome);
+        if (!alvo) return null;
+        return all.find((bb: any) =>
+          [bb.nomeGuerra, bb.nomeCompleto, bb.nome]
+            .map(normalizarNomeComparacao)
+            .filter(Boolean)
+            .some(nomePessoa => nomePessoa === alvo)
+        ) || null;
+      };
+
+      const nomeGuerraPorNome = (nome?: string): string => {
+        const pessoa = pessoaPorNomeEscala(nome);
+        return pessoa?.nomeGuerra || nomeEscalaMensal(nome);
+      };
+
+      const slotsGuarnicao = () => [
+        { valor: slotChefe, set: (v: string) => { slotChefe = v; } },
+        { valor: slotCrsBaMc, set: (v: string) => { slotCrsBaMc = v; } },
+        { valor: slotCrsBaLr, set: (v: string) => { slotCrsBaLr = v; } },
+        { valor: slotCrsBaRe1, set: (v: string) => { slotCrsBaRe1 = v; } },
+        { valor: slotCrsBaRe2, set: (v: string) => { slotCrsBaRe2 = v; } },
+        { valor: slotCci02BaMc, set: (v: string) => { slotCci02BaMc = v; } },
+        { valor: slotCci02BaCe, set: (v: string) => { slotCci02BaCe = v; } },
+        { valor: slotCci02Ba2, set: (v: string) => { slotCci02Ba2 = v; } },
+        { valor: slotCci03BaMc, set: (v: string) => { slotCci03BaMc = v; } },
+        { valor: slotCci03Ba2_1, set: (v: string) => { slotCci03Ba2_1 = v; } },
+        { valor: slotCci03Ba2_2, set: (v: string) => { slotCci03Ba2_2 = v; } },
+      ];
+
+      const recomputarUsadosSlots = () => {
+        usados.clear();
+        for (const slot of slotsGuarnicao()) {
+          const pessoa = pessoaPorNomeEscala(slot.valor);
+          if (pessoa?.id) usados.add(pessoa.id);
+        }
+      };
+
+      const correspondePessoa = (slotNome: string, nomePessoa?: string): boolean => {
+        const slotNormalizado = normalizarNomeComparacao(slotNome);
+        const pessoaNormalizada = normalizarNomeComparacao(nomePessoa);
+        if (!slotNormalizado || !pessoaNormalizada) return false;
+        if (slotNormalizado === pessoaNormalizada) return true;
+        const pessoaSlot = pessoaPorNomeEscala(slotNome);
+        if (!pessoaSlot) return false;
+        return [pessoaSlot.nomeGuerra, pessoaSlot.nomeCompleto, pessoaSlot.nome]
+          .map(normalizarNomeComparacao)
+          .filter(Boolean)
+          .some(nome => nome === pessoaNormalizada);
+      };
+
+      const aplicarTrocaNosSlots = (nomeSaindo?: string, nomeEntrando?: string): boolean => {
+        const entrada = nomeGuerraPorNome(nomeEntrando);
+        const saida = nomeGuerraPorNome(nomeSaindo);
+        if (!entrada || !saida) return false;
+
+        const slots = slotsGuarnicao();
+        const indicesSaindo = slots
+          .map((slot, idx) => correspondePessoa(slot.valor, nomeSaindo) ? idx : -1)
+          .filter(idx => idx !== -1);
+        if (!indicesSaindo.length) return false;
+
+        const indicesSaindoSet = new Set(indicesSaindo);
+        const indicesEntrando = slots
+          .map((slot, idx) => correspondePessoa(slot.valor, nomeEntrando) ? idx : -1)
+          .filter(idx => idx !== -1 && !indicesSaindoSet.has(idx));
+
+        for (const idx of indicesSaindo) slots[idx].set(entrada);
+        for (const idx of indicesEntrando) slots[idx].set(saida);
+        recomputarUsadosSlots();
+        return true;
+      };
+
+      const resolverSlotMensal = (nome?: string, cargoEsperado?: string): string => {
+        const nomeBase = nomeEscalaMensal(nome);
+        if (!nomeBase || !cargoEsperado) return nomeBase;
+        const pessoaBase = pessoaPorNomeEscala(nomeBase);
+        if (!pessoaBase?.id) return nomeBase;
+
+        const mesmaPessoaNoCargo = efetivoBaseDoDia.find(entry =>
+          entry.bombeiro.id === pessoaBase.id && entry.cargoExercido === cargoEsperado
+        );
+        if (mesmaPessoaNoCargo) return mesmaPessoaNoCargo.bombeiro.nomeGuerra;
+
+        const substitutoDaVaga = efetivoBaseDoDia.find(entry =>
+          entry.substituindo?.id === pessoaBase.id && entry.cargoExercido === cargoEsperado
+        );
+        return substitutoDaVaga?.bombeiro.nomeGuerra || nomeBase;
+      };
+
+      const resolverNomeMensalParaRadio = (nome?: string): string => {
+        const nomeBase = nomeEscalaMensal(nome);
+        if (!nomeBase) return '';
+        const pessoaBase = pessoaPorNomeEscala(nomeBase);
+        if (!pessoaBase?.id) return nomeBase;
+
+        const substitutoDaVaga = efetivoBaseDoDia.find(entry => entry.substituindo?.id === pessoaBase.id);
+        if (substitutoDaVaga) return substitutoDaVaga.bombeiro.nomeGuerra;
+
+        const mesmaPessoa = efetivoBaseDoDia.find(entry => entry.bombeiro.id === pessoaBase.id);
+        return mesmaPessoa?.bombeiro.nomeGuerra || nomeBase;
+      };
+
+      const slotMensalPorConfiguracao = (veiculo: string, funcaoNoVeiculo: string, cargoEsperado: string): string => {
+        const pessoa = (mensal?.config?.pessoas || []).find((p: any) =>
+          p?.veiculo === veiculo && p?.funcaoNoVeiculo === funcaoNoVeiculo
+        );
+        return resolverSlotMensal(pessoa?.nomeGuerra || pessoa?.nome, cargoEsperado);
+      };
+
+      const aplicarMensalNosSlots = () => {
+        const plantaoDia = mensal?.paradas?.find((p: any) => p.dia === dateObj.getDate());
+        const veiculos = plantaoDia?.veiculos;
+
+        if (veiculos) {
+          slotCrsBaMc = resolverSlotMensal(veiculos.crs?.baMc, 'BA-MC');
+          slotCrsBaLr = resolverSlotMensal(veiculos.crs?.baLr, 'BA-LR');
+          slotCrsBaRe1 = resolverSlotMensal(veiculos.crs?.ba2_1, 'BA-2');
+          slotCrsBaRe2 = resolverSlotMensal(veiculos.crs?.ba2_2, 'BA-2');
+          slotCci02BaMc = resolverSlotMensal(veiculos.cciF2?.baMc, 'BA-MC');
+          slotCci02BaCe = resolverSlotMensal(veiculos.cciF2?.baCe, 'BA-CE');
+          slotCci02Ba2 = resolverSlotMensal(veiculos.cciF2?.ba2, 'BA-2');
+          slotCci03BaMc = resolverSlotMensal(veiculos.cciF3?.baMc, 'BA-MC');
+          slotCci03Ba2_1 = resolverSlotMensal(veiculos.cciF3?.ba2_1, 'BA-2');
+          slotCci03Ba2_2 = resolverSlotMensal(veiculos.cciF3?.ba2_2, 'BA-2');
+          slotChefe = slotCci02BaCe;
+          return;
+        }
+
+        slotCci02BaCe = slotMensalPorConfiguracao('cciF2', 'BaCe', 'BA-CE');
+        slotChefe = slotCci02BaCe;
+        slotCrsBaLr = slotMensalPorConfiguracao('crs', 'BaLr', 'BA-LR');
+        slotCrsBaMc = slotMensalPorConfiguracao('crs', 'BaMc', 'BA-MC');
+        slotCci02BaMc = slotMensalPorConfiguracao('cciF2', 'BaMc', 'BA-MC');
+        slotCci03BaMc = slotMensalPorConfiguracao('cciF3', 'BaMc', 'BA-MC');
+        slotCrsBaRe1 = slotMensalPorConfiguracao('crs', 'Ba2-1', 'BA-2');
+        slotCrsBaRe2 = slotMensalPorConfiguracao('crs', 'Ba2-2', 'BA-2');
+        slotCci02Ba2 = slotMensalPorConfiguracao('cciF2', 'Ba2', 'BA-2');
+        slotCci03Ba2_1 = slotMensalPorConfiguracao('cciF3', 'Ba2-1', 'BA-2');
+        slotCci03Ba2_2 = slotMensalPorConfiguracao('cciF3', 'Ba2-2', 'BA-2');
+      };
 
       if (mensal) {
-        const pessoas = mensal.config.pessoas;
-        const mapeamento: [number, (v: string) => void][] = [
-          [0, v => { slotChefe = v; slotCci02BaCe = v; }],  // Chefe BA-CE
-          [1, v => slotCrsBaLr = v],  // Líder BA-LR
-          [2, v => slotCrsBaMc = v],  // Condutor BA-MC CRS
-          [3, v => slotCci02BaMc = v], // Condutor BA-MC CCI F2
-          [4, v => slotCci03BaMc = v], // Condutor BA-MC CCI F3
-          [5, v => slotCrsBaRe1 = v],  // BA-2 CRS 1
-          [6, v => slotCrsBaRe2 = v],  // BA-2 CRS 2
-          [7, v => slotCci02Ba2 = v],  // BA-2 CCI F2
-          [8, v => slotCci03Ba2_1 = v], // BA-2 CCI F3 1
-          [9, v => slotCci03Ba2_2 = v], // BA-2 CCI F3 2
-        ];
-        for (const [idx, setter] of mapeamento) {
-          const p = pessoas[idx];
-          if (!p || !p.nomeGuerra) continue;
-          // Verificar se a pessoa tem substituto no dia (férias, troca ou vigência)
-          const b = all.find((bb: any) => bb.nomeGuerra === p.nomeGuerra);
-          if (b) {
-            const subInfo = encontrarSubstituto(b.id);
-            if (subInfo) {
-              const sub = all.find((bb: any) => bb.id === subInfo.id);
-              if (sub && !usados.has(sub.id)) {
-                setter(sub.nomeGuerra);
-                usados.add(sub.id);
-                continue;
-              }
-            }
-            // Não tem substituto disponível → mantém o original
-            if (!usados.has(b.id)) {
-              setter(p.nomeGuerra);
-              usados.add(b.id);
-            }
-          }
-        }
+        aplicarMensalNosSlots();
+        recomputarUsadosSlots();
       }
 
       // ── 2. Pool para preencher slots que ficaram vazios ──
@@ -1094,6 +1217,7 @@ function EscalaDiariaForm({
       }
       const trocaExcluidosNoDia = new Set<string>();
       const trocaIncluidosNoDia: { bombeiro: any; cargo: string }[] = [];
+      const trocasParaAplicarNoDia: Array<{ nomeSaindo: string; nomeEntrando: string }> = [];
       for (const fl of trocasDocs) {
         const fd = fl?.filled_data || {};
         const solDia = mesmoDiaISO(fd?.data_solicitada, form.dataPlantao);
@@ -1106,10 +1230,14 @@ function EscalaDiariaForm({
           trocaExcluidosNoDia.add(sol.id);
           trocaExcluidosNoDia.add(solic.id);
           trocaIncluidosNoDia.push({ bombeiro: solic, cargo: sol.cargo });
+          trocasParaAplicarNoDia.push({ nomeSaindo: sol.nomeCompleto || sol.nomeGuerra, nomeEntrando: solic.nomeCompleto || solic.nomeGuerra });
+          aplicarTrocaNosSlots(sol.nomeCompleto || sol.nomeGuerra, solic.nomeCompleto || solic.nomeGuerra);
         } else if (solicDia && solic.equipe === form.equipe) {
           trocaExcluidosNoDia.add(sol.id);
           trocaExcluidosNoDia.add(solic.id);
           trocaIncluidosNoDia.push({ bombeiro: sol, cargo: solic.cargo });
+          trocasParaAplicarNoDia.push({ nomeSaindo: solic.nomeCompleto || solic.nomeGuerra, nomeEntrando: sol.nomeCompleto || sol.nomeGuerra });
+          aplicarTrocaNosSlots(solic.nomeCompleto || solic.nomeGuerra, sol.nomeCompleto || sol.nomeGuerra);
         }
       }
       for (const extra of extrasDoDia) {
@@ -1161,39 +1289,11 @@ function EscalaDiariaForm({
         s.status === 'Aprovada' &&
         estaNoPeriodoISO(form.dataPlantao, s.dataInicio, s.dataFim)
       );
-      // Aplicar swaps nos nomes dos slots
       for (const t of trocasAtivas) {
-        const slotsAtuais = [slotChefe, slotCrsBaMc, slotCrsBaLr, slotCrsBaRe1, slotCrsBaRe2,
-          slotCci02BaMc, slotCci02BaCe, slotCci02Ba2, slotCci03BaMc, slotCci03Ba2_1, slotCci03Ba2_2];
-        const setVars: ((v: string) => void)[] = [
-          v => slotChefe = v, v => slotCrsBaMc = v, v => slotCrsBaLr = v,
-          v => slotCrsBaRe1 = v, v => slotCrsBaRe2 = v, v => slotCci02BaMc = v,
-          v => slotCci02BaCe = v, v => slotCci02Ba2 = v, v => slotCci03BaMc = v,
-          v => slotCci03Ba2_1 = v, v => slotCci03Ba2_2 = v,
-        ];
-        const saindoNome = t.funcionarioNome;
-        const entrandoNome = t.substitutoNome;
-        // Procurar o "saindo" nos slots (pelo nomeGuerra ou nome completo)
-        const idxSaindo = slotsAtuais.findIndex(s => {
-          const b = all.find((bb: any) => bb.nomeGuerra === s || bb.nomeCompleto === s);
-          return b && (b.nome === saindoNome || b.nomeCompleto === saindoNome || b.nomeGuerra === saindoNome);
-        });
-        const idxEntrando = slotsAtuais.findIndex(s => {
-          const b = all.find((bb: any) => bb.nomeGuerra === s || bb.nomeCompleto === s);
-          return b && (b.nome === entrandoNome || b.nomeCompleto === entrandoNome || b.nomeGuerra === entrandoNome);
-        });
-        if (idxSaindo !== -1 && idxEntrando !== -1) {
-          const temp = slotsAtuais[idxSaindo];
-          setVars[idxSaindo](slotsAtuais[idxEntrando]);
-          setVars[idxEntrando](temp);
-        } else if (idxSaindo !== -1) {
-          // "Saindo" está num slot mas "entrando" não → substituir no pool
-          const entrandoPool = pool.find(p => p.bombeiro.nome === entrandoNome || p.bombeiro.nomeCompleto === entrandoNome);
-          if (entrandoPool) {
-            setVars[idxSaindo](entrandoPool.bombeiro.nomeGuerra);
-          }
-        }
+        trocasParaAplicarNoDia.push({ nomeSaindo: t.funcionarioNome, nomeEntrando: t.substitutoNome });
+        aplicarTrocaNosSlots(t.funcionarioNome, t.substitutoNome);
       }
+      recomputarUsadosSlots();
 
       // ── 4. Preencher slots vazios com pool ──
       const buscarPool = (cargo: string) => {
@@ -1213,6 +1313,26 @@ function EscalaDiariaForm({
       if (!slotCci03Ba2_1) { const p = buscarPool('BA-2') || buscarPool('BA-RE'); if (p) slotCci03Ba2_1 = p.bombeiro.nomeGuerra; }
       if (!slotCci03Ba2_2) { const p = buscarPool('BA-2') || buscarPool('BA-RE'); if (p) slotCci03Ba2_2 = p.bombeiro.nomeGuerra; }
 
+      const aplicarTrocasDoDiaNoNome = (nome?: string): string => {
+        let nomeFinal = nomeEscalaMensal(nome);
+        if (!nomeFinal) return '';
+
+        const extra = extrasDoDia.find(item => slotCorrespondeAoExtra(nomeFinal, item));
+        if (extra?.nomeEntrando) {
+          nomeFinal = nomeGuerraPorNome(extra.nomeEntrandoCompleto || extra.nomeEntrando);
+        }
+
+        for (const troca of trocasParaAplicarNoDia) {
+          if (correspondePessoa(nomeFinal, troca.nomeSaindo)) {
+            return nomeGuerraPorNome(troca.nomeEntrando);
+          }
+          if (correspondePessoa(nomeFinal, troca.nomeEntrando)) {
+            return nomeGuerraPorNome(troca.nomeSaindo);
+          }
+        }
+        return nomeFinal;
+      };
+
       // ── 5. Preencher escala de rádio ──
       let radioPreenchido: { funcao: string; nomeGuerra: string; horarioInicio: string; horarioFim: string }[] = [];
       if (mensal) {
@@ -1227,14 +1347,9 @@ function EscalaDiariaForm({
         }
         if (radioSlots.length > 0) {
           radioPreenchido = radioSlots.map((r: any) => {
-            const pessoa = all.find((bb: any) => bb.nomeGuerra === r.pessoaNomeGuerra);
-            let nomeFinal = r.pessoaNomeGuerra;
-            const subInfo = pessoa ? encontrarSubstituto(pessoa.id) : null;
-            if (subInfo) {
-              const sub = all.find((bb: any) => bb.id === subInfo.id);
-              if (sub) nomeFinal = sub.nomeGuerra;
-            }
-            const pessoaFinal = all.find((bb: any) => bb.nomeGuerra === nomeFinal);
+            const nomeBase = resolverNomeMensalParaRadio(r.pessoaNomeGuerra);
+            const nomeFinal = aplicarTrocasDoDiaNoNome(nomeBase);
+            const pessoaFinal = pessoaPorNomeEscala(nomeFinal);
             return {
               funcao: pessoaFinal?.cargo || 'BA-2',
               nomeGuerra: nomeFinal,

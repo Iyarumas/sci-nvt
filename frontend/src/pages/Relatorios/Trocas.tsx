@@ -526,13 +526,17 @@ function AnimatedTrocasTour({
 }
 
 export function Trocas() {
-  const { user, canManageGlobal, canManageEquipe, equipeEfetiva, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
+  const { user, contexto, canManageGlobal, canManageEquipe, canVisualizarRelatorios, loadingContexto } = useContextoOperacional();
   const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [subView, setSubView] = useState<SubView>('list');
   const isRelatorioRoute = location.pathname.startsWith('/relatorios');
   const [viewMode, setViewMode] = useState<ViewMode>(isRelatorioRoute ? 'report' : 'list');
-  const canCreateTroca = !isRelatorioRoute && (canManageGlobal || !!equipeEfetiva);
+  const canManageTrocasGlobais = canManageGlobal ||
+    contexto.cargo === 'BA-CE' ||
+    contexto.cargo === 'BA-LR' ||
+    contexto.autorizadoRegistrosDiarios;
+  const canCreateTroca = !isRelatorioRoute && canManageTrocasGlobais;
 
   const [archiveConfirmFill, setArchiveConfirmFill] = useState<DocumentFill | null>(null);
   const [templateDoc, setTemplateDoc] = useState<DocumentWithFields | null>(null);
@@ -926,7 +930,7 @@ export function Trocas() {
 
   function startNewTroca() {
     if (!canCreateTroca) {
-      setShowNotifPopup({ msg: 'Você precisa ter uma equipe efetiva para criar trocas.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você precisa ser chefe, líder de resgate ou estar autorizado para criar trocas.', type: 'error' });
       return;
     }
     const initialData: Record<string, string> = {};
@@ -1228,12 +1232,12 @@ export function Trocas() {
   }
 
   function canManageFill(fill: DocumentFill): boolean {
-    if (canManageGlobal) return true;
+    if (canManageTrocasGlobais) return true;
     return getFillEquipes(fill).some(eq => canManageEquipe(eq));
   }
 
   function canManageFormData(data: Record<string, string>): boolean {
-    if (canManageGlobal) return true;
+    if (canManageTrocasGlobais) return true;
     const equipes = [
       data.equipe || '',
       getPessoaByNome(data.nome_solicitante || '')?.equipe || '',
@@ -1413,13 +1417,13 @@ export function Trocas() {
   async function handleConfirmGerarPdf() {
     setShowConfirmPdf(false);
     if (!canManageFormData(formData)) {
-      setShowNotifPopup({ msg: 'Você só pode aprovar trocas vinculadas à sua equipe efetiva.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você não tem permissão para aprovar esta troca.', type: 'error' });
       return;
     }
     if (editingFillId) {
       const existingFill = fills.find(fill => fill.id === editingFillId);
       if (existingFill && !canManageFill(existingFill)) {
-        setShowNotifPopup({ msg: 'Você só pode editar trocas vinculadas à sua equipe efetiva.', type: 'error' });
+        setShowNotifPopup({ msg: 'Você não tem permissão para editar esta troca.', type: 'error' });
         return;
       }
     }
@@ -1503,7 +1507,7 @@ export function Trocas() {
   function handleGerarPdf() {
     if (!validateForm()) return;
     if (!canManageFormData(formData)) {
-      setShowNotifPopup({ msg: 'Você só pode aprovar trocas vinculadas à sua equipe efetiva.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você não tem permissão para aprovar esta troca.', type: 'error' });
       return;
     }
     if (precisaAutorizacaoGerente(formData)) {
@@ -1555,7 +1559,7 @@ export function Trocas() {
 
   function handleEditFill(fill: DocumentFill) {
     if (!canManageFill(fill)) {
-      setShowNotifPopup({ msg: 'Você só pode editar trocas vinculadas à sua equipe efetiva.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você não tem permissão para editar esta troca.', type: 'error' });
       return;
     }
     closePdfPreview();
@@ -1570,7 +1574,7 @@ export function Trocas() {
   async function handleArchiveFill(fill: DocumentFill) {
     if (!canManageFill(fill)) {
       setArchiveConfirmFill(null);
-      setShowNotifPopup({ msg: 'Você só pode arquivar trocas vinculadas à sua equipe efetiva.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você não tem permissão para arquivar esta troca.', type: 'error' });
       return;
     }
     try {
@@ -1586,7 +1590,7 @@ export function Trocas() {
   function handleDeleteFill(fillId: string) {
     const fill = fills.find(item => item.id === fillId);
     if (fill && !canManageFill(fill)) {
-      setShowNotifPopup({ msg: 'Você só pode excluir trocas vinculadas à sua equipe efetiva.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você não tem permissão para excluir esta troca.', type: 'error' });
       return;
     }
     setDeleteTargetId(fillId);
@@ -1599,7 +1603,7 @@ export function Trocas() {
     if (fill && !canManageFill(fill)) {
       setShowDeleteConfirm(false);
       setDeleteTargetId(null);
-      setShowNotifPopup({ msg: 'Você só pode excluir trocas vinculadas à sua equipe efetiva.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você não tem permissão para excluir esta troca.', type: 'error' });
       return;
     }
     try {
@@ -1616,13 +1620,13 @@ export function Trocas() {
   async function handleSaveDraft() {
     if (!validateForm()) return;
     if (!canManageFormData(formData)) {
-      setShowNotifPopup({ msg: 'Você só pode salvar trocas vinculadas à sua equipe efetiva.', type: 'error' });
+      setShowNotifPopup({ msg: 'Você não tem permissão para salvar esta troca.', type: 'error' });
       return;
     }
     if (editingFillId) {
       const existingFill = fills.find(fill => fill.id === editingFillId);
       if (existingFill && !canManageFill(existingFill)) {
-        setShowNotifPopup({ msg: 'Você só pode editar trocas vinculadas à sua equipe efetiva.', type: 'error' });
+        setShowNotifPopup({ msg: 'Você não tem permissão para editar esta troca.', type: 'error' });
         return;
       }
     }

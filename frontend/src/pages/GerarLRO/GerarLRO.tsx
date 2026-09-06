@@ -446,6 +446,8 @@ type SubstituicaoInfo = {
   equipeSubstituido?: string;
   cargoExercido?: string;
   substituidoSaiDoPlantao: boolean;
+  trocaDeId?: string;
+  trocaDeNome?: string;
 };
 type EfetivoDisponivel = {
   bombeiro: Bombeiro;
@@ -1356,6 +1358,9 @@ export function GerarLRO() {
       substituidoSaiDoPlantao = origem !== 'cascata',
     ) => {
       if (!ausente || !substituto || ausente.id === substituto.id) return;
+      const trocaDePessoaJaSubstituindo = Boolean(
+        substituidoEfetivo?.substituidoId && substituidoEfetivo.substituidoId !== ausente.id
+      );
       map[ausente.id] = {
         substitutoNome: substituto.nomeGuerra || substituto.nomeCompleto,
         substitutoId: substituto.id,
@@ -1367,6 +1372,8 @@ export function GerarLRO() {
         equipeSubstituido: substituidoEfetivo?.equipeSubstituido || ausente.equipe,
         cargoExercido: cargoExercido || substituidoEfetivo?.cargoSubstituido || ausente.cargo,
         substituidoSaiDoPlantao,
+        trocaDeId: trocaDePessoaJaSubstituindo ? ausente.id : undefined,
+        trocaDeNome: trocaDePessoaJaSubstituindo ? ausente.nomeGuerra || ausente.nomeCompleto : undefined,
       };
     };
 
@@ -1553,6 +1560,18 @@ export function GerarLRO() {
       ? `${bombeiro.cargo} -> ${cargoExercido}`
       : cargoExercido || bombeiro.cargo;
   }, [cargoExercidoNoPlantao]);
+
+  const detalheCoberturaNoPlantao = useCallback((bombeiro?: Bombeiro): string => {
+    if (!bombeiro) return '';
+    const substituicao = substituicoesPorSubstituto[bombeiro.id];
+    const nomeSubstituido = substituicao?.substituidoNome || '';
+    const pessoaSubstituida = nomeSubstituido
+      ? bombeiros.find(p => p.nomeCompleto === nomeSubstituido || p.nomeGuerra === nomeSubstituido)
+      : undefined;
+    const substituido = pessoaSubstituida?.nomeGuerra || nomeSubstituido;
+    if (!substituido || substituido === bombeiro.nomeGuerra) return '';
+    return `no lugar de ${substituido}`;
+  }, [substituicoesPorSubstituto, bombeiros]);
 
   const podeAtuarComoComunicacao = useCallback((entry: EfetivoDisponivel): boolean => {
     return entry.cargoExercido !== 'BA-CE' && entry.cargoExercido !== 'BA-LR';
@@ -2773,8 +2792,14 @@ export function GerarLRO() {
                 const sub = substituicoesPorSubstituto[b.id];
                 const cargoExercido = sub?.cargoExercido || sub?.cargoSubstituido || b.cargo;
                 const visual = visualSubstituicaoLRO(sub);
+                const nomeSubstituido = sub ? getNomeGuerra(sub.substituidoNome) : '';
+                const nomeTrocaDe = sub?.trocaDeNome ? getNomeGuerra(sub.trocaDeNome) : '';
+                const detalheTroca = nomeTrocaDe && nomeTrocaDe !== nomeSubstituido ? `troca de ${nomeTrocaDe}` : '';
+                const cardTitle = sub
+                  ? `${b.nomeGuerra} como ${cargoExercido} no lugar de ${nomeSubstituido}${detalheTroca ? ` (${detalheTroca})` : ''}`
+                  : `${b.nomeGuerra} - ${b.cargo}`;
                 return (
-                  <div key={b.id} className={`group relative rounded-xl border p-2 transition-all ${visual.cardClass}`}>
+                  <div key={b.id} title={cardTitle} className={`group relative rounded-xl border p-2 transition-all ${visual.cardClass}`}>
                     {sub ? (
                       <div className="relative min-h-[52px] flex flex-col items-center justify-center">
                         <div className="flex flex-col items-center transition-all duration-300 group-hover:opacity-0 group-hover:scale-95">
@@ -2788,8 +2813,13 @@ export function GerarLRO() {
                           <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[7px] font-bold mb-0.5 ${visual.hoverBadgeClass}`}>
                             SUBSTITUI
                           </span>
-                          <p className="text-xs font-bold text-graphite-600 dark:text-graphite-400">{getNomeGuerra(sub.substituidoNome)}</p>
+                          <p className="text-xs font-bold text-graphite-600 dark:text-graphite-400">{nomeSubstituido}</p>
                           <p className="text-[9px] text-graphite-500">{sub.cargoSubstituido || cargoExercido}</p>
+                          {detalheTroca && (
+                            <p className="mt-0.5 max-w-full truncate px-1 text-[8px] font-medium text-graphite-500">
+                              {detalheTroca}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -2907,6 +2937,8 @@ export function GerarLRO() {
                   const findB = (nome: string) => buscarBombeiroPorNome(nome);
                   const bSubdo = findB(sub.substituido);
                   const bSub = findB(sub.substituto);
+                  const coberturaSubdo = detalheCoberturaNoPlantao(bSubdo);
+                  const coberturaSub = detalheCoberturaNoPlantao(bSub);
                   const getTurno = (e: string) => e === 'Alfa' || e === 'Charlie' ? 'DIURNO' : e === 'Bravo' || e === 'Delta' ? 'NOTURNO' : '';
                   const realIdx = substituicoesDetectadas.indexOf(sub);
                   return (
@@ -2920,12 +2952,14 @@ export function GerarLRO() {
                       <div className="min-w-0 flex-1">
                         <p className="text-base font-bold text-graphite-800 dark:text-graphite-200">{sub.substituido || '—'}</p>
                         {bSubdo && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSubdo)} · EQ {bSubdo.equipe}</p>}
+                        {coberturaSubdo && <p className="mt-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{coberturaSubdo}</p>}
                         {bSubdo?.nomeCompleto !== sub.substituido && <p className="text-xs text-graphite-400 truncate">{bSubdo?.nomeCompleto || ''}</p>}
                       </div>
                       <div className="text-graphite-400 text-sm font-bold shrink-0 pt-1">↔</div>
                       <div className="text-left min-w-0 flex-1">
                         <p className="text-base font-bold text-amber-700 dark:text-amber-300">{sub.substituto || '—'}</p>
                         {bSub && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSub)} · EQ {bSub.equipe}</p>}
+                        {coberturaSub && <p className="mt-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{coberturaSub}</p>}
                         {bSub?.nomeCompleto !== sub.substituto && <p className="text-xs text-graphite-400 truncate">{bSub?.nomeCompleto || ''}</p>}
                       </div>
                     </div>
@@ -3037,6 +3071,8 @@ export function GerarLRO() {
                   const findB = (nome: string) => buscarBombeiroPorNome(nome);
                   const bSol = findB(tm.solicitante);
                   const bSolic = findB(tm.solicitado);
+                  const coberturaSol = detalheCoberturaNoPlantao(bSol);
+                  const coberturaSolic = detalheCoberturaNoPlantao(bSolic);
                   return (
                   <div key={i} className="rounded-xl border border-red-200 bg-red-50/50 p-4 dark:border-red-800/30 dark:bg-red-900/10">
                     <div className="flex items-center justify-between mb-2">
@@ -3052,6 +3088,7 @@ export function GerarLRO() {
                       <div className="min-w-0 flex-1">
                         <p className="text-base font-bold text-graphite-800 dark:text-graphite-200">{tm.solicitante}</p>
                         {bSol && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSol)} · EQ {bSol.equipe}</p>}
+                        {coberturaSol && <p className="mt-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{coberturaSol}</p>}
                         {bSol?.nomeCompleto !== tm.solicitante && <p className="text-xs text-graphite-400 truncate">{bSol?.nomeCompleto || ''}</p>}
                         <p className="text-xs text-graphite-400 mt-1">📅 Plantão: {formatarDataBR(dataInicio)}</p>
                       </div>
@@ -3059,6 +3096,7 @@ export function GerarLRO() {
                       <div className="text-left min-w-0 flex-1">
                         <p className="text-base font-bold text-red-700 dark:text-red-300">{tm.solicitado}</p>
                         {bSolic && <p className="text-xs text-graphite-500 mt-0.5">{labelCargoNoPlantao(bSolic)} · EQ {bSolic.equipe}</p>}
+                        {coberturaSolic && <p className="mt-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{coberturaSolic}</p>}
                         {bSolic?.nomeCompleto !== tm.solicitado && <p className="text-xs text-graphite-400 truncate">{bSolic?.nomeCompleto || ''}</p>}
                         {tm.dataFolga && <p className="text-xs text-graphite-400 mt-1">📅 Folga: {formatarDataBR(tm.dataFolga)}</p>}
                       </div>

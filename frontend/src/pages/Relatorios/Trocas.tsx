@@ -38,6 +38,12 @@ import { resolverPessoaNoPlantaoOperacional } from '../../utils/efetivoOperacion
 type SubView = 'list' | 'form';
 type ViewMode = 'list' | 'report';
 type PessoaTroca = { id: string; tipo: 'bombeiro' | 'apoc'; cargo: string; nomeGuerra: string; nomeCompleto: string; equipe: string; turno: string };
+type ConflitoTroca = {
+  pessoa: string;
+  dataPlantao: string;
+  trocaExistente: string;
+  status: string;
+};
 
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -45,6 +51,7 @@ const MONTH_NAMES = [
 ];
 
 const MAX_TROCAS_PER_MONTH = 3;
+const STATUS_TROCA_BLOQUEIA_CONFLITO = new Set<DocumentFill['status']>(['draft', 'pending', 'signed']);
 const EQUIPES_OPERACIONAIS_TROCAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 const AUDITORIA_CARGO_PREFIXES = [
   'SUPERVISOR',
@@ -58,6 +65,17 @@ const AUDITORIA_CARGO_PREFIXES = [
   'GS',
   'OC',
 ];
+
+function documentoEhTroca(doc: any): boolean {
+  return doc?.source_module === 'trocas' || findTemplate(String(doc?.name || '')) !== null;
+}
+
+async function listarPreenchimentosDeDocumentosTroca(docs: any[]): Promise<DocumentFill[]> {
+  const fillsPorDocumento = await Promise.all(
+    docs.filter(documentoEhTroca).map(doc => listarPreenchimentos(doc.id).catch(() => [])),
+  );
+  return fillsPorDocumento.flat();
+}
 
 function getDataPlantaoTrocaData(data: Record<string, unknown>): string {
   return normalizarDataISO(data.data_solicitada) || normalizarDataISO(data.data_folga_solicitado);
@@ -557,6 +575,7 @@ export function Trocas() {
   const [showJustificativaPopup, setShowJustificativaPopup] = useState<string | null>(null);
   const [showValidationPopup, setShowValidationPopup] = useState<string | null>(null);
   const [showNotifPopup, setShowNotifPopup] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [conflitoTroca, setConflitoTroca] = useState<ConflitoTroca | null>(null);
   const [showPreviewInfo, setShowPreviewInfo] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [previewPdfUrl, setPreviewPdfUrl] = useState('');
@@ -795,6 +814,36 @@ export function Trocas() {
     );
   }
 
+  function renderConflitoTrocaModal() {
+    if (!conflitoTroca) return null;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConflitoTroca(null)}>
+        <div className="mx-4 w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-graphite-800" onClick={e => e.stopPropagation()}>
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/40">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-graphite-900 dark:text-graphite-100">Troca duplicada no plantão</h3>
+          </div>
+          <p className="text-sm text-graphite-600 dark:text-graphite-300">
+            Não é permitido colocar a mesma pessoa em mais de uma troca no mesmo dia.
+          </p>
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-200">
+            <p><strong>Pessoa:</strong> {conflitoTroca.pessoa}</p>
+            <p><strong>Data:</strong> {formatarDataBR(conflitoTroca.dataPlantao)}</p>
+            <p><strong>Troca existente:</strong> {conflitoTroca.trocaExistente}</p>
+            <p><strong>Status:</strong> {conflitoTroca.status}</p>
+          </div>
+          <div className="mt-6 flex justify-end">
+            <button onClick={() => setConflitoTroca(null)} className="rounded-lg bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-700">
+              Entendido
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const displayFields = useMemo(() => {
     const base = templateDoc ? templateDoc.document_fields : templateFieldsToDocFields(template.fields);
     return base
@@ -894,18 +943,23 @@ export function Trocas() {
       setApocsList(apocs);
       setVigenciasList(vigencias);
       setEscalasCompletasList(escalasCompletas);
-      const trocaDoc = docs.find(d => d.source_module === 'trocas') || docs.find(d => findTemplate(d.name) !== null);
-      if (trocaDoc) {
-        const full = await buscarDocumento(trocaDoc.id);
+      const trocaDocs = docs.filter(documentoEhTroca);
+      const trocaDocPrincipal = trocaDocs.find(d => d.source_module === 'trocas') || trocaDocs[0];
+      if (trocaDocPrincipal) {
+        const full = await buscarDocumento(trocaDocPrincipal.id);
         setTemplateDoc(normalizeTrocaDocument(full));
-        const docFills = await listarPreenchimentos(trocaDoc.id);
-        setFills(docFills);
+        setFills(await listarPreenchimentosDeDocumentosTroca(trocaDocs));
       }
     } catch {
       setShowNotifPopup({ msg: 'Erro ao carregar trocas. Contate o administrador.', type: 'error' });
     } finally {
       setLoading(false);
     }
+  }
+
+  async function recarregarPreenchimentosTroca() {
+    const docs = await listarDocumentos();
+    setFills(await listarPreenchimentosDeDocumentosTroca(docs));
   }
 
   async function ensureDocumentExists(): Promise<DocumentWithFields | null> {
@@ -944,6 +998,7 @@ export function Trocas() {
     displayFields.forEach(f => { initialData[f.field_name] = ''; });
     setFormData(initialData);
     setEditingFillId(null);
+    setConflitoTroca(null);
     setSubView('form');
   }
 
@@ -1221,6 +1276,102 @@ export function Trocas() {
       .map(pessoa => ({ ...pessoa, dataPlantao, created_at: fill.created_at, id: fill.id }));
   }
 
+  function getPessoaConflitoTrocaInfo(nome: string, funcaoFallback = ''): { key: string; label: string } | null {
+    if (!nome) return null;
+    const pessoa = getPessoaByNome(nome);
+    const cargo = pessoa?.cargo || String(funcaoFallback || '').split(' - ')[0] || '';
+    const nomePessoa = pessoa?.nomeGuerra || pessoa?.nomeCompleto || nome;
+    const key = pessoa?.id
+      ? `${pessoa.tipo}:${pessoa.id}`
+      : normalizarChavePessoaTroca([cargo, nomePessoa].filter(Boolean).join('|'));
+    if (!key) return null;
+    return {
+      key,
+      label: [cargo, nomePessoa].filter(Boolean).join(' '),
+    };
+  }
+
+  function getOcorrenciasConflitoTroca(
+    data: Record<string, string>,
+    fill?: DocumentFill,
+  ): Array<{ key: string; label: string; dataPlantao: string; contraparte: string; fillId?: string; status?: DocumentFill['status'] }> {
+    const solicitante = getPessoaConflitoTrocaInfo(data.nome_solicitante || '', data.funcao_solicitante || '');
+    const solicitado = getPessoaConflitoTrocaInfo(data.nome_solicitado || '', data.funcao_solicitado || '');
+    const datas = [
+      normalizarDataISO(data.data_solicitada),
+      normalizarDataISO(data.data_folga_solicitado),
+    ].filter(Boolean);
+    const ocorrencias: Array<{ key: string; label: string; dataPlantao: string; contraparte: string; fillId?: string; status?: DocumentFill['status'] }> = [];
+    const add = (dataPlantao: string, pessoa: typeof solicitante, contraparte: typeof solicitante) => {
+      if (!pessoa) return;
+      ocorrencias.push({
+        key: pessoa.key,
+        label: pessoa.label,
+        dataPlantao,
+        contraparte: contraparte?.label || 'outra pessoa',
+        fillId: fill?.id,
+        status: fill?.status,
+      });
+    };
+
+    datas.forEach(dataPlantao => {
+      add(dataPlantao, solicitante, solicitado);
+      add(dataPlantao, solicitado, solicitante);
+    });
+
+    const vistos = new Set<string>();
+    return ocorrencias.filter(ocorrencia => {
+      const chave = `${ocorrencia.key}|${ocorrencia.dataPlantao}|${ocorrencia.fillId || 'novo'}`;
+      if (vistos.has(chave)) return false;
+      vistos.add(chave);
+      return true;
+    });
+  }
+
+  function statusTrocaLabel(status?: DocumentFill['status']): string {
+    if (status === 'signed') return 'Aprovada';
+    if (status === 'pending') return 'Aguardando';
+    if (status === 'draft') return 'Rascunho';
+    if (status === 'archived') return 'Arquivada';
+    if (status === 'cancelled') return 'Cancelada';
+    return 'Registrada';
+  }
+
+  function buscarConflitoTroca(data: Record<string, string>): ConflitoTroca | null {
+    const ocorrenciasAtuais = getOcorrenciasConflitoTroca(data);
+    if (ocorrenciasAtuais.length === 0) return null;
+
+    for (const fill of fills) {
+      if (editingFillId && fill.id === editingFillId) continue;
+      if (!STATUS_TROCA_BLOQUEIA_CONFLITO.has(fill.status)) continue;
+      const dataExistente = fill.filled_data as Record<string, string>;
+      const ocorrenciasExistentes = getOcorrenciasConflitoTroca(dataExistente, fill);
+
+      for (const atual of ocorrenciasAtuais) {
+        const conflito = ocorrenciasExistentes.find(existente =>
+          existente.key === atual.key && existente.dataPlantao === atual.dataPlantao
+        );
+        if (conflito) {
+          return {
+            pessoa: atual.label,
+            dataPlantao: atual.dataPlantao,
+            trocaExistente: `${conflito.label} com ${conflito.contraparte}`,
+            status: statusTrocaLabel(conflito.status),
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function validarConflitoTroca(data: Record<string, string> = formData): boolean {
+    const conflito = buscarConflitoTroca(data);
+    if (!conflito) return true;
+    setConflitoTroca(conflito);
+    return false;
+  }
+
   function getExcessoLimiteFillIds(sourceFills: DocumentFill[]): Set<string> {
     const pessoaFills: Record<string, { id: string; dataPlantao: string; created_at: string }[]> = {};
     const ids = new Set<string>();
@@ -1468,6 +1619,7 @@ export function Trocas() {
 
   async function handleConfirmGerarPdf() {
     setShowConfirmPdf(false);
+    if (!validarConflitoTroca(formData)) return;
     if (!canManageFormData(formData)) {
       setShowNotifPopup({ msg: 'Você não tem permissão para aprovar esta troca.', type: 'error' });
       return;
@@ -1514,8 +1666,7 @@ export function Trocas() {
 
       abrirPdfPreview(pdfBlob, nomeArquivoTroca(formDataToSave), true);
 
-      const docFills = await listarPreenchimentos(doc.id);
-      setFills(docFills);
+      await recarregarPreenchimentosTroca();
       setEditingFillId(null);
       setSubView('list');
       setShowNotifPopup({ msg: 'Troca aprovada e documento gerado com sucesso!', type: 'success' });
@@ -1533,6 +1684,7 @@ export function Trocas() {
 
   function handleVisualizar() {
     if (!validateForm()) return;
+    if (!validarConflitoTroca()) return;
     setShowPreviewInfo(true);
   }
 
@@ -1558,6 +1710,7 @@ export function Trocas() {
 
   function handleGerarPdf() {
     if (!validateForm()) return;
+    if (!validarConflitoTroca()) return;
     if (!canManageFormData(formData)) {
       setShowNotifPopup({ msg: 'Você não tem permissão para aprovar esta troca.', type: 'error' });
       return;
@@ -1620,6 +1773,7 @@ export function Trocas() {
     displayFields.forEach(f => { initialData[f.field_name] = data[f.field_name] || ''; });
     setFormData(initialData);
     setEditingFillId(fill.id);
+    setConflitoTroca(null);
     setSubView('form');
   }
 
@@ -1671,6 +1825,7 @@ export function Trocas() {
 
   async function handleSaveDraft() {
     if (!validateForm()) return;
+    if (!validarConflitoTroca()) return;
     if (!canManageFormData(formData)) {
       setShowNotifPopup({ msg: 'Você não tem permissão para salvar esta troca.', type: 'error' });
       return;
@@ -1696,8 +1851,7 @@ export function Trocas() {
           autentique_document_id: null, autentique_link: null,
         });
       }
-      const docFills = await listarPreenchimentos(doc.id);
-      setFills(docFills);
+      await recarregarPreenchimentosTroca();
       setEditingFillId(null);
       setSubView('list');
     } catch {
@@ -2001,6 +2155,7 @@ export function Trocas() {
         )}
 
         {renderPdfPreviewModal()}
+        {renderConflitoTrocaModal()}
 
         {showValidationPopup && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowValidationPopup(null)}>
@@ -2572,6 +2727,7 @@ export function Trocas() {
       )}
 
       {renderPdfPreviewModal()}
+      {renderConflitoTrocaModal()}
 
       {showRelatorioMensalModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !gerandoRelatorioMensal && setShowRelatorioMensalModal(false)}>

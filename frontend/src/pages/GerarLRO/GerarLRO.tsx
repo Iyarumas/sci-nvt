@@ -556,6 +556,11 @@ const STATUS_LRO_TRAVAM_OCORRENCIAS = new Set<LRODraftStatus>(['assinado', 'fina
 const STATUS_LRO_EDITAVEIS_POR_ADMIN = new Set<LRODraftStatus>(['aguardando', 'assinado', 'finalizado']);
 const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);
 
+function documentoEhTroca(doc: any): boolean {
+  return doc?.source_module === 'trocas' ||
+    String(doc?.name || '').toLocaleUpperCase('pt-BR').includes('TROCA');
+}
+
 export function GerarLRO() {
   const { user, contexto, equipeEfetiva } = useContextoOperacional();
   const navigate = useNavigate();
@@ -892,11 +897,14 @@ export function GerarLRO() {
 
         await carregarVigencias();
 
-        const trocaDoc = docs.find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
-        if (trocaDoc) {
-          setTrocaDocId(trocaDoc.id);
-          const fills = await listarPreenchimentos({ documentId: trocaDoc.id });
-          setTrocaFills(fills.filter(trocaFillVisivelNoLRO));
+        const trocaDocs = docs.filter(documentoEhTroca);
+        if (trocaDocs.length > 0) {
+          const trocaDocPrincipal = trocaDocs.find((d: any) => d.source_module === 'trocas') || trocaDocs[0];
+          setTrocaDocId(trocaDocPrincipal.id);
+          const fillsPorDocumento = await Promise.all(
+            trocaDocs.map((doc: any) => listarPreenchimentos({ documentId: doc.id }).catch(() => [])),
+          );
+          setTrocaFills(fillsPorDocumento.flat().filter(trocaFillVisivelNoLRO));
         } else {
           const todosFills = await Promise.all(docs.map((d: any) => listarPreenchimentos({ documentId: d.id }).catch(() => [])));
           const comNome = todosFills.flat().filter((fl: any) => {

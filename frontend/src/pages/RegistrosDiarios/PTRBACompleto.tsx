@@ -38,7 +38,7 @@ import {
 } from '../../services/ptrbaCompletoService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
-import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
+import { listarTrocasServicoAssinadas } from '../../services/efetivoOperacionalService';
 import { listarUsuarios } from '../../services/usuarioService';
 import type { Usuario } from '../../services/usuarioService';
 import { formatarDataBR, hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
@@ -954,7 +954,7 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const [lista, b, a, gozos, completas, substituicoes, v, escalas, usuariosCadastrados] = await Promise.all([
+        const [lista, b, a, gozos, completas, substituicoes, v, escalas, usuariosCadastrados, trocas] = await Promise.all([
           listarPTRBACompletos(),
           listarBombeiros(),
           listarAPOCs(),
@@ -964,6 +964,7 @@ export function PTRBACompletoPage() {
           listarVigencias({ ativa: true }),
           listarEscalas(),
           listarUsuarios().catch(() => []),
+          listarTrocasServicoAssinadas().catch(() => []),
         ]);
         if (cancelado) return;
         setRegistros(lista);
@@ -975,14 +976,7 @@ export function PTRBACompletoPage() {
         setSubstituicoesTemporarias(substituicoes);
         setVigencias(v);
         setEscalasDiarias(escalas);
-        try {
-          const docs = await listarDocumentos();
-          const trocaDoc = (docs as any[]).find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
-          if (trocaDoc) {
-            const trocas = await listarPreenchimentos({ documentId: trocaDoc.id, status: 'signed' });
-            if (!cancelado) setTrocaFills(trocas);
-          }
-        } catch { /* trocas são opcionais */ }
+        setTrocaFills(trocas);
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Erro ao carregar PTR-BA.');
       } finally {

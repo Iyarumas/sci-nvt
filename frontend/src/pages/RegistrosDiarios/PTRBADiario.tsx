@@ -13,7 +13,7 @@ import { listarCompletas } from '../../services/escalaMensalService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
-import { listarDocumentos, listarPreenchimentos } from '../../services/documentoService';
+import { listarTrocasServicoAssinadas } from '../../services/efetivoOperacionalService';
 import { listarAPOCs } from '../../services/apocService';
 import { listarUsuarios } from '../../services/usuarioService';
 import type { Usuario } from '../../services/usuarioService';
@@ -799,12 +799,12 @@ export function PTRBADiario() {
 
   async function carregarApoio() {
     try {
-      const [b, f, completas, subs, docs, a, vigs, usuariosCadastrados] = await Promise.all([
+      const [b, f, completas, subs, trocas, a, vigs, usuariosCadastrados] = await Promise.all([
         listarBombeiros(),
         listarFeriasGozo(),
         listarCompletas(),
         listarSubstituicoesTemporarias(),
-        listarDocumentos(),
+        listarTrocasServicoAssinadas().catch(() => []),
         listarAPOCs(),
         listarVigencias({ ativa: true }),
         listarUsuarios().catch(() => []),
@@ -816,11 +816,7 @@ export function PTRBADiario() {
       setSubstituicoesTemporarias(subs);
       setApocs(a);
       setVigencias(vigs);
-      const trocaDoc = docs.find((d: any) => d.name?.includes('TROCA') || d.source_module === 'trocas');
-      if (trocaDoc) {
-        const fills = await listarPreenchimentos(trocaDoc.id);
-        setTrocaFills(fills.filter((fl: any) => fl.status === 'signed'));
-      }
+      setTrocaFills(trocas);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao carregar dados de apoio');
     }

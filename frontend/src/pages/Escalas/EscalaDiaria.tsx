@@ -22,6 +22,7 @@ import { gerarRadioPlantao } from '../../services/escalaMensalGenerator';
 import { FUNCOES_BDS_PTR } from '../../types/escala';
 import { ASSUNTOS as ASSUNTOS_PTRBA } from '../../types/ptrb';
 import type { EscalaDiaria, ExtraSlot, TrocaSlot } from '../../types/escala';
+import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
 import type { DocumentFill } from '../../types/document';
 import type { FeriasGozo } from '../../types/ferias';
@@ -714,6 +715,7 @@ function EscalaDiariaForm({
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [trocaFills, setTrocaFills] = useState<DocumentFill[]>([]);
   const [substituicoesTemporarias, setSubstituicoesTemporarias] = useState<SubstituicaoTemporaria[]>([]);
+  const [escalasCompletas, setEscalasCompletas] = useState<EscalaMensalCompleta[]>([]);
   const [autoFilling, setAutoFilling] = useState(false);
 
   useEffect(() => {
@@ -722,11 +724,13 @@ function EscalaDiariaForm({
       listarFeriasGozo(),
       listarVigencias({ ativa: true }),
       listarSubstituicoesTemporarias(),
-    ]).then(([ativos, gozos, vigs, substituicoes]) => {
+      listarCompletas(),
+    ]).then(([ativos, gozos, vigs, substituicoes, completas]) => {
       setAllBombeiros(ativos);
       setFeriasGozo(gozos);
       setVigencias(vigs);
       setSubstituicoesTemporarias(substituicoes);
+      setEscalasCompletas(completas);
     }).catch(() => {});
   }, []);
 
@@ -738,6 +742,8 @@ function EscalaDiariaForm({
     const novas = montarTrocasServicoDoDia({
       bombeiros: allBombeiros,
       trocaFills,
+      vigencias,
+      escalasCompletas,
       equipe: form.equipe,
       dataPlantao: form.dataPlantao,
     });
@@ -745,7 +751,7 @@ function EscalaDiariaForm({
       if (trocasIguais(f.trocas, novas)) return f;
       return { ...f, trocas: novas };
     });
-  }, [form.dataPlantao, form.equipe, allBombeiros, trocaFills]);
+  }, [form.dataPlantao, form.equipe, allBombeiros, trocaFills, vigencias, escalasCompletas]);
 
   useEffect(() => {
     if (!form.equipe || !form.dataPlantao || allBombeiros.length === 0) return;
@@ -831,10 +837,11 @@ function EscalaDiariaForm({
     feriasGozo,
     vigencias,
     trocaFills,
+    escalasCompletas,
     substituicoesTemporarias,
     equipe: form.equipe,
     dataPlantao: form.dataPlantao,
-  }), [allBombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias, form.equipe, form.dataPlantao]);
+  }), [allBombeiros, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias, form.equipe, form.dataPlantao]);
 
   const efetivoOptions = useMemo(
     () => montarOpcoesEfetivoOperacional(efetivoDiario, form.equipe),
@@ -877,6 +884,7 @@ function EscalaDiariaForm({
       feriasGozo,
       vigencias,
       trocaFills,
+      escalasCompletas,
       substituicoesTemporarias,
       equipe,
       dataPlantao: form.dataPlantao,
@@ -955,6 +963,7 @@ function EscalaDiariaForm({
       setVigencias(vigs);
       setTrocaFills(trocasDocs);
       setSubstituicoesTemporarias(substituicoesDocs);
+      setEscalasCompletas(completas);
 
       const allItems: any[] = [];
       for (const esc of escalas) {
@@ -1054,6 +1063,7 @@ function EscalaDiariaForm({
         feriasGozo: gozos,
         vigencias: vigs,
         trocaFills: [],
+        escalasCompletas: completas,
         substituicoesTemporarias: substituicoesAprovadas,
         equipe: form.equipe,
         dataPlantao: form.dataPlantao,
@@ -1219,27 +1229,23 @@ function EscalaDiariaForm({
       const trocaExcluidosNoDia = new Set<string>();
       const trocaIncluidosNoDia: { bombeiro: any; cargo: string }[] = [];
       const trocasParaAplicarNoDia: Array<{ nomeSaindo: string; nomeEntrando: string }> = [];
-      for (const fl of trocasDocs) {
-        const fd = fl?.filled_data || {};
-        const solDia = mesmoDiaISO(fd?.data_solicitada, form.dataPlantao);
-        const solicDia = mesmoDiaISO(fd?.data_folga_solicitado, form.dataPlantao);
-        if ((!solDia && !solicDia) || !fd?.nome_solicitante || !fd?.nome_solicitado) continue;
-        const sol = all.find((bb: any) => bb.nomeCompleto === fd.nome_solicitante || bb.nomeGuerra === fd.nome_solicitante);
-        const solic = all.find((bb: any) => bb.nomeCompleto === fd.nome_solicitado || bb.nomeGuerra === fd.nome_solicitado);
+      const trocasResolvidasDoDia = montarTrocasServicoDoDia({
+        bombeiros: all,
+        trocaFills: trocasDocs,
+        vigencias: vigs,
+        escalasCompletas: completas,
+        equipe: form.equipe,
+        dataPlantao: form.dataPlantao,
+      });
+      for (const troca of trocasResolvidasDoDia) {
+        const sol = pessoaPorNomeEscala(troca.nomeSaindo);
+        const solic = pessoaPorNomeEscala(troca.nomeEntrando);
         if (!sol || !solic) continue;
-        if (solDia && sol.equipe === form.equipe) {
-          trocaExcluidosNoDia.add(sol.id);
-          trocaExcluidosNoDia.add(solic.id);
-          trocaIncluidosNoDia.push({ bombeiro: solic, cargo: sol.cargo });
-          trocasParaAplicarNoDia.push({ nomeSaindo: sol.nomeCompleto || sol.nomeGuerra, nomeEntrando: solic.nomeCompleto || solic.nomeGuerra });
-          aplicarTrocaNosSlots(sol.nomeCompleto || sol.nomeGuerra, solic.nomeCompleto || solic.nomeGuerra);
-        } else if (solicDia && solic.equipe === form.equipe) {
-          trocaExcluidosNoDia.add(sol.id);
-          trocaExcluidosNoDia.add(solic.id);
-          trocaIncluidosNoDia.push({ bombeiro: sol, cargo: solic.cargo });
-          trocasParaAplicarNoDia.push({ nomeSaindo: solic.nomeCompleto || solic.nomeGuerra, nomeEntrando: sol.nomeCompleto || sol.nomeGuerra });
-          aplicarTrocaNosSlots(solic.nomeCompleto || solic.nomeGuerra, sol.nomeCompleto || sol.nomeGuerra);
-        }
+        trocaExcluidosNoDia.add(sol.id);
+        trocaExcluidosNoDia.add(solic.id);
+        trocaIncluidosNoDia.push({ bombeiro: solic, cargo: troca.funcaoSaindo || sol.cargo });
+        trocasParaAplicarNoDia.push({ nomeSaindo: troca.nomeSaindo, nomeEntrando: troca.nomeEntrando });
+        aplicarTrocaNosSlots(troca.nomeSaindo, troca.nomeEntrando);
       }
       for (const extra of extrasDoDia) {
         const substituto = all.find((bb: any) => bb.id === extra.substitutoId);
@@ -1414,6 +1420,8 @@ function EscalaDiariaForm({
       trocas: montarTrocasServicoDoDia({
         bombeiros: allBombeiros,
         trocaFills,
+        vigencias,
+        escalasCompletas,
         equipe: form.equipe,
         dataPlantao: form.dataPlantao,
       }),
@@ -2105,12 +2113,13 @@ export function EscalaDiariaView() {
   }
 
   async function carregar() {
-    const [todas, bombeiros, trocas, substituicoes, vigencias] = await Promise.all([
+    const [todas, bombeiros, trocas, substituicoes, vigencias, completas] = await Promise.all([
       listarEscalas(),
       listarAtivos().catch(() => []),
       listarTrocasServicoAssinadas().catch(() => []),
       listarSubstituicoesTemporarias().catch(() => []),
       listarVigencias({ ativa: true }).catch(() => []),
+      listarCompletas().catch(() => []),
     ]);
     const substituicoesAprovadas = substituicoes.filter(s => s.status === 'Aprovada');
     setEscalas(todas.map(escala => {
@@ -2126,10 +2135,12 @@ export function EscalaDiariaView() {
         chefeEquipe: aplicarExtraNoNome(escala.chefeEquipe, extras),
         guarnicoes: aplicarExtrasNasGuarnicoes(escala.guarnicoes, extras),
         trocas: montarTrocasServicoDoDia({
-        bombeiros,
-        trocaFills: trocas,
-        equipe: escala.equipe,
-        dataPlantao: escala.dataPlantao,
+          bombeiros,
+          trocaFills: trocas,
+          vigencias,
+          escalasCompletas: completas,
+          equipe: escala.equipe,
+          dataPlantao: escala.dataPlantao,
         }),
         atestados: montarAtestadosAfastamentoDoDia({
           substituicoes: substituicoesAprovadas,

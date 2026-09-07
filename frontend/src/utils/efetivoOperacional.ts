@@ -1,6 +1,7 @@
 import type { AtivoItem } from '../components/ui/SearchSelect';
 import type { Bombeiro } from '../types/bombeiro';
 import type { DocumentFill } from '../types/document';
+import type { EscalaMensalCompleta } from '../types/escalaMensal';
 import type { TrocaSlot } from '../types/escala';
 import type { FeriasGozo } from '../types/ferias';
 import type { SubstituicaoTemporaria } from '../types/substituicaoTemporaria';
@@ -19,7 +20,12 @@ export interface EfetivoOperacionalEntry {
 }
 
 function nomeKey(value: unknown): string {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 function cargoCampo(value: unknown): string {
@@ -28,6 +34,128 @@ function cargoCampo(value: unknown): string {
 
 function pessoaPorNome(porNome: Map<string, Bombeiro>, nome: unknown): Bombeiro | undefined {
   return porNome.get(nomeKey(nome));
+}
+
+const CARGO_POR_FUNCAO_MENSAL: Record<string, string> = {
+  BaCe: 'BA-CE',
+  BaLr: 'BA-LR',
+  BaMc: 'BA-MC',
+  Ba2: 'BA-2',
+  'Ba2-1': 'BA-2',
+  'Ba2-2': 'BA-2',
+};
+
+function cargoPorFuncaoMensal(funcaoNoVeiculo: unknown): string {
+  return CARGO_POR_FUNCAO_MENSAL[String(funcaoNoVeiculo || '')] || '';
+}
+
+function pessoaCorrespondeReferencia(pessoa: Bombeiro, id?: unknown, ...nomes: unknown[]): boolean {
+  const idRef = String(id || '').trim();
+  if (idRef && pessoa.id === idRef) return true;
+  const nomesPessoa = [pessoa.nomeCompleto, pessoa.nomeGuerra].map(nomeKey).filter(Boolean);
+  return nomes
+    .map(nomeKey)
+    .filter(Boolean)
+    .some(nome => nomesPessoa.includes(nome));
+}
+
+function escalaMensalDoPlantao(
+  escalasCompletas: EscalaMensalCompleta[] | undefined,
+  equipe: string,
+  dataPlantao: string,
+): EscalaMensalCompleta | undefined {
+  const data = parseDataLocalISO(dataPlantao);
+  if (Number.isNaN(data.getTime())) return undefined;
+  return (escalasCompletas || []).find(completa =>
+    completa.config?.equipe === equipe &&
+    completa.config?.mes === data.getMonth() + 1 &&
+    completa.config?.ano === data.getFullYear()
+  );
+}
+
+function referenciasMensaisDoPlantao(completa: EscalaMensalCompleta | undefined, dataPlantao: string) {
+  if (!completa) return [];
+  const data = parseDataLocalISO(dataPlantao);
+  const dia = Number.isNaN(data.getTime()) ? 0 : data.getDate();
+  const parada = completa.paradas?.find(p => mesmoDiaISO(p.data, dataPlantao) || p.dia === dia);
+  const refs: Array<{ id?: string; nome?: string; nomeGuerra?: string; cargo: string }> = [];
+  const addNome = (nome: unknown, cargo: string) => {
+    const texto = String(nome || '').trim();
+    if (!texto || texto === '-') return;
+    refs.push({ nome: texto, nomeGuerra: texto, cargo });
+  };
+
+  addNome(parada?.veiculos?.cciF2?.baCe, 'BA-CE');
+  addNome(parada?.veiculos?.cciF2?.baMc, 'BA-MC');
+  addNome(parada?.veiculos?.cciF2?.ba2, 'BA-2');
+  addNome(parada?.veiculos?.cciF3?.baMc, 'BA-MC');
+  addNome(parada?.veiculos?.cciF3?.ba2_1, 'BA-2');
+  addNome(parada?.veiculos?.cciF3?.ba2_2, 'BA-2');
+  addNome(parada?.veiculos?.crs?.baMc, 'BA-MC');
+  addNome(parada?.veiculos?.crs?.baLr, 'BA-LR');
+  addNome(parada?.veiculos?.crs?.ba2_1, 'BA-2');
+  addNome(parada?.veiculos?.crs?.ba2_2, 'BA-2');
+
+  for (const pessoa of completa.config?.pessoas || []) {
+    refs.push({
+      id: pessoa.id,
+      nome: pessoa.nome,
+      nomeGuerra: pessoa.nomeGuerra,
+      cargo: cargoPorFuncaoMensal(pessoa.funcaoNoVeiculo) || '',
+    });
+  }
+
+  return refs;
+}
+
+export function montarMembrosEscalaMensalPlantao(params: {
+  bombeiros: Bombeiro[];
+  escalasCompletas?: EscalaMensalCompleta[];
+  equipe: string;
+  dataPlantao: string;
+}): Array<{ bombeiro: Bombeiro; cargoExercido: string }> {
+  const { bombeiros, escalasCompletas, equipe, dataPlantao } = params;
+  const completa = escalaMensalDoPlantao(escalasCompletas, equipe, dataPlantao);
+  const ativos = bombeiros.filter(b => !b.dataDesligamento);
+  const usados = new Set<string>();
+  const membros: Array<{ bombeiro: Bombeiro; cargoExercido: string }> = [];
+
+  for (const ref of referenciasMensaisDoPlantao(completa, dataPlantao)) {
+    const bombeiro = ativos.find(b => pessoaCorrespondeReferencia(b, ref.id, ref.nome, ref.nomeGuerra));
+    if (!bombeiro || usados.has(bombeiro.id)) continue;
+    membros.push({ bombeiro, cargoExercido: ref.cargo || bombeiro.cargo });
+    usados.add(bombeiro.id);
+  }
+
+  return membros;
+}
+
+export function resolverPessoaNoPlantaoOperacional(params: {
+  pessoa?: Bombeiro;
+  bombeiros: Bombeiro[];
+  vigencias?: VigenciaSubstituicao[];
+  escalasCompletas?: EscalaMensalCompleta[];
+  equipe: string;
+  dataPlantao: string;
+}): { pertence: boolean; cargoExercido?: string } {
+  const { pessoa, bombeiros, vigencias = [], escalasCompletas, equipe, dataPlantao } = params;
+  if (!pessoa || !equipe || !dataPlantao) return { pertence: false };
+  const ativos = bombeiros.filter(b => !b.dataDesligamento);
+  const porId = new Map(ativos.map(b => [b.id, b]));
+  const vigencia = vigencias.find(v => {
+    if (!v.ativa || v.substitutoId !== pessoa.id) return false;
+    if (!estaNoPeriodoISO(dataPlantao, v.dataInicio, v.dataFim)) return false;
+    const original = porId.get(v.funcionarioOriginalId);
+    return (original?.equipe || v.equipe) === equipe;
+  });
+  if (vigencia) return { pertence: true, cargoExercido: vigencia.cargoExercido || pessoa.cargo };
+
+  const membroMensal = montarMembrosEscalaMensalPlantao({ bombeiros, escalasCompletas, equipe, dataPlantao })
+    .find(membro => membro.bombeiro.id === pessoa.id);
+  if (membroMensal) return { pertence: true, cargoExercido: membroMensal.cargoExercido };
+
+  if (pessoa.equipe === equipe) return { pertence: true, cargoExercido: pessoa.cargo };
+  return { pertence: false };
 }
 
 interface TrocaServicoResolvida {
@@ -54,10 +182,12 @@ interface AfastamentoResolvido {
 function montarTrocasServicoResolvidas(params: {
   bombeiros: Bombeiro[];
   trocaFills: DocumentFill[];
+  vigencias?: VigenciaSubstituicao[];
+  escalasCompletas?: EscalaMensalCompleta[];
   equipe: string;
   dataPlantao: string;
 }): TrocaServicoResolvida[] {
-  const { bombeiros, trocaFills, equipe, dataPlantao } = params;
+  const { bombeiros, trocaFills, vigencias = [], escalasCompletas, equipe, dataPlantao } = params;
   if (!equipe || !dataPlantao) return [];
 
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
@@ -78,15 +208,23 @@ function montarTrocasServicoResolvidas(params: {
     if (!solicitante || !solicitado) continue;
 
     const add = (saindo: Bombeiro, entrando: Bombeiro, funcaoSaindo: unknown, funcaoEntrando: unknown) => {
-      if (saindo.equipe !== equipe) return;
+      const contextoSaindo = resolverPessoaNoPlantaoOperacional({
+        pessoa: saindo,
+        bombeiros: ativos,
+        vigencias,
+        escalasCompletas,
+        equipe,
+        dataPlantao,
+      });
+      if (!contextoSaindo.pertence) return;
       const chave = `${fill.id}:${saindo.id}:${entrando.id}`;
       if (usados.has(chave)) return;
       usados.add(chave);
       result.push({
         saindo,
         entrando,
-        funcaoSaindo: saindo.cargo || cargoCampo(funcaoSaindo),
-        funcaoEntrando: entrando.cargo || cargoCampo(funcaoEntrando),
+        funcaoSaindo: contextoSaindo.cargoExercido || cargoCampo(funcaoSaindo) || saindo.cargo,
+        funcaoEntrando: cargoCampo(funcaoEntrando) || entrando.cargo,
       });
     };
 
@@ -104,6 +242,8 @@ function montarTrocasServicoResolvidas(params: {
 export function montarTrocasServicoDoDia(params: {
   bombeiros: Bombeiro[];
   trocaFills: DocumentFill[];
+  vigencias?: VigenciaSubstituicao[];
+  escalasCompletas?: EscalaMensalCompleta[];
   equipe: string;
   dataPlantao: string;
 }): TrocaSlot[] {
@@ -120,11 +260,12 @@ export function montarEfetivoOperacional(params: {
   feriasGozo: FeriasGozo[];
   vigencias: VigenciaSubstituicao[];
   trocaFills: DocumentFill[];
+  escalasCompletas?: EscalaMensalCompleta[];
   substituicoesTemporarias?: SubstituicaoTemporaria[];
   equipe: string;
   dataPlantao: string;
 }): EfetivoOperacionalEntry[] {
-  const { bombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias = [], equipe, dataPlantao } = params;
+  const { bombeiros, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias = [], equipe, dataPlantao } = params;
   if (!equipe || !dataPlantao) return [];
 
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
@@ -152,7 +293,7 @@ export function montarEfetivoOperacional(params: {
 
   const trocaExcluidos = new Set<string>();
   const trocaIncluidos: EfetivoOperacionalEntry[] = [];
-  for (const troca of montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, equipe, dataPlantao })) {
+  for (const troca of montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, vigencias, escalasCompletas, equipe, dataPlantao })) {
     trocaExcluidos.add(troca.saindo.id);
     trocaExcluidos.add(troca.entrando.id);
     trocaIncluidos.push({
@@ -215,6 +356,46 @@ export function montarEfetivoOperacional(params: {
     resultado.push({ bombeiro, cargoExercido, substituindo });
     adicionados.add(bombeiro.id);
   };
+
+  for (const membroMensal of montarMembrosEscalaMensalPlantao({ bombeiros: ativos, escalasCompletas, equipe, dataPlantao })) {
+    const membro = membroMensal.bombeiro;
+    if (
+      afastadosTemporarios.has(membro.id) ||
+      extraAfastados.has(membro.id) ||
+      extraSubstitutos.has(membro.id)
+    ) {
+      continue;
+    }
+
+    const substitui = realPorSubstituto.get(membro.id);
+    const fallbackSubstitui = fallbackPorSubstituto.get(membro.id);
+    if (substitui) {
+      adicionar(membro, substitui.cargoExercido || membroMensal.cargoExercido || membro.cargo, {
+        id: substitui.funcionarioOriginalId,
+        nome: substitui.funcionarioOriginalNome,
+        cargo: substitui.cargoOriginalFuncionario,
+      });
+      continue;
+    }
+    if (fallbackSubstitui) {
+      adicionar(membro, fallbackSubstitui.cargo, {
+        id: fallbackSubstitui.original.id,
+        nome: fallbackSubstitui.original.nomeCompleto,
+        cargo: fallbackSubstitui.original.cargo,
+      });
+      continue;
+    }
+    if (
+      emGozo.has(membro.id) ||
+      realPorOriginal.has(membro.id) ||
+      fallbackPorOriginal.has(membro.id) ||
+      vagasAbertas.has(membro.id) ||
+      trocaExcluidos.has(membro.id)
+    ) {
+      continue;
+    }
+    adicionar(membro, membroMensal.cargoExercido || membro.cargo);
+  }
 
   for (const membro of ativos.filter(b => b.equipe === equipe)) {
     if (

@@ -1,6 +1,7 @@
 import { listarAtivos } from './bombeiroService';
 import { listarDocumentos, listarPreenchimentos } from './documentoService';
 import { listarFeriasGozo } from './feriasService';
+import { listarCompletas } from './escalaMensalService';
 import { listarSubstituicoesTemporarias } from './substituicaoTemporariaService';
 import { listarVigencias } from './vigenciaSubstituicaoService';
 import type { DocumentFill } from '../types/document';
@@ -26,12 +27,13 @@ export async function resolverEfetivoOperacional(
   equipe: string,
   dataPlantao: string,
 ): Promise<EfetivoOperacionalEntry[]> {
-  const [bombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias] = await Promise.all([
+  const [bombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias, escalasCompletas] = await Promise.all([
     listarAtivos(),
     listarFeriasGozo(),
     listarVigencias({ ativa: true }),
     listarTrocasServicoAssinadas(),
     listarSubstituicoesTemporarias(),
+    listarCompletas(),
   ]);
 
   return montarEfetivoOperacional({
@@ -39,6 +41,7 @@ export async function resolverEfetivoOperacional(
     feriasGozo,
     vigencias,
     trocaFills,
+    escalasCompletas,
     substituicoesTemporarias,
     equipe,
     dataPlantao,

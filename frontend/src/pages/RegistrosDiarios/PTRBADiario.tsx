@@ -9,6 +9,7 @@ import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarPTRBs, criarPTRB, atualizarPTRB, excluirPTRB } from '../../services/ptrbService';
 import { listarBombeiros } from '../../services/bombeiroService';
+import { listarCompletas } from '../../services/escalaMensalService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
@@ -18,6 +19,7 @@ import { listarUsuarios } from '../../services/usuarioService';
 import type { Usuario } from '../../services/usuarioService';
 import { CARGO_OPTIONS } from '../../types/bombeiro';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
+import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import type { FeriasGozo } from '../../types/ferias';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import type { APOC } from '../../types/apoc';
@@ -150,6 +152,7 @@ function PTRBAForm({
   onCancel,
   bombeiros,
   feriasGozo,
+  escalasCompletas,
   substituicoesTemporarias,
   trocaFills,
   vigencias,
@@ -162,6 +165,7 @@ function PTRBAForm({
   onCancel: () => void;
   bombeiros: Bombeiro[];
   feriasGozo: FeriasGozo[];
+  escalasCompletas: EscalaMensalCompleta[];
   substituicoesTemporarias: SubstituicaoTemporaria[];
   trocaFills: any[];
   vigencias: VigenciaSubstituicao[];
@@ -293,10 +297,11 @@ function PTRBAForm({
     feriasGozo,
     vigencias,
     trocaFills,
+    escalasCompletas,
     substituicoesTemporarias,
     equipe: form.equipe,
     dataPlantao: form.data,
-  }), [bombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias, form.equipe, form.data]);
+  }), [bombeiros, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias, form.equipe, form.data]);
 
   const opcoesParticipantes: AtivoItem[] = useMemo(() => {
     const bombeirosList = montarOpcoesEfetivoOperacional(efetivoOperacional, form.equipe);
@@ -748,6 +753,7 @@ export function PTRBADiario() {
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
+  const [escalasCompletas, setEscalasCompletas] = useState<EscalaMensalCompleta[]>([]);
   const [substituicoesTemporarias, setSubstituicoesTemporarias] = useState<SubstituicaoTemporaria[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
@@ -793,9 +799,10 @@ export function PTRBADiario() {
 
   async function carregarApoio() {
     try {
-      const [b, f, subs, docs, a, vigs, usuariosCadastrados] = await Promise.all([
+      const [b, f, completas, subs, docs, a, vigs, usuariosCadastrados] = await Promise.all([
         listarBombeiros(),
         listarFeriasGozo(),
+        listarCompletas(),
         listarSubstituicoesTemporarias(),
         listarDocumentos(),
         listarAPOCs(),
@@ -805,6 +812,7 @@ export function PTRBADiario() {
       setBombeiros(b);
       setUsuarios(usuariosCadastrados);
       setFeriasGozo(f);
+      setEscalasCompletas(completas);
       setSubstituicoesTemporarias(subs);
       setApocs(a);
       setVigencias(vigs);
@@ -927,6 +935,7 @@ export function PTRBADiario() {
           onCancel={() => { setMode('list'); setEditando(null); }}
           bombeiros={bombeiros}
           feriasGozo={feriasGozo}
+          escalasCompletas={escalasCompletas}
           substituicoesTemporarias={substituicoesTemporarias}
           trocaFills={trocaFills}
           vigencias={vigencias}

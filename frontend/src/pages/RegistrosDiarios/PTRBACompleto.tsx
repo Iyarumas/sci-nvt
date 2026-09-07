@@ -27,6 +27,7 @@ import {
 import { listarAPOCs } from '../../services/apocService';
 import { listarBombeiros } from '../../services/bombeiroService';
 import { listarEscalas } from '../../services/escalaService';
+import { listarCompletas } from '../../services/escalaMensalService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { baixarPTRBACompletoPdf, gerarPTRBACompletoPdf } from '../../services/ptrbaCompletoPdfService';
 import {
@@ -47,6 +48,7 @@ import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional } from '../../
 import type { APOC } from '../../types/apoc';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import type { EscalaDiaria } from '../../types/escala';
+import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import type { FeriasGozo } from '../../types/ferias';
 import { ASSUNTOS } from '../../types/ptrb';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
@@ -263,6 +265,7 @@ function PTRBACompletoForm({
   bombeiros,
   apocs,
   feriasGozo,
+  escalasCompletas,
   substituicoesTemporarias,
   escalasDiarias,
   vigencias,
@@ -276,6 +279,7 @@ function PTRBACompletoForm({
   bombeiros: Bombeiro[];
   apocs: APOC[];
   feriasGozo: FeriasGozo[];
+  escalasCompletas: EscalaMensalCompleta[];
   substituicoesTemporarias: SubstituicaoTemporaria[];
   escalasDiarias: EscalaDiaria[];
   vigencias: VigenciaSubstituicao[];
@@ -309,6 +313,7 @@ function PTRBACompletoForm({
       feriasGozo,
       vigencias,
       trocaFills,
+      escalasCompletas,
       substituicoesTemporarias,
       equipe: form.equipe,
       dataPlantao: form.data,
@@ -322,7 +327,7 @@ function PTRBACompletoForm({
       equipe: a.equipe,
     }));
     return [...bombeirosList, ...apocsList];
-  }, [bombeiros, apocs, feriasGozo, vigencias, trocaFills, substituicoesTemporarias, form.equipe, form.data]);
+  }, [bombeiros, apocs, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias, form.equipe, form.data]);
 
   useEffect(() => {
     if (registro) return;
@@ -903,6 +908,7 @@ export function PTRBACompletoPage() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
+  const [escalasCompletas, setEscalasCompletas] = useState<EscalaMensalCompleta[]>([]);
   const [substituicoesTemporarias, setSubstituicoesTemporarias] = useState<SubstituicaoTemporaria[]>([]);
   const [escalasDiarias, setEscalasDiarias] = useState<EscalaDiaria[]>([]);
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
@@ -948,11 +954,12 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const [lista, b, a, gozos, substituicoes, v, escalas, usuariosCadastrados] = await Promise.all([
+        const [lista, b, a, gozos, completas, substituicoes, v, escalas, usuariosCadastrados] = await Promise.all([
           listarPTRBACompletos(),
           listarBombeiros(),
           listarAPOCs(),
           listarFeriasGozo(),
+          listarCompletas(),
           listarSubstituicoesTemporarias(),
           listarVigencias({ ativa: true }),
           listarEscalas(),
@@ -964,6 +971,7 @@ export function PTRBACompletoPage() {
         setUsuarios(usuariosCadastrados);
         setApocs(a);
         setFeriasGozo(gozos);
+        setEscalasCompletas(completas);
         setSubstituicoesTemporarias(substituicoes);
         setVigencias(v);
         setEscalasDiarias(escalas);
@@ -1067,6 +1075,7 @@ export function PTRBACompletoPage() {
           bombeiros={bombeiros}
           apocs={apocs}
           feriasGozo={feriasGozo}
+          escalasCompletas={escalasCompletas}
           substituicoesTemporarias={substituicoesTemporarias}
           escalasDiarias={escalasDiarias}
           vigencias={vigencias}

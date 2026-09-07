@@ -26,12 +26,15 @@ import type { DocumentWithFields, DocumentField, DocumentFill } from '../../type
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
 import { listarBombeiros } from '../../services/bombeiroService';
 import { listarAPOCs } from '../../services/apocService';
+import { listarCompletas } from '../../services/escalaMensalService';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import type { Bombeiro } from '../../types/bombeiro';
 import { CARGO_OPTIONS, EQUIPE_OPTIONS } from '../../types/bombeiro';
+import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import type { APOC } from '../../types/apoc';
 import { estaNoPeriodoISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, normalizarDataISO } from '../../utils/datas';
 import { nomeArquivoTrocaServicoPdf } from '../../utils/documentFileNames';
+import { resolverPessoaNoPlantaoOperacional } from '../../utils/efetivoOperacional';
 type SubView = 'list' | 'form';
 type ViewMode = 'list' | 'report';
 type PessoaTroca = { id: string; tipo: 'bombeiro' | 'apoc'; cargo: string; nomeGuerra: string; nomeCompleto: string; equipe: string; turno: string };
@@ -42,6 +45,7 @@ const MONTH_NAMES = [
 ];
 
 const MAX_TROCAS_PER_MONTH = 3;
+const EQUIPES_OPERACIONAIS_TROCAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 const AUDITORIA_CARGO_PREFIXES = [
   'SUPERVISOR',
   'FERISTA',
@@ -566,6 +570,7 @@ export function Trocas() {
   const [bombeirosList, setBombeirosList] = useState<Bombeiro[]>([]);
   const [apocsList, setApocsList] = useState<APOC[]>([]);
   const [vigenciasList, setVigenciasList] = useState<VigenciaSubstituicao[]>([]);
+  const [escalasCompletasList, setEscalasCompletasList] = useState<EscalaMensalCompleta[]>([]);
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState<number>(now.getMonth());
   const [filterYear, setFilterYear] = useState<number>(now.getFullYear());
@@ -815,13 +820,13 @@ export function Trocas() {
         const data = fill.filled_data as Record<string, string>;
         const p1 = getPessoaByNome(data.nome_solicitante || '');
         const p2 = getPessoaByNome(data.nome_solicitado || '');
-        const eq1 = p1?.equipe || '';
-        const eq2 = p2?.equipe || '';
+        const eq1 = getEquipeEfetivaNaData(p1, data.data_solicitada || getDataPlantaoTroca(fill));
+        const eq2 = getEquipeEfetivaNaData(p2, data.data_folga_solicitado || getDataPlantaoTroca(fill));
         if (eq1 !== filterEquipe && eq2 !== filterEquipe) return false;
       }
       return pertenceAoMesAnoTroca(fill, filterMonth, filterYear);
     }).sort(compararTrocasPorPlantaoDesc);
-  }, [fills, filterMonth, filterYear, filterEquipe]);
+  }, [fills, filterMonth, filterYear, filterEquipe, bombeirosList, apocsList, vigenciasList, escalasCompletasList]);
 
   const violationFillIds = useMemo(() => {
     const ids = new Set<string>();
@@ -834,7 +839,7 @@ export function Trocas() {
     });
     getExcessoLimiteFillIds(filteredFills).forEach(id => ids.add(id));
     return ids;
-  }, [filteredFills, bombeirosList, apocsList, vigenciasList]);
+  }, [filteredFills, bombeirosList, apocsList, vigenciasList, escalasCompletasList]);
 
   const excessoLimiteIds = useMemo(() => {
     return getExcessoLimiteFillIds(filteredFills);
@@ -878,15 +883,17 @@ export function Trocas() {
   async function init() {
     try {
       setLoading(true);
-      const [docs, bombeiros, apocs, vigencias] = await Promise.all([
+      const [docs, bombeiros, apocs, vigencias, escalasCompletas] = await Promise.all([
         listarDocumentos(),
         listarBombeiros().catch(() => { try { return JSON.parse(localStorage.getItem('sescinc-bombeiros') || '[]'); } catch { return []; } }),
         listarAPOCs(),
         listarVigencias({ ativa: true }).catch(() => []),
+        listarCompletas().catch(() => []),
       ]);
       setBombeirosList(bombeiros);
       setApocsList(apocs);
       setVigenciasList(vigencias);
+      setEscalasCompletasList(escalasCompletas);
       const trocaDoc = docs.find(d => d.source_module === 'trocas') || docs.find(d => findTemplate(d.name) !== null);
       if (trocaDoc) {
         const full = await buscarDocumento(trocaDoc.id);
@@ -1033,9 +1040,50 @@ export function Trocas() {
     return pessoa?.cargo || String(funcaoFallback || '').split(' - ')[0] || '';
   }
 
+  function getBombeiroTroca(pessoa: PessoaTroca | null): Bombeiro | undefined {
+    if (!pessoa || pessoa.tipo !== 'bombeiro') return undefined;
+    return bombeirosList.find(b =>
+      b.id === pessoa.id ||
+      b.nomeGuerra === pessoa.nomeGuerra ||
+      b.nomeCompleto === pessoa.nomeCompleto
+    );
+  }
+
+  function getContextoOperacionalPessoaNaData(pessoa: PessoaTroca | null, data: string) {
+    const bombeiro = getBombeiroTroca(pessoa);
+    if (!bombeiro || !data) return null;
+    const equipes = [
+      ...EQUIPES_OPERACIONAIS_TROCAS.filter(eq => eq !== bombeiro.equipe),
+      ...(EQUIPES_OPERACIONAIS_TROCAS.includes(bombeiro.equipe) ? [bombeiro.equipe] : []),
+    ];
+    for (const equipe of equipes) {
+      const contextoPlantao = resolverPessoaNoPlantaoOperacional({
+        pessoa: bombeiro,
+        bombeiros: bombeirosList,
+        vigencias: vigenciasList,
+        escalasCompletas: escalasCompletasList,
+        equipe,
+        dataPlantao: data,
+      });
+      if (contextoPlantao.pertence) {
+        return { equipe, cargoExercido: contextoPlantao.cargoExercido || bombeiro.cargo };
+      }
+    }
+    return null;
+  }
+
+  function getEquipeEfetivaNaData(pessoa: PessoaTroca | null, data: string): string {
+    if (!pessoa) return '';
+    if (pessoa.tipo !== 'bombeiro') return pessoa.equipe || '';
+    return getContextoOperacionalPessoaNaData(pessoa, data)?.equipe || pessoa.equipe || '';
+  }
+
   function getCargoEfetivoNaData(pessoa: PessoaTroca | null, data: string, funcaoFallback = ''): string {
     const cargoBase = getCargoBaseTroca(pessoa, funcaoFallback);
     if (!pessoa?.id || pessoa.tipo !== 'bombeiro' || !data) return cargoBase;
+
+    const contextoPlantao = getContextoOperacionalPessoaNaData(pessoa, data);
+    if (contextoPlantao?.cargoExercido) return contextoPlantao.cargoExercido;
 
     const vigencia = vigenciasList
       .filter(v =>
@@ -1224,10 +1272,12 @@ export function Trocas() {
 
   function getFillEquipes(fill: DocumentFill): string[] {
     const data = fill.filled_data as Record<string, string>;
+    const dataSolicitante = data.data_solicitada || getDataPlantaoTroca(fill);
+    const dataSolicitado = data.data_folga_solicitado || getDataPlantaoTroca(fill);
     return Array.from(new Set([
       data.equipe || '',
-      getPessoaByNome(data.nome_solicitante || '')?.equipe || '',
-      getPessoaByNome(data.nome_solicitado || '')?.equipe || '',
+      getEquipeEfetivaNaData(getPessoaByNome(data.nome_solicitante || ''), dataSolicitante),
+      getEquipeEfetivaNaData(getPessoaByNome(data.nome_solicitado || ''), dataSolicitado),
     ].filter(Boolean)));
   }
 
@@ -1238,10 +1288,12 @@ export function Trocas() {
 
   function canManageFormData(data: Record<string, string>): boolean {
     if (canManageTrocasGlobais) return true;
+    const dataSolicitante = data.data_solicitada || getDataPlantaoTrocaData(data);
+    const dataSolicitado = data.data_folga_solicitado || getDataPlantaoTrocaData(data);
     const equipes = [
       data.equipe || '',
-      getPessoaByNome(data.nome_solicitante || '')?.equipe || '',
-      getPessoaByNome(data.nome_solicitado || '')?.equipe || '',
+      getEquipeEfetivaNaData(getPessoaByNome(data.nome_solicitante || ''), dataSolicitante),
+      getEquipeEfetivaNaData(getPessoaByNome(data.nome_solicitado || ''), dataSolicitado),
     ].filter(Boolean);
     return equipes.some(eq => canManageEquipe(eq));
   }

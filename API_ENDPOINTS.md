@@ -740,12 +740,22 @@ GET com filtro `ativa=true`. ✅ OK
       "funcaoNoVeiculo": "BaMc | BaCe | BaLr | Ba2 | Ba2-1 | Ba2-2",
       "isRadioFixo": "boolean"
     }],
-    "faxinaManual": [{ "local": "string", "pessoaNome": "string", "pessoaNomeGuerra": "string" }],
+    "faxinaManualModo": "padrao | livre | optional",
+    "faxinaManual": [{
+      "local": "string",
+      "pessoaNome": "string",
+      "pessoaNomeGuerra": "string",
+      "pessoa2Nome": "string | optional",
+      "pessoa2NomeGuerra": "string | optional"
+    }],
     "responsabilidadesManual": [{ "descricao": "string", "pessoaNome": "string", "pessoaNomeGuerra": "string" }],
     "radioManual": {
+      "modo": "inversa | corrida",
+      "duracaoComunicanteInicial": "1 | 2",
       "comunicante": { "pessoaNome": "string", "pessoaNomeGuerra": "string" },
       "antesMeiaNoite": [{ "pessoaNome": "string", "pessoaNomeGuerra": "string" }],
-      "depoisMeiaNoite": [{ "pessoaNome": "string", "pessoaNomeGuerra": "string" }]
+      "depoisMeiaNoite": [{ "pessoaNome": "string", "pessoaNomeGuerra": "string" }],
+      "corrida": [{ "pessoaNome": "string", "pessoaNomeGuerra": "string" }]
     },
     "createdAt": "string",
     "updatedAt": "string"
@@ -756,7 +766,13 @@ GET com filtro `ativa=true`. ✅ OK
     "veiculos": { "crs": {...}, "cciF2": {...}, "cciF3": {...} },
     "radio": [{ "horario": "string", "horarioFim": "string", "pessoaNome": "string", "pessoaNomeGuerra": "string", "fixo": "boolean" }]
   }],
-  "faxinaMensal": [{ "local": "string", "pessoaNome": "string", "pessoaNomeGuerra": "string" }],
+  "faxinaMensal": [{
+    "local": "string",
+    "pessoaNome": "string",
+    "pessoaNomeGuerra": "string",
+    "pessoa2Nome": "string | optional",
+    "pessoa2NomeGuerra": "string | optional"
+  }],
   "responsabilidades": [{ "descricao": "string", "pessoaNome": "string", "pessoaNomeGuerra": "string" }]
 }]
 ```
@@ -766,10 +782,10 @@ GET com filtro `ativa=true`. ✅ OK
 ✅ UPSERT lógico (verifica existência antes de inserir ou atualizar)
 
 **Regra de geraÃ§Ã£o:** `paridade` fica como referÃªncia/compatibilidade, mas os dias gerados sÃ£o calculados pela sequÃªncia 12x36 em `src/utils/equipes.ts` (`equipesNoDia`), a partir de 21/07/2026 = Alfa + Bravo. Em julho/2026, Alfa/Bravo caem nos dias Ã­mpares e Charlie/Delta nos pares; nos meses seguintes a sequÃªncia continua sem assumir paridade fixa.
-**Faxina:** quando a tela envia `config.faxinaManual`, `gerarEscalaMensal` usa esses responsÃ¡veis nos locais selecionados e completa os demais pela rotaÃ§Ã£o automÃ¡tica.
+**Faxina:** no modo padrão, a tela mantém os locais fixos como antes e `config.faxinaManual` substitui apenas os locais selecionados, completando o restante automaticamente. Quando `config.faxinaManualModo = "livre"`, o gerador usa exatamente as linhas manuais informadas; cada linha permite uma segunda pessoa opcional e o mesmo local pode aparecer mais de uma vez. Sem `config.faxinaManual`, a faxina continua automática.
 
 **Responsabilidades:** quando a tela envia `config.responsabilidadesManual`, `gerarEscalaMensal` substitui apenas as responsabilidades selecionadas e mantem as demais automaticas. Checklist do almoxarifado e acompanhamento de manutencoes usam o mesmo responsavel; limpeza dos CCI fica como texto fixo informando que cada motorista faz o seu carro.
-**Radio:** quando a tela envia `config.radioManual`, o comunicante fica no primeiro e no ultimo horario; os quatro nomes antes e os quatro depois do divisor do turno alternam a cada plantao e avancam uma posicao para o proximo horario a cada par de plantoes. No turno noturno o divisor e a meia-noite; no diurno e o meio-dia. Pessoas exercendo BA-CE ou BA-LR nao entram nos selects manuais de radio. Horarios diurnos: 07:00-08:00, 08:00-09:00, 09:00-10:00, 10:00-11:00, 11:00-12:00, 12:00-13:30, 13:30-15:00, 15:00-16:30, 16:30-18:00, 18:00-19:00.
+**Radio:** no modo padrão, a tela mantém o preenchimento visual antigo (comunicante + quatro nomes antes e quatro depois do divisor do turno). Sem `config.radioManual`, a escala de rádio continua automática como no comportamento original. Quando o modo manual envia `config.radioManual` com `modo`, o comunicante fica no primeiro e no último horário, com início de 1h ou 2h para turnos diurnos e noturnos. `modo: "inversa"` mantém a lógica de divisão antes/depois do meio-dia ou meia-noite; `modo: "corrida"` faz os nomes avançarem um horário para baixo a cada plantão, sem usar os horários fixos do comunicante. Pessoas exercendo BA-CE ou BA-LR não entram nos selects manuais de rádio.
 
 ### clonarConfig / gerarNomesMes / novaConfigId
 

@@ -36,10 +36,17 @@ export interface ResponsabilidadeMensalItem extends PessoaReferenciaMensal {
   descricao: string;
 }
 
+export type RadioManualModo = 'inversa' | 'corrida';
+export type RadioComunicanteDuracao = 1 | 2;
+export type FaxinaManualModo = 'padrao' | 'livre';
+
 export interface RadioMensalManual {
+  modo?: RadioManualModo;
+  duracaoComunicanteInicial?: RadioComunicanteDuracao;
   comunicante?: PessoaReferenciaMensal;
   antesMeiaNoite?: PessoaReferenciaMensal[];
   depoisMeiaNoite?: PessoaReferenciaMensal[];
+  corrida?: PessoaReferenciaMensal[];
 }
 
 export interface PlantaoGerado {
@@ -56,6 +63,7 @@ export interface EscalaMensalConfig {
   ano: number;
   paridade: 'par' | 'impar';
   pessoas: PessoaEscala[];
+  faxinaManualModo?: FaxinaManualModo;
   faxinaManual?: FaxinaMensalItem[];
   responsabilidadesManual?: ResponsabilidadeMensalItem[];
   radioManual?: RadioMensalManual;
@@ -67,6 +75,8 @@ export interface FaxinaMensalItem {
   local: string;
   pessoaNome: string;
   pessoaNomeGuerra: string;
+  pessoa2Nome?: string;
+  pessoa2NomeGuerra?: string;
 }
 
 export interface EscalaMensalCompleta {
@@ -123,11 +133,38 @@ export const SLOTS_RADIO_DIURNO = [
   { horario: '18:00', horarioFim: '19:00', fixo: true },
 ] as const;
 
+export const SLOTS_RADIO_DIURNO_COMUNICANTE_2H = [
+  { horario: '07:00', horarioFim: '09:00', fixo: true },
+  { horario: '09:00', horarioFim: '10:00', fixo: false },
+  { horario: '10:00', horarioFim: '11:00', fixo: false },
+  { horario: '11:00', horarioFim: '12:00', fixo: false },
+  { horario: '12:00', horarioFim: '13:30', fixo: false },
+  { horario: '13:30', horarioFim: '15:00', fixo: false },
+  { horario: '15:00', horarioFim: '16:30', fixo: false },
+  { horario: '16:30', horarioFim: '18:00', fixo: false },
+  { horario: '18:00', horarioFim: '19:00', fixo: true },
+] as const;
+
+export const SLOTS_RADIO_NOTURNO_COMUNICANTE_2H = [
+  { horario: '19:00', horarioFim: '21:00', fixo: true },
+  { horario: '21:00', horarioFim: '22:00', fixo: false },
+  { horario: '22:00', horarioFim: '23:00', fixo: false },
+  { horario: '23:00', horarioFim: '00:00', fixo: false },
+  { horario: '00:00', horarioFim: '01:30', fixo: false },
+  { horario: '01:30', horarioFim: '03:00', fixo: false },
+  { horario: '03:00', horarioFim: '04:30', fixo: false },
+  { horario: '04:30', horarioFim: '06:00', fixo: false },
+  { horario: '06:00', horarioFim: '07:00', fixo: true },
+] as const;
+
 export function equipeRadioDiurna(equipe: string) {
   return equipe === 'Alfa' || equipe === 'Charlie';
 }
 
-export function getSlotsRadio(equipe: string) {
+export function getSlotsRadio(equipe: string, duracaoComunicanteInicial: RadioComunicanteDuracao = 1) {
+  if (duracaoComunicanteInicial === 2) {
+    return equipeRadioDiurna(equipe) ? SLOTS_RADIO_DIURNO_COMUNICANTE_2H : SLOTS_RADIO_NOTURNO_COMUNICANTE_2H;
+  }
   return equipeRadioDiurna(equipe) ? SLOTS_RADIO_DIURNO : SLOTS_RADIO_NOTURNO;
 }
 

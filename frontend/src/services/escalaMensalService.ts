@@ -35,6 +35,10 @@ function rowToConfig(row: Record<string, unknown>): EscalaMensalConfig {
     ano: (row.ano as number) || 2026,
     paridade: (row.paridade as 'par' | 'impar') || 'impar',
     pessoas: parseJSON(row.pessoas) || [],
+    faxinaManualModo: (row.faxina_manual_modo as EscalaMensalConfig['faxinaManualModo']) || undefined,
+    faxinaManual: parseJSON(row.faxina_manual) || undefined,
+    responsabilidadesManual: parseJSON(row.responsabilidades_manual) || undefined,
+    radioManual: parseJSON(row.radio_manual) || undefined,
     createdAt: (row.created_at as string) || '',
     updatedAt: (row.updated_at as string) || '',
   };
@@ -47,6 +51,10 @@ function configToRow(data: Partial<EscalaMensalConfig>): Record<string, unknown>
   if (data.ano !== undefined) r.ano = data.ano;
   if (data.paridade !== undefined) r.paridade = data.paridade;
   if (data.pessoas !== undefined) r.pessoas = jsonb(data.pessoas);
+  if ('faxinaManualModo' in data) r.faxina_manual_modo = data.faxinaManualModo ?? null;
+  if ('faxinaManual' in data) r.faxina_manual = jsonb(data.faxinaManual ?? null);
+  if ('responsabilidadesManual' in data) r.responsabilidades_manual = jsonb(data.responsabilidadesManual ?? null);
+  if ('radioManual' in data) r.radio_manual = jsonb(data.radioManual ?? null);
   return r;
 }
 

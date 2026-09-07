@@ -117,12 +117,19 @@ function gerarRadioAutomatico(pessoas: PessoaEscala[], idxPlantao: number, equip
 }
 
 export function gerarRadioPlantao(pessoas: PessoaEscala[], idxPlantao: number, equipe: string, radioManual?: EscalaMensalConfig['radioManual']): RadioSlot[] {
-  const temManual = !!radioManual?.comunicante ||
+  const temManual = !!radioManual && (
+    !!radioManual.modo ||
+    !!radioManual.duracaoComunicanteInicial ||
+    !!radioManual.comunicante ||
     !!radioManual?.antesMeiaNoite?.length ||
-    !!radioManual?.depoisMeiaNoite?.length;
+    !!radioManual?.depoisMeiaNoite?.length ||
+    !!radioManual?.corrida?.length
+  );
   if (!temManual) return gerarRadioAutomatico(pessoas, idxPlantao, equipe);
 
-  const slots = getSlotsRadio(equipe);
+  const modo = radioManual?.modo || 'inversa';
+  const duracaoComunicanteInicial = radioManual?.duracaoComunicanteInicial === 2 ? 2 : 1;
+  const slots = getSlotsRadio(equipe, duracaoComunicanteInicial);
   const poolOperacional = pessoas.filter(p => p.funcao !== 'chefe' && p.funcao !== 'lider').map(pessoaParaRadio);
   const pool = poolOperacional.length > 0 ? poolOperacional : pessoas.map(pessoaParaRadio);
   const comunicante = refParaRadio(radioManual?.comunicante) ||
@@ -131,14 +138,33 @@ export function gerarRadioPlantao(pessoas: PessoaEscala[], idxPlantao: number, e
     null;
 
   const dinamicos = slots.filter(slot => !slot.fixo);
+  const comunicanteKey = comunicante ? radioPessoaKey(comunicante) : '';
+  const poolSemComunicante = pool.filter(p => radioPessoaKey(p) !== comunicanteKey);
+
+  if (modo === 'corrida') {
+    const corridaSelecionados = (radioManual?.corrida || [])
+      .map(refParaRadio)
+      .filter((p): p is RadioPessoa => !!p && radioPessoaKey(p) !== comunicanteKey);
+    const corridaBase = completarGrupo(corridaSelecionados, dinamicos.length, poolSemComunicante, comunicante);
+    const corridaHoje = rotateArray(corridaBase, -(idxPlantao - 1));
+    let idxDinamico = 0;
+    return slots.map(slot => {
+      if (slot.fixo) return slotRadio(slot, comunicante, true);
+      const pessoa = corridaHoje[idxDinamico++];
+      return slotRadio(slot, pessoa || comunicante, false);
+    });
+  }
+
   const split = getRadioSplitIndex(slots);
   const antesCount = split;
   const depoisCount = dinamicos.length - split;
-  const antesSelecionados = (radioManual?.antesMeiaNoite || []).map(refParaRadio).filter((p): p is RadioPessoa => !!p);
-  const depoisSelecionados = (radioManual?.depoisMeiaNoite || []).map(refParaRadio).filter((p): p is RadioPessoa => !!p);
-  const comunicanteKey = comunicante ? radioPessoaKey(comunicante) : '';
+  const antesSelecionados = (radioManual?.antesMeiaNoite || [])
+    .map(refParaRadio)
+    .filter((p): p is RadioPessoa => !!p && radioPessoaKey(p) !== comunicanteKey);
+  const depoisSelecionados = (radioManual?.depoisMeiaNoite || [])
+    .map(refParaRadio)
+    .filter((p): p is RadioPessoa => !!p && radioPessoaKey(p) !== comunicanteKey);
   const depoisSelecionadosKeys = new Set(depoisSelecionados.map(radioPessoaKey));
-  const poolSemComunicante = pool.filter(p => radioPessoaKey(p) !== comunicanteKey);
   const poolAntes = poolSemComunicante.filter(p => !depoisSelecionadosKeys.has(radioPessoaKey(p)));
   const antesBase = completarGrupo(antesSelecionados, antesCount, poolAntes, comunicante);
   const antesKeys = new Set(antesBase.map(radioPessoaKey));
@@ -160,9 +186,14 @@ export function gerarRadioPlantao(pessoas: PessoaEscala[], idxPlantao: number, e
   });
 }
 
-function gerarFaxinaMensal(pessoas: PessoaEscala[], mes: number, faxinaManual?: FaxinaMensalItem[]) {
+function gerarFaxinaMensal(pessoas: PessoaEscala[], mes: number, faxinaManual?: FaxinaMensalItem[], faxinaManualModo: EscalaMensalConfig['faxinaManualModo'] = 'padrao') {
   const faxineiros = pessoas.filter(p => p.funcao !== 'chefe' && p.funcao !== 'lider');
   if (faxineiros.length === 0) return [];
+  if (faxinaManualModo === 'livre' && faxinaManual?.length) {
+    return faxinaManual
+      .filter(item => item.local && item.pessoaNomeGuerra)
+      .map(item => ({ ...item }));
+  }
   const locais = LOCAIS_FAXINA.filter(l => l !== 'Sala e WC Liderança' && l !== 'Lixo');
   const offset = (mes - 1) % faxineiros.length;
   const rotacionados = rotateArray(faxineiros, offset);
@@ -212,7 +243,7 @@ function gerarResponsabilidades(pessoas: PessoaEscala[], faxina: { local: string
 export function gerarEscalaMensal(config: EscalaMensalConfig): EscalaMensalCompleta {
   const { mes, ano, paridade, pessoas, equipe } = config;
   const dias = diasPlantao(mes, ano, equipe, paridade);
-  const faxinaMensal = gerarFaxinaMensal(pessoas, mes, config.faxinaManual);
+  const faxinaMensal = gerarFaxinaMensal(pessoas, mes, config.faxinaManual, config.faxinaManualModo);
   const responsabilidades = gerarResponsabilidades(pessoas, faxinaMensal, config.responsabilidadesManual);
   const paradas: PlantaoGerado[] = dias.map((dia, idx) => ({
     dia,

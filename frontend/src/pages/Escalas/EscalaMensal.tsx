@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Calendar, ChevronDown, ChevronUp, Save, Printer, Pencil,
   Trash2, Radio, Shield, Users, ClipboardList,
-  Sparkles, AlertTriangle, X, Eye, Image, HelpCircle, Filter,
+  Sparkles, AlertTriangle, X, Eye, Image, HelpCircle, Filter, Plus,
 } from 'lucide-react';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
 import { AlertModal } from '../../components/ui/AlertModal';
@@ -23,7 +23,7 @@ import {
   gerarEscalaMensal, gerarNomesMes,
   excluirConfig,
 } from '../../services/escalaMensalService';
-import { equipeRadioDiurna, getRadioSplitIndex, getSlotsRadio, LOCAIS_FAXINA, RESPONSABILIDADES_MENSAIS, type EscalaMensalConfig, type EscalaMensalCompleta, type FaxinaMensalItem, type PessoaEscala, type RadioMensalManual, type ResponsabilidadeMensalItem, type Veiculo, type FuncaoVeiculo } from '../../types/escalaMensal';
+import { equipeRadioDiurna, getRadioSplitIndex, getSlotsRadio, LOCAIS_FAXINA, RESPONSABILIDADES_MENSAIS, type EscalaMensalConfig, type EscalaMensalCompleta, type FaxinaManualModo, type FaxinaMensalItem, type PessoaEscala, type RadioComunicanteDuracao, type RadioManualModo, type RadioMensalManual, type ResponsabilidadeMensalItem, type Veiculo, type FuncaoVeiculo } from '../../types/escalaMensal';
 
 const MESES = gerarNomesMes();
 
@@ -51,6 +51,24 @@ const SLOTS: SlotDef[] = [
 
 const RADIO_SELECT_COUNT = 4;
 
+type ModoPreenchimentoManual = 'padrao' | 'manual';
+
+interface FaxinaManualLinha {
+  id: string;
+  local: string;
+  pessoa1Id: string;
+  pessoa2Id: string;
+}
+
+function criarLinhaFaxinaManual(): FaxinaManualLinha {
+  return {
+    id: crypto.randomUUID(),
+    local: '',
+    pessoa1Id: '',
+    pessoa2Id: '',
+  };
+}
+
 function formatarDataRadioMensal(data: unknown): string {
   return formatarDataBR(data);
 }
@@ -74,16 +92,24 @@ const RESPONSABILIDADES_SELECTS = [
 ] as const;
 
 interface RadioManualState {
+  preenchimento: ModoPreenchimentoManual;
+  modo: RadioManualModo;
+  duracaoComunicanteInicial: RadioComunicanteDuracao;
   comunicanteId: string;
   antesMeiaNoiteIds: string[];
   depoisMeiaNoiteIds: string[];
+  corridaIds: string[];
 }
 
 function criarRadioManualVazio(): RadioManualState {
   return {
+    preenchimento: 'padrao',
+    modo: 'inversa',
+    duracaoComunicanteInicial: 1,
     comunicanteId: '',
     antesMeiaNoiteIds: Array(RADIO_SELECT_COUNT).fill(''),
     depoisMeiaNoiteIds: Array(RADIO_SELECT_COUNT).fill(''),
+    corridaIds: Array(RADIO_SELECT_COUNT * 2).fill(''),
   };
 }
 
@@ -327,11 +353,11 @@ function resolverPessoasSelecionadas(
   return SLOTS.map((slot, idx) => resolverPessoaSelecionada(pessoas[idx], slot, efetivo));
 }
 
-function montarFaxinaSelecionada(faxinaManual: Record<string, string>, efetivo: EfetivoMensalEntry[]): FaxinaMensalItem[] {
+function montarFaxinaPadraoSelecionada(faxinaPadrao: Record<string, string>, efetivo: EfetivoMensalEntry[]): FaxinaMensalItem[] {
   const porId = new Map(efetivo.map(entry => [entry.bombeiro.id, entry]));
   const itens: FaxinaMensalItem[] = [];
   for (const local of LOCAIS_FAXINA) {
-    const entry = porId.get(faxinaManual[local] || '');
+    const entry = porId.get(faxinaPadrao[local] || '');
     if (!entry) continue;
     itens.push({
       local,
@@ -342,13 +368,51 @@ function montarFaxinaSelecionada(faxinaManual: Record<string, string>, efetivo: 
   return itens;
 }
 
-function faxinaParaState(faxina: FaxinaMensalItem[], bombeiros: Bombeiro[]): Record<string, string> {
+function montarFaxinaLivreSelecionada(faxinaManual: FaxinaManualLinha[], efetivo: EfetivoMensalEntry[]): FaxinaMensalItem[] {
+  const porId = new Map(efetivo.map(entry => [entry.bombeiro.id, entry]));
+  const itens: FaxinaMensalItem[] = [];
+  for (const linha of faxinaManual) {
+    const entry = porId.get(linha.pessoa1Id || '');
+    if (!linha.local || !entry) continue;
+    const entry2 = linha.pessoa2Id ? porId.get(linha.pessoa2Id) : undefined;
+    itens.push({
+      local: linha.local,
+      pessoaNome: entry.bombeiro.nome || entry.bombeiro.nomeCompleto,
+      pessoaNomeGuerra: entry.bombeiro.nomeGuerra,
+      ...(entry2 ? {
+        pessoa2Nome: entry2.bombeiro.nome || entry2.bombeiro.nomeCompleto,
+        pessoa2NomeGuerra: entry2.bombeiro.nomeGuerra,
+      } : {}),
+    });
+  }
+  return itens;
+}
+
+function faxinaPadraoParaState(faxina: FaxinaMensalItem[], bombeiros: Bombeiro[]): Record<string, string> {
   const state: Record<string, string> = {};
   for (const item of faxina) {
     const b = bombeiros.find(bb => bb.nomeGuerra === item.pessoaNomeGuerra || bb.nomeCompleto === item.pessoaNome);
     if (b) state[item.local] = b.id;
   }
   return state;
+}
+
+function faxinaLivreParaState(faxina: FaxinaMensalItem[], bombeiros: Bombeiro[]): FaxinaManualLinha[] {
+  const rows: FaxinaManualLinha[] = [];
+  const idPorNome = (nomeGuerra?: string, nomeCompleto?: string) =>
+    bombeiros.find(bb => bb.nomeGuerra === nomeGuerra || bb.nomeCompleto === nomeCompleto)?.id || '';
+
+  for (const item of faxina) {
+    const pessoa1Id = idPorNome(item.pessoaNomeGuerra, item.pessoaNome);
+    if (!pessoa1Id) continue;
+    rows.push({
+      id: crypto.randomUUID(),
+      local: item.local,
+      pessoa1Id,
+      pessoa2Id: idPorNome(item.pessoa2NomeGuerra, item.pessoa2Nome),
+    });
+  }
+  return rows.length ? rows : [criarLinhaFaxinaManual()];
 }
 
 function refPessoa(entry: EfetivoMensalEntry) {
@@ -392,8 +456,28 @@ function montarRadioSelecionado(state: RadioManualState, efetivo: EfetivoMensalE
   const comunicante = toRef(state.comunicanteId);
   const antesMeiaNoite = state.antesMeiaNoiteIds.map(toRef).filter((p): p is NonNullable<ReturnType<typeof toRef>> => !!p);
   const depoisMeiaNoite = state.depoisMeiaNoiteIds.map(toRef).filter((p): p is NonNullable<ReturnType<typeof toRef>> => !!p);
-  if (!comunicante && antesMeiaNoite.length === 0 && depoisMeiaNoite.length === 0) return undefined;
+  const corrida = state.corridaIds.map(toRef).filter((p): p is NonNullable<ReturnType<typeof toRef>> => !!p);
+  if (state.preenchimento !== 'manual') {
+    if (!comunicante && antesMeiaNoite.length === 0 && depoisMeiaNoite.length === 0) return undefined;
+    return {
+      ...(comunicante ? { comunicante } : {}),
+      ...(antesMeiaNoite.length ? { antesMeiaNoite } : {}),
+      ...(depoisMeiaNoite.length ? { depoisMeiaNoite } : {}),
+    };
+  }
+  const base = {
+    modo: state.modo,
+    duracaoComunicanteInicial: state.duracaoComunicanteInicial,
+  };
+  if (state.modo === 'corrida') {
+    return {
+      ...base,
+      ...(comunicante ? { comunicante } : {}),
+      ...(corrida.length ? { corrida } : {}),
+    };
+  }
   return {
+    ...base,
     ...(comunicante ? { comunicante } : {}),
     ...(antesMeiaNoite.length ? { antesMeiaNoite } : {}),
     ...(depoisMeiaNoite.length ? { depoisMeiaNoite } : {}),
@@ -402,18 +486,28 @@ function montarRadioSelecionado(state: RadioManualState, efetivo: EfetivoMensalE
 
 function radioParaState(completa: EscalaMensalCompleta | null, bombeiros: Bombeiro[]): RadioManualState {
   const state = criarRadioManualVazio();
-  const radio = completa?.paradas[0]?.radio || [];
-  if (radio.length === 0) return state;
-  const idPorNome = (nomeGuerra: string) => bombeiros.find(b => b.nomeGuerra === nomeGuerra)?.id || '';
-  const comunicante = radio.find(r => r.fixo)?.pessoaNomeGuerra;
-  if (comunicante) state.comunicanteId = idPorNome(comunicante);
-  const dinamicos = radio.filter(r => !r.fixo);
-  const split = getRadioSplitIndex(radio);
-  state.antesMeiaNoiteIds = dinamicos.slice(0, split).slice(0, RADIO_SELECT_COUNT).map(r => idPorNome(r.pessoaNomeGuerra));
-  state.depoisMeiaNoiteIds = dinamicos.slice(split).slice(0, RADIO_SELECT_COUNT).map(r => idPorNome(r.pessoaNomeGuerra));
-  while (state.antesMeiaNoiteIds.length < RADIO_SELECT_COUNT) state.antesMeiaNoiteIds.push('');
-  while (state.depoisMeiaNoiteIds.length < RADIO_SELECT_COUNT) state.depoisMeiaNoiteIds.push('');
+  const manualConfig = completa?.config.radioManual;
+  const idPorRef = (ref?: { id?: string; pessoaNome?: string; pessoaNomeGuerra?: string }) => {
+    if (!ref) return '';
+    if (ref.id && bombeiros.some(b => b.id === ref.id)) return ref.id;
+    return bombeiros.find(b => b.nomeGuerra === ref.pessoaNomeGuerra || b.nomeCompleto === ref.pessoaNome)?.id || '';
+  };
+
+  if (!manualConfig) return state;
+  state.preenchimento = (manualConfig.modo || manualConfig.duracaoComunicanteInicial || manualConfig.corrida?.length) ? 'manual' : 'padrao';
+  state.modo = manualConfig.modo || 'inversa';
+  state.duracaoComunicanteInicial = manualConfig.duracaoComunicanteInicial === 2 ? 2 : 1;
+  state.comunicanteId = idPorRef(manualConfig.comunicante);
+  state.antesMeiaNoiteIds = (manualConfig.antesMeiaNoite || []).map(idPorRef);
+  state.depoisMeiaNoiteIds = (manualConfig.depoisMeiaNoite || []).map(idPorRef);
+  state.corridaIds = (manualConfig.corrida || []).map(idPorRef);
   return state;
+}
+
+function ajustarListaIds(ids: string[], quantidade: number, idsValidos: Set<string>): string[] {
+  const next = (ids || []).slice(0, quantidade).map(id => idsValidos.has(id) ? id : '');
+  while (next.length < quantidade) next.push('');
+  return next;
 }
 
 function prepararCapturaPng(el: HTMLElement): { width: number; height: number; restore: () => void } {
@@ -525,7 +619,9 @@ export function EscalaMensal() {
   const [paridade, setParidade] = useState<'par' | 'impar'>('impar');
   const [pessoas, setPessoas] = useState<(Partial<PessoaEscala> | null)[]>(SLOTS.map(() => null));
   const [feriasGozo, setFeriasGozo] = useState<FeriasGozo[]>([]);
-  const [faxinaManual, setFaxinaManual] = useState<Record<string, string>>({});
+  const [faxinaModo, setFaxinaModo] = useState<ModoPreenchimentoManual>('padrao');
+  const [faxinaPadrao, setFaxinaPadrao] = useState<Record<string, string>>({});
+  const [faxinaManual, setFaxinaManual] = useState<FaxinaManualLinha[]>([criarLinhaFaxinaManual()]);
   const [responsabilidadesManual, setResponsabilidadesManual] = useState<Record<string, string>>({});
   const [radioManual, setRadioManual] = useState<RadioManualState>(() => criarRadioManualVazio());
   const [filterListEquipe, setFilterListEquipe] = useState('');
@@ -761,20 +857,45 @@ export function EscalaMensal() {
   const radioDiurno = equipeRadioDiurna(equipe);
   const radioAntesLabel = radioDiurno ? 'Antes do meio-dia' : 'Antes da meia-noite';
   const radioDepoisLabel = radioDiurno ? 'Depois do meio-dia' : 'Depois da meia-noite';
+  const radioSlotsFormulario = useMemo(
+    () => getSlotsRadio(equipe, radioManual.duracaoComunicanteInicial),
+    [equipe, radioManual.duracaoComunicanteInicial],
+  );
+  const radioDinamicosFormulario = useMemo(
+    () => radioSlotsFormulario.filter(slot => !slot.fixo),
+    [radioSlotsFormulario],
+  );
+  const radioSplitFormulario = useMemo(
+    () => getRadioSplitIndex(radioSlotsFormulario),
+    [radioSlotsFormulario],
+  );
+  const radioAntesSlots = useMemo(
+    () => radioDinamicosFormulario.slice(0, radioSplitFormulario),
+    [radioDinamicosFormulario, radioSplitFormulario],
+  );
+  const radioDepoisSlots = useMemo(
+    () => radioDinamicosFormulario.slice(radioSplitFormulario),
+    [radioDinamicosFormulario, radioSplitFormulario],
+  );
 
   useEffect(() => {
     if (!radioEfetivo.length) return;
     const idsValidos = new Set(radioEfetivo.map(entry => entry.bombeiro.id));
     setRadioManual(prev => {
       const comunicanteId = idsValidos.has(prev.comunicanteId) ? prev.comunicanteId : '';
-      const antesMeiaNoiteIds = prev.antesMeiaNoiteIds.map(id => idsValidos.has(id) ? id : '');
-      const depoisMeiaNoiteIds = prev.depoisMeiaNoiteIds.map(id => idsValidos.has(id) ? id : '');
+      const antesMeiaNoiteIds = ajustarListaIds(prev.antesMeiaNoiteIds, radioAntesSlots.length, idsValidos);
+      const depoisMeiaNoiteIds = ajustarListaIds(prev.depoisMeiaNoiteIds, radioDepoisSlots.length, idsValidos);
+      const corridaIds = ajustarListaIds(prev.corridaIds, radioDinamicosFormulario.length, idsValidos);
       const mudou = comunicanteId !== prev.comunicanteId ||
+        antesMeiaNoiteIds.length !== prev.antesMeiaNoiteIds.length ||
+        depoisMeiaNoiteIds.length !== prev.depoisMeiaNoiteIds.length ||
+        corridaIds.length !== prev.corridaIds.length ||
         antesMeiaNoiteIds.some((id, idx) => id !== prev.antesMeiaNoiteIds[idx]) ||
-        depoisMeiaNoiteIds.some((id, idx) => id !== prev.depoisMeiaNoiteIds[idx]);
-      return mudou ? { comunicanteId, antesMeiaNoiteIds, depoisMeiaNoiteIds } : prev;
+        depoisMeiaNoiteIds.some((id, idx) => id !== prev.depoisMeiaNoiteIds[idx]) ||
+        corridaIds.some((id, idx) => id !== prev.corridaIds[idx]);
+      return mudou ? { ...prev, comunicanteId, antesMeiaNoiteIds, depoisMeiaNoiteIds, corridaIds } : prev;
     });
-  }, [radioEfetivo]);
+  }, [radioEfetivo, radioAntesSlots.length, radioDepoisSlots.length, radioDinamicosFormulario.length]);
 
   const veiculosView = useMemo(() => {
     if (!completaAtual || completaAtual.paradas.length === 0) return null;
@@ -822,7 +943,15 @@ export function EscalaMensal() {
       </div>
     );
   }, [completaAtual]);
-  const slotsRadioView = completaAtual ? getSlotsRadio(completaAtual.config.equipe) : [];
+  const slotsRadioView = completaAtual
+    ? (completaAtual.paradas[0]?.radio?.length
+      ? completaAtual.paradas[0].radio.map(slot => ({
+        horario: slot.horario,
+        horarioFim: slot.horarioFim,
+        fixo: slot.fixo,
+      }))
+      : getSlotsRadio(completaAtual.config.equipe))
+    : [];
 
   const qtdPessoas = pessoas.filter(pessoaValida).length;
 
@@ -885,7 +1014,10 @@ export function EscalaMensal() {
       return null;
     }
 
-    const faxinaSelecionada = montarFaxinaSelecionada(faxinaManual, efetivoParaGerar);
+    const faxinaManualModo: FaxinaManualModo = faxinaModo === 'manual' ? 'livre' : 'padrao';
+    const faxinaSelecionada = faxinaModo === 'manual'
+      ? montarFaxinaLivreSelecionada(faxinaManual, efetivoParaGerar)
+      : montarFaxinaPadraoSelecionada(faxinaPadrao, efetivoParaGerar);
     const responsabilidadesSelecionadas = montarResponsabilidadesSelecionadas(responsabilidadesManual, efetivoParaGerar);
     const radioSelecionado = montarRadioSelecionado(radioManual, efetivoParaGerar.filter(podeFazerRadio));
 
@@ -893,6 +1025,7 @@ export function EscalaMensal() {
       id: configId,
       equipe, mes, ano, paridade,
       pessoas: validadas,
+      faxinaManualModo,
       faxinaManual: faxinaSelecionada.length > 0 ? faxinaSelecionada : undefined,
       responsabilidadesManual: responsabilidadesSelecionadas.length > 0 ? responsabilidadesSelecionadas : undefined,
       radioManual: radioSelecionado,
@@ -1069,7 +1202,10 @@ export function EscalaMensal() {
       setAno(cfg.ano);
       setParidade(cfg.paridade);
       setPessoas(SLOTS.map((_, idx) => cfg.pessoas[idx] ? { ...cfg.pessoas[idx] } : null));
-      setFaxinaManual(faxinaParaState(completaAtual.faxinaMensal, bombeirosBase));
+      const modoFaxina: ModoPreenchimentoManual = cfg.faxinaManualModo === 'livre' ? 'manual' : 'padrao';
+      setFaxinaModo(modoFaxina);
+      setFaxinaPadrao(modoFaxina === 'padrao' ? faxinaPadraoParaState(cfg.faxinaManual?.length ? cfg.faxinaManual : completaAtual.faxinaMensal, bombeirosBase) : {});
+      setFaxinaManual(modoFaxina === 'manual' && cfg.faxinaManual?.length ? faxinaLivreParaState(cfg.faxinaManual, bombeirosBase) : [criarLinhaFaxinaManual()]);
       setResponsabilidadesManual(responsabilidadesParaState(completaAtual.responsabilidades, bombeirosBase));
       setRadioManual(radioParaState(completaAtual, bombeirosBase));
       setEditingId(cfg.id);
@@ -1271,6 +1407,21 @@ export function EscalaMensal() {
     }
   }
 
+  function atualizarLinhaFaxina(id: string, updates: Partial<FaxinaManualLinha>) {
+    setFaxinaManual(prev => prev.map(linha => linha.id === id ? { ...linha, ...updates } : linha));
+  }
+
+  function removerLinhaFaxina(id: string) {
+    setFaxinaManual(prev => {
+      const next = prev.filter(linha => linha.id !== id);
+      return next.length ? next : [criarLinhaFaxinaManual()];
+    });
+  }
+
+  function adicionarLinhaFaxina() {
+    setFaxinaManual(prev => [...prev, criarLinhaFaxinaManual()]);
+  }
+
   return (
     <div className="space-y-6">
       {renderBotaoTutorialMensal()}
@@ -1281,7 +1432,7 @@ export function EscalaMensal() {
           {canCreate && (
             <button title="Criar uma nova escala mensal" onClick={() => {
               setEquipe(isGlobal ? '' : equipeEfetiva || ''); setMes(Number(filterListMes) || new Date().getMonth() + 1); setAno(Number(filterListAno) || new Date().getFullYear());
-              setParidade('impar'); setPessoas(SLOTS.map(() => null)); setFaxinaManual({}); setResponsabilidadesManual({}); setRadioManual(criarRadioManualVazio()); setMode('setup');
+              setParidade('impar'); setPessoas(SLOTS.map(() => null)); setFaxinaModo('padrao'); setFaxinaPadrao({}); setFaxinaManual([criarLinhaFaxinaManual()]); setResponsabilidadesManual({}); setRadioManual(criarRadioManualVazio()); setMode('setup');
               setEditingId(null); setAutoPreencherSetup(true);
             }}
               data-escala-mensal-tour="mensal-nova"
@@ -1463,23 +1614,35 @@ export function EscalaMensal() {
             ))}
           </div>
 
-          <div className="rounded-2xl border border-graphite-200/60 bg-white/70 p-4 dark:border-border-dark dark:bg-surface-card/70" data-escala-mensal-tour="mensal-radio">
-            <button
-              type="button"
-              onClick={() => setFaxinaExpanded(prev => !prev)}
-              className="flex w-full items-center justify-between text-left"
-            >
-              <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-graphite-700 dark:text-graphite-300">
+          <div className="rounded-2xl border border-graphite-200/60 bg-white/70 p-4 dark:border-border-dark dark:bg-surface-card/70">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setFaxinaExpanded(prev => !prev)}
+                className="flex items-center gap-2 text-left text-sm font-bold uppercase tracking-wider text-graphite-700 dark:text-graphite-300"
+              >
                 <ClipboardList className="h-4 w-4 text-aviation-600" />
                 Limpeza
-              </span>
-              {faxinaExpanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
-            </button>
-            {faxinaExpanded && (
+                {faxinaExpanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
+              </button>
+              <select
+                value={faxinaModo}
+                onChange={e => {
+                  const modo = e.target.value as ModoPreenchimentoManual;
+                  setFaxinaModo(modo);
+                  if (modo === 'manual' && faxinaManual.length === 0) setFaxinaManual([criarLinhaFaxinaManual()]);
+                }}
+                className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm font-medium dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+              >
+                <option value="padrao">Padrão</option>
+                <option value="manual">Modo manual</option>
+              </select>
+            </div>
+            {faxinaExpanded && faxinaModo === 'padrao' && (
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {LOCAIS_FAXINA.map(local => {
-                  const selectedId = faxinaManual[local] || '';
-                  const usados = new Set(Object.entries(faxinaManual)
+                  const selectedId = faxinaPadrao[local] || '';
+                  const usados = new Set(Object.entries(faxinaPadrao)
                     .filter(([nomeLocal, id]) => nomeLocal !== local && !!id)
                     .map(([, id]) => id));
 
@@ -1488,7 +1651,7 @@ export function EscalaMensal() {
                       <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">{local}</label>
                       <select
                         value={selectedId}
-                        onChange={e => setFaxinaManual(prev => ({ ...prev, [local]: e.target.value }))}
+                        onChange={e => setFaxinaPadrao(prev => ({ ...prev, [local]: e.target.value }))}
                         className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
                       >
                         <option value="">Automático</option>
@@ -1501,6 +1664,76 @@ export function EscalaMensal() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {faxinaExpanded && faxinaModo === 'manual' && (
+              <div className="mt-3 space-y-3">
+                {faxinaManual.map((linha, index) => (
+                  <div key={linha.id} className="grid grid-cols-1 gap-2 rounded-xl border border-graphite-200/60 bg-white/60 p-3 dark:border-border-dark dark:bg-surface-hover/30 md:grid-cols-[1.2fr_1fr_1fr_auto]">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">Local</label>
+                      <select
+                        value={linha.local}
+                        onChange={e => atualizarLinhaFaxina(linha.id, { local: e.target.value })}
+                        className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                      >
+                        <option value="">Selecionar local</option>
+                        {LOCAIS_FAXINA.map(local => (
+                          <option key={`${linha.id}-${local}`} value={local}>{local}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">Pessoa 1</label>
+                      <select
+                        value={linha.pessoa1Id}
+                        onChange={e => atualizarLinhaFaxina(linha.id, { pessoa1Id: e.target.value })}
+                        className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                      >
+                        <option value="">Selecionar</option>
+                        {efetivoMensal.map(entry => (
+                          <option key={`faxina-${linha.id}-p1-${entry.bombeiro.id}`} value={entry.bombeiro.id}>
+                            {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">Pessoa 2</label>
+                      <select
+                        value={linha.pessoa2Id}
+                        onChange={e => atualizarLinhaFaxina(linha.id, { pessoa2Id: e.target.value })}
+                        className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                      >
+                        <option value="">Sem segunda pessoa</option>
+                        {efetivoMensal.map(entry => (
+                          <option key={`faxina-${linha.id}-p2-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={entry.bombeiro.id === linha.pessoa1Id}>
+                            {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end gap-1">
+                      <button
+                        type="button"
+                        title="Adicionar linha de faxina"
+                        onClick={adicionarLinhaFaxina}
+                        className="rounded-xl border border-emerald-300 bg-emerald-50 p-2 text-emerald-700 transition-all hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Remover linha de faxina"
+                        onClick={() => removerLinhaFaxina(linha.id)}
+                        disabled={faxinaManual.length === 1 && index === 0 && !linha.local && !linha.pessoa1Id && !linha.pessoa2Id}
+                        className="rounded-xl border border-red-200 bg-red-50 p-2 text-red-700 transition-all hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1552,19 +1785,131 @@ export function EscalaMensal() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-graphite-200/60 bg-white/70 p-4 dark:border-border-dark dark:bg-surface-card/70">
-            <button
-              type="button"
-              onClick={() => setRadioExpanded(prev => !prev)}
-              className="flex w-full items-center justify-between text-left"
-            >
-              <span className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-graphite-700 dark:text-graphite-300">
+          <div className="rounded-2xl border border-graphite-200/60 bg-white/70 p-4 dark:border-border-dark dark:bg-surface-card/70" data-escala-mensal-tour="mensal-radio">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setRadioExpanded(prev => !prev)}
+                className="flex items-center gap-2 text-left text-sm font-bold uppercase tracking-wider text-graphite-700 dark:text-graphite-300"
+              >
                 <Radio className="h-4 w-4 text-aviation-600" />
                 Radio
-              </span>
-              {radioExpanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
-            </button>
-            {radioExpanded && (
+                {radioExpanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
+              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={radioManual.preenchimento}
+                  onChange={e => {
+                    const preenchimento = e.target.value as ModoPreenchimentoManual;
+                    setRadioManual(prev => preenchimento === 'padrao'
+                      ? { ...prev, preenchimento, modo: 'inversa', duracaoComunicanteInicial: 1 }
+                      : { ...prev, preenchimento });
+                  }}
+                  className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm font-medium dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                >
+                  <option value="padrao">Padrão</option>
+                  <option value="manual">Modo manual</option>
+                </select>
+                {radioManual.preenchimento === 'manual' && (
+                  <>
+                    <select
+                      value={radioManual.modo}
+                      onChange={e => setRadioManual(prev => ({ ...prev, modo: e.target.value as RadioManualModo }))}
+                      className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm font-medium dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                    >
+                      <option value="inversa">Inversa</option>
+                      <option value="corrida">Corrida</option>
+                    </select>
+                    <select
+                      value={radioManual.duracaoComunicanteInicial}
+                      onChange={e => setRadioManual(prev => ({ ...prev, duracaoComunicanteInicial: Number(e.target.value) as RadioComunicanteDuracao }))}
+                      className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm font-medium dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                    >
+                      <option value={1}>Comunicante 1h</option>
+                      <option value={2}>Comunicante 2h</option>
+                    </select>
+                  </>
+                )}
+              </div>
+            </div>
+            {radioExpanded && radioManual.preenchimento === 'padrao' && (
+              <div className="mt-3 space-y-4">
+                <div className="max-w-md">
+                  <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">Comunicante</label>
+                  <select
+                    value={radioManual.comunicanteId}
+                    onChange={e => setRadioManual(prev => ({ ...prev, comunicanteId: e.target.value }))}
+                    className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                  >
+                    <option value="">Automático</option>
+                    {radioEfetivo.map(entry => (
+                      <option key={`radio-padrao-comunicante-${entry.bombeiro.id}`} value={entry.bombeiro.id}>
+                        {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-graphite-600 dark:text-graphite-400">{radioAntesLabel}</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {radioManual.antesMeiaNoiteIds.map((selectedId, pos) => {
+                        const usados = new Set([...radioManual.antesMeiaNoiteIds, ...radioManual.depoisMeiaNoiteIds].filter(id => id && id !== selectedId));
+                        return (
+                          <select
+                            key={`radio-padrao-antes-${pos}`}
+                            value={selectedId}
+                            onChange={e => setRadioManual(prev => {
+                              const antesMeiaNoiteIds = [...prev.antesMeiaNoiteIds];
+                              antesMeiaNoiteIds[pos] = e.target.value;
+                              return { ...prev, antesMeiaNoiteIds };
+                            })}
+                            className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                          >
+                            <option value="">Automático</option>
+                            {radioEfetivo.map(entry => (
+                              <option key={`padrao-antes-${pos}-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={usados.has(entry.bombeiro.id)}>
+                                {pos + 1}. {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-graphite-600 dark:text-graphite-400">{radioDepoisLabel}</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {radioManual.depoisMeiaNoiteIds.map((selectedId, pos) => {
+                        const usados = new Set([...radioManual.antesMeiaNoiteIds, ...radioManual.depoisMeiaNoiteIds].filter(id => id && id !== selectedId));
+                        return (
+                          <select
+                            key={`radio-padrao-depois-${pos}`}
+                            value={selectedId}
+                            onChange={e => setRadioManual(prev => {
+                              const depoisMeiaNoiteIds = [...prev.depoisMeiaNoiteIds];
+                              depoisMeiaNoiteIds[pos] = e.target.value;
+                              return { ...prev, depoisMeiaNoiteIds };
+                            })}
+                            className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                          >
+                            <option value="">Automático</option>
+                            {radioEfetivo.map(entry => (
+                              <option key={`padrao-depois-${pos}-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={usados.has(entry.bombeiro.id)}>
+                                {pos + 1}. {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {radioExpanded && radioManual.preenchimento === 'manual' && (
               <div className="mt-3 space-y-4">
                 <div className="max-w-md">
                   <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">Comunicante</label>
@@ -1582,63 +1927,105 @@ export function EscalaMensal() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {radioManual.modo === 'corrida' ? (
                   <div>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-graphite-600 dark:text-graphite-400">{radioAntesLabel}</p>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {radioManual.antesMeiaNoiteIds.map((selectedId, pos) => {
-                        const usados = new Set([...radioManual.antesMeiaNoiteIds, ...radioManual.depoisMeiaNoiteIds].filter(id => id && id !== selectedId));
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-graphite-600 dark:text-graphite-400">Escala corrida</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      {radioDinamicosFormulario.map((slot, pos) => {
+                        const selectedId = radioManual.corridaIds[pos] || '';
+                        const usados = new Set(radioManual.corridaIds.filter(id => id && id !== selectedId));
+                        if (radioManual.comunicanteId && radioManual.comunicanteId !== selectedId) usados.add(radioManual.comunicanteId);
                         return (
-                          <select
-                            key={`radio-antes-${pos}`}
-                            value={selectedId}
-                            onChange={e => setRadioManual(prev => {
-                              const antesMeiaNoiteIds = [...prev.antesMeiaNoiteIds];
-                              antesMeiaNoiteIds[pos] = e.target.value;
-                              return { ...prev, antesMeiaNoiteIds };
-                            })}
-                            className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
-                          >
-                            <option value="">Automático</option>
-                            {radioEfetivo.map(entry => (
-                              <option key={`antes-${pos}-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={usados.has(entry.bombeiro.id)}>
-                                {pos + 1}. {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
-                              </option>
-                            ))}
-                          </select>
+                          <div key={`radio-corrida-${slot.horario}-${pos}`}>
+                            <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">{slot.horario}-{slot.horarioFim}</label>
+                            <select
+                              value={selectedId}
+                              onChange={e => setRadioManual(prev => {
+                                const corridaIds = [...prev.corridaIds];
+                                corridaIds[pos] = e.target.value;
+                                return { ...prev, corridaIds };
+                              })}
+                              className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                            >
+                              <option value="">Automático</option>
+                              {radioEfetivo.map(entry => (
+                                <option key={`corrida-${pos}-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={usados.has(entry.bombeiro.id)}>
+                                  {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         );
                       })}
                     </div>
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wider text-graphite-600 dark:text-graphite-400">{radioAntesLabel}</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {radioAntesSlots.map((slot, pos) => {
+                          const selectedId = radioManual.antesMeiaNoiteIds[pos] || '';
+                          const usados = new Set([...radioManual.antesMeiaNoiteIds, ...radioManual.depoisMeiaNoiteIds].filter(id => id && id !== selectedId));
+                          if (radioManual.comunicanteId && radioManual.comunicanteId !== selectedId) usados.add(radioManual.comunicanteId);
+                          return (
+                            <div key={`radio-antes-${slot.horario}-${pos}`}>
+                              <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">{slot.horario}-{slot.horarioFim}</label>
+                              <select
+                                value={selectedId}
+                                onChange={e => setRadioManual(prev => {
+                                  const antesMeiaNoiteIds = [...prev.antesMeiaNoiteIds];
+                                  antesMeiaNoiteIds[pos] = e.target.value;
+                                  return { ...prev, antesMeiaNoiteIds };
+                                })}
+                                className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                              >
+                                <option value="">Automático</option>
+                                {radioEfetivo.map(entry => (
+                                  <option key={`antes-${pos}-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={usados.has(entry.bombeiro.id)}>
+                                    {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                  <div>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-graphite-600 dark:text-graphite-400">{radioDepoisLabel}</p>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {radioManual.depoisMeiaNoiteIds.map((selectedId, pos) => {
-                        const usados = new Set([...radioManual.antesMeiaNoiteIds, ...radioManual.depoisMeiaNoiteIds].filter(id => id && id !== selectedId));
-                        return (
-                          <select
-                            key={`radio-depois-${pos}`}
-                            value={selectedId}
-                            onChange={e => setRadioManual(prev => {
-                              const depoisMeiaNoiteIds = [...prev.depoisMeiaNoiteIds];
-                              depoisMeiaNoiteIds[pos] = e.target.value;
-                              return { ...prev, depoisMeiaNoiteIds };
-                            })}
-                            className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
-                          >
-                            <option value="">Automático</option>
-                            {radioEfetivo.map(entry => (
-                              <option key={`depois-${pos}-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={usados.has(entry.bombeiro.id)}>
-                                {pos + 1}. {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        );
-                      })}
+                    <div>
+                      <p className="mb-2 text-xs font-bold uppercase tracking-wider text-graphite-600 dark:text-graphite-400">{radioDepoisLabel}</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {radioDepoisSlots.map((slot, pos) => {
+                          const selectedId = radioManual.depoisMeiaNoiteIds[pos] || '';
+                          const usados = new Set([...radioManual.antesMeiaNoiteIds, ...radioManual.depoisMeiaNoiteIds].filter(id => id && id !== selectedId));
+                          if (radioManual.comunicanteId && radioManual.comunicanteId !== selectedId) usados.add(radioManual.comunicanteId);
+                          return (
+                            <div key={`radio-depois-${slot.horario}-${pos}`}>
+                              <label className="mb-1 block text-xs font-medium text-graphite-500 dark:text-graphite-400">{slot.horario}-{slot.horarioFim}</label>
+                              <select
+                                value={selectedId}
+                                onChange={e => setRadioManual(prev => {
+                                  const depoisMeiaNoiteIds = [...prev.depoisMeiaNoiteIds];
+                                  depoisMeiaNoiteIds[pos] = e.target.value;
+                                  return { ...prev, depoisMeiaNoiteIds };
+                                })}
+                                className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100"
+                              >
+                                <option value="">Automático</option>
+                                {radioEfetivo.map(entry => (
+                                  <option key={`depois-${pos}-${entry.bombeiro.id}`} value={entry.bombeiro.id} disabled={usados.has(entry.bombeiro.id)}>
+                                    {entry.cargoExercido} {entry.bombeiro.nomeGuerra}{entry.bombeiro.equipe !== equipe ? ` (${entry.bombeiro.equipe})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -1857,7 +2244,7 @@ export function EscalaMensal() {
                     const linhaAlternada = slotIndex % 2 === 0 ? 'linha-radio-clara' : 'linha-radio-escura';
                     return (
                     <tr key={`${slot.horario}-${slotIndex}`} className={`border-b border-graphite-300 print:border-graphite-400 ${linhaAlternada}`}>
-                      <td className="px-0.5 py-0.5 font-bold text-graphite-600 dark:text-graphite-300 print:text-graphite-800 whitespace-nowrap">{slot.horario}</td>
+                      <td className="px-0.5 py-0.5 font-bold text-graphite-600 dark:text-graphite-300 print:text-graphite-800 whitespace-nowrap">{slot.horario}-{slot.horarioFim}</td>
                       {completaAtual.paradas.map(plantao => (
                         <td key={`${slot.horario}-${plantao.data}`} className="px-0.5 py-0.5 text-left font-bold text-graphite-900 dark:text-graphite-100 print:text-graphite-900 whitespace-nowrap">
                           {plantao.radio[slotIndex]?.pessoaNomeGuerra || '-'}
@@ -1885,7 +2272,9 @@ export function EscalaMensal() {
                   'monthly-screen-muted-cell border-graphite-400 bg-graphite-100 dark:border-graphite-600 dark:bg-surface-hover/60 print:border-graphite-400 print:bg-graphite-100'
                 }`}>
                   <p className="text-graphite-700 font-semibold dark:text-graphite-300 print:text-graphite-700">{f.local}</p>
-                  <p className="font-bold text-graphite-900 dark:text-graphite-100 print:text-graphite-900">{f.pessoaNomeGuerra}</p>
+                  <p className="font-bold text-graphite-900 dark:text-graphite-100 print:text-graphite-900">
+                    {[f.pessoaNomeGuerra, f.pessoa2NomeGuerra].filter(Boolean).join(' / ')}
+                  </p>
                 </div>
               ))}
             </div>

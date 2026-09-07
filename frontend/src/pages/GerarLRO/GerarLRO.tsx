@@ -10,6 +10,7 @@ import { listarFeriasGozo } from '../../services/feriasService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias, type MotivoVigenciaSubstituicao, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import { listarDocumentos, listarPreenchimentos, criarPreenchimento, criarDocumento } from '../../services/documentoService';
+import { documentoEhTrocaServico } from '../../services/efetivoOperacionalService';
 import { listarViaturas } from '../../services/viaturaService';
 import { listarPTRBs } from '../../services/ptrbService';
 import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
@@ -39,7 +40,13 @@ import {
   canExcluirRegistroDiario,
   equipePadraoRegistrosDiarios,
 } from '../../utils/permissoes';
-import { montarMembrosEscalaMensalPlantao, resolverPessoaNoPlantaoOperacional } from '../../utils/efetivoOperacional';
+import {
+  campoTrocaServico,
+  montarMembrosEscalaMensalPlantao,
+  resolverPessoaNoPlantaoOperacional,
+  trocaServicoAprovada,
+  trocaServicoTemCamposBasicos,
+} from '../../utils/efetivoOperacional';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
 import { formatarUsuarioAuditoria, montarPessoasAuditoria } from '../../utils/auditoria';
 import type { PessoaAuditoria } from '../../utils/auditoria';
@@ -557,8 +564,7 @@ const STATUS_LRO_EDITAVEIS_POR_ADMIN = new Set<LRODraftStatus>(['aguardando', 'a
 const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);
 
 function documentoEhTroca(doc: any): boolean {
-  return doc?.source_module === 'trocas' ||
-    String(doc?.name || '').toLocaleUpperCase('pt-BR').includes('TROCA');
+  return documentoEhTrocaServico(doc);
 }
 
 export function GerarLRO() {
@@ -907,10 +913,7 @@ export function GerarLRO() {
           setTrocaFills(fillsPorDocumento.flat().filter(trocaFillVisivelNoLRO));
         } else {
           const todosFills = await Promise.all(docs.map((d: any) => listarPreenchimentos({ documentId: d.id }).catch(() => [])));
-          const comNome = todosFills.flat().filter((fl: any) => {
-            const fd = fl.filled_data || {};
-            return trocaFillVisivelNoLRO(fl) && (fd.nome_solicitante || fd.nome_solicitado);
-          });
+          const comNome = todosFills.flat().filter((fl: any) => trocaFillVisivelNoLRO(fl));
           setTrocaFills(comNome);
         }
         const d = await listarDrafts('').catch(() => []);
@@ -985,11 +988,13 @@ export function GerarLRO() {
     // De trocaFills (documento Troca de Serviço) — filtra pela data solicitada / folga do solicitado
     trocaFills.forEach((fl: any) => {
       const fd = fl.filled_data || {};
-      const nomeSol = fd.nome_solicitante || '';
-      const nomeSolic = fd.nome_solicitado || '';
+      const nomeSol = String(campoTrocaServico(fd, 'nome_solicitante', 'nomeSolicitante', 'solicitante_nome', 'solicitanteNome') || '');
+      const nomeSolic = String(campoTrocaServico(fd, 'nome_solicitado', 'nomeSolicitado', 'solicitado_nome', 'solicitadoNome') || '');
       if (!nomeSol && !nomeSolic) return;
-      const naDataSolicitada = mesmoDiaISO(fd.data_solicitada, dataInicio);
-      const naDataFolga = mesmoDiaISO(fd.data_folga_solicitado, dataInicio);
+      const dataSolicitada = campoTrocaServico(fd, 'data_solicitada', 'dataSolicitada', 'data_plantao_solicitante', 'dataPlantaoSolicitante');
+      const dataFolgaSolicitado = campoTrocaServico(fd, 'data_folga_solicitado', 'dataFolgaSolicitado', 'data_folga_solicitado_iso', 'dataFolgaSolicitadoIso');
+      const naDataSolicitada = mesmoDiaISO(dataSolicitada, dataInicio);
+      const naDataFolga = mesmoDiaISO(dataFolgaSolicitado, dataInicio);
       if (!naDataSolicitada && !naDataFolga) return;
       const substituido = naDataSolicitada ? nomeSol : nomeSolic;
       const substituto = naDataSolicitada ? nomeSolic : nomeSol;
@@ -1002,8 +1007,8 @@ export function GerarLRO() {
           tipo: 'troca' as const,
           substituido,
           substituto,
-          dataSolicitada: fd.data_solicitada || '',
-          dataFolga: fd.data_folga_solicitado || '',
+          dataSolicitada: String(dataSolicitada || ''),
+          dataFolga: String(dataFolgaSolicitado || ''),
           confirmada: null,
         });
       }
@@ -1369,10 +1374,9 @@ export function GerarLRO() {
   }
 
   function trocaFillVisivelNoLRO(fill: any): boolean {
-    const status = String(fill?.status || '');
-    if (!STATUS_TROCA_ENTRA_LRO.has(status)) return false;
-    const fd = fill?.filled_data || {};
-    return !!(fd.nome_solicitante || fd.nome_solicitado);
+    const status = String(fill?.status || '').toLocaleLowerCase('pt-BR');
+    if (!STATUS_TROCA_ENTRA_LRO.has(status) && !trocaServicoAprovada(fill)) return false;
+    return trocaServicoTemCamposBasicos(fill);
   }
 
   const substituicoesMap = useMemo(() => {

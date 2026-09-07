@@ -4,23 +4,38 @@ import { listarFeriasGozo } from './feriasService';
 import { listarCompletas } from './escalaMensalService';
 import { listarSubstituicoesTemporarias } from './substituicaoTemporariaService';
 import { listarVigencias } from './vigenciaSubstituicaoService';
-import type { DocumentFill } from '../types/document';
-import { montarEfetivoOperacional } from '../utils/efetivoOperacional';
+import type { Document, DocumentFill } from '../types/document';
+import { montarEfetivoOperacional, trocaServicoAprovada, trocaServicoTemCamposBasicos } from '../utils/efetivoOperacional';
 import type { EfetivoOperacionalEntry } from '../utils/efetivoOperacional';
+
+function normalizarTexto(value: unknown): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export function documentoEhTrocaServico(doc: Pick<Document, 'name' | 'source_module'> | undefined | null): boolean {
+  const sourceModule = normalizarTexto(doc?.source_module);
+  const nome = normalizarTexto(doc?.name);
+  return sourceModule === 'trocas' || nome.includes('troca') || nome.includes('permuta');
+}
 
 export async function listarTrocasServicoAssinadas(): Promise<DocumentFill[]> {
   const docs = await listarDocumentos();
-  const trocaDocs = docs.filter(doc =>
-    doc.source_module === 'trocas' ||
-    doc.name.toLocaleUpperCase('pt-BR').includes('TROCA')
-  );
+  const trocaDocs = docs.filter(documentoEhTrocaServico);
 
   if (trocaDocs.length === 0) return [];
 
   const fills = await Promise.all(
-    trocaDocs.map(doc => listarPreenchimentos({ documentId: doc.id, status: 'signed' })),
+    trocaDocs.map(doc => listarPreenchimentos({ documentId: doc.id }).catch(() => [])),
   );
-  return fills.flat();
+  return fills.flat().filter(fill =>
+    trocaServicoAprovada(fill) &&
+    trocaServicoTemCamposBasicos(fill)
+  );
 }
 
 export async function resolverEfetivoOperacional(

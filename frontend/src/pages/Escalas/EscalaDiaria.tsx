@@ -27,7 +27,7 @@ import type { Bombeiro, Cargo } from '../../types/bombeiro';
 import type { DocumentFill } from '../../types/document';
 import type { FeriasGozo } from '../../types/ferias';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
-import { montarEfetivoOperacional, montarOpcoesEfetivoOperacional, montarTrocasServicoDoDia } from '../../utils/efetivoOperacional';
+import { campoTrocaServico, montarEfetivoOperacional, montarOpcoesEfetivoOperacional, montarTrocasServicoDoDia } from '../../utils/efetivoOperacional';
 import { validarCursoParaFuncao } from '../../utils/validacaoCursos';
 import { RegraNegocioError } from '../../utils/regrasOperacionais';
 
@@ -1006,21 +1006,51 @@ function EscalaDiariaForm({
         }
         const pessoa = all.find((bb: any) => bb.id === bId);
         if (pessoa) {
-          const pNome = pessoa.nomeCompleto?.toLowerCase();
-          const pGuerra = pessoa.nomeGuerra?.toLowerCase();
+          const correspondeAoDocumento = (nome: unknown): boolean => {
+            const alvo = normalizarNomeComparacao(String(nome || ''));
+            if (!alvo) return false;
+            return [pessoa.nomeCompleto, pessoa.nomeGuerra, pessoa.nome]
+              .map(normalizarNomeComparacao)
+              .filter(Boolean)
+              .some(nomePessoa =>
+                nomePessoa === alvo ||
+                alvo.startsWith(`${nomePessoa} `) ||
+                alvo.endsWith(` ${nomePessoa}`) ||
+                (alvo.split(' ').length >= 2 && nomePessoa.includes(alvo))
+              );
+          };
+          const buscarPessoaTroca = (nome: unknown) => {
+            const alvo = normalizarNomeComparacao(String(nome || ''));
+            if (!alvo) return undefined;
+            return all.find((bb: any) =>
+              [bb.nomeCompleto, bb.nomeGuerra, bb.nome]
+                .map(normalizarNomeComparacao)
+                .filter(Boolean)
+                .some(nomePessoa =>
+                  nomePessoa === alvo ||
+                  alvo.startsWith(`${nomePessoa} `) ||
+                  alvo.endsWith(` ${nomePessoa}`) ||
+                  (alvo.split(' ').length >= 2 && nomePessoa.includes(alvo))
+                )
+            );
+          };
           const troca = trocasDocs.find((fl: any) => {
             const fd = fl?.filled_data || {};
-            const solNome = String(fd?.nome_solicitante || '').toLowerCase();
-            const solicNome = String(fd?.nome_solicitado || '').toLowerCase();
-            if (mesmoDiaISO(fd?.data_solicitada, form.dataPlantao) && (solNome === pNome || solNome === pGuerra)) return true;
-            if (mesmoDiaISO(fd?.data_folga_solicitado, form.dataPlantao) && (solicNome === pNome || solicNome === pGuerra)) return true;
+            const solNome = campoTrocaServico(fd, 'nome_solicitante', 'nomeSolicitante', 'solicitante_nome', 'solicitanteNome');
+            const solicNome = campoTrocaServico(fd, 'nome_solicitado', 'nomeSolicitado', 'solicitado_nome', 'solicitadoNome');
+            const dataSolicitada = campoTrocaServico(fd, 'data_solicitada', 'dataSolicitada', 'data_plantao_solicitante', 'dataPlantaoSolicitante');
+            const dataFolgaSolicitado = campoTrocaServico(fd, 'data_folga_solicitado', 'dataFolgaSolicitado', 'data_folga_solicitado_iso', 'dataFolgaSolicitadoIso');
+            if (mesmoDiaISO(dataSolicitada, form.dataPlantao) && correspondeAoDocumento(solNome)) return true;
+            if (mesmoDiaISO(dataFolgaSolicitado, form.dataPlantao) && correspondeAoDocumento(solicNome)) return true;
             return false;
           });
           if (troca) {
             const fd = troca.filled_data || {};
-            const isSol = String(fd?.nome_solicitante || '').toLowerCase() === pNome || String(fd?.nome_solicitante || '').toLowerCase() === pGuerra;
-            const quem = isSol ? fd?.nome_solicitado : fd?.nome_solicitante;
-            const sub = all.find((bb: any) => bb.nomeCompleto === quem || bb.nomeGuerra === quem);
+            const nomeSolicitante = campoTrocaServico(fd, 'nome_solicitante', 'nomeSolicitante', 'solicitante_nome', 'solicitanteNome');
+            const nomeSolicitado = campoTrocaServico(fd, 'nome_solicitado', 'nomeSolicitado', 'solicitado_nome', 'solicitadoNome');
+            const isSol = correspondeAoDocumento(nomeSolicitante);
+            const quem = isSol ? nomeSolicitado : nomeSolicitante;
+            const sub = buscarPessoaTroca(quem);
             if (sub) return resolverSubstitutoFinal({ id: sub.id, nome: sub.nomeCompleto });
           }
         }

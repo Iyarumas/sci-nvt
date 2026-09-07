@@ -28,12 +28,68 @@ function nomeKey(value: unknown): string {
     .trim();
 }
 
+function textoTrocaKey(value: unknown): string {
+  return nomeKey(value);
+}
+
+export function campoTrocaServico(data: Record<string, any> | undefined, ...keys: string[]): unknown {
+  if (!data) return '';
+  for (const key of keys) {
+    const value = data[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+  }
+  return '';
+}
+
+export function trocaServicoAprovada(fill: DocumentFill): boolean {
+  const status = String(fill?.status || '').toLocaleLowerCase('pt-BR');
+  if (status === 'signed') return true;
+  if (status === 'cancelled') return false;
+
+  const fd = fill?.filled_data || {};
+  const parecer = textoTrocaKey(campoTrocaServico(
+    fd,
+    'deferido_indeferido',
+    'parecer',
+    'status_aprovacao',
+    'statusAprovacao',
+    'status_troca',
+    'statusTroca',
+  ));
+  return parecer === 'deferido' || parecer === 'aprovada' || parecer === 'aprovado';
+}
+
+export function trocaServicoTemCamposBasicos(fill: DocumentFill): boolean {
+  const fd = fill?.filled_data || {};
+  const nomeSolicitante = campoTrocaServico(fd, 'nome_solicitante', 'nomeSolicitante', 'solicitante_nome', 'solicitanteNome');
+  const nomeSolicitado = campoTrocaServico(fd, 'nome_solicitado', 'nomeSolicitado', 'solicitado_nome', 'solicitadoNome');
+  const dataSolicitada = campoTrocaServico(fd, 'data_solicitada', 'dataSolicitada', 'data_plantao_solicitante', 'dataPlantaoSolicitante');
+  const dataFolgaSolicitado = campoTrocaServico(fd, 'data_folga_solicitado', 'dataFolgaSolicitado', 'data_folga_solicitado_iso', 'dataFolgaSolicitadoIso');
+  return !!(nomeSolicitante && nomeSolicitado && (dataSolicitada || dataFolgaSolicitado));
+}
+
 function cargoCampo(value: unknown): string {
   return String(value || '').split(' - ')[0].trim();
 }
 
-function pessoaPorNome(porNome: Map<string, Bombeiro>, nome: unknown): Bombeiro | undefined {
-  return porNome.get(nomeKey(nome));
+function pessoaPorNome(porNome: Map<string, Bombeiro>, nome: unknown, pessoas: Bombeiro[]): Bombeiro | undefined {
+  const alvo = nomeKey(nome);
+  if (!alvo) return undefined;
+
+  const exato = porNome.get(alvo);
+  if (exato) return exato;
+
+  const tokens = alvo.split(' ').filter(token => token.length > 1);
+  return [...pessoas]
+    .filter(pessoa => {
+      const completo = nomeKey(pessoa.nomeCompleto);
+      const guerra = nomeKey(pessoa.nomeGuerra);
+      if (completo && (alvo === completo || alvo.includes(completo))) return true;
+      if (completo && tokens.length >= 2 && (completo.includes(alvo) || tokens.every(token => completo.includes(token)))) return true;
+      if (guerra && (alvo === guerra || alvo.startsWith(`${guerra} `) || alvo.endsWith(` ${guerra}`))) return true;
+      return false;
+    })
+    .sort((a, b) => nomeKey(b.nomeCompleto).length - nomeKey(a.nomeCompleto).length)[0];
 }
 
 const CARGO_POR_FUNCAO_MENSAL: Record<string, string> = {
@@ -201,10 +257,16 @@ function montarTrocasServicoResolvidas(params: {
   const usados = new Set<string>();
 
   for (const fill of trocaFills || []) {
-    if (fill.status && fill.status !== 'signed') continue;
+    if (!trocaServicoAprovada(fill)) continue;
+    if (!trocaServicoTemCamposBasicos(fill)) continue;
+
     const fd = fill.filled_data || {};
-    const solicitante = pessoaPorNome(porNome, fd.nome_solicitante);
-    const solicitado = pessoaPorNome(porNome, fd.nome_solicitado);
+    const nomeSolicitante = campoTrocaServico(fd, 'nome_solicitante', 'nomeSolicitante', 'solicitante_nome', 'solicitanteNome');
+    const nomeSolicitado = campoTrocaServico(fd, 'nome_solicitado', 'nomeSolicitado', 'solicitado_nome', 'solicitadoNome');
+    const dataSolicitada = campoTrocaServico(fd, 'data_solicitada', 'dataSolicitada', 'data_plantao_solicitante', 'dataPlantaoSolicitante');
+    const dataFolgaSolicitado = campoTrocaServico(fd, 'data_folga_solicitado', 'dataFolgaSolicitado', 'data_folga_solicitado_iso', 'dataFolgaSolicitadoIso');
+    const solicitante = pessoaPorNome(porNome, nomeSolicitante, ativos);
+    const solicitado = pessoaPorNome(porNome, nomeSolicitado, ativos);
     if (!solicitante || !solicitado) continue;
 
     const add = (saindo: Bombeiro, entrando: Bombeiro, funcaoSaindo: unknown, funcaoEntrando: unknown) => {
@@ -228,11 +290,21 @@ function montarTrocasServicoResolvidas(params: {
       });
     };
 
-    if (mesmoDiaISO(fd.data_solicitada, dataPlantao)) {
-      add(solicitante, solicitado, fd.funcao_solicitante, fd.funcao_solicitado);
+    if (mesmoDiaISO(dataSolicitada, dataPlantao)) {
+      add(
+        solicitante,
+        solicitado,
+        campoTrocaServico(fd, 'funcao_solicitante', 'funcaoSolicitante', 'cargo_solicitante', 'cargoSolicitante'),
+        campoTrocaServico(fd, 'funcao_solicitado', 'funcaoSolicitado', 'cargo_solicitado', 'cargoSolicitado'),
+      );
     }
-    if (mesmoDiaISO(fd.data_folga_solicitado, dataPlantao)) {
-      add(solicitado, solicitante, fd.funcao_solicitado, fd.funcao_solicitante);
+    if (mesmoDiaISO(dataFolgaSolicitado, dataPlantao)) {
+      add(
+        solicitado,
+        solicitante,
+        campoTrocaServico(fd, 'funcao_solicitado', 'funcaoSolicitado', 'cargo_solicitado', 'cargoSolicitado'),
+        campoTrocaServico(fd, 'funcao_solicitante', 'funcaoSolicitante', 'cargo_solicitante', 'cargoSolicitante'),
+      );
     }
   }
 

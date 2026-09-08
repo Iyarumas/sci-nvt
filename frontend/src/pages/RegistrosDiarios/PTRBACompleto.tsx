@@ -290,8 +290,12 @@ function PTRBACompletoForm({
   const [form, setForm] = useState(() => montarInicial(canEscolherEquipe ? null : equipeEfetiva));
   const ultimaAutoFill = useRef('');
   const ultimaEscalaPTRFill = useRef('');
+  const participantesEditadosRef = useRef(false);
 
   useEffect(() => {
+    participantesEditadosRef.current = false;
+    ultimaAutoFill.current = '';
+    ultimaEscalaPTRFill.current = '';
     if (registro) {
       setForm({
         data: registro.data,
@@ -329,10 +333,19 @@ function PTRBACompletoForm({
     return [...bombeirosList, ...apocsList];
   }, [bombeiros, apocs, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias, form.equipe, form.data]);
 
+  const assinaturaEfetivoOperacional = useMemo(() => (
+    opcoesParticipantes
+      .filter(p => p.equipe === form.equipe && p.cargo !== 'APOC')
+      .map(p => `${p.id}:${p.cargo}:${p.nomeCompleto}`)
+      .join('|')
+  ), [opcoesParticipantes, form.equipe]);
+
   useEffect(() => {
     if (registro) return;
     if (!form.equipe) return;
-    const chave = `${form.equipe}-${form.data}`;
+    if (!assinaturaEfetivoOperacional) return;
+    if (participantesEditadosRef.current) return;
+    const chave = `${form.equipe}-${form.data}-${assinaturaEfetivoOperacional}`;
     if (ultimaAutoFill.current === chave) return;
     ultimaAutoFill.current = chave;
     const usados = new Set<string>();
@@ -348,7 +361,7 @@ function PTRBACompletoForm({
     });
     const chefeEquipe = preenchidos.find(p => p.funcao === 'BA-CE')?.nomeCompleto || '';
     setForm(f => ({ ...f, participantes: preenchidos, chefeEquipe }));
-  }, [registro, form.equipe, form.data, opcoesParticipantes]);
+  }, [registro, form.equipe, form.data, opcoesParticipantes, assinaturaEfetivoOperacional]);
 
   useEffect(() => {
     if (registro) return;
@@ -427,9 +440,10 @@ function PTRBACompletoForm({
 
   function updateEquipe(equipe: string) {
     if (!canEscolherEquipe) return;
+    participantesEditadosRef.current = false;
+    ultimaAutoFill.current = '';
+    ultimaEscalaPTRFill.current = '';
     if (!equipe) {
-      ultimaAutoFill.current = '';
-      ultimaEscalaPTRFill.current = '';
       setForm(f => ({
         ...f,
         equipe: '',
@@ -441,7 +455,15 @@ function PTRBACompletoForm({
     setForm(f => ({ ...f, equipe }));
   }
 
+  function updateData(data: string) {
+    participantesEditadosRef.current = false;
+    ultimaAutoFill.current = '';
+    ultimaEscalaPTRFill.current = '';
+    setForm(f => ({ ...f, data }));
+  }
+
   function updateParticipante(index: number, field: keyof PTRBACompletoParticipante, value: string) {
+    participantesEditadosRef.current = true;
     setForm(f => {
       const participantes = [...f.participantes];
       participantes[index] = { ...participantes[index], [field]: value };
@@ -535,7 +557,7 @@ function PTRBACompletoForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className={label}>Data</label>
-            <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className={input} />
+            <input type="date" value={form.data} onChange={e => updateData(e.target.value)} className={input} />
           </div>
           <div>
             <label className={label}>Equipe</label>
@@ -914,6 +936,7 @@ export function PTRBACompletoPage() {
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [abrindoNovo, setAbrindoNovo] = useState(false);
   const [mode, setMode] = useState<'list' | 'form'>('list');
   const [editando, setEditando] = useState<PTRBACompleto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -949,34 +972,65 @@ export function PTRBACompletoPage() {
     setRegistros(lista);
   }
 
+  async function buscarDadosApoio() {
+    const [
+      bombeirosLista,
+      apocsLista,
+      gozos,
+      completas,
+      substituicoes,
+      vigenciasAtivas,
+      escalas,
+      usuariosCadastrados,
+      trocas,
+    ] = await Promise.all([
+      listarBombeiros(),
+      listarAPOCs(),
+      listarFeriasGozo(),
+      listarCompletas(),
+      listarSubstituicoesTemporarias(),
+      listarVigencias({ ativa: true }),
+      listarEscalas(),
+      listarUsuarios().catch(() => []),
+      listarTrocasServicoAssinadas().catch(() => []),
+    ]);
+    return {
+      bombeirosLista,
+      apocsLista,
+      gozos,
+      completas,
+      substituicoes,
+      vigenciasAtivas,
+      escalas,
+      usuariosCadastrados,
+      trocas,
+    };
+  }
+
+  function aplicarDadosApoio(dados: Awaited<ReturnType<typeof buscarDadosApoio>>) {
+    setBombeiros(dados.bombeirosLista);
+    setUsuarios(dados.usuariosCadastrados);
+    setApocs(dados.apocsLista);
+    setFeriasGozo(dados.gozos);
+    setEscalasCompletas(dados.completas);
+    setSubstituicoesTemporarias(dados.substituicoes);
+    setVigencias(dados.vigenciasAtivas);
+    setEscalasDiarias(dados.escalas);
+    setTrocaFills(dados.trocas);
+  }
+
   useEffect(() => {
     let cancelado = false;
     async function init() {
       try {
         setLoading(true);
-        const [lista, b, a, gozos, completas, substituicoes, v, escalas, usuariosCadastrados, trocas] = await Promise.all([
+        const [lista, apoio] = await Promise.all([
           listarPTRBACompletos(),
-          listarBombeiros(),
-          listarAPOCs(),
-          listarFeriasGozo(),
-          listarCompletas(),
-          listarSubstituicoesTemporarias(),
-          listarVigencias({ ativa: true }),
-          listarEscalas(),
-          listarUsuarios().catch(() => []),
-          listarTrocasServicoAssinadas().catch(() => []),
+          buscarDadosApoio(),
         ]);
         if (cancelado) return;
         setRegistros(lista);
-        setBombeiros(b);
-        setUsuarios(usuariosCadastrados);
-        setApocs(a);
-        setFeriasGozo(gozos);
-        setEscalasCompletas(completas);
-        setSubstituicoesTemporarias(substituicoes);
-        setVigencias(v);
-        setEscalasDiarias(escalas);
-        setTrocaFills(trocas);
+        aplicarDadosApoio(apoio);
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Erro ao carregar PTR-BA.');
       } finally {
@@ -986,6 +1040,20 @@ export function PTRBACompletoPage() {
     init();
     return () => { cancelado = true; };
   }, []);
+
+  async function abrirNovoPTRBA() {
+    try {
+      setAbrindoNovo(true);
+      const apoio = await buscarDadosApoio();
+      aplicarDadosApoio(apoio);
+      setEditando(null);
+      setMode('form');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao atualizar dados do PTR-BA.');
+    } finally {
+      setAbrindoNovo(false);
+    }
+  }
 
   async function handleSave(input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) {
     try {
@@ -1113,8 +1181,12 @@ export function PTRBACompletoPage() {
           <p className="text-sm text-graphite-500 dark:text-graphite-400">{registrosFiltrados.length} registro(s)</p>
         </div>
         {canCreate && (
-          <button onClick={() => { setEditando(null); setMode('form'); }} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
-            <Plus className="h-4 w-4" /> Novo PTR-BA
+          <button
+            onClick={abrirNovoPTRBA}
+            disabled={abrindoNovo}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" /> {abrindoNovo ? 'Atualizando...' : 'Novo PTR-BA'}
           </button>
         )}
       </div>

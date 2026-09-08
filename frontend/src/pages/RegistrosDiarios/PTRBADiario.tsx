@@ -174,8 +174,12 @@ function PTRBAForm({
   equipeEfetiva: string | null;
 }) {
   const [form, setForm] = useState(() => montarPTRBInicial(canEscolherEquipe ? null : equipeEfetiva));
+  const ultimaAutoFill = useRef('');
+  const participantesEditadosRef = useRef(false);
 
   useEffect(() => {
+    participantesEditadosRef.current = false;
+    ultimaAutoFill.current = '';
     if (ptrb) {
       setForm({
         data: ptrb.data,
@@ -200,6 +204,8 @@ function PTRBAForm({
 
   function updateEquipe(equipe: string) {
     if (!canEscolherEquipe) return;
+    participantesEditadosRef.current = false;
+    ultimaAutoFill.current = '';
     if (!equipe) {
       setForm(f => ({
         ...f,
@@ -227,6 +233,12 @@ function PTRBAForm({
     }));
   }
 
+  function updateData(data: string) {
+    participantesEditadosRef.current = false;
+    ultimaAutoFill.current = '';
+    setForm(f => ({ ...f, data }));
+  }
+
   function updateHoraInicio(val: string) {
     setForm(f => {
       const duracao = calcDuracao(val, f.horaTermino);
@@ -242,6 +254,7 @@ function PTRBAForm({
   }
 
   function updateParticipante(idx: number, field: keyof PTRBParticipante, value: string) {
+    participantesEditadosRef.current = true;
     setForm(f => {
       const next = [...f.participantes];
       next[idx] = { ...next[idx], [field]: value };
@@ -254,6 +267,7 @@ function PTRBAForm({
   }
 
   function addParticipante() {
+    participantesEditadosRef.current = true;
     setForm(f => ({
       ...f,
       participantes: [...f.participantes, { funcao: '', nomeCompleto: '', situacao: 'P' }],
@@ -261,6 +275,7 @@ function PTRBAForm({
   }
 
   function removeParticipante(idx: number) {
+    participantesEditadosRef.current = true;
     setForm(f => {
       const next = f.participantes.filter((_, i) => i !== idx);
       const instrutorIdx = next.findIndex(p => p.situacao === 'INSTR');
@@ -315,11 +330,18 @@ function PTRBAForm({
     return [...bombeirosList, ...apocsList];
   }, [efetivoOperacional, form.equipe, apocs]);
 
-  const ultimaAutoFill = useRef('');
+  const assinaturaEfetivoOperacional = useMemo(() => (
+    efetivoOperacional
+      .map(entry => `${entry.bombeiro.id}:${entry.cargoExercido}:${entry.bombeiro.nomeCompleto}`)
+      .join('|')
+  ), [efetivoOperacional]);
 
   useEffect(() => {
     if (ptrb) return;
-    const chave = `${form.equipe}-${form.data}`;
+    if (!form.equipe) return;
+    if (!assinaturaEfetivoOperacional) return;
+    if (participantesEditadosRef.current) return;
+    const chave = `${form.equipe}-${form.data}-${assinaturaEfetivoOperacional}`;
     if (ultimaAutoFill.current === chave) return;
     if (efetivoOperacional.length === 0) return;
     ultimaAutoFill.current = chave;
@@ -339,7 +361,7 @@ function PTRBAForm({
     });
 
     setForm(f => ({ ...f, participantes: novos }));
-  }, [form.equipe, form.data, efetivoOperacional, ptrb]);
+  }, [form.equipe, form.data, efetivoOperacional, assinaturaEfetivoOperacional, ptrb]);
 
   const input = 'w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
   const inputDisabled = 'w-full rounded-xl border border-graphite-200/60 bg-graphite-100/50 px-3 py-2.5 text-sm text-graphite-400 dark:border-border-dark dark:bg-surface-card/50 dark:text-graphite-500';
@@ -355,7 +377,7 @@ function PTRBAForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <div>
             <label className={label}>Data</label>
-            <input type="date" value={form.data} onChange={e => setForm(f => ({ ...f, data: e.target.value }))} className={input} />
+            <input type="date" value={form.data} onChange={e => updateData(e.target.value)} className={input} />
           </div>
           <div>
             <label className={label}>Hora Início</label>
@@ -759,6 +781,7 @@ export function PTRBADiario() {
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
   const [loading, setLoading] = useState(true);
+  const [abrindoNovo, setAbrindoNovo] = useState(false);
   const [mode, setMode] = useState<'list' | 'form' | 'view'>('list');
   const [editando, setEditando] = useState<PTRB | null>(null);
   const [visualizando, setVisualizando] = useState<PTRB | null>(null);
@@ -797,7 +820,7 @@ export function PTRBADiario() {
     }
   }
 
-  async function carregarApoio() {
+  async function carregarApoio(): Promise<boolean> {
     try {
       const [b, f, completas, subs, trocas, a, vigs, usuariosCadastrados] = await Promise.all([
         listarBombeiros(),
@@ -817,8 +840,10 @@ export function PTRBADiario() {
       setApocs(a);
       setVigencias(vigs);
       setTrocaFills(trocas);
+      return true;
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao carregar dados de apoio');
+      return false;
     }
   }
 
@@ -833,6 +858,18 @@ export function PTRBADiario() {
     init();
     return () => { cancelled = true; };
   }, [username]);
+
+  async function abrirNovoPTRBAInstrucao() {
+    try {
+      setAbrindoNovo(true);
+      const atualizado = await carregarApoio();
+      if (!atualizado) return;
+      setEditando(null);
+      setMode('form');
+    } finally {
+      setAbrindoNovo(false);
+    }
+  }
 
   async function handleSave(data: Omit<PTRB, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) {
     try {
@@ -984,9 +1021,12 @@ export function PTRBADiario() {
           </p>
         </div>
         {canCreate && (
-          <button onClick={() => { setEditando(null); setMode('form'); }}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all duration-200 hover:shadow-xl hover:shadow-aviation-500/30 hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
-            <Plus className="h-4 w-4" /> Novo PTR-BA por Instrução
+          <button
+            onClick={abrirNovoPTRBAInstrucao}
+            disabled={abrindoNovo}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all duration-200 hover:shadow-xl hover:shadow-aviation-500/30 hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" /> {abrindoNovo ? 'Atualizando...' : 'Novo PTR-BA por Instrução'}
           </button>
         )}
       </div>

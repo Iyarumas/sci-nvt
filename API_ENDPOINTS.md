@@ -824,7 +824,7 @@ GET com filtro `ativa=true`. ✅ OK
   "participantes": [{ "funcao": "string", "nomeCompleto": "string", "situacao": "A | INSTR | OC | P" }],
   "observacoes": "string",
   "instrutor": "string",
-  "assuntoMinistrado": "string (código 01-24)",
+  "assuntoMinistrado": "string (código 01-31)",
   "descricao": "string",
   "informacoesComplementares": "string",
   "fotos": ["string (base64 ou url)"]

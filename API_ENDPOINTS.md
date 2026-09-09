@@ -1452,6 +1452,9 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
   "classe": "AV | AR | HC",
   "quantidade": 0,
   "unidade": "L | kg | BAR | cilindro | unidade",
+  "recipiente": "string",
+  "quantidadeRecipientes": 0,
+  "capacidadeRecipiente": 0,
   "lote": "string",
   "validade": "string (ISO date)",
   "validadeEnsaioLaboratorial": "string (ISO date)",
@@ -1469,6 +1472,34 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
   "updatedAt": "string"
 }
 ```
+
+---
+
+# 15.2. Relatórios Mensais de Agentes Extintores — `agenteExtintorRelatorioService.ts`
+
+**Tabelas:** `agentes_extintores_relatorios`, `agentes_extintores_relatorio_itens`, `agentes_extintores_movimentacoes`
+**Ficheiros:** `src/services/agenteExtintorRelatorioService.ts`, `src/services/agenteExtintorRelatorioPdfService.ts`
+**Tipos:** `src/types/agenteExtintorRelatorio.ts`
+**Migration:** `066_agentes_extintores_relatorios_mensais.sql`
+
+### listarRelatoriosAgentesExtintores / criarRelatorioAgentesExtintores / atualizarRelatorioAgentesExtintores / excluirRelatorioAgentesExtintores
+
+✅ OK
+
+- Cada competência usa o formato `YYYY-MM` e é única.
+- Ao criar, o cadastro atual é copiado para `agentes_extintores_relatorio_itens`.
+- O relatório finalizado usa esse snapshot e não muda quando o cadastro principal é alterado.
+- O fluxo de status é `Rascunho → Finalizado → Arquivado`.
+
+### obterItensRelatorioAgentesExtintores
+
+✅ OK — lista o snapshot dos agentes do mês por `relatorio_id`.
+
+### obterMovimentacoesAgentesExtintores / criarMovimentacaoAgenteExtintor / excluirMovimentacaoAgenteExtintor
+
+✅ OK — registra entradas, retiradas, substituições, inspeções, ensaios laboratoriais, ensaios de fogo e testes hidrostáticos vinculados à competência.
+
+**Regras UI:** todos podem visualizar. Criar, editar, finalizar e excluir rascunhos segue a mesma permissão de Cadastro > Agentes Extintores: Administradores/GS ou `BA-CE`/`BA-LR` exercendo função na equipa `Alfa`.
 
 ---
 

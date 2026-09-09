@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Timer, Pencil,
-  AlertTriangle, Shield, Eye, Printer, CheckCircle2,
+  AlertTriangle, Shield, Download, Eye, Printer, CheckCircle2,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -15,7 +15,7 @@ import {
   excluirTreino, obterProximoNumero,
 } from '../../services/tempoRespostaService';
 import { listarAtivos } from '../../services/bombeiroService';
-import { gerarTempoRespostaPdf } from '../../services/tempoRespostaPdfService';
+import { baixarTempoRespostaPdf, gerarTempoRespostaPdf } from '../../services/tempoRespostaPdfService';
 import type { TreinamentoTempoResposta, TreinamentoTempoRespostaInput } from '../../types/tempoResposta';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
@@ -481,6 +481,22 @@ export default function TempoResposta() {
     }
   }
 
+  async function handleDownloadPdf(treino: TreinamentoTempoResposta) {
+    if (!canUsarPdf(treino)) {
+      alert('Só é possível baixar depois de aprovado.');
+      return;
+    }
+    setProcessingPdfId(treino.id);
+    try {
+      const treinoComAssinaturas = await completarNomesAssinatura(treino);
+      await baixarTempoRespostaPdf(treinoComAssinaturas);
+    } catch (err) {
+      alert('Erro ao baixar PDF: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
+    } finally {
+      setProcessingPdfId(null);
+    }
+  }
+
   function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
     return (
       <div>
@@ -673,6 +689,16 @@ export default function TempoResposta() {
                         >
                           <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
                         </button>
+                        {podeUsarPdf && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadPdf(t)}
+                            disabled={processing}
+                            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Download className="h-4 w-4" /> Baixar PDF
+                          </button>
+                        )}
                         {podeUsarPdf && (
                             <button
                               type="button"

@@ -23,7 +23,7 @@ const TABLE_HEADER_H = 7;
 const ROW_H = 6;
 const ROWS_PER_PAGE = 30;
 const TABLE_TEXT_SIZE = 7.8;
-const TIMBRADO_URL = '/assets/relatorio-trocas-timbrado.jpg';
+const TIMBRADO_URL = '/assets/timbrado-medmais-2026.jpg';
 const MONTHS_UPPER = [
   'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
   'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO',

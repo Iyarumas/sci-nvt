@@ -62,6 +62,7 @@ export const router = createBrowserRouter([
       { path: 'checklists', element: lazyPage(() => import('../pages/Checklists/Checklists')) },
       { path: 'documentos', element: lazyPage(() => import('../pages/Documentos/Documentos')) },
       { path: 'documentos/trocas', element: lazyPage(() => import('../pages/Relatorios/Trocas')) },
+      { path: 'documentos/agentes-extintores', element: lazyPage(() => import('../pages/Documentos/AgentesExtintoresRelatorios')) },
       { path: 'escalas', element: lazyPage(() => import('../pages/Escalas/Escalas')) },
       { path: 'treinamentos', element: lazyPage(() => import('../pages/Treinamentos/Treinamentos')) },
       { path: 'treinamentos/posicionamento', element: lazyPage(() => import('../pages/Treinamentos/Posicionamento')) },

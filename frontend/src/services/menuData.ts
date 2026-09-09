@@ -295,6 +295,12 @@ export const menuItems: MenuItem[] = [
         description: 'Formulário de Troca de Serviços (Permuta).',
       },
       {
+        label: 'Agentes Extintores',
+        icon: Package,
+        path: '/documentos/agentes-extintores',
+        description: 'Relatórios mensais, alterações e testes dos agentes extintores.',
+      },
+      {
         label: 'Checklists',
         icon: ClipboardCheck,
         path: '/checklists',

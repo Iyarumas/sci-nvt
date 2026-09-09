@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   AlertTriangle, Plus, Save, Eye, Pencil, Trash2, ChevronDown, ChevronUp, FileText,
-  CheckCircle, Printer, X,
+  CheckCircle, Download, Printer, X,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -15,7 +15,7 @@ import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorren
 import { listarBombeiros } from '../../services/bombeiroService';
 import { atualizarRea, criarRea, excluirRea, listarReas, obterRea } from '../../services/reaService';
 import { gerarReaPdf, nomeArquivoReaPdf } from '../../services/reaPdfService';
-import { gerarBonaPdf } from '../../services/bonaPdfService';
+import { gerarBonaPdf, nomeArquivoBonaPdf } from '../../services/bonaPdfService';
 import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { downloadPdf } from '../../services/pdfService';
 import { BONA_FUNCOES, BONA_TIPOS_OCORRENCIA, CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO, criarBonaDadosVazios, normalizarFuncaoBona } from '../../types/ocorrencia';
@@ -852,6 +852,7 @@ function OcorrenciaCard({
   onView,
   onPreviewDocument,
   onPrintDocument,
+  onDownloadDocument,
   onApprove,
   onEdit,
   onDelete,
@@ -865,6 +866,7 @@ function OcorrenciaCard({
   onView: () => void;
   onPreviewDocument: () => void;
   onPrintDocument: () => void;
+  onDownloadDocument: () => void;
   onApprove: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -985,6 +987,11 @@ function OcorrenciaCard({
               <Eye className="h-4 w-4" /> {processingPdf ? 'Gerando...' : 'Ver documento'}
             </button>
             {isFechada && (
+              <button onClick={onDownloadDocument} disabled={processingPdf} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60">
+                <Download className="h-4 w-4" /> Baixar PDF
+              </button>
+            )}
+            {isFechada && (
               <button onClick={onPrintDocument} disabled={processingPdf} className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
                 <Printer className="h-4 w-4" /> Imprimir
               </button>
@@ -1031,6 +1038,8 @@ export function Ocorrencias() {
   const [approvingBonaId, setApprovingBonaId] = useState<string | null>(null);
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
+  const [previewPdfName, setPreviewPdfName] = useState('');
+  const [previewPdfDownloadAllowed, setPreviewPdfDownloadAllowed] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [visualizando, setVisualizando] = useState<Ocorrencia | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -1247,8 +1256,11 @@ export function Ocorrencias() {
       const rea = await obterRea(id);
       if (!rea) throw new Error('REA nao encontrado.');
       const pdf = await gerarReaPdf(rea);
+      const nomeArquivo = nomeArquivoReaPdf(rea);
       setPreviewPdfData(await pdf.arrayBuffer());
-      setPreviewPdfTitle(`${rea.numero || 'REA'} - ${TIPO_DOCUMENTO.REA}`);
+      setPreviewPdfTitle(nomeArquivo.replace(/\.pdf$/i, ''));
+      setPreviewPdfName(nomeArquivo);
+      setPreviewPdfDownloadAllowed(rea.status === 'Fechada');
     } finally {
       setProcessingBonaPdfId(null);
     }
@@ -1275,6 +1287,8 @@ export function Ocorrencias() {
   function closeBonaPreview() {
     setPreviewPdfData(null);
     setPreviewPdfTitle('');
+    setPreviewPdfName('');
+    setPreviewPdfDownloadAllowed(false);
   }
 
   async function handlePreviewBona(ocorrencia: Ocorrencia) {
@@ -1283,11 +1297,34 @@ export function Ocorrencias() {
       closeBonaPreview();
       const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
       const pdf = await gerarBonaPdf(registroDocumento);
+      const nomeArquivo = nomeArquivoBonaPdf(registroDocumento);
       setPreviewPdfData(await pdf.arrayBuffer());
-      setPreviewPdfTitle(`${ocorrencia.numero || 'BONA'} - ${TIPO_DOCUMENTO.BONA}`);
+      setPreviewPdfTitle(nomeArquivo.replace(/\.pdf$/i, ''));
+      setPreviewPdfName(nomeArquivo);
+      setPreviewPdfDownloadAllowed(ocorrencia.status === 'Fechada');
     } finally {
       setProcessingBonaPdfId(null);
     }
+  }
+
+  async function handleDownloadBona(ocorrencia: Ocorrencia) {
+    if (ocorrencia.status !== 'Fechada') {
+      alert('Só é possível baixar o BONA depois de aprovado.');
+      return;
+    }
+    setProcessingBonaPdfId(ocorrencia.id);
+    try {
+      const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
+      const pdf = await gerarBonaPdf(registroDocumento);
+      downloadPdf(pdf, nomeArquivoBonaPdf(registroDocumento));
+    } finally {
+      setProcessingBonaPdfId(null);
+    }
+  }
+
+  function handleDownloadPreviewPdf() {
+    if (!previewPdfData || !previewPdfName || !previewPdfDownloadAllowed) return;
+    downloadPdf(new Blob([previewPdfData], { type: 'application/pdf' }), previewPdfName);
   }
 
   async function handlePrintBona(ocorrencia: Ocorrencia) {
@@ -1447,6 +1484,7 @@ export function Ocorrencias() {
               auditoriaPessoas={bombeiros}
               onView={() => { setVisualizando(doc.item); setMode('view'); }}
               onPreviewDocument={() => handlePreviewBona(doc.item)}
+              onDownloadDocument={() => handleDownloadBona(doc.item)}
               onPrintDocument={() => handlePrintBona(doc.item)}
               onApprove={() => handleApproveBona(doc.item)}
               onEdit={() => handleEditBona(doc.item)}
@@ -1534,13 +1572,24 @@ export function Ocorrencias() {
                 <h3 className="truncate text-base font-bold text-graphite-900 dark:text-graphite-100">{previewPdfTitle || 'BONA'}</h3>
                 <p className="text-xs text-graphite-500 dark:text-graphite-400">Visualizacao do documento</p>
               </div>
-              <button
-                onClick={closeBonaPreview}
-                className="shrink-0 rounded-lg p-1.5 text-graphite-500 transition-colors hover:bg-graphite-100 hover:text-graphite-800 dark:text-graphite-300 dark:hover:bg-surface-hover"
-                title="Fechar"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                {previewPdfDownloadAllowed && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadPreviewPdf}
+                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600"
+                  >
+                    <Download className="h-4 w-4" /> Baixar PDF
+                  </button>
+                )}
+                <button
+                  onClick={closeBonaPreview}
+                  className="rounded-lg p-1.5 text-graphite-500 transition-colors hover:bg-graphite-100 hover:text-graphite-800 dark:text-graphite-300 dark:hover:bg-surface-hover"
+                  title="Fechar"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-auto bg-graphite-100/60 p-4 dark:bg-surface-card/40">
               <PdfPreview pdfData={previewPdfData} fields={[]} />

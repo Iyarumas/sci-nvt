@@ -1,5 +1,8 @@
 export const ALLOWED_TABLES = new Set([
   'agentes_extintores',
+  'agentes_extintores_movimentacoes',
+  'agentes_extintores_relatorio_itens',
+  'agentes_extintores_relatorios',
   'apocs',
   'bombeiros',
   'certificacoes',

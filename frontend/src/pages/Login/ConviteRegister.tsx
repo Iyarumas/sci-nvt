@@ -103,8 +103,8 @@ function Card({ children }: { children: React.ReactNode }) {
 function Logo() {
   return (
     <div className="mb-6 flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-sm shadow-aviation-500/20">
-        <img src="/logobombeiro.jpeg" alt="SCI NVT" className="h-full w-full object-cover" />
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm shadow-aviation-500/20">
+        <img src="/sci-nvt-logo.png" alt="SCI NVT" className="h-full w-full object-contain" />
       </div>
       <div>
         <h1 className="text-xl font-bold text-graphite-900 dark:text-graphite-100">

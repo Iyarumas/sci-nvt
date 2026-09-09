@@ -57,6 +57,9 @@ const EMPTY: AgenteExtintorForm = {
   classe: '',
   quantidade: 0,
   unidade: unidadePadraoPorProduto('LGE'),
+  recipiente: '',
+  quantidadeRecipientes: 0,
+  capacidadeRecipiente: 0,
   lote: '',
   validade: '',
   validadeEnsaioLaboratorial: '',
@@ -110,6 +113,8 @@ const CAMPOS_BASE_OBRIGATORIOS: CampoObrigatorio[] = [
   { key: 'marcaAgente', label: 'Marca do Agente' },
   { key: 'lote', label: 'Lote' },
   { key: 'fabricacao', label: 'Fabricação' },
+  { key: 'validade', label: 'Validade' },
+  { key: 'localizacao', label: 'Localização' },
   {
     key: 'quantidade',
     label: 'Quantidade',
@@ -124,18 +129,11 @@ const CAMPOS_OBRIGATORIOS_POR_PRODUTO: Record<ProdutoAgenteExtintor, CampoObriga
   LGE: [
     { key: 'dosagem', label: 'Dosagem' },
     { key: 'classe', label: 'Classe' },
-    { key: 'validadeEnsaioLaboratorial', label: 'Validade do Ensaio Laboratorial' },
-    { key: 'validadeEnsaioFogo', label: 'Validade do Ensaio de Fogo' },
   ],
   'Pó Químico Seco': [
     { key: 'composicao', label: 'Composição' },
-    { key: 'validade', label: 'Validade' },
   ],
-  Nitrogênio: [
-    { key: 'testeHidrostatico', label: 'Teste Hidrostático' },
-    { key: 'validadeTesteHidrostatico', label: 'Validade do Teste Hidrostático' },
-    { key: 'validadeCilindro', label: 'Validade Cilindro' },
-  ],
+  Nitrogênio: [],
 };
 
 function formatDate(value: string): string {
@@ -164,7 +162,7 @@ function limparCamposNaoUsados(produto: ProdutoAgenteExtintor, form: AgenteExtin
     classe: produto === 'LGE' ? form.classe : '',
     validadeEnsaioLaboratorial: produto === 'LGE' ? form.validadeEnsaioLaboratorial : '',
     validadeEnsaioFogo: produto === 'LGE' ? form.validadeEnsaioFogo : '',
-    validade: produto === 'Pó Químico Seco' ? form.validade : '',
+    validade: form.validade,
     composicao: produto === 'Pó Químico Seco' ? form.composicao : '',
     testeHidrostatico: produto === 'Nitrogênio' ? form.testeHidrostatico : '',
     validadeTesteHidrostatico: produto === 'Nitrogênio' ? form.validadeTesteHidrostatico : '',
@@ -194,6 +192,7 @@ function validarCamposObrigatorios(form: AgenteExtintorForm): string {
 }
 
 function resumoValidade(item: AgenteExtintor): string {
+  if (item.validade) return formatDate(item.validade);
   if (item.produto === 'LGE') {
     const partes = [
       item.validadeEnsaioLaboratorial ? `Laboratorial: ${formatDate(item.validadeEnsaioLaboratorial)}` : '',
@@ -282,6 +281,9 @@ export function AgentesExtintores() {
       classe: item.classe,
       quantidade: item.quantidade,
       unidade: item.unidade,
+      recipiente: item.recipiente,
+      quantidadeRecipientes: item.quantidadeRecipientes,
+      capacidadeRecipiente: item.capacidadeRecipiente,
       lote: item.lote,
       validade: item.validade,
       validadeEnsaioLaboratorial: item.validadeEnsaioLaboratorial,
@@ -486,18 +488,6 @@ export function AgentesExtintores() {
                       {CLASSE_AGENTE_EXTINTOR_OPTIONS.map(o => <option key={o.value || 'empty'} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Validade do Ensaio Laboratorial</label>
-                    <input type="date" value={form.validadeEnsaioLaboratorial} onChange={e => updateField('validadeEnsaioLaboratorial', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Validade do Ensaio de Fogo</label>
-                    <input type="date" value={form.validadeEnsaioFogo} onChange={e => updateField('validadeEnsaioFogo', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Fabricação</label>
-                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
                 </>
               )}
 
@@ -509,37 +499,39 @@ export function AgentesExtintores() {
                       {COMPOSICAO_AGENTE_EXTINTOR_OPTIONS.map(o => <option key={o.value || 'empty'} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Fabricação</label>
-                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Validade</label>
-                    <input type="date" value={form.validade} onChange={e => updateField('validade', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
                 </>
               )}
 
-              {form.produto === 'Nitrogênio' && (
-                <>
-                  <div>
-                    <label className={LABEL_CLASS}>Fabricação</label>
-                    <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Teste Hidrostático</label>
-                    <input type="date" value={form.testeHidrostatico} onChange={e => updateField('testeHidrostatico', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Validade do Teste Hidrostático</label>
-                    <input type="date" value={form.validadeTesteHidrostatico} onChange={e => updateField('validadeTesteHidrostatico', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
-                  <div>
-                    <label className={LABEL_CLASS}>Validade Cilindro</label>
-                    <input type="date" value={form.validadeCilindro} onChange={e => updateField('validadeCilindro', e.target.value)} className={INPUT_CLASS} required />
-                  </div>
-                </>
-              )}
+              <div>
+                <label className={LABEL_CLASS}>Fabricação</label>
+                <input type="date" value={form.fabricacao} onChange={e => updateField('fabricacao', e.target.value)} className={INPUT_CLASS} required />
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Validade</label>
+                <input type="date" value={form.validade} onChange={e => updateField('validade', e.target.value)} className={INPUT_CLASS} required />
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Localização</label>
+                <select value={form.localizacao} onChange={e => updateField('localizacao', e.target.value)} className={INPUT_CLASS} required>
+                  <option value="">Selecione...</option>
+                  <option value="CCI 319">CCI 319</option>
+                  <option value="CCI 320">CCI 320</option>
+                  <option value="CCI 333">CCI 333</option>
+                  <option value="Estoque SCI">Estoque SCI</option>
+                </select>
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Recipiente</label>
+                <input value={form.recipiente} onChange={e => updateField('recipiente', e.target.value)} className={INPUT_CLASS} placeholder="Ex: Bombona 20 L ou barrica 50 kg" />
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Quantidade de recipientes</label>
+                <input type="number" min="0" step="1" value={form.quantidadeRecipientes} onChange={e => updateField('quantidadeRecipientes', Number(e.target.value || 0))} className={INPUT_CLASS} />
+              </div>
+              <div>
+                <label className={LABEL_CLASS}>Capacidade por recipiente</label>
+                <input type="number" min="0" step="0.01" value={form.capacidadeRecipiente} onChange={e => updateField('capacidadeRecipiente', Number(e.target.value || 0))} className={INPUT_CLASS} />
+              </div>
 
               <div>
                 <label className={LABEL_CLASS}>Quantidade</label>

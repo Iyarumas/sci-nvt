@@ -140,7 +140,7 @@ function drawHeader(doc: jsPDF, registro: TreinamentoTAF, logoDataUrl: string | 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(255, 255, 255);
-  doc.text(`EXERCICIO DE AFERICAO DO TAF-1 / TAF-2      -      ${upper(registro.equipe)}`, PAGE_W / 2, y + 27.5, { align: 'center' });
+  doc.text(`EXERCÍCIO DE AFERIÇÃO DO TAF-1 / TAF-2      -      ${upper(registro.equipe)}`, PAGE_W / 2, y + 27.5, { align: 'center' });
   doc.setTextColor(0, 0, 0);
 }
 

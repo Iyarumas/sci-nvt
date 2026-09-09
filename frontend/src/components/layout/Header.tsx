@@ -273,6 +273,7 @@ function getPageTitle(pathname: string): string {
     'treinamentos/tp-epr': 'TP/EPR',
     'treinamentos/taf': 'TAF',
     'documentos/trocas': 'Trocas',
+    'documentos/agentes-extintores': 'Agentes Extintores',
     'registros-diarios/gerar-lro': 'Gerar LRO',
     'registros-diarios/preview-lro': 'Preview LRO',
     'inspecoes/solicitacoes': 'Solicitações',

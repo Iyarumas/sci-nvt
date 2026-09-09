@@ -1,8 +1,10 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Download, Printer } from 'lucide-react';
-import { montarHTML } from '../../services/lroGenerator';
+import { gerarPDF, montarHTML } from '../../services/lroGenerator';
 import { PageTour } from '../../components/ui/PageTour';
+import { downloadPdf } from '../../services/pdfService';
+import { nomeDocumentoOperacional } from '../../utils/documentFileNames';
 
 const STATUS_LRO_EXPORTAVEIS = new Set(['aguardando', 'assinado', 'finalizado', 'arquivado']);
 
@@ -23,7 +25,7 @@ const PREVIEW_LRO_TOUR_STEPS = [
     selector: 'button',
     title: 'Imprimir e salvar PDF',
     body: 'Quando o LRO já está exportável, aparecem os botões Imprimir e Salvar PDF.',
-    detail: 'Imprimir usa a prévia atual. Salvar PDF abre uma janela pronta para impressão/salvamento em PDF pelo navegador.',
+    detail: 'Imprimir usa a prévia atual. Salvar PDF baixa o arquivo diretamente com o nome padronizado do LRO.',
   },
 ];
 
@@ -113,6 +115,7 @@ export function PreviewLRO() {
   const location = useLocation();
   const navigate = useNavigate();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [baixandoPdf, setBaixandoPdf] = useState(false);
 
   const dados = useMemo(() => {
     const stateData = location.state as Record<string, unknown> | null;
@@ -130,13 +133,20 @@ export function PreviewLRO() {
   const html = useMemo(() => montarHTML(dados), [dados]);
 
   const htmlWithStyles = useMemo(() => htmlComBase(html), [html]);
+  const nomeArquivoLro = useMemo(
+    () => nomeDocumentoOperacional(String(dados.dataInicio || ''), 'LRO', String(dados.equipeNome || '')),
+    [dados.dataInicio, dados.equipeNome],
+  );
 
-  function handleBaixarPDF() {
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(htmlWithStyles);
-      win.document.close();
-      setTimeout(() => imprimirQuandoPronto(win), 500);
+  async function handleBaixarPDF() {
+    setBaixandoPdf(true);
+    try {
+      const pdf = await gerarPDF(dados);
+      downloadPdf(pdf, nomeArquivoLro);
+    } catch (err) {
+      alert('Erro ao salvar o PDF do LRO: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
+    } finally {
+      setBaixandoPdf(false);
     }
   }
 
@@ -164,8 +174,8 @@ export function PreviewLRO() {
               <button onClick={handleImprimir} className="flex items-center gap-2 rounded-xl border border-graphite-300 bg-white px-4 py-2 text-sm font-medium text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                 <Printer className="h-4 w-4" /> Imprimir
               </button>
-              <button onClick={handleBaixarPDF} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
-                <Download className="h-4 w-4" /> Salvar PDF
+              <button onClick={() => void handleBaixarPDF()} disabled={baixandoPdf} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60">
+                <Download className="h-4 w-4" /> {baixandoPdf ? 'Gerando...' : 'Salvar PDF'}
               </button>
             </div>
           )}

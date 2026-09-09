@@ -113,6 +113,9 @@ export interface AgenteExtintor {
   classe: ClasseAgenteExtintor;
   quantidade: number;
   unidade: UnidadeAgenteExtintor;
+  recipiente: string;
+  quantidadeRecipientes: number;
+  capacidadeRecipiente: number;
   lote: string;
   validade: string;
   validadeEnsaioLaboratorial: string;

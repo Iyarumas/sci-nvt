@@ -73,8 +73,8 @@ export function Login() {
       <div className="flex w-full flex-col justify-center bg-white px-6 lg:w-2/5 lg:px-12 animate-fadeIn">
         <div className="mx-auto w-full max-w-xs">
           <div className="mb-6 flex items-center gap-3">
-            <div className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-aviation-500/20">
-              <img src="/logobombeiro.jpeg" alt="SCI NVT" className="h-full w-full object-cover" />
+            <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-aviation-500/20">
+              <img src="/sci-nvt-logo.png" alt="SCI NVT" className="h-full w-full object-contain" />
             </div>
             <div>
               <h1 className="text-3xl font-black text-graphite-900">

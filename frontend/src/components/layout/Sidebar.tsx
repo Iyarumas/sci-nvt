@@ -256,8 +256,8 @@ export function Sidebar() {
     >
       <div className="flex h-16 items-center border-b border-white/10 px-4">
         <div className="flex items-center gap-3">
-          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm">
-            <img src="/logobombeiro.jpeg" alt="SCI NVT" className="h-full w-full object-cover" />
+          <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm">
+            <img src="/sci-nvt-logo.png" alt="SCI NVT" className="h-full w-full object-contain" />
           </div>
           <span
             className={`whitespace-nowrap text-lg font-bold text-white transition-all duration-300 ${

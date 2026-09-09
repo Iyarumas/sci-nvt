@@ -177,7 +177,7 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
   @media print {
     @page { size: A4; margin: 15mm 10mm; }
     body { background: #fff; padding: 0; margin: 0; }
-    .page { box-shadow: none; margin: 0; padding: 0; width: 100%; min-height: auto; }
+    .page { box-shadow: none; margin: 0; padding: 0.35mm; width: 100%; min-height: auto; }
     table { page-break-inside: avoid; }
     .sec-title { page-break-after: avoid; }
     .marker-assinatura { display: none !important; }

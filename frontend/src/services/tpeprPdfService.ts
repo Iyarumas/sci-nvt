@@ -74,15 +74,15 @@ function drawHeader(doc: jsPDF, registro: TreinamentoTPEPR, logoDataUrl: string 
   const topH = 24;
   const titleW = CONTENT_W - logoW - codeW;
   drawLogo(doc, logoDataUrl, M, 12, logoW, topH);
-  drawCell(doc, M + logoW, 12, titleW, topH, 'RELATORIO AFERICAO TP-EPR', { bold: true, size: 16, align: 'center' });
-  drawCell(doc, M + logoW + titleW, 12, codeW, 12, 'Codigo:\nMMS.BR.BA.FOR.018', { bold: true, size: 7, align: 'center' });
-  drawCell(doc, M + logoW + titleW, 24, codeW, 12, 'Revisao:\n00', { bold: true, size: 7, align: 'center' });
+  drawCell(doc, M + logoW, 12, titleW, topH, 'RELATÓRIO AFERIÇÃO TP-EPR', { bold: true, size: 16, align: 'center' });
+  drawCell(doc, M + logoW + titleW, 12, codeW, 12, 'Código:\nMMS.BR.BA.FOR.018', { bold: true, size: 7, align: 'center' });
+  drawCell(doc, M + logoW + titleW, 24, codeW, 12, 'Revisão:\n00', { bold: true, size: 7, align: 'center' });
 
   const y = 36;
   const dateW = 38;
   const hourW = 33;
   const leftW = CONTENT_W - dateW - hourW;
-  drawCell(doc, M, y, leftW, 7, 'IDENTIFICACAO DO AEROPORTO:', { bold: true, size: 10, align: 'center' });
+  drawCell(doc, M, y, leftW, 7, 'IDENTIFICAÇÃO DO AEROPORTO:', { bold: true, size: 10, align: 'center' });
   drawCell(doc, M + leftW, y, dateW, 7, 'DATA:', { bold: true, size: 10, align: 'center' });
   drawCell(doc, M + leftW + dateW, y, hourW, 7, 'HORA:', { bold: true, size: 10, align: 'center' });
   drawCell(doc, M, y + 7, leftW, 8);
@@ -92,7 +92,7 @@ function drawHeader(doc: jsPDF, registro: TreinamentoTPEPR, logoDataUrl: string 
   drawTextFit(doc, AIRPORTO_PADRAO, M + leftW / 2, y + 12.4, leftW - 4, { bold: true, size: 10, align: 'center' });
   drawTextFit(doc, formatDate(registro.data), M + leftW + dateW / 2, y + 12.4, dateW - 3, { bold: true, size: 9, align: 'center' });
   drawTextFit(doc, registro.hora || '', M + leftW + dateW + hourW / 2, y + 12.4, hourW - 3, { bold: true, size: 9, align: 'center' });
-  drawCell(doc, M, y + 15, CONTENT_W, 10, 'EXERCICIO DE AFERICAO DE TP / EPR', {
+  drawCell(doc, M, y + 15, CONTENT_W, 10, 'EXERCÍCIO DE AFERIÇÃO DE TP / EPR', {
     bold: true,
     size: 13,
     align: 'center',
@@ -179,7 +179,7 @@ export async function gerarTPEPRPdf(registro: TreinamentoTPEPR): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
     title: nomeDocumentoOperacional(registro.data, 'TP EPR', registro.equipe, ''),
-    subject: 'Relatorio Afericao TP-EPR',
+    subject: 'Relatório Aferição TP-EPR',
     creator: 'SESCINC Manager',
   });
   doc.setTextColor(0, 0, 0);

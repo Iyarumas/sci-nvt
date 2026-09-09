@@ -44,8 +44,8 @@ export function Register() {
       <div className="flex w-full flex-col justify-center px-6 lg:w-1/2 lg:px-16">
         <div className="mx-auto w-full max-w-sm">
           <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-sm shadow-aviation-500/20">
-              <img src="/logobombeiro.jpeg" alt="SCI NVT" className="h-full w-full object-cover" />
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm shadow-aviation-500/20">
+              <img src="/sci-nvt-logo.png" alt="SCI NVT" className="h-full w-full object-contain" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-graphite-900 dark:text-graphite-100">

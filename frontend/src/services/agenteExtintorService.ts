@@ -34,6 +34,9 @@ function rowToAgenteExtintor(row: Record<string, unknown>): AgenteExtintor {
     classe: (row.classe as AgenteExtintor['classe']) || '',
     quantidade: Number(row.quantidade || 0),
     unidade: normalizarUnidadeAgenteExtintor(row.unidade, produto),
+    recipiente: (row.recipiente as string) || '',
+    quantidadeRecipientes: Number(row.quantidade_recipientes || 0),
+    capacidadeRecipiente: Number(row.capacidade_recipiente || 0),
     lote: (row.lote as string) || '',
     validade: (row.validade as string) || '',
     validadeEnsaioLaboratorial: (row.validade_ensaio_laboratorial as string) || '',
@@ -64,6 +67,9 @@ function agenteExtintorToRow(data: Partial<AgenteExtintor>): Record<string, unkn
   if (data.classe !== undefined) row.classe = data.classe;
   if (data.quantidade !== undefined) row.quantidade = data.quantidade;
   if (data.unidade !== undefined) row.unidade = data.unidade;
+  if (data.recipiente !== undefined) row.recipiente = data.recipiente;
+  if (data.quantidadeRecipientes !== undefined) row.quantidade_recipientes = data.quantidadeRecipientes;
+  if (data.capacidadeRecipiente !== undefined) row.capacidade_recipiente = data.capacidadeRecipiente;
   if (data.lote !== undefined) row.lote = data.lote;
   if (data.validade !== undefined) row.validade = data.validade;
   if (data.validadeEnsaioLaboratorial !== undefined) row.validade_ensaio_laboratorial = data.validadeEnsaioLaboratorial;

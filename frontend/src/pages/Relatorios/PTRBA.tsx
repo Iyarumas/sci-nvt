@@ -496,7 +496,27 @@ export function PTRBA() {
   function lookupPessoa(nome: string): PessoaInfo | undefined {
     const chave = normalizarNome(nome);
     if (!chave) return undefined;
-    return bombeiros.get(chave);
+    const exact = bombeiros.get(chave);
+    if (exact) return exact;
+
+    const tokensBusca = chave.split(' ').filter(Boolean);
+    const ultimoToken = tokensBusca.at(-1) || '';
+    if (ultimoToken.length < 4) return undefined;
+
+    const pessoasUnicas = new Map<string, PessoaInfo>();
+    for (const info of bombeiros.values()) pessoasUnicas.set(info.key, info);
+
+    const candidatas = [...pessoasUnicas.values()].filter(info => {
+      const aliases = [info.nomeCompleto, info.nomeGuerra]
+        .map(normalizarNome)
+        .filter(Boolean);
+      if (tokensBusca.length === 1) {
+        return aliases.some(alias => alias.split(' ').includes(ultimoToken));
+      }
+      return aliases.some(alias => alias.split(' ').at(-1) === ultimoToken);
+    });
+
+    return candidatas.length === 1 ? candidatas[0] : undefined;
   }
 
   function getNomeGuerra(nomeCompleto: string): string {

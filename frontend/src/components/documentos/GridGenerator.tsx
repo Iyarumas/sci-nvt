@@ -15,14 +15,14 @@ const PRESETS: Record<string, Partial<GradeConfig>> = {
   'Tabela Simples': {
     colunas: [
       { label: 'Item', width: 1 },
-      { label: 'Descricao', width: 3 },
+      { label: 'Descrição', width: 3 },
       { label: 'Qtd', width: 1 },
     ],
     numLinhas: 10,
     alturaLinha: 25,
   },
-  'Formulario de Troca': {
-    titulo: 'FORMULARIO DE TROCA DE SERVICOS',
+  'Formulário de Troca': {
+    titulo: 'FORMULÁRIO DE TROCA DE SERVIÇOS',
     colunas: [
       { label: 'Campo', width: 2 },
       { label: 'Valor', width: 3 },
@@ -30,12 +30,12 @@ const PRESETS: Record<string, Partial<GradeConfig>> = {
     numLinhas: 12,
     alturaLinha: 22,
   },
-  'Lista de Presenca': {
-    titulo: 'LISTA DE PRESENCA',
+  'Lista de Presença': {
+    titulo: 'LISTA DE PRESENÇA',
     colunas: [
       { label: 'Nº', width: 0.5 },
       { label: 'Nome', width: 3 },
-      { label: 'Funcao', width: 2 },
+      { label: 'Função', width: 2 },
       { label: 'Assinatura', width: 2 },
     ],
     numLinhas: 20,
@@ -47,18 +47,18 @@ const PRESETS: Record<string, Partial<GradeConfig>> = {
       { label: 'EPI', width: 2 },
       { label: 'Fabricante', width: 2 },
       { label: 'Validade', width: 1.5 },
-      { label: 'Responsavel', width: 2 },
+      { label: 'Responsável', width: 2 },
     ],
     numLinhas: 15,
     alturaLinha: 22,
   },
-  'Relatorio de Ocorrencia': {
-    titulo: 'RELATORIO DE OCORRENCIA',
+  'Relatório de Ocorrência': {
+    titulo: 'RELATÓRIO DE OCORRÊNCIA',
     colunas: [
       { label: 'Data', width: 1.5 },
       { label: 'Hora', width: 1 },
-      { label: 'Descricao', width: 3 },
-      { label: 'Responsavel', width: 2 },
+      { label: 'Descrição', width: 3 },
+      { label: 'Responsável', width: 2 },
     ],
     numLinhas: 15,
     alturaLinha: 24,
@@ -166,16 +166,16 @@ export function GridGenerator({ onBack, onSaveAsTemplate: _onSaveAsTemplate, isA
 
       {/* Title & subtitle */}
       <div className="rounded-xl border border-graphite-200 bg-white p-4 dark:border-graphite-700 dark:bg-graphite-800">
-        <h3 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-300">Cabecalho</h3>
+        <h3 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-300">Cabeçalho</h3>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-graphite-500">Titulo</label>
+            <label className="mb-1 block text-xs text-graphite-500">Título</label>
             <input type="text" value={titulo} onChange={e => setTitulo(e.target.value)}
-              placeholder="Ex: LISTA DE PRESENCA"
+              placeholder="Ex: LISTA DE PRESENÇA"
               className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-graphite-500">Subtitulo</label>
+            <label className="mb-1 block text-xs text-graphite-500">Subtítulo</label>
             <input type="text" value={subtitulo} onChange={e => setSubtitulo(e.target.value)}
               placeholder="Opcional"
               className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
@@ -212,7 +212,7 @@ export function GridGenerator({ onBack, onSaveAsTemplate: _onSaveAsTemplate, isA
 
       {/* Grid settings */}
       <div className="rounded-xl border border-graphite-200 bg-white p-4 dark:border-graphite-700 dark:bg-graphite-800">
-        <h3 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-300">Configuracoes da Grade</h3>
+        <h3 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-300">Configurações da Grade</h3>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-graphite-500">Linhas</label>
@@ -242,7 +242,7 @@ export function GridGenerator({ onBack, onSaveAsTemplate: _onSaveAsTemplate, isA
 
       {/* Margins & page size */}
       <div className="rounded-xl border border-graphite-200 bg-white p-4 dark:border-graphite-700 dark:bg-graphite-800">
-        <h3 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-300">Margens e Pagina</h3>
+        <h3 className="mb-3 text-sm font-semibold text-graphite-700 dark:text-graphite-300">Margens e Página</h3>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-graphite-500">Margem Esquerda</label>
@@ -265,22 +265,22 @@ export function GridGenerator({ onBack, onSaveAsTemplate: _onSaveAsTemplate, isA
               className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-graphite-500">Largura Pagina (px)</label>
+            <label className="mb-1 block text-xs text-graphite-500">Largura Página (px)</label>
             <input type="number" value={larguraPagina} onChange={e => setLarguraPagina(Number(e.target.value))}
               className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-graphite-500">Altura Pagina (px)</label>
+            <label className="mb-1 block text-xs text-graphite-500">Altura Página (px)</label>
             <input type="number" value={alturaPagina} onChange={e => setAlturaPagina(Number(e.target.value))}
               className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-graphite-500">Font Titulo</label>
+            <label className="mb-1 block text-xs text-graphite-500">Fonte Título</label>
             <input type="number" value={fontSizeTitulo} onChange={e => setFontSizeTitulo(Number(e.target.value))}
               className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-graphite-500">Font Cabecalho</label>
+            <label className="mb-1 block text-xs text-graphite-500">Fonte Cabeçalho</label>
             <input type="number" value={fontSizeCabecalho} onChange={e => setFontSizeCabecalho(Number(e.target.value))}
               className="w-full rounded-lg border border-graphite-200 bg-white px-3 py-2 text-sm dark:border-graphite-700 dark:bg-graphite-800 dark:text-graphite-100" />
           </div>

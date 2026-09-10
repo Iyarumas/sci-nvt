@@ -551,7 +551,7 @@ upd('substituicoes', next);
 
       {/* Situações */}
       {([
-        { key: 'situacaoCentralFaisca', label: 'Situação Operacional da Central Faisca' },
+        { key: 'situacaoCentralFaisca', label: 'Situação Operacional da Central Faísca' },
         { key: 'situacaoComunicacao', label: 'Rádios, Hotline, Sistema de Alarme Sonoro e Ramais' },
         { key: 'situacaoTPEPR', label: 'Situação Operacional dos TP, EPR em Linha e em Estoque' },
         { key: 'situacaoAgentesExtintores', label: 'Situação Operacional dos Agentes Extintores (LGE, PQ) e Nitrogênio em Linha e em Estoque' },
@@ -653,7 +653,7 @@ function LROCard({ lro, onView, onEdit, onClone, onDelete, canEdit }: {
               <div className="mt-1 space-y-1">{lro.apoioOutrosSlots.map((s, i) => <p key={i} className="text-sm">{s.funcao || '-'}: {s.nome || '-'}</p>)}</div>
             </div>
           )}
-          <p className="text-xs text-graphite-500 dark:text-graphite-400">Central Faisca: {lro.situacaoCentralFaisca}</p>
+          <p className="text-xs text-graphite-500 dark:text-graphite-400">Central Faísca: {lro.situacaoCentralFaisca}</p>
         </div>
       )}
     </div>

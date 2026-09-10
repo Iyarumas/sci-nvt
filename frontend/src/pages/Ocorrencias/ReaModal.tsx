@@ -94,7 +94,7 @@ function ReaField({
       <div className={spanClass(field)}>
         <label className={labelCls}>{field.label}</label>
         <div className="flex flex-wrap gap-3 rounded-xl border border-graphite-200 bg-white px-3 py-2.5 dark:border-border-dark dark:bg-surface-card">
-          {(field.options || []).map(option => (
+              {(field.options || []).map(option => (
             <label key={option} className="flex items-center gap-2 text-sm text-graphite-700 dark:text-graphite-200">
               <input
                 type="radio"
@@ -103,7 +103,7 @@ function ReaField({
                 onChange={() => onChange(option)}
                 className="h-4 w-4 accent-aviation-600"
               />
-              {option}
+                {option === 'Taxi' ? 'Táxi' : option}
             </label>
           ))}
         </div>
@@ -336,9 +336,9 @@ export function ReaModal({ registro, numero, saving = false, onSave, onSelectBon
           ))}
 
           <section className="space-y-4">
-            <h3 className="text-sm font-bold text-graphite-900 dark:text-graphite-100">6. Servico de Salvamento e Combate a Incendio</h3>
-            <ResourceTable title="6.1 Equipamentos e Pessoal do Aerodromo que tomaram parte na operacao" prefix="aerodromo" dados={dados} setValue={setValue} />
-            <ResourceTable title="6.2 Equipamentos e Pessoal alheios ao Aerodromo que tomaram parte na operacao" prefix="externo" dados={dados} setValue={setValue} />
+            <h3 className="text-sm font-bold text-graphite-900 dark:text-graphite-100">6. Serviço de Salvamento e Combate a Incêndio</h3>
+            <ResourceTable title="6.1 Equipamentos e Pessoal do Aeródromo que tomaram parte na operação" prefix="aerodromo" dados={dados} setValue={setValue} />
+            <ResourceTable title="6.2 Equipamentos e Pessoal alheios ao Aeródromo que tomaram parte na operação" prefix="externo" dados={dados} setValue={setValue} />
             <ExtinguisherTable dados={dados} setValue={setValue} />
           </section>
 

@@ -114,10 +114,10 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTPEPR) {
   const grey: [number, number, number] = [200, 200, 200];
 
   drawCell(doc, xName, y0, nameW, headerH, 'NOME', { bold: true, size: 9, align: 'center' });
-  drawCell(doc, xFunc, y0, funcW, headerH, 'FUNCAO', { bold: true, size: 9, align: 'center' });
+  drawCell(doc, xFunc, y0, funcW, headerH, 'FUNÇÃO', { bold: true, size: 9, align: 'center' });
   drawCell(doc, xTempo, y0, timeW * 4, 6, 'Tempo Individual de cada Bombeiro', { bold: true, size: 9, align: 'center' });
 
-  const labels = ['Calca + Bota', 'TP Completo', 'EPR + TP\nCompleto', 'EPR sem TP'];
+  const labels = ['Calça + Bota', 'TP Completo', 'EPR + TP\nCompleto', 'EPR sem TP'];
   labels.forEach((label, index) => {
     drawCell(doc, xTempo + index * timeW, y0 + 6, timeW, 9, label, { bold: true, size: 8.5, align: 'center' });
   });

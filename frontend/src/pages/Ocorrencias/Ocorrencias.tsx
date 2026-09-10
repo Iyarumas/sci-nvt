@@ -1237,7 +1237,7 @@ export function Ocorrencias() {
     setDownloadingReaId(id);
     try {
       const rea = await obterRea(id);
-      if (!rea) throw new Error('REA nao encontrado.');
+      if (!rea) throw new Error('REA não encontrado.');
       if (rea.status !== 'Fechada') {
         alert('O PDF do REA fica disponível depois de finalizado.');
         return;
@@ -1254,7 +1254,7 @@ export function Ocorrencias() {
     try {
       closeBonaPreview();
       const rea = await obterRea(id);
-      if (!rea) throw new Error('REA nao encontrado.');
+      if (!rea) throw new Error('REA não encontrado.');
       const pdf = await gerarReaPdf(rea);
       const nomeArquivo = nomeArquivoReaPdf(rea);
       setPreviewPdfData(await pdf.arrayBuffer());

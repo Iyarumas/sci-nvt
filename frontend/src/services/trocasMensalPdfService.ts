@@ -51,7 +51,7 @@ async function carregarTimbradoRelatorio(): Promise<string | null> {
 
   try {
     const response = await fetch(TIMBRADO_URL);
-    if (!response.ok) throw new Error(`Nao foi possivel carregar ${TIMBRADO_URL}`);
+    if (!response.ok) throw new Error(`Não foi possível carregar ${TIMBRADO_URL}`);
     cachedTimbrado = await blobToDataUrl(await response.blob());
   } catch {
     cachedTimbrado = null;
@@ -199,10 +199,10 @@ function drawHeaderBadgesFallback(doc: jsPDF) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(5.3);
   doc.setTextColor(85, 85, 85);
-  doc.text('SOMOS LIDERES', 181, 15.6);
-  doc.text('EM EMERGENCIAS', 181, 19.6);
+  doc.text('SOMOS LÍDERES', 181, 15.6);
+  doc.text('EM EMERGÊNCIAS', 181, 19.6);
   doc.setFontSize(7.1);
-  doc.text('MEDICAS', 181, 24);
+  doc.text('MÉDICAS', 181, 24);
   doc.setFontSize(5.3);
   doc.text('EM AEROPORTOS', 181, 27.7);
   doc.text('NO BRASIL', 181, 31);

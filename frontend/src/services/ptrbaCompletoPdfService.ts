@@ -181,7 +181,7 @@ function drawEvidenceImage(doc: jsPDF, dataUrl: string, x: number, y: number, w:
   } catch {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('Imagem invalida', x + w / 2, y + h / 2, { align: 'center' });
+    doc.text('Imagem inválida', x + w / 2, y + h / 2, { align: 'center' });
   }
 }
 

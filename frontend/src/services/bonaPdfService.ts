@@ -360,7 +360,7 @@ export async function gerarBonaPdf(registro: Ocorrencia): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
     title: nomeArquivoBonaPdf(registro).replace(/\.pdf$/i, ''),
-    subject: 'Boletim de Ocorrencia Nao Aeronautico',
+    subject: 'Boletim de Ocorrência Não Aeronáutico',
     creator: 'SESCINC Manager',
   });
   const logo = await carregarMedGroupLogo();

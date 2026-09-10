@@ -77,7 +77,7 @@ export const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
       },
       {
         field_name: 'funcao_solicitante',
-        field_label: 'Funcao do Solicitante',
+        field_label: 'Função do Solicitante',
         field_type: 'text',
         required: true,
         placeholder: null,

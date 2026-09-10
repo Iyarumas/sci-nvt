@@ -659,7 +659,7 @@ export function TPEPR() {
 
   return (
     <PageContainer>
-      <PageTitle icon={ClipboardList} title="TP/EPR" subtitle="Afericao de tempos por equipe e funcao operacional" />
+      <PageTitle icon={ClipboardList} title="TP/EPR" subtitle="Aferição de tempos por equipe e função operacional" />
 
       <div className="space-y-6">
         {erro && (

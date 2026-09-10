@@ -77,17 +77,17 @@ export function ReaCard({
           <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
             {detalhe('Data', fmtDate(rea.dataAcidente))}
             {detalhe('Hora', rea.horaAcidente)}
-            {detalhe('Aerodromo', rea.aerodromo)}
+            {detalhe('Aeródromo', rea.aerodromo)}
             {detalhe('Cidade', rea.cidade)}
             {detalhe('Empresa', rea.empresa)}
-            {detalhe('Matricula', rea.matricula)}
+            {detalhe('Matrícula', rea.matricula)}
             {detalhe('Equipe', rea.equipe)}
             {detalhe('Status', rea.status)}
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             {detalhe('Tipo da aeronave', rea.dados.tipoAeronave)}
-            {detalhe('Fase da operacao', rea.dados.faseOperacao)}
+            {detalhe('Fase da operação', rea.dados.faseOperacao)}
             {detalhe('Periodo', rea.dados.acidentePeriodo)}
             {detalhe('Visibilidade', rea.dados.visibilidade)}
             {detalhe('Teto', rea.dados.teto)}
@@ -96,7 +96,7 @@ export function ReaCard({
 
           {rea.dados.descricaoEmergencia && (
             <div className={cardCls}>
-              <p className={labelCls}>Descricao da emergencia</p>
+              <p className={labelCls}>Descrição da emergência</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-graphite-800 dark:text-graphite-100">{rea.dados.descricaoEmergencia}</p>
             </div>
           )}

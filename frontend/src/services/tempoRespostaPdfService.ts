@@ -234,10 +234,10 @@ function drawPerformance(doc: jsPDF, y: number) {
   const midW = rightW / 2;
   drawCell(doc, rightX, y, midW, 5, 'CONCEITO', { bold: true, size: 6.8, align: 'center', fill: [245, 245, 245] });
   drawCell(doc, rightX + midW, y, midW, 5, 'PERFORMANCE DO CCI', { bold: true, size: 6.8, align: 'center', fill: [245, 245, 245] });
-  drawCell(doc, rightX, y + 5, midW, 7, "100% da capacidade de agua e regime de descarga >= 4'   (C)\n100% da capacidade de agua e regime de descarga < 3'   (A)", { size: 5.6, minSize: 5 });
-  drawCell(doc, rightX + midW, y + 5, midW, 7, "Deslocamento do CCI ate o local da afericao >= 4'   (Satisfatorio)\nDeslocamento do CCI ate o local da afericao < 3   (Regular)", { size: 5.6, minSize: 5 });
-  drawCell(doc, rightX, y + 12, midW, 15, "50% da capacidade de agua e regime de descarga < 3'\n50% da capacidade de agua e regime de descarga >= 3' e < 4'   (B)", { size: 5.6, minSize: 5 });
-  drawCell(doc, rightX + midW, y + 12, midW, 15, "Deslocamento do CCI ate o local de afericao >= 3' e < 4'   (Irregular)", { size: 5.6, minSize: 5 });
+  drawCell(doc, rightX, y + 5, midW, 7, "100% da capacidade de água e regime de descarga >= 4'   (C)\n100% da capacidade de água e regime de descarga < 3'   (A)", { size: 5.6, minSize: 5 });
+  drawCell(doc, rightX + midW, y + 5, midW, 7, "Deslocamento do CCI até o local da aferição >= 4'   (Satisfatório)\nDeslocamento do CCI até o local da aferição < 3   (Regular)", { size: 5.6, minSize: 5 });
+  drawCell(doc, rightX, y + 12, midW, 15, "50% da capacidade de água e regime de descarga < 3'\n50% da capacidade de água e regime de descarga >= 3' e < 4'   (B)", { size: 5.6, minSize: 5 });
+  drawCell(doc, rightX + midW, y + 12, midW, 15, "Deslocamento do CCI até o local de aferição >= 3' e < 4'   (Irregular)", { size: 5.6, minSize: 5 });
   return y + h;
 }
 

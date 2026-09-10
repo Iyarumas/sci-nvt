@@ -8,8 +8,8 @@ const PAGE_W = 297;
 const M = 6;
 const CONTENT_W = PAGE_W - M * 2;
 const AIRPORTO_PADRAO = 'AEROPORTO DE NAVEGANTES - SBNF';
-const OBS_TAF_1 = 'TAF-1 : 20 FLEXOES DE BRACO, 30 ABDOMINAIS REMADOR E 30 POLICHINELOS SEGUIDOS (ate 40A = 2MIN. / 40A+ = 3MIN.)';
-const OBS_TAF_2 = 'TAF-2 : 30 FLEXOES DE BRACO, 45 ABDOMINAIS REMADOR E 45 POLICHINELOS SEGUIDOS (ate 40A = 3MIN. / 40A+ = 4MIN.)';
+const OBS_TAF_1 = 'TAF-1 : 20 FLEXÕES DE BRAÇO, 30 ABDOMINAIS REMADOR E 30 POLICHINELOS SEGUIDOS (até 40A = 2MIN. / 40A+ = 3MIN.)';
+const OBS_TAF_2 = 'TAF-2 : 30 FLEXÕES DE BRAÇO, 45 ABDOMINAIS REMADOR E 45 POLICHINELOS SEGUIDOS (até 40A = 3MIN. / 40A+ = 4MIN.)';
 
 type Align = 'left' | 'center' | 'right';
 
@@ -170,17 +170,17 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTAF) {
   const rowH = 10.4;
 
   drawCell(doc, xs.nome, y0, cols.nome, headerH, 'NOME', { bold: true, size: 9, align: 'center' });
-  drawCell(doc, xs.funcao, y0, cols.funcao, headerH, 'FUNCAO', { bold: true, size: 8.8, align: 'center', minSize: 7.5 });
+  drawCell(doc, xs.funcao, y0, cols.funcao, headerH, 'FUNÇÃO', { bold: true, size: 8.8, align: 'center', minSize: 7.5 });
   drawCell(doc, xs.idade, y0, cols.idade, headerH, 'IDADE', { bold: true, size: 8.8, align: 'center' });
   drawCell(doc, xs.flexao, y0, cols.flexao + cols.abdominal + cols.polichinelo + cols.completo, 8.2, `Tempo Individual de cada Bombeiro (  ${registro.tipoTaf || 'TAF'}  )`, { bold: true, size: 8.5, align: 'center' });
-  drawCell(doc, xs.flexao, y0 + 8.2, cols.flexao, 6.4, 'FLEXAO', { size: 7.4, align: 'center' });
-  drawCell(doc, xs.abdominal, y0 + 8.2, cols.abdominal, 6.4, 'ADBOMINAL', { size: 7.4, align: 'center' });
+  drawCell(doc, xs.flexao, y0 + 8.2, cols.flexao, 6.4, 'FLEXÃO', { size: 7.4, align: 'center' });
+  drawCell(doc, xs.abdominal, y0 + 8.2, cols.abdominal, 6.4, 'ABDOMINAL', { size: 7.4, align: 'center' });
   drawCell(doc, xs.polichinelo, y0 + 8.2, cols.polichinelo, 6.4, 'POLICHINELO', { size: 7.4, align: 'center' });
   drawCell(doc, xs.completo, y0 + 8.2, cols.completo, 6.4, 'COMPLETO', { size: 7.4, align: 'center' });
-  drawCell(doc, xs.flexao, y0 + 14.6, cols.flexao, 6.4, '1º Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.abdominal, y0 + 14.6, cols.abdominal, 6.4, '2º Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.polichinelo, y0 + 14.6, cols.polichinelo, 6.4, '3º Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.completo, y0 + 14.6, cols.completo, 6.4, '4º Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.flexao, y0 + 14.6, cols.flexao, 6.4, '1ª Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.abdominal, y0 + 14.6, cols.abdominal, 6.4, '2ª Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.polichinelo, y0 + 14.6, cols.polichinelo, 6.4, '3ª Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.completo, y0 + 14.6, cols.completo, 6.4, '4ª Tomada', { size: 7.1, align: 'center' });
   drawCell(doc, xs.assinatura, y0, cols.assinatura, headerH, 'ASSINATURA', { size: 8.5, align: 'center' });
 
   const pessoas = participantes(registro);
@@ -209,7 +209,7 @@ function drawObservacoes(doc: jsPDF, y: number, registro: TreinamentoTAF, nameW:
   const obsH = 19.2;
   const rightX = M + nameW;
   const rightW = CONTENT_W - nameW;
-  drawCell(doc, M, y, nameW, obsH, 'OBSERVACOES', { bold: true, size: 8.3, align: 'center' });
+  drawCell(doc, M, y, nameW, obsH, 'OBSERVAÇÕES', { bold: true, size: 8.3, align: 'center' });
   drawCell(doc, rightX, y, rightW, 8, registro.observacoes || '', { size: 7.1, uppercase: true, minSize: 5.8 });
   drawCell(doc, rightX, y + 8, rightW, 5.6, OBS_TAF_1, { size: 6.1, align: 'center', minSize: 5.2 });
   drawCell(doc, rightX, y + 13.6, rightW, 5.6, OBS_TAF_2, { size: 6.1, align: 'center', minSize: 5.2 });
@@ -238,7 +238,7 @@ export async function gerarTAFPdf(registro: TreinamentoTAF): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
     title: nomeArquivoTAFPdf(registro).replace(/\.pdf$/i, ''),
-    subject: 'Teste de Aptidao Fisica',
+    subject: 'Teste de Aptidão Física',
     creator: 'SESCINC Manager',
   });
   doc.setTextColor(0, 0, 0);

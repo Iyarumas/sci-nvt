@@ -211,9 +211,9 @@ export const TEMPLATE_LRO = `
   <table style="width: 100%; border-collapse: collapse; margin-bottom: 6px; font-size: 8px;">
     <tr style="background: #1a56db; color: #fff;">
       <th style="padding: 2px 3px; text-align: left;">Item</th>
-      <th style="padding: 2px 3px; text-align: center;">Faisca 2</th>
-      <th style="padding: 2px 3px; text-align: center;">Faisca 3</th>
-      <th style="padding: 2px 3px; text-align: center;">Faisca RT</th>
+      <th style="padding: 2px 3px; text-align: center;">Faísca 2</th>
+      <th style="padding: 2px 3px; text-align: center;">Faísca 3</th>
+      <th style="padding: 2px 3px; text-align: center;">Faísca RT</th>
       <th style="padding: 2px 3px; text-align: center;">CRS</th>
     </tr>
     <tr><td style="padding: 2px 3px; font-weight: bold;">CCI 319</td><td style="padding: 2px 3px; text-align: center;">{{f2_cci319}}</td><td style="padding: 2px 3px; text-align: center;">{{f3_cci319}}</td><td style="padding: 2px 3px; text-align: center;">{{frt_cci319}}</td><td style="padding: 2px 3px; text-align: center;">-</td></tr>

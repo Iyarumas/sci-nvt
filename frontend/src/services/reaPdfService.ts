@@ -329,12 +329,12 @@ function drawFooter(page: PDFPage, font: PDFFont, rea: ReaRegistro) {
 
 export async function gerarReaPdf(rea: ReaRegistro): Promise<Blob> {
   const response = await fetch(TEMPLATE_URL);
-  if (!response.ok) throw new Error('Template PDF do REA nao encontrado.');
+  if (!response.ok) throw new Error('Template PDF do REA não encontrado.');
 
   const templateBytes = await response.arrayBuffer();
   const pdfDoc = await PDFDocument.load(templateBytes);
   pdfDoc.setTitle(nomeArquivoReaPdf(rea).replace(/\.pdf$/i, ''));
-  pdfDoc.setSubject('Relatorio de Registro de Emergencias Aeronauticas');
+  pdfDoc.setSubject('Relatório de Registro de Emergências Aeronáuticas');
   pdfDoc.setCreator('SESCINC Manager');
   const pages = pdfDoc.getPages();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);

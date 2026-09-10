@@ -242,7 +242,7 @@ async function reduzirImagem(file: File): Promise<string> {
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new window.Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Imagem invalida.'));
+    image.onerror = () => reject(new Error('Imagem inválida.'));
     image.src = dataUrl;
   });
 
@@ -569,7 +569,7 @@ function PTRBACompletoForm({
             </select>
           </div>
           <div>
-            <label className={label}>Identificacao do Aeroporto</label>
+            <label className={label}>Identificação do Aeroporto</label>
             <input value={form.identificacaoAeroporto} onChange={e => setForm(f => ({ ...f, identificacaoAeroporto: e.target.value }))} className={input} placeholder="Ex: Aeroporto de..." />
           </div>
           <div>

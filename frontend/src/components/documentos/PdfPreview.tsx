@@ -153,14 +153,14 @@ export function PdfPreview({ pdfData, fields }: Props) {
               Anterior
             </button>
             <span className="text-sm text-graphite-600">
-              Pagina {currentPage} de {totalPages}
+              Página {currentPage} de {totalPages}
             </span>
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
               className="rounded border px-3 py-1 text-sm disabled:opacity-40"
             >
-              Proxima
+              Próxima
             </button>
           </div>
         )}

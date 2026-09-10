@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { toPng } from 'html-to-image';
+import { toCanvas } from 'html-to-image';
 import { formatarDataBR } from '../utils/datas';
 import { nomeDocumentoOperacional } from '../utils/documentFileNames';
 
@@ -340,7 +340,9 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
 
 export async function gerarPDF(dados: Record<string, unknown>): Promise<Blob> {
   const A4_W = 794;
-  const A4_H = 1123;
+  const PAGE_MARGIN_MM = 10;
+  const PAGE_CONTENT_MM = 297 - (PAGE_MARGIN_MM * 2);
+  const PAGE_CONTENT_H = Math.floor(A4_W * (PAGE_CONTENT_MM / 210));
 
   const html = montarHTML(dados).replace(
     '</head>',
@@ -380,27 +382,76 @@ export async function gerarPDF(dados: Record<string, unknown>): Promise<Blob> {
   const idocBody = idoc.body;
 
   try {
-    const totalHeight = idocBody.scrollHeight;
-    const pages = Math.ceil(totalHeight / A4_H);
+    const contentPage = idoc.querySelector<HTMLElement>('.page');
+    if (!contentPage) throw new Error('Conteúdo do LRO não encontrado.');
+    contentPage.style.minHeight = '0';
+
+    const contentTop = contentPage.getBoundingClientRect().top;
+    for (const section of Array.from(contentPage.children) as HTMLElement[]) {
+      const rect = section.getBoundingClientRect();
+      const sectionTop = rect.top - contentTop;
+      const positionOnPage = sectionTop % PAGE_CONTENT_H;
+      if (positionOnPage > 0 && positionOnPage + rect.height > PAGE_CONTENT_H && rect.height <= PAGE_CONTENT_H) {
+        const spacer = idoc.createElement('div');
+        spacer.style.height = `${PAGE_CONTENT_H - positionOnPage}px`;
+        contentPage.insertBefore(spacer, section);
+      }
+    }
+
+    const totalHeight = Math.max(idocBody.scrollHeight, PAGE_CONTENT_H);
+    const pages = Math.ceil(totalHeight / PAGE_CONTENT_H);
+    idoc.querySelectorAll<HTMLElement>('.page-num').forEach(element => { element.textContent = '1'; });
+    idoc.querySelectorAll<HTMLElement>('.page-total').forEach(element => { element.textContent = String(pages); });
+
+    const sourceCanvas = await toCanvas(idocBody, {
+      width: A4_W,
+      height: totalHeight,
+      pixelRatio: 2,
+      style: {
+        width: `${A4_W}px`,
+        height: `${totalHeight}px`,
+        overflow: 'visible',
+        background: '#fff',
+      },
+    });
+
     const doc = new jsPDF({ format: 'a4', unit: 'mm' });
+    const pixelScale = sourceCanvas.width / A4_W;
 
     for (let i = 0; i < pages; i++) {
-      idocBody.style.transform = `translateY(-${i * A4_H}px)`;
-      idocBody.style.width = `${A4_W}px`;
-      idocBody.style.height = `${A4_H}px`;
-      idocBody.style.overflow = 'hidden';
-
-      const canvas = await toPng(idocBody, {
-        width: A4_W,
-        height: A4_H,
-        pixelRatio: 2,
-      });
+      const sourceY = Math.floor(i * PAGE_CONTENT_H * pixelScale);
+      const remainingHeight = sourceCanvas.height - sourceY;
+      const sliceHeight = Math.min(Math.ceil(PAGE_CONTENT_H * pixelScale), remainingHeight);
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = sourceCanvas.width;
+      pageCanvas.height = sliceHeight;
+      const pageContext = pageCanvas.getContext('2d');
+      if (!pageContext) throw new Error('Não foi possível montar a página do LRO.');
+      pageContext.fillStyle = '#fff';
+      pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      pageContext.drawImage(
+        sourceCanvas,
+        0,
+        sourceY,
+        sourceCanvas.width,
+        sliceHeight,
+        0,
+        0,
+        sourceCanvas.width,
+        sliceHeight,
+      );
 
       if (i > 0) doc.addPage();
-      doc.addImage(canvas, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
-      doc.setFontSize(9);
-      doc.setTextColor(0);
-      doc.text(`${i + 1} de ${pages}`, 192, 36, { align: 'right' });
+      doc.addImage(
+        pageCanvas.toDataURL('image/png'),
+        'PNG',
+        0,
+        PAGE_MARGIN_MM,
+        210,
+        (sliceHeight / pixelScale) * (210 / A4_W),
+        undefined,
+        'FAST',
+      );
     }
 
     return doc.output('blob');

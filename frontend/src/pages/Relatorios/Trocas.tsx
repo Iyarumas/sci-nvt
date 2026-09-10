@@ -154,13 +154,6 @@ type TrocaPdfExtraPosition = ReturnType<typeof pdfPosition> & {
 
 const TROCA_PDF_EXTRA_POSITIONS: TrocaPdfExtraPosition[] = [
   {
-    ...pdfPosition(6.8, 8.7, 34.2, 17.2),
-    field_name: 'logo_med_group',
-    field_type: 'image',
-    image_padding: 1.3,
-    image_border: false,
-  },
-  {
     ...pdfPosition(152.7, 99.8, 4, 7, 10.5),
     field_name: 'data_folga_prefixo_a',
   },
@@ -169,6 +162,20 @@ const TROCA_PDF_EXTRA_POSITIONS: TrocaPdfExtraPosition[] = [
     field_name: 'cpf_solicitado_prefixo',
   },
 ];
+
+const trocaPdfBlobCache = new Map<string, Promise<Blob | null>>();
+
+function getCachedTrocaPdfBlob(path: string): Promise<Blob | null> {
+  const cached = trocaPdfBlobCache.get(path);
+  if (cached) return cached;
+
+  const request = getPdfBlob(path).catch(error => {
+    trocaPdfBlobCache.delete(path);
+    throw error;
+  });
+  trocaPdfBlobCache.set(path, request);
+  return request;
+}
 
 function fieldPositionsFromDoc(doc: DocumentWithFields) {
   const fields = doc.document_fields.map(f => {
@@ -241,10 +248,10 @@ function normalizeTrocaDocument(doc: DocumentWithFields | null): DocumentWithFie
 
 async function getTrocaPdfBlob(doc: DocumentWithFields): Promise<Blob | null> {
   const primaryPath = doc.template_pdf_url || TROCA_TEMPLATE_PDF_URL;
-  if (!primaryPath.startsWith('/')) return getPdfBlob(TROCA_TEMPLATE_PDF_URL);
-  const primaryBlob = await getPdfBlob(primaryPath);
+  if (!primaryPath.startsWith('/')) return getCachedTrocaPdfBlob(TROCA_TEMPLATE_PDF_URL);
+  const primaryBlob = await getCachedTrocaPdfBlob(primaryPath);
   if (primaryBlob || primaryPath === TROCA_TEMPLATE_PDF_URL) return primaryBlob;
-  return getPdfBlob(TROCA_TEMPLATE_PDF_URL);
+  return getCachedTrocaPdfBlob(TROCA_TEMPLATE_PDF_URL);
 }
 
 const DRAFT_TTL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -1602,7 +1609,6 @@ export function Trocas() {
       : '';
     dadosStr.check_deferido = 'V';
     dadosStr.check_indeferido = '';
-    dadosStr.logo_med_group = '/assets/med-group-logo.png';
     const dataReferenciaAuditoria = getDataPlantaoTrocaData(data) || hojeLocalISO();
     if (dadosStr.criado_por) {
       dadosStr.criado_por = formatarPessoaAuditoriaNaData(dadosStr.criado_por, dataReferenciaAuditoria, dadosStr.criado_por);

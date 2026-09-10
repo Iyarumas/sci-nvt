@@ -61,7 +61,7 @@ export function PdfPreview({ pdfData, fields }: Props) {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
-        const outputScale = Math.max(window.devicePixelRatio || 1, 2);
+        const outputScale = Math.min(Math.max(window.devicePixelRatio || 1, 1), 1.5);
         canvas.width = Math.floor(viewport.width * outputScale);
         canvas.height = Math.floor(viewport.height * outputScale);
 

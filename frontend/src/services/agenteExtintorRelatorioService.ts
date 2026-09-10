@@ -154,7 +154,10 @@ export async function criarRelatorioAgentesExtintores(params: {
       created_at: now,
     }));
     const { error: itensError } = await getDb().from(TABLE_ITENS).insert(snapshots);
-    if (itensError) handleSupabaseError(itensError);
+    if (itensError) {
+      await getDb().from(TABLE_RELATORIOS).delete().eq('id', relatorio.id);
+      handleSupabaseError(itensError);
+    }
   }
   return relatorio;
 }

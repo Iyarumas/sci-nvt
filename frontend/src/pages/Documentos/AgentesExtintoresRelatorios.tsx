@@ -170,11 +170,11 @@ export default function AgentesExtintoresRelatorios() {
 
   function selecionarAgenteMovimento(id: string) {
     setMovAgenteId(id);
-    const agente = agentes.find(item => item.id === id);
-    if (agente) {
-      setMovQuantidadeAnterior(agente.quantidade);
-      setMovQuantidadeNova(agente.quantidade);
-      setMovUnidade(agente.unidade);
+    const item = itens.find(registro => registro.agenteExtintorId === id);
+    if (item) {
+      setMovQuantidadeAnterior(item.quantidade);
+      setMovQuantidadeNova(item.quantidade);
+      setMovUnidade(item.unidade);
     }
   }
 
@@ -363,7 +363,7 @@ export default function AgentesExtintoresRelatorios() {
         {showMovimento && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"><div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl dark:bg-surface-elevated">
           <div className="mb-5 flex items-center justify-between"><h3 className="text-lg font-bold">Novo registro do período</h3><button onClick={() => setShowMovimento(false)} title="Fechar"><X className="h-5 w-5" /></button></div>
           <form onSubmit={salvarMovimento} className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2"><label className={LABEL}>Agente extintor</label><select value={movAgenteId} onChange={e => selecionarAgenteMovimento(e.target.value)} className={INPUT} required><option value="">Selecione...</option>{agentes.map(a => <option key={a.id} value={a.id}>{a.produto} · {a.marcaAgente} · lote {a.lote} · {a.localizacao}</option>)}</select></div>
+            <div className="sm:col-span-2"><label className={LABEL}>Agente extintor</label><select value={movAgenteId} onChange={e => selecionarAgenteMovimento(e.target.value)} className={INPUT} required><option value="">Selecione...</option>{itens.map(item => <option key={item.id} value={item.agenteExtintorId}>{item.produto} · {item.marcaAgente} · lote {item.lote} · {item.localizacao}</option>)}</select></div>
             <div><label className={LABEL}>Data</label><input type="date" value={movData} onChange={e => setMovData(e.target.value)} className={INPUT} required /></div>
             <div><label className={LABEL}>Tipo</label><select value={movTipo} onChange={e => setMovTipo(e.target.value as TipoMovimentacaoAgenteExtintor)} className={INPUT}>{TIPOS_MOVIMENTACAO_AGENTE_EXTINTOR.map(tipo => <option key={tipo}>{tipo}</option>)}</select></div>
             <div><label className={LABEL}>Quantidade anterior</label><input type="number" value={movQuantidadeAnterior} onChange={e => setMovQuantidadeAnterior(Number(e.target.value || 0))} className={INPUT} /></div>

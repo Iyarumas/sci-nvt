@@ -111,6 +111,7 @@ function tabela(doc: jsPDF, y: number, headers: string[], widths: number[], rows
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.3);
   headers.forEach((header, index) => {
+    doc.setFillColor(184, 181, 181);
     doc.rect(x, y, widths[index], headerH, 'FD');
     doc.text(doc.splitTextToSize(header, widths[index] - 2), x + widths[index] / 2, y + 3.4, { align: 'center' });
     x += widths[index];

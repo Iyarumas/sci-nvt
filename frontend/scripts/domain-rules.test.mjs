@@ -65,6 +65,7 @@ const {
 const {
   montarEfetivoOperacional,
   montarTrocasServicoDoDia,
+  trocaServicoAprovada,
 } = efetivoOperacional;
 
 const base = {
@@ -304,6 +305,13 @@ const trocaAssinada = {
   },
 };
 
+assert.equal(trocaServicoAprovada({ ...trocaAssinada, status: 'archived' }), false);
+assert.equal(trocaServicoAprovada({
+  ...trocaAssinada,
+  status: 'archived',
+  filled_data: { ...trocaAssinada.filled_data, deferido_indeferido: 'DEFERIDO' },
+}), true);
+
 assert.deepEqual(
   montarTrocasServicoDoDia({
     bombeiros,
@@ -438,6 +446,7 @@ const vigenciaLiderCobrindoChefe = {
   ativa: true,
   createdAt: '',
 };
+
 const efetivoComAtestadoDeSubstitutoDaEquipe = montarEfetivoOperacional({
   bombeiros,
   feriasGozo: [],

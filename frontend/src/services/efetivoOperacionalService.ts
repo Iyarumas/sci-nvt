@@ -1,5 +1,5 @@
 import { listarAtivos } from './bombeiroService';
-import { listarDocumentos, listarPreenchimentos } from './documentoService';
+import { listarPreenchimentos } from './documentoService';
 import { listarFeriasGozo } from './feriasService';
 import { listarCompletas } from './escalaMensalService';
 import { listarSubstituicoesTemporarias } from './substituicaoTemporariaService';
@@ -24,15 +24,8 @@ export function documentoEhTrocaServico(doc: Pick<Document, 'name' | 'source_mod
 }
 
 export async function listarTrocasServicoAssinadas(): Promise<DocumentFill[]> {
-  const docs = await listarDocumentos();
-  const trocaDocs = docs.filter(documentoEhTrocaServico);
-
-  if (trocaDocs.length === 0) return [];
-
-  const fills = await Promise.all(
-    trocaDocs.map(doc => listarPreenchimentos({ documentId: doc.id }).catch(() => [])),
-  );
-  return fills.flat().filter(fill =>
+  const fills = await listarPreenchimentos();
+  return fills.filter(fill =>
     trocaServicoAprovada(fill) &&
     trocaServicoTemCamposBasicos(fill)
   );

@@ -1017,7 +1017,38 @@ export function PTRBACompletoPage() {
     });
   }
 
-  const registrosFiltrados = registros.filter(registro => {
+  const registrosComEfetivoDoDia = useMemo(() => registros.map(registro => {
+    const efetivo = montarEfetivoOperacional({
+      bombeiros,
+      feriasGozo,
+      vigencias,
+      trocaFills,
+      escalasCompletas,
+      substituicoesTemporarias,
+      equipe: registro.equipe,
+      dataPlantao: registro.data,
+    });
+    const opcoes = [
+      ...montarOpcoesEfetivoOperacional(efetivo, registro.equipe),
+      ...apocs.map(apoc => ({
+        id: apoc.id,
+        nomeGuerra: apoc.nomeGuerra,
+        nomeCompleto: apoc.nomeCompleto,
+        cargo: 'APOC',
+        equipe: apoc.equipe,
+      })),
+    ];
+    const participantes = reconciliarParticipantesComEfetivo(
+      registro.participantes,
+      opcoes,
+      bombeiros,
+      registro.equipe,
+    );
+    const chefeEquipe = participantes.find(p => p.funcao === 'BA-CE' && p.nomeCompleto)?.nomeCompleto || registro.chefeEquipe;
+    return { ...registro, participantes, chefeEquipe };
+  }), [registros, bombeiros, apocs, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias]);
+
+  const registrosFiltrados = registrosComEfetivoDoDia.filter(registro => {
     if (filtroEquipe && registro.equipe !== filtroEquipe) return false;
     if (filtroAno && !registro.data.startsWith(filtroAno)) return false;
     if (filtroMes) {

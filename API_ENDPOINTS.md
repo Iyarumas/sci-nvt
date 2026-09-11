@@ -954,7 +954,7 @@ GET com filtro `ativa=true`. ✅ OK
   "data_plantao": "string (ISO date)",
   "status": "rascunho | aguardando | assinado | cancelado | finalizado | arquivado",
   "autentique_doc_id": "string | undefined",
-  "dados": "object (conteúdo do draft; inclui `_createdBy`, `_completedBy`, `_completedAt`, `_lastPostCompletionEditBy` e `_lastPostCompletionEditAt` para auditoria visual)",
+  "dados": "object (conteúdo do draft; `frota[].nitrogenio` guarda o N² em bar somente para consulta no sistema e não é renderizado no PDF; inclui `_createdBy`, `_completedBy`, `_completedAt`, `_lastPostCompletionEditBy` e `_lastPostCompletionEditAt` para auditoria visual)",
   "created_by": "string",
   "created_at": "string",
   "updated_at": "string",

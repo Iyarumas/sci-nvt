@@ -413,6 +413,7 @@ type FrotaLinhaDados = {
   kmFim: string;
   combIni: string;
   combFim: string;
+  nitrogenio: string;
   situacao: string;
 };
 type SubstituicaoDetectada = {
@@ -456,6 +457,7 @@ type SubstituicaoInfo = {
   substituidoSaiDoPlantao: boolean;
   trocaDeId?: string;
   trocaDeNome?: string;
+  trocaDeOrigem?: SubstituicaoOrigem;
 };
 type EfetivoDisponivel = {
   bombeiro: Bombeiro;
@@ -527,6 +529,7 @@ const EMPTY_FROTA_LINHA: FrotaLinhaDados = {
   kmFim: '',
   combIni: '',
   combFim: '',
+  nitrogenio: '',
   situacao: '',
 };
 
@@ -894,7 +897,7 @@ export function GerarLRO() {
         const todasViaturas = [...cci, ...crs];
         setViaturas(todasViaturas);
         const frotaInit: Record<string, any> = {};
-        todasViaturas.forEach((veiculo: any) => { frotaInit[veiculo.id || veiculo.prefixo] = { kmIni: '', kmFim: '', combIni: '', combFim: '', situacao: '' }; });
+        todasViaturas.forEach((veiculo: any) => { frotaInit[veiculo.id || veiculo.prefixo] = { kmIni: '', kmFim: '', combIni: '', combFim: '', nitrogenio: '', situacao: '' }; });
         setFrotaDados(frotaInit);
 
         // Load substitutes + troca documents (needed for substitution detection)
@@ -1365,7 +1368,7 @@ export function GerarLRO() {
 
   function getNomeGuerra(nome: string): string {
     if (!nome) return '';
-    const b = bombeiros.find(p => p.nomeCompleto === nome || p.nomeGuerra === nome);
+    const b = buscarBombeiroPorTexto(nome, bombeiros);
     return b?.nomeGuerra || nome;
   }
 
@@ -1387,7 +1390,7 @@ export function GerarLRO() {
       substituto: Bombeiro | undefined,
       tipo: 'troca' | 'substituicao',
       cargoExercido?: string,
-      substituidoEfetivo?: Partial<Pick<SubstituicaoInfo, 'substituidoId' | 'substituidoNome' | 'cargoSubstituido' | 'equipeSubstituido'>>,
+      substituidoEfetivo?: Partial<Pick<SubstituicaoInfo, 'substituidoId' | 'substituidoNome' | 'cargoSubstituido' | 'equipeSubstituido' | 'origem'>>,
       origem: SubstituicaoOrigem = tipo,
       substituidoSaiDoPlantao = origem !== 'cascata',
     ) => {
@@ -1408,6 +1411,7 @@ export function GerarLRO() {
         substituidoSaiDoPlantao,
         trocaDeId: trocaDePessoaJaSubstituindo ? ausente.id : undefined,
         trocaDeNome: trocaDePessoaJaSubstituindo ? ausente.nomeGuerra || ausente.nomeCompleto : undefined,
+        trocaDeOrigem: trocaDePessoaJaSubstituindo ? substituidoEfetivo?.origem : undefined,
       };
     };
     const contextoNoPlantao = (pessoa?: Bombeiro) => resolverPessoaNoPlantaoOperacional({
@@ -1850,7 +1854,7 @@ export function GerarLRO() {
           const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
           const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
           const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
+          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), nitrogenio: d.nitrogenio || '', situacao: d.situacao || '' };
         }),
         centralFaisca, radioComunicacao,
         tpTemAlteracao, tpTexto,
@@ -1903,7 +1907,7 @@ export function GerarLRO() {
           const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
           const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
           const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
+          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), nitrogenio: d.nitrogenio || '', situacao: d.situacao || '' };
         }),
         instrucoes: Array.isArray(instrucoes) ? instrucoes : (typeof instrucoes === 'string' ? instrucoes.split('\n').filter(Boolean) : []),
         instrucoesHorarios: Array.isArray(instrucoesHorarios) ? instrucoesHorarios : (typeof instrucoesHorarios === 'string' ? instrucoesHorarios.split('\n').filter(Boolean) : []),
@@ -1958,7 +1962,7 @@ export function GerarLRO() {
         const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
         const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
         const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-        return { viatura: sel?.prefixo || sel?.nome || '—', viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
+        return { viatura: sel?.prefixo || sel?.nome || '—', viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), nitrogenio: d.nitrogenio || '', situacao: d.situacao || '' };
       }),
       instrucoes: Array.isArray(instrucoes) ? instrucoes : (typeof instrucoes === 'string' ? instrucoes.split('\n').filter(Boolean) : []),
       instrucoesHorarios: Array.isArray(instrucoesHorarios) ? instrucoesHorarios : (typeof instrucoesHorarios === 'string' ? instrucoesHorarios.split('\n').filter(Boolean) : []),
@@ -1999,7 +2003,7 @@ export function GerarLRO() {
           const d = frotaDados[`row_${i}`] || EMPTY_FROTA_LINHA;
           const frotaLista = viaturas.length > 0 ? viaturas : DEFAULT_VIATURAS;
           const sel = frotaLista.find((vv: any) => vv.id === d.viaturaId);
-          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), situacao: d.situacao || '' };
+          return { viatura: sel?.prefixo || sel?.nome || (i === FROTA_ROWS - 1 ? '' : '—'), viaturaId: d.viaturaId || '', prefixo: d.prefixo || '', kmIni: d.kmIni || '', kmFim: d.kmFim || '', combIni: normalizarPercentualCombustivel(d.combIni), combFim: normalizarPercentualCombustivel(d.combFim), nitrogenio: d.nitrogenio || '', situacao: d.situacao || '' };
         }),
         instrucoes: Array.isArray(instrucoes) ? instrucoes : (typeof instrucoes === 'string' ? instrucoes.split('\n').filter(Boolean) : []),
         instrucoesHorarios: Array.isArray(instrucoesHorarios) ? instrucoesHorarios : (typeof instrucoesHorarios === 'string' ? instrucoesHorarios.split('\n').filter(Boolean) : []),
@@ -2125,7 +2129,7 @@ export function GerarLRO() {
         const match = f.viaturaId
           ? frotaLista.find((vv: any) => vv.id === f.viaturaId)
           : frotaLista.find((vv: any) => (vv.prefixo || vv.nome) === f.viatura);
-        fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), situacao: f.situacao || '' };
+        fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), nitrogenio: f.nitrogenio || '', situacao: f.situacao || '' };
       });
       setFrotaDados(fDados);
     }
@@ -2711,7 +2715,7 @@ export function GerarLRO() {
                     ...f,
                     combIni: normalizarPercentualCombustivel(f.combFim),
                     kmIni: f.kmFim || '',
-                    kmFim: '', combFim: '', situacao: '',
+                    kmFim: '', combFim: '', nitrogenio: '', situacao: '',
                   })) || [];
                   const fDados: Record<string, any> = {};
                   frotaClone.forEach((f: any, i: number) => {
@@ -2719,7 +2723,7 @@ export function GerarLRO() {
                     const match = f.viaturaId
                       ? frotaLista.find((vv: any) => vv.id === f.viaturaId)
                       : frotaLista.find((vv: any) => (vv.prefixo || vv.nome) === f.viatura);
-                    fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), situacao: f.situacao || '' };
+                    fDados[`row_${i}`] = { viaturaId: match?.id || f.viaturaId || '', prefixo: f.prefixo || '', kmIni: f.kmIni || '', kmFim: f.kmFim || '', combIni: normalizarPercentualCombustivel(f.combIni), combFim: normalizarPercentualCombustivel(f.combFim), nitrogenio: f.nitrogenio || '', situacao: f.situacao || '' };
                   });
 
                   // IV. Central Faísca
@@ -2855,9 +2859,14 @@ export function GerarLRO() {
                 const sub = substituicoesPorSubstituto[b.id];
                 const cargoExercido = sub?.cargoExercido || sub?.cargoSubstituido || b.cargo;
                 const visual = visualSubstituicaoLRO(sub);
-                const nomeSubstituido = sub ? getNomeGuerra(sub.substituidoNome) : '';
+                const nomeOriginal = sub ? getNomeGuerra(sub.substituidoNome) : '';
                 const nomeTrocaDe = sub?.trocaDeNome ? getNomeGuerra(sub.trocaDeNome) : '';
-                const detalheTroca = nomeTrocaDe && nomeTrocaDe !== nomeSubstituido ? `troca de ${nomeTrocaDe}` : '';
+                const nomeSubstituido = nomeTrocaDe || nomeOriginal;
+                const detalheTroca = nomeTrocaDe && nomeOriginal && nomeTrocaDe !== nomeOriginal
+                  ? substituicaoVemDeFerias(sub?.trocaDeOrigem)
+                    ? `${nomeTrocaDe} cobria férias de ${nomeOriginal}`
+                    : `${nomeTrocaDe} substituía ${nomeOriginal}`
+                  : '';
                 const cardTitle = sub
                   ? `${b.nomeGuerra} como ${cargoExercido} no lugar de ${nomeSubstituido}${detalheTroca ? ` (${detalheTroca})` : ''}`
                   : `${b.nomeGuerra} - ${b.cargo}`;
@@ -3473,6 +3482,7 @@ export function GerarLRO() {
                     <th className="p-2 text-left font-semibold text-graphite-600">KM FINAL</th>
                     <th className="p-2 text-left font-semibold text-graphite-600">COMB. INICIAL (%)</th>
                     <th className="p-2 text-left font-semibold text-graphite-600">COMB. FINAL (%)</th>
+                    <th className="p-2 text-left font-semibold text-graphite-600">N² (BAR)</th>
                     <th className="p-2 text-left font-semibold text-graphite-600">SITUAÇÃO</th>
                   </tr>
                 </thead>
@@ -3482,7 +3492,7 @@ export function GerarLRO() {
                     const frotaOpts = [{ id: '', prefixo: '—' }, ...frotaLista].map((vv: any) => ({ id: vv.id, label: vv.prefixo || vv.nome || '—' }));
                     const selectedId = frotaDados[`row_${rowIdx}`]?.viaturaId || '';
                     const prefixoPadrao = ['F2 X6', 'F3 X6', 'FRT X6'][rowIdx] || '';
-                    let d = frotaDados[`row_${rowIdx}`] || { kmIni: '', kmFim: '', combIni: '', combFim: '', situacao: '', viaturaId: '', prefixo: '' };
+                    let d = frotaDados[`row_${rowIdx}`] || { kmIni: '', kmFim: '', combIni: '', combFim: '', nitrogenio: '', situacao: '', viaturaId: '', prefixo: '' };
                     if (!d.prefixo) d = { ...d, prefixo: prefixoPadrao };
                     const linhaPadrao: FrotaLinhaDados = { ...EMPTY_FROTA_LINHA, prefixo: prefixoPadrao };
                     const updateRow = (updates: Partial<FrotaLinhaDados>) => setFrotaDados(prev => ({
@@ -3529,6 +3539,19 @@ export function GerarLRO() {
                             value={normalizarPercentualCombustivel(d.combFim)}
                             onChange={e => updateRow({ combFim: normalizarPercentualCombustivel(e.target.value) })}
                             placeholder="%"
+                            className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.1}
+                            inputMode="decimal"
+                            value={d.nitrogenio || ''}
+                            onChange={e => updateRow({ nitrogenio: e.target.value })}
+                            placeholder="bar"
+                            aria-label="Nitrogênio em bar"
                             className="w-20 rounded border border-graphite-200 px-2 py-1 text-xs dark:border-border-dark dark:bg-surface-card"
                           />
                         </td>

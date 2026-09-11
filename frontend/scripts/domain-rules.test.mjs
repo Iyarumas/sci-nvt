@@ -65,7 +65,6 @@ const {
 const {
   montarEfetivoOperacional,
   montarTrocasServicoDoDia,
-  trocaServicoAprovada,
 } = efetivoOperacional;
 
 const base = {
@@ -305,13 +304,6 @@ const trocaAssinada = {
   },
 };
 
-assert.equal(trocaServicoAprovada({ ...trocaAssinada, status: 'archived' }), false);
-assert.equal(trocaServicoAprovada({
-  ...trocaAssinada,
-  status: 'archived',
-  filled_data: { ...trocaAssinada.filled_data, deferido_indeferido: 'DEFERIDO' },
-}), true);
-
 assert.deepEqual(
   montarTrocasServicoDoDia({
     bombeiros,
@@ -359,6 +351,99 @@ const efetivoSemAplicarTroca = montarEfetivoOperacional({
 });
 assert.equal(efetivoSemAplicarTroca.some(item => item.bombeiro.id === ce.id), true);
 assert.equal(efetivoSemAplicarTroca.some(item => item.bombeiro.id === mc.id), true);
+
+const laurianoEscalado = bombeiro('lauriano-escala', 'BA-2', 'Ferista', 'Thiago Lauriano Ricardo');
+const laurianoCadastroDuplicado = bombeiro('lauriano-cadastro', 'BA-2', 'Ferista', 'Thiago Lauriano Ricardo');
+const amilcarFerista = bombeiro('amilcar', 'BA-2', 'Ferista', 'Amilcar Alexandre de Souza Lemos');
+const escalaDeltaFeristas = {
+  config: {
+    id: 'escala-delta-setembro',
+    equipe: 'Delta',
+    mes: 9,
+    ano: 2026,
+    paridade: 'par',
+    pessoas: [{
+      id: laurianoEscalado.id,
+      nome: laurianoEscalado.nomeCompleto,
+      nomeGuerra: laurianoEscalado.nomeGuerra,
+      funcao: 'ba-2',
+      veiculo: 'cciF2',
+      funcaoNoVeiculo: 'Ba2',
+      isRadioFixo: false,
+    }],
+    createdAt: '',
+    updatedAt: '',
+  },
+  paradas: [{
+    dia: 10,
+    data: '2026-09-10',
+    veiculos: {
+      cciF2: { baMc: '-', baCe: '-', ba2: laurianoEscalado.nomeCompleto },
+      cciF3: { baMc: '-', ba2_1: '-', ba2_2: '-' },
+      crs: { baMc: '-', baLr: '-', ba2_1: '-', ba2_2: '-' },
+    },
+    radio: [],
+  }],
+  faxinaMensal: [],
+  responsabilidades: [],
+};
+const trocaFeristasDelta = {
+  id: 'troca-feristas-delta',
+  status: 'signed',
+  filled_data: {
+    nome_solicitante: laurianoEscalado.nomeCompleto,
+    funcao_solicitante: 'BA-2',
+    nome_solicitado: amilcarFerista.nomeCompleto,
+    funcao_solicitado: 'BA-2',
+    data_solicitada: '2026-09-10',
+    data_folga_solicitado: '2026-09-12',
+  },
+};
+const efetivoTrocaEntreFeristas = montarEfetivoOperacional({
+  bombeiros: [laurianoEscalado, amilcarFerista, laurianoCadastroDuplicado],
+  feriasGozo: [],
+  vigencias: [],
+  trocaFills: [trocaFeristasDelta],
+  escalasCompletas: [escalaDeltaFeristas],
+  equipe: 'Delta',
+  dataPlantao: '2026-09-10',
+});
+assert.deepEqual(
+  efetivoTrocaEntreFeristas.map(item => item.bombeiro.nomeCompleto),
+  ['Amilcar Alexandre de Souza Lemos'],
+);
+
+const titularDeltaEmFerias = bombeiro('titular-delta', 'BA-2', 'Delta', 'Titular Delta');
+const vigenciaLaurianoNaDelta = {
+  id: 'vigencia-lauriano-delta',
+  substitutoId: laurianoEscalado.id,
+  substitutoNome: laurianoEscalado.nomeCompleto,
+  cargoOriginalSubstituto: laurianoEscalado.cargo,
+  cargoExercido: 'BA-2',
+  funcionarioOriginalId: titularDeltaEmFerias.id,
+  funcionarioOriginalNome: titularDeltaEmFerias.nomeCompleto,
+  cargoOriginalFuncionario: titularDeltaEmFerias.cargo,
+  equipe: 'Delta',
+  dataInicio: '2026-09-01',
+  dataFim: '2026-09-30',
+  nivelCascata: 1,
+  motivo: 'ferias',
+  feriasId: 'ferias-titular-delta',
+  ativa: true,
+  createdAt: '',
+};
+const efetivoTrocaDeFeristaEmVigencia = montarEfetivoOperacional({
+  bombeiros: [titularDeltaEmFerias, laurianoEscalado, amilcarFerista],
+  feriasGozo: [],
+  vigencias: [vigenciaLaurianoNaDelta],
+  trocaFills: [trocaFeristasDelta],
+  equipe: 'Delta',
+  dataPlantao: '2026-09-10',
+});
+assert.deepEqual(
+  efetivoTrocaDeFeristaEmVigencia.map(item => item.bombeiro.nomeCompleto),
+  ['Amilcar Alexandre de Souza Lemos'],
+);
 
 const efetivoComAtestado = montarEfetivoOperacional({
   bombeiros,

@@ -72,12 +72,9 @@ function cargoCampo(value: unknown): string {
   return String(value || '').split(' - ')[0].trim();
 }
 
-function pessoaPorNome(porNome: Map<string, Bombeiro>, nome: unknown, pessoas: Bombeiro[]): Bombeiro | undefined {
+function pessoasPorNome(nome: unknown, pessoas: Bombeiro[]): Bombeiro[] {
   const alvo = nomeKey(nome);
-  if (!alvo) return undefined;
-
-  const exato = porNome.get(alvo);
-  if (exato) return exato;
+  if (!alvo) return [];
 
   const tokens = alvo.split(' ').filter(token => token.length > 1);
   return [...pessoas]
@@ -89,7 +86,16 @@ function pessoaPorNome(porNome: Map<string, Bombeiro>, nome: unknown, pessoas: B
       if (guerra && (alvo === guerra || alvo.startsWith(`${guerra} `) || alvo.endsWith(` ${guerra}`))) return true;
       return false;
     })
-    .sort((a, b) => nomeKey(b.nomeCompleto).length - nomeKey(a.nomeCompleto).length)[0];
+    .sort((a, b) => {
+      const aExato = nomeKey(a.nomeCompleto) === alvo || nomeKey(a.nomeGuerra) === alvo ? 1 : 0;
+      const bExato = nomeKey(b.nomeCompleto) === alvo || nomeKey(b.nomeGuerra) === alvo ? 1 : 0;
+      if (aExato !== bExato) return bExato - aExato;
+      return nomeKey(b.nomeCompleto).length - nomeKey(a.nomeCompleto).length;
+    });
+}
+
+function identidadePessoaKey(pessoa: Bombeiro): string {
+  return nomeKey(pessoa.nomeCompleto) || nomeKey(pessoa.nomeGuerra);
 }
 
 const CARGO_POR_FUNCAO_MENSAL: Record<string, string> = {
@@ -247,12 +253,6 @@ function montarTrocasServicoResolvidas(params: {
   if (!equipe || !dataPlantao) return [];
 
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
-  const porNome = new Map<string, Bombeiro>();
-  ativos.forEach(b => {
-    if (b.nomeCompleto) porNome.set(nomeKey(b.nomeCompleto), b);
-    if (b.nomeGuerra) porNome.set(nomeKey(b.nomeGuerra), b);
-  });
-
   const result: TrocaServicoResolvida[] = [];
   const usados = new Set<string>();
 
@@ -265,43 +265,51 @@ function montarTrocasServicoResolvidas(params: {
     const nomeSolicitado = campoTrocaServico(fd, 'nome_solicitado', 'nomeSolicitado', 'solicitado_nome', 'solicitadoNome');
     const dataSolicitada = campoTrocaServico(fd, 'data_solicitada', 'dataSolicitada', 'data_plantao_solicitante', 'dataPlantaoSolicitante');
     const dataFolgaSolicitado = campoTrocaServico(fd, 'data_folga_solicitado', 'dataFolgaSolicitado', 'data_folga_solicitado_iso', 'dataFolgaSolicitadoIso');
-    const solicitante = pessoaPorNome(porNome, nomeSolicitante, ativos);
-    const solicitado = pessoaPorNome(porNome, nomeSolicitado, ativos);
-    if (!solicitante || !solicitado) continue;
+    const solicitantes = pessoasPorNome(nomeSolicitante, ativos);
+    const solicitados = pessoasPorNome(nomeSolicitado, ativos);
+    if (solicitantes.length === 0 || solicitados.length === 0) continue;
 
-    const add = (saindo: Bombeiro, entrando: Bombeiro, funcaoSaindo: unknown, funcaoEntrando: unknown) => {
-      const contextoSaindo = resolverPessoaNoPlantaoOperacional({
-        pessoa: saindo,
-        bombeiros: ativos,
-        vigencias,
-        escalasCompletas,
-        equipe,
-        dataPlantao,
-      });
-      if (!contextoSaindo.pertence) return;
+    const add = (saindoCandidatos: Bombeiro[], entrandoCandidatos: Bombeiro[], funcaoSaindo: unknown, funcaoEntrando: unknown) => {
+      const candidatoSaindo = saindoCandidatos
+        .map(pessoa => ({
+          pessoa,
+          contexto: resolverPessoaNoPlantaoOperacional({
+            pessoa,
+            bombeiros: ativos,
+            vigencias,
+            escalasCompletas,
+            equipe,
+            dataPlantao,
+          }),
+        }))
+        .find(candidato => candidato.contexto.pertence);
+      if (!candidatoSaindo) return;
+      const saindo = candidatoSaindo.pessoa;
+      const entrando = entrandoCandidatos.find(pessoa => pessoa.id !== saindo.id);
+      if (!entrando) return;
       const chave = `${fill.id}:${saindo.id}:${entrando.id}`;
       if (usados.has(chave)) return;
       usados.add(chave);
       result.push({
         saindo,
         entrando,
-        funcaoSaindo: contextoSaindo.cargoExercido || cargoCampo(funcaoSaindo) || saindo.cargo,
+        funcaoSaindo: candidatoSaindo.contexto.cargoExercido || cargoCampo(funcaoSaindo) || saindo.cargo,
         funcaoEntrando: cargoCampo(funcaoEntrando) || entrando.cargo,
       });
     };
 
     if (mesmoDiaISO(dataSolicitada, dataPlantao)) {
       add(
-        solicitante,
-        solicitado,
+        solicitantes,
+        solicitados,
         campoTrocaServico(fd, 'funcao_solicitante', 'funcaoSolicitante', 'cargo_solicitante', 'cargoSolicitante'),
         campoTrocaServico(fd, 'funcao_solicitado', 'funcaoSolicitado', 'cargo_solicitado', 'cargoSolicitado'),
       );
     }
     if (mesmoDiaISO(dataFolgaSolicitado, dataPlantao)) {
       add(
-        solicitado,
-        solicitante,
+        solicitados,
+        solicitantes,
         campoTrocaServico(fd, 'funcao_solicitado', 'funcaoSolicitado', 'cargo_solicitado', 'cargoSolicitado'),
         campoTrocaServico(fd, 'funcao_solicitante', 'funcaoSolicitante', 'cargo_solicitante', 'cargoSolicitante'),
       );
@@ -375,6 +383,7 @@ export function montarEfetivoOperacional(params: {
   }
 
   const trocaExcluidos = new Set<string>();
+  const trocaExcluidosNomes = new Set<string>();
   const trocaIncluidos: EfetivoOperacionalEntry[] = [];
   const trocasResolvidas = aplicarTrocas
     ? montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, vigencias, escalasCompletas, equipe, dataPlantao })
@@ -382,6 +391,8 @@ export function montarEfetivoOperacional(params: {
   for (const troca of trocasResolvidas) {
     trocaExcluidos.add(troca.saindo.id);
     trocaExcluidos.add(troca.entrando.id);
+    trocaExcluidosNomes.add(identidadePessoaKey(troca.saindo));
+    trocaExcluidosNomes.add(identidadePessoaKey(troca.entrando));
     trocaIncluidos.push({
       bombeiro: troca.entrando,
       cargoExercido: troca.funcaoSaindo || troca.saindo.cargo,
@@ -392,6 +403,10 @@ export function montarEfetivoOperacional(params: {
       },
     });
   }
+  const excluidoPorTroca = (bombeiro: Bombeiro): boolean => (
+    trocaExcluidos.has(bombeiro.id) ||
+    trocaExcluidosNomes.has(identidadePessoaKey(bombeiro))
+  );
 
   const gozosNoDia = feriasGozo.filter(g =>
     g.status !== 'Gozadas' &&
@@ -437,14 +452,18 @@ export function montarEfetivoOperacional(params: {
 
   const resultado: EfetivoOperacionalEntry[] = [];
   const adicionados = new Set<string>();
+  const nomesAdicionados = new Set<string>();
   const adicionar = (bombeiro: Bombeiro, cargoExercido: string, substituindo?: EfetivoOperacionalEntry['substituindo']) => {
-    if (adicionados.has(bombeiro.id)) return;
+    const identidade = identidadePessoaKey(bombeiro);
+    if (adicionados.has(bombeiro.id) || (identidade && nomesAdicionados.has(identidade))) return;
     resultado.push({ bombeiro, cargoExercido, substituindo });
     adicionados.add(bombeiro.id);
+    if (identidade) nomesAdicionados.add(identidade);
   };
 
   for (const membroMensal of montarMembrosEscalaMensalPlantao({ bombeiros: ativos, escalasCompletas, equipe, dataPlantao })) {
     const membro = membroMensal.bombeiro;
+    if (excluidoPorTroca(membro)) continue;
     if (
       afastadosTemporarios.has(membro.id) ||
       extraAfastados.has(membro.id) ||
@@ -475,8 +494,7 @@ export function montarEfetivoOperacional(params: {
       emGozo.has(membro.id) ||
       realPorOriginal.has(membro.id) ||
       fallbackPorOriginal.has(membro.id) ||
-      vagasAbertas.has(membro.id) ||
-      trocaExcluidos.has(membro.id)
+      vagasAbertas.has(membro.id)
     ) {
       continue;
     }
@@ -484,6 +502,7 @@ export function montarEfetivoOperacional(params: {
   }
 
   for (const membro of ativos.filter(b => b.equipe === equipe)) {
+    if (excluidoPorTroca(membro)) continue;
     if (
       afastadosTemporarios.has(membro.id) ||
       extraAfastados.has(membro.id) ||
@@ -515,7 +534,6 @@ export function montarEfetivoOperacional(params: {
       realPorOriginal.has(membro.id) ||
       fallbackPorOriginal.has(membro.id) ||
       vagasAbertas.has(membro.id) ||
-      trocaExcluidos.has(membro.id) ||
       afastadosTemporarios.has(membro.id) ||
       extraAfastados.has(membro.id) ||
       extraSubstitutos.has(membro.id)
@@ -526,6 +544,7 @@ export function montarEfetivoOperacional(params: {
   }
 
   for (const extra of extrasAfastamento) {
+    if (excluidoPorTroca(extra.substituto)) continue;
     adicionar(extra.substituto, extra.cargoExercido || extra.substituto.cargo, {
       id: extra.ausente.id,
       nome: extra.ausente.nomeCompleto,
@@ -538,6 +557,7 @@ export function montarEfetivoOperacional(params: {
     if (extraSubstitutos.has(v.substitutoId)) continue;
     const substituto = porId.get(v.substitutoId);
     if (!substituto) continue;
+    if (excluidoPorTroca(substituto)) continue;
     adicionar(substituto, v.cargoExercido || substituto.cargo, {
       id: v.funcionarioOriginalId,
       nome: v.funcionarioOriginalNome,
@@ -554,6 +574,7 @@ export function montarEfetivoOperacional(params: {
   for (const fallback of fallbackPorSubstituto.values()) {
     if (afastadosTemporarios.has(fallback.substituto.id)) continue;
     if (extraSubstitutos.has(fallback.substituto.id)) continue;
+    if (excluidoPorTroca(fallback.substituto)) continue;
     adicionar(fallback.substituto, fallback.cargo, {
       id: fallback.original.id,
       nome: fallback.original.nomeCompleto,

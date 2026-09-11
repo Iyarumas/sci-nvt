@@ -329,6 +329,29 @@ assert.deepEqual(
   [],
 );
 
+const efetivoComTrocaDoDia = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [],
+  trocaFills: [trocaAssinada],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-21',
+});
+assert.equal(efetivoComTrocaDoDia.some(item => item.bombeiro.id === ce.id), false);
+assert.equal(efetivoComTrocaDoDia.some(item => item.bombeiro.id === mc.id), true);
+
+const efetivoSemAplicarTroca = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [],
+  trocaFills: [trocaAssinada],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-21',
+  aplicarTrocas: false,
+});
+assert.equal(efetivoSemAplicarTroca.some(item => item.bombeiro.id === ce.id), true);
+assert.equal(efetivoSemAplicarTroca.some(item => item.bombeiro.id === mc.id), true);
+
 const efetivoComAtestado = montarEfetivoOperacional({
   bombeiros,
   feriasGozo: [],

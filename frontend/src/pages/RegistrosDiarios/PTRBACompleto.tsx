@@ -218,6 +218,47 @@ function situacaoInstrutor(numeros: InstrucaoPTRNumero[]): string {
   return `INSTR. ${unicos.join('-')}`;
 }
 
+function reconciliarParticipantesComEfetivo(
+  participantesSalvos: PTRBACompletoParticipante[],
+  opcoesParticipantes: AtivoItem[],
+  bombeiros: Bombeiro[],
+  equipe: string,
+): PTRBACompletoParticipante[] {
+  const efetivo = opcoesParticipantes.filter(p => p.equipe === equipe && p.cargo !== 'APOC');
+  if (efetivo.length === 0) return normalizarParticipantesPTRBACompleto(participantesSalvos);
+
+  const bombeiroPorNome = new Map<string, Bombeiro>();
+  bombeiros.forEach(bombeiro => {
+    bombeiroPorNome.set(normalizarBusca(bombeiro.nomeCompleto), bombeiro);
+    bombeiroPorNome.set(normalizarBusca(bombeiro.nomeGuerra), bombeiro);
+  });
+  const idsEfetivo = new Set(efetivo.map(pessoa => pessoa.id));
+  const participantes = normalizarParticipantesPTRBACompleto(participantesSalvos).map(participante => {
+    const bombeiro = bombeiroPorNome.get(normalizarBusca(participante.nomeCompleto));
+    if (!bombeiro || idsEfetivo.has(bombeiro.id)) return participante;
+    return { ...participante, nomeCompleto: '', situacao: 'P' };
+  });
+
+  const idsPresentes = new Set(
+    participantes
+      .map(participante => bombeiroPorNome.get(normalizarBusca(participante.nomeCompleto))?.id)
+      .filter((id): id is string => !!id),
+  );
+  efetivo.forEach(pessoa => {
+    if (idsPresentes.has(pessoa.id)) return;
+    let index = participantes.findIndex(participante => !participante.nomeCompleto && participante.funcao === pessoa.cargo);
+    if (index < 0) index = participantes.findIndex(participante => !participante.nomeCompleto);
+    if (index < 0) return;
+    participantes[index] = {
+      funcao: pessoa.cargo,
+      nomeCompleto: pessoa.nomeCompleto,
+      situacao: 'P',
+    };
+    idsPresentes.add(pessoa.id);
+  });
+  return participantes;
+}
+
 function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   const equipe = PTRBA_COMPLETO_EQUIPES.includes(equipePadrao as Equipe) ? equipePadrao as Equipe : '';
   return {
@@ -290,12 +331,14 @@ function PTRBACompletoForm({
   const [form, setForm] = useState(() => montarInicial(canEscolherEquipe ? null : equipeEfetiva));
   const ultimaAutoFill = useRef('');
   const ultimaEscalaPTRFill = useRef('');
+  const ultimoRegistroReconciliado = useRef('');
   const participantesEditadosRef = useRef(false);
 
   useEffect(() => {
     participantesEditadosRef.current = false;
     ultimaAutoFill.current = '';
     ultimaEscalaPTRFill.current = '';
+    ultimoRegistroReconciliado.current = '';
     if (registro) {
       setForm({
         data: registro.data,
@@ -339,6 +382,23 @@ function PTRBACompletoForm({
       .map(p => `${p.id}:${p.cargo}:${p.nomeCompleto}`)
       .join('|')
   ), [opcoesParticipantes, form.equipe]);
+
+  useEffect(() => {
+    if (!registro || !assinaturaEfetivoOperacional) return;
+    const chave = `${registro.id}-${assinaturaEfetivoOperacional}`;
+    if (ultimoRegistroReconciliado.current === chave) return;
+    ultimoRegistroReconciliado.current = chave;
+    setForm(formAtual => {
+      const participantes = reconciliarParticipantesComEfetivo(
+        formAtual.participantes,
+        opcoesParticipantes,
+        bombeiros,
+        formAtual.equipe,
+      );
+      const chefeEquipe = participantes.find(p => p.funcao === 'BA-CE' && p.nomeCompleto)?.nomeCompleto || '';
+      return { ...formAtual, participantes, chefeEquipe };
+    });
+  }, [registro, assinaturaEfetivoOperacional, opcoesParticipantes, bombeiros]);
 
   useEffect(() => {
     if (registro) return;
@@ -1055,6 +1115,17 @@ export function PTRBACompletoPage() {
     }
   }
 
+  async function abrirEdicaoPTRBA(registro: PTRBACompleto) {
+    try {
+      const apoio = await buscarDadosApoio();
+      aplicarDadosApoio(apoio);
+      setEditando(registro);
+      setMode('form');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erro ao atualizar dados do PTR-BA.');
+    }
+  }
+
   async function handleSave(input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) {
     try {
       if (editando?.id) {
@@ -1212,7 +1283,7 @@ export function PTRBACompletoPage() {
                 previewing={previewingId === registro.id}
                 auditoriaPessoas={montarAuditoriaPessoasDoRegistro(registro)}
                 onPreviewDocument={() => handlePreviewPdf(registro)}
-                onEdit={() => { setEditando(registro); setMode('form'); }}
+                onEdit={() => void abrirEdicaoPTRBA(registro)}
                 onDelete={() => setConfirmDelete(registro.id)}
                 onDownload={() => handleDownload(registro)}
               />

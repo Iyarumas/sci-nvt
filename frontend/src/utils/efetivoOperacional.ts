@@ -336,8 +336,19 @@ export function montarEfetivoOperacional(params: {
   substituicoesTemporarias?: SubstituicaoTemporaria[];
   equipe: string;
   dataPlantao: string;
+  aplicarTrocas?: boolean;
 }): EfetivoOperacionalEntry[] {
-  const { bombeiros, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias = [], equipe, dataPlantao } = params;
+  const {
+    bombeiros,
+    feriasGozo,
+    vigencias,
+    trocaFills,
+    escalasCompletas,
+    substituicoesTemporarias = [],
+    equipe,
+    dataPlantao,
+    aplicarTrocas = true,
+  } = params;
   if (!equipe || !dataPlantao) return [];
 
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
@@ -365,7 +376,10 @@ export function montarEfetivoOperacional(params: {
 
   const trocaExcluidos = new Set<string>();
   const trocaIncluidos: EfetivoOperacionalEntry[] = [];
-  for (const troca of montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, vigencias, escalasCompletas, equipe, dataPlantao })) {
+  const trocasResolvidas = aplicarTrocas
+    ? montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, vigencias, escalasCompletas, equipe, dataPlantao })
+    : [];
+  for (const troca of trocasResolvidas) {
     trocaExcluidos.add(troca.saindo.id);
     trocaExcluidos.add(troca.entrando.id);
     trocaIncluidos.push({

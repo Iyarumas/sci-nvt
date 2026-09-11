@@ -41,6 +41,7 @@ export async function listarTrocasServicoAssinadas(): Promise<DocumentFill[]> {
 export async function resolverEfetivoOperacional(
   equipe: string,
   dataPlantao: string,
+  opcoes: { aplicarTrocas?: boolean } = {},
 ): Promise<EfetivoOperacionalEntry[]> {
   const [bombeiros, feriasGozo, vigencias, trocaFills, substituicoesTemporarias, escalasCompletas] = await Promise.all([
     listarAtivos(),
@@ -60,5 +61,6 @@ export async function resolverEfetivoOperacional(
     substituicoesTemporarias,
     equipe,
     dataPlantao,
+    aplicarTrocas: opcoes.aplicarTrocas,
   });
 }

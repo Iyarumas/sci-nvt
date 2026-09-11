@@ -315,7 +315,7 @@ export function TAF() {
   async function autoPreencherParticipantes(preencherMembros = true) {
     if (!fEquipe || !fData) return;
     try {
-      const efetivo = await resolverEfetivoOperacional(fEquipe, fData);
+      const efetivo = await resolverEfetivoOperacional(fEquipe, fData, { aplicarTrocas: false });
       const pool = efetivo
         .map(item => ({
           id: item.bombeiro.id,

@@ -221,7 +221,7 @@ export function TPEPR() {
   async function montarPoolParticipantes(equipe: string, data: string): Promise<Bombeiro[]> {
     if (!equipe || !data) return bombeiros.filter(b => b.equipe === equipe && !b.dataDesligamento);
 
-    const efetivo = await resolverEfetivoOperacional(equipe, data);
+    const efetivo = await resolverEfetivoOperacional(equipe, data, { aplicarTrocas: false });
     const linhas = efetivo
       .map(item => ({
         ...item.bombeiro,

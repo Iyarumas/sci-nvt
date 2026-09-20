@@ -321,13 +321,13 @@ function drawVeiculosEAgentes(doc: jsPDF, dados: ReturnType<typeof dadosBona>, y
   const agentsHeaderH = 10.2;
   const agentsColumnHeaderH = 5.5;
   const agentsValueH = 6.3;
-  const vehicleContentH = Math.max(16.3, alturaNecessariaTexto(doc, dados.veiculosUtilizados, 149.5, 10.5, 'italic'));
+  const vehicleContentH = Math.max(16.3, alturaNecessariaTexto(doc, dados.veiculosUtilizados, 149.5, 9.5, 'italic'));
   const boxH = 5.7 + vehicleContentH;
   const safeY = manterCaixaInteiraNaPagina(doc, y, boxH);
   rect(doc, L, safeY, 149.5, boxH);
   doc.line(L, safeY + 5.7, 154.5, safeY + 5.7);
   label(doc, 'Veículos Utilizados', L, safeY, 149.5, 5.7, 'left', 8.8);
-  drawWrappedNoTamanhoOriginal(doc, dados.veiculosUtilizados, L, safeY + 5.7, 149.5, 10.5, 'italic');
+  drawWrappedNoTamanhoOriginal(doc, dados.veiculosUtilizados, L, safeY + 5.7, 149.5, 9.5, 'italic');
 
   rect(doc, agentsX, safeY, agentsW, boxH);
   doc.line(agentsX, safeY + agentsHeaderH, agentsX + agentsW, safeY + agentsHeaderH);
@@ -343,13 +343,13 @@ function drawVeiculosEAgentes(doc: jsPDF, dados: ReturnType<typeof dadosBona>, y
 }
 
 function drawOutrosRecursos(doc: jsPDF, conteudo: string, y: number): number {
-  const contentH = Math.max(14.2, alturaNecessariaTexto(doc, conteudo, W, 10.5, 'italic'));
+  const contentH = Math.max(14.2, alturaNecessariaTexto(doc, conteudo, W, 9.5, 'italic'));
   const boxH = 6.8 + contentH;
   const safeY = manterCaixaInteiraNaPagina(doc, y, boxH);
   rect(doc, L, safeY, W, boxH);
   doc.line(L, safeY + 6.8, R, safeY + 6.8);
   label(doc, 'Outros Recursos Utilizados', L, safeY, W, 6.8, 'left', 8.8);
-  drawWrappedNoTamanhoOriginal(doc, conteudo, L, safeY + 6.8, W, 10.5, 'italic');
+  drawWrappedNoTamanhoOriginal(doc, conteudo, L, safeY + 6.8, W, 9.5, 'italic');
   return safeY + boxH;
 }
 
@@ -387,8 +387,8 @@ export async function gerarBonaPdf(registro: Ocorrencia): Promise<Blob> {
   drawDadosIniciais(doc, registro, dados);
   drawBombeiros(doc, bombeiros);
   drawCronologia(doc, dados);
-  const afterDescricaoOcorrencia = drawSecaoTexto(doc, 'Descrição Sucinta da Ocorrência / Acionamento', dados.descricaoOcorrencia, L, 164.1, W, 20.8, 6.8, 10.8);
-  const afterDescricaoAtuacao = drawSecaoTexto(doc, 'Descrição Sucinta da Atuação da Equipe do SESCINC', dados.descricaoAtuacaoEquipe, L, afterDescricaoOcorrencia + 1, W, 35, 6.8, 10.8);
+  const afterDescricaoOcorrencia = drawSecaoTexto(doc, 'Descrição Sucinta da Ocorrência / Acionamento', dados.descricaoOcorrencia, L, 164.1, W, 20.8, 6.8, 9.8);
+  const afterDescricaoAtuacao = drawSecaoTexto(doc, 'Descrição Sucinta da Atuação da Equipe do SESCINC', dados.descricaoAtuacaoEquipe, L, afterDescricaoOcorrencia + 1, W, 35, 6.8, 9.8);
   drawRodapeFormulario(doc, dados, afterDescricaoAtuacao + 1.4);
 
   return doc.output('blob');

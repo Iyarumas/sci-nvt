@@ -280,13 +280,6 @@ function TabVisaoGeral() {
     return meses.map(m => ({ mes: m, Ocorrências: mapO[m], Treinamentos: mapT[m] }));
   }, [ocorrencias, completos]);
 
-  const porTipoDocumento = useMemo(() => (
-    [
-      { name: 'BONA', value: ocorrencias.filter(o => o.tipo === 'BONA').length, cor: '#3b82f6' },
-      { name: 'REA', value: ocorrencias.filter(o => o.tipo === 'REA').length, cor: '#f97316' },
-    ].filter(item => item.value > 0)
-  ), [ocorrencias]);
-
   const tiposMaisFrequentes = useMemo(() => {
     const map: Record<string, number> = {};
     ocorrencias.forEach(o => {
@@ -340,17 +333,17 @@ function TabVisaoGeral() {
         <SectionCard title="Ocorrências: BONA / REA e tipos" icon={Flame}>
           <div className="grid gap-5 sm:grid-cols-2">
             <div>
-              {porTipoDocumento.length > 0 ? (
-                <ResponsiveContainer width="100%" height={185}>
+              {tiposMaisFrequentes.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
-                    <Pie data={porTipoDocumento} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={3} dataKey="value">
-                      {porTipoDocumento.map((item, index) => <Cell key={index} fill={item.cor} />)}
+                    <Pie data={tiposMaisFrequentes} cx="50%" cy="50%" innerRadius={55} outerRadius={100} paddingAngle={3} dataKey="total">
+                      {tiposMaisFrequentes.map((item, index) => <Cell key={index} fill={item.cor} />)}
                     </Pie>
-                    <Tooltip formatter={(value, _name, item) => [`${value} ocorrência${Number(value) === 1 ? '' : 's'}`, item.payload.name]} />
+                    <Tooltip formatter={(value, _name, item) => [`${value} ocorrência${Number(value) === 1 ? '' : 's'}`, item.payload.tipo]} />
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex h-[185px] items-center justify-center text-sm text-graphite-400 dark:text-graphite-500">Nenhuma ocorrência registrada.</div>
+                <div className="flex h-[220px] items-center justify-center text-sm text-graphite-400 dark:text-graphite-500">Nenhuma ocorrência registrada.</div>
               )}
             </div>
 

@@ -209,10 +209,10 @@ function drawObservacoes(doc: jsPDF, y: number, registro: TreinamentoTAF, nameW:
   const obsH = 19.2;
   const rightX = M + nameW;
   const rightW = CONTENT_W - nameW;
-  drawCell(doc, M, y, nameW, obsH, 'OBSERVAÇÕES', { bold: true, size: 8.3, align: 'center' });
-  drawCell(doc, rightX, y, rightW, 8, registro.observacoes || '', { size: 7.1, uppercase: true, minSize: 5.8 });
-  drawCell(doc, rightX, y + 8, rightW, 5.6, OBS_TAF_1, { size: 6.1, align: 'center', minSize: 5.2 });
-  drawCell(doc, rightX, y + 13.6, rightW, 5.6, OBS_TAF_2, { size: 6.1, align: 'center', minSize: 5.2 });
+  drawCell(doc, M, y, nameW, obsH, 'OBSERVAÇÕES', { bold: true, size: 9.3, align: 'center' });
+  drawCell(doc, rightX, y, rightW, 8, registro.observacoes || '', { size: 8.1, uppercase: true, minSize: 5.8 });
+  drawCell(doc, rightX, y + 8, rightW, 5.6, OBS_TAF_1, { size: 7.1, align: 'center', minSize: 5.2 });
+  drawCell(doc, rightX, y + 13.6, rightW, 5.6, OBS_TAF_2, { size: 7.1, align: 'center', minSize: 5.2 });
 }
 
 function drawAssinaturas(doc: jsPDF) {

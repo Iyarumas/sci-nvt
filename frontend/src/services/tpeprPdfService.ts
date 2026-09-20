@@ -169,9 +169,9 @@ function drawAssinaturas(doc: jsPDF, y: number) {
   doc.line(leftX, lineY, leftX + lineW, lineY);
   doc.line(rightX, lineY, rightX + lineW, lineY);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('Chefe de Equipe', leftX + lineW / 2, lineY + 5.2, { align: 'center' });
-  doc.text('Gerente / Embaixador - SCI', rightX + lineW / 2, lineY + 5.2, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text('Chefe de Equipe', leftX + lineW / 2, lineY + 6.5, { align: 'center' });
+  doc.text('Gerente / Embaixador - SCI', rightX + lineW / 2, lineY + 6.5, { align: 'center' });
 }
 
 export async function gerarTPEPRPdf(registro: TreinamentoTPEPR): Promise<Blob> {

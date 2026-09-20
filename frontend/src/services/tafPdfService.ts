@@ -166,21 +166,21 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTAF) {
     completo: M + cols.nome + cols.funcao + cols.idade + cols.flexao + cols.abdominal + cols.polichinelo,
     assinatura: M + cols.nome + cols.funcao + cols.idade + cols.flexao + cols.abdominal + cols.polichinelo + cols.completo,
   };
-  const headerH = 21;
-  const rowH = 10.4;
+  const headerH = 22.5;
+  const rowH = 9.8;
 
   drawCell(doc, xs.nome, y0, cols.nome, headerH, 'NOME', { bold: true, size: 9, align: 'center' });
   drawCell(doc, xs.funcao, y0, cols.funcao, headerH, 'FUNÇÃO', { bold: true, size: 8.8, align: 'center', minSize: 7.5 });
   drawCell(doc, xs.idade, y0, cols.idade, headerH, 'IDADE', { bold: true, size: 8.8, align: 'center' });
-  drawCell(doc, xs.flexao, y0, cols.flexao + cols.abdominal + cols.polichinelo + cols.completo, 8.2, `Tempo Individual de cada Bombeiro (  ${registro.tipoTaf || 'TAF'}  )`, { bold: true, size: 8.5, align: 'center' });
-  drawCell(doc, xs.flexao, y0 + 8.2, cols.flexao, 6.4, 'FLEXÃO', { size: 7.4, align: 'center' });
-  drawCell(doc, xs.abdominal, y0 + 8.2, cols.abdominal, 6.4, 'ABDOMINAL', { size: 7.4, align: 'center' });
-  drawCell(doc, xs.polichinelo, y0 + 8.2, cols.polichinelo, 6.4, 'POLICHINELO', { size: 7.4, align: 'center' });
-  drawCell(doc, xs.completo, y0 + 8.2, cols.completo, 6.4, 'COMPLETO', { size: 7.4, align: 'center' });
-  drawCell(doc, xs.flexao, y0 + 14.6, cols.flexao, 6.4, '1ª Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.abdominal, y0 + 14.6, cols.abdominal, 6.4, '2ª Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.polichinelo, y0 + 14.6, cols.polichinelo, 6.4, '3ª Tomada', { size: 7.1, align: 'center' });
-  drawCell(doc, xs.completo, y0 + 14.6, cols.completo, 6.4, '4ª Tomada', { size: 7.1, align: 'center' });
+  drawCell(doc, xs.flexao, y0, cols.flexao + cols.abdominal + cols.polichinelo + cols.completo, 8.8, `Tempo Individual de cada Bombeiro (  ${registro.tipoTaf || 'TAF'}  )`, { bold: true, size: 8.5, align: 'center' });
+  drawCell(doc, xs.flexao, y0 + 8.8, cols.flexao, 6.85, 'FLEXÃO', { size: 8.4, align: 'center' });
+  drawCell(doc, xs.abdominal, y0 + 8.8, cols.abdominal, 6.85, 'ABDOMINAL', { size: 8.4, align: 'center' });
+  drawCell(doc, xs.polichinelo, y0 + 8.8, cols.polichinelo, 6.85, 'POLICHINELO', { size: 8.4, align: 'center' });
+  drawCell(doc, xs.completo, y0 + 8.8, cols.completo, 6.85, 'COMPLETO', { size: 8.4, align: 'center' });
+  drawCell(doc, xs.flexao, y0 + 15.65, cols.flexao, 6.85, '1ª Tomada', { size: 8.1, align: 'center' });
+  drawCell(doc, xs.abdominal, y0 + 15.65, cols.abdominal, 6.85, '2ª Tomada', { size: 8.1, align: 'center' });
+  drawCell(doc, xs.polichinelo, y0 + 15.65, cols.polichinelo, 6.85, '3ª Tomada', { size: 8.1, align: 'center' });
+  drawCell(doc, xs.completo, y0 + 15.65, cols.completo, 6.85, '4ª Tomada', { size: 8.1, align: 'center' });
   drawCell(doc, xs.assinatura, y0, cols.assinatura, headerH, 'ASSINATURA', { size: 8.5, align: 'center' });
 
   const pessoas = participantes(registro);
@@ -216,7 +216,7 @@ function drawObservacoes(doc: jsPDF, y: number, registro: TreinamentoTAF, nameW:
 }
 
 function drawAssinaturas(doc: jsPDF) {
-  const lineY = 199.5;
+  const lineY = 198.5;
   const lineW = 67;
   const leftX = M + 49;
   const rightX = PAGE_W - M - 49 - lineW;
@@ -224,9 +224,9 @@ function drawAssinaturas(doc: jsPDF) {
   doc.line(leftX, lineY, leftX + lineW, lineY);
   doc.line(rightX, lineY, rightX + lineW, lineY);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text('Chefe de Equipe', leftX + lineW / 2, lineY + 5.5, { align: 'center' });
-  doc.text('Gestor do SESCINC', rightX + lineW / 2, lineY + 5.5, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text('Chefe de Equipe', leftX + lineW / 2, lineY + 6.5, { align: 'center' });
+  doc.text('Gestor do SESCINC', rightX + lineW / 2, lineY + 6.5, { align: 'center' });
 }
 
 export function nomeArquivoTAFPdf(registro: TreinamentoTAF): string {

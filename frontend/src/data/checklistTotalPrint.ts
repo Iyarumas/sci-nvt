@@ -22,7 +22,7 @@ export interface ChecklistTotalPrintDocument {
   pages: ChecklistTotalPrintPage[];
 }
 
-export const CHECKLIST_TOTAL_PRINT_DOCUMENTS: ChecklistTotalPrintDocument[] = [
+const CHECKLIST_TOTAL_PRINT_DOCUMENTS_BASE: ChecklistTotalPrintDocument[] = [
   {
     "id": "sala-de-observa-o-oc-1",
     "label": "SALA DE OBSERVAÇÃO - OC",
@@ -2309,3 +2309,9 @@ export const CHECKLIST_TOTAL_PRINT_DOCUMENTS: ChecklistTotalPrintDocument[] = [
     ]
   }
 ];
+
+// O modelo CCI 333 - Superestrutura foi cadastrado duas vezes na fonte original.
+// Mantemos apenas uma cópia para a impressão das duas quinzenas.
+export const CHECKLIST_TOTAL_PRINT_DOCUMENTS = CHECKLIST_TOTAL_PRINT_DOCUMENTS_BASE.filter(
+  documento => documento.id !== 'cci-333-superestrutura-9',
+);

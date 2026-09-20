@@ -3,6 +3,14 @@ import { toCanvas } from 'html-to-image';
 import { formatarDataBR } from '../utils/datas';
 import { nomeDocumentoOperacional } from '../utils/documentFileNames';
 
+const LRO_FONT_SIZE_INCREMENT_PX = 1;
+
+function aumentarTipografiaLro(html: string): string {
+  return html.replace(/(font-size:\s*)(\d+(?:\.\d+)?)px/g, (_match, prefix: string, value: string) => (
+    `${prefix}${Number(value) + LRO_FONT_SIZE_INCREMENT_PX}px`
+  ));
+}
+
 function cb(checked: boolean) {
   const fill = checked ? '✓' : '';
   return `<span style="display:inline-flex; align-items:center; justify-content:center; width:9px; height:9px; border:1px solid #000; font-size:8px; line-height:1; vertical-align:middle; position:relative; top:0; font-weight:bold; color:#000;">${fill}</span>`;
@@ -167,7 +175,7 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
 
   const frotaCombinada = frota.map(f => `${f.combIni || '—'}→${f.combFim || '—'}`).join(', ') || '';
 
-  return `<!DOCTYPE html>
+  return aumentarTipografiaLro(`<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>${nomeDocumentoOperacional(dataInicio, 'LRO', equipeNome, '')}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -335,7 +343,7 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
     });
   };
 </script>
-</body></html>`;
+</body></html>`);
 }
 
 export async function gerarPDF(dados: Record<string, unknown>): Promise<Blob> {

@@ -14,6 +14,8 @@ const AIRPORTO_PADRAO = 'AEROPORTO INTERNACIONAL MINISTRO VICTOR KONDER - SBNF';
 const CODIGO_FORMULARIO = 'MMS.BR.BA.FOR.003';
 const TEXT_LINE_HEIGHT_FACTOR = 1.12;
 const TEXT_LINE_HEIGHT_MM = 0.43;
+const CONTENT_BOTTOM_Y = 280.6;
+const CONTINUATION_TOP_Y = 10;
 
 type Align = 'left' | 'center' | 'right';
 type FontStyle = 'normal' | 'bold' | 'italic' | 'bolditalic';
@@ -88,50 +90,32 @@ function wrappedLines(doc: jsPDF, value: string, width: number, size: number, st
   return Array.isArray(lines) ? lines : [String(lines)];
 }
 
-function fitLineWithEllipsis(doc: jsPDF, value: string, width: number): string {
-  const suffix = '...';
-  const clean = texto(value);
-  if (!clean || doc.getTextWidth(clean) <= width) return clean;
-  if (doc.getTextWidth(suffix) > width) return '';
-
-  let result = clean;
-  while (result.length > 0 && doc.getTextWidth(`${result}${suffix}`) > width) {
-    result = result.slice(0, -1).trimEnd();
-  }
-  return result ? `${result}${suffix}` : '';
-}
-
-function clampLinesToHeight(doc: jsPDF, lines: string[], width: number, height: number, size: number): string[] {
-  const maxLines = Math.max(1, Math.floor((height - 2.2) / (size * TEXT_LINE_HEIGHT_MM)));
-  if (lines.length <= maxLines) return lines;
-
-  const visible = lines.slice(0, maxLines);
-  visible[visible.length - 1] = fitLineWithEllipsis(doc, visible[visible.length - 1], width);
-  return visible.filter(Boolean);
-}
-
-function drawWrapped(doc: jsPDF, value: string, x: number, y: number, w: number, h: number, opts: {
-  maxSize?: number;
-  minSize?: number;
-  style?: FontStyle;
-  uppercase?: boolean;
-} = {}) {
-  const raw = opts.uppercase === false ? texto(value) : upper(value);
-  if (!raw) return;
-  const style = opts.style || 'italic';
-  const minSize = opts.minSize || 6;
+function conteudoQuebrado(doc: jsPDF, value: string, w: number, size: number, style: FontStyle, uppercase = true) {
+  const raw = uppercase ? upper(value) : texto(value);
   const textW = Math.max(1, w - 4);
-  let size = opts.maxSize || 11;
-  let lines = wrappedLines(doc, raw, textW, size, style);
-  while (size > minSize && lines.length * size * TEXT_LINE_HEIGHT_MM > h - 2.2) {
-    size -= 0.3;
-    lines = wrappedLines(doc, raw, textW, size, style);
-  }
-  const visibleLines = clampLinesToHeight(doc, lines, textW, h, size);
+  return {
+    lines: raw ? wrappedLines(doc, raw, textW, size, style) : [],
+    textW,
+  };
+}
 
+function alturaNecessariaTexto(doc: jsPDF, value: string, w: number, size: number, style: FontStyle, uppercase = true) {
+  const { lines } = conteudoQuebrado(doc, value, w, size, style, uppercase);
+  return lines.length === 0 ? 0 : lines.length * size * TEXT_LINE_HEIGHT_MM + 2.2;
+}
+
+function drawWrappedNoTamanhoOriginal(doc: jsPDF, value: string, x: number, y: number, w: number, size: number, style: FontStyle, uppercase = true) {
+  const { lines } = conteudoQuebrado(doc, value, w, size, style, uppercase);
+  if (lines.length === 0) return;
   doc.setFont('helvetica', style);
   doc.setFontSize(size);
-  doc.text(visibleLines, x + 2, y + size * 0.38 + 1.2, { lineHeightFactor: TEXT_LINE_HEIGHT_FACTOR });
+  doc.text(lines, x + 2, y + size * 0.38 + 1.2, { lineHeightFactor: TEXT_LINE_HEIGHT_FACTOR });
+}
+
+function manterCaixaInteiraNaPagina(doc: jsPDF, y: number, h: number): number {
+  if (y + h <= CONTENT_BOTTOM_Y) return y;
+  doc.addPage();
+  return CONTINUATION_TOP_Y;
 }
 
 function numeroCurto(numero: string): string {
@@ -318,42 +302,69 @@ function drawCronologia(doc: jsPDF, dados: ReturnType<typeof dadosBona>) {
   value(doc, dados.tempoGastoAtendimento, 175, y, 30, 6.1, { maxSize: 8.5 });
 }
 
-function drawSecaoTexto(doc: jsPDF, titulo: string, conteudo: string, x: number, y: number, w: number, h: number, titleH: number, maxSize: number) {
-  rect(doc, x, y, w, h);
-  doc.line(x, y + titleH, x + w, y + titleH);
-  label(doc, titulo, x, y, w, titleH, 'left', 8.8);
-  drawWrapped(doc, conteudo, x, y + titleH, w, h - titleH, {
-    maxSize,
-    minSize: 6,
-    style: 'italic',
-  });
+function drawSecaoTexto(doc: jsPDF, titulo: string, conteudo: string, x: number, y: number, w: number, h: number, titleH: number, maxSize: number): number {
+  const contentH = Math.max(h - titleH, alturaNecessariaTexto(doc, conteudo, w, maxSize, 'italic'));
+  const boxH = titleH + contentH;
+  const safeY = manterCaixaInteiraNaPagina(doc, y, boxH);
+  rect(doc, x, safeY, w, boxH);
+  doc.line(x, safeY + titleH, x + w, safeY + titleH);
+  label(doc, titulo, x, safeY, w, titleH, 'left', 8.8);
+  drawWrappedNoTamanhoOriginal(doc, conteudo, x, safeY + titleH, w, maxSize, 'italic');
+  return safeY + boxH;
 }
 
-function drawRodapeFormulario(doc: jsPDF, dados: ReturnType<typeof dadosBona>) {
-  rect(doc, L, 222.3, 149.5, 22);
-  doc.line(L, 228, 154.5, 228);
-  label(doc, 'Veículos Utilizados', L, 222.3, 149.5, 5.7, 'left', 8.8);
-  drawWrapped(doc, dados.veiculosUtilizados, L, 228, 149.5, 16.3, { maxSize: 10.5, minSize: 6, style: 'italic' });
+function drawVeiculosEAgentes(doc: jsPDF, dados: ReturnType<typeof dadosBona>, y: number): number {
+  const agentsX = 161.8;
+  const agentsW = R - agentsX;
+  const agentsMidX = agentsX + agentsW / 2;
+  const agentsHeaderH = 10.2;
+  const agentsColumnHeaderH = 5.5;
+  const agentsValueH = 6.3;
+  const vehicleContentH = Math.max(16.3, alturaNecessariaTexto(doc, dados.veiculosUtilizados, 149.5, 10.5, 'italic'));
+  const boxH = 5.7 + vehicleContentH;
+  const safeY = manterCaixaInteiraNaPagina(doc, y, boxH);
+  rect(doc, L, safeY, 149.5, boxH);
+  doc.line(L, safeY + 5.7, 154.5, safeY + 5.7);
+  label(doc, 'Veículos Utilizados', L, safeY, 149.5, 5.7, 'left', 8.8);
+  drawWrappedNoTamanhoOriginal(doc, dados.veiculosUtilizados, L, safeY + 5.7, 149.5, 10.5, 'italic');
 
-  rect(doc, 161.8, 222.3, 37, 22);
-  doc.line(161.8, 232.5, 198.8, 232.5);
-  doc.line(161.8, 238, 198.8, 238);
-  doc.line(180.3, 232.5, 180.3, 244.3);
-  label(doc, 'Agentes', 161.8, 222.3, 37, 5, 'center', 8.3);
-  label(doc, 'Extintores', 161.8, 227, 37, 5, 'center', 8.3);
-  label(doc, 'LGE', 161.8, 232.5, 18.5, 5.5, 'center', 8.4);
-  label(doc, 'PQ', 180.3, 232.5, 18.5, 5.5, 'center', 8.4);
-  value(doc, dados.agentesLge || '0', 161.8, 238, 18.5, 6.3, { maxSize: 8.5, style: 'italic' });
-  value(doc, dados.agentesPq || '0', 180.3, 238, 18.5, 6.3, { maxSize: 8.5, style: 'italic' });
+  rect(doc, agentsX, safeY, agentsW, boxH);
+  doc.line(agentsX, safeY + agentsHeaderH, agentsX + agentsW, safeY + agentsHeaderH);
+  doc.line(agentsX, safeY + agentsHeaderH + agentsColumnHeaderH, agentsX + agentsW, safeY + agentsHeaderH + agentsColumnHeaderH);
+  doc.line(agentsMidX, safeY + agentsHeaderH, agentsMidX, safeY + boxH);
+  label(doc, 'Agentes', agentsX, safeY, agentsW, agentsHeaderH / 2, 'center', 8.3);
+  label(doc, 'Extintores', agentsX, safeY + agentsHeaderH / 2, agentsW, agentsHeaderH / 2, 'center', 8.3);
+  label(doc, 'LGE', agentsX, safeY + agentsHeaderH, agentsW / 2, agentsColumnHeaderH, 'center', 8.4);
+  label(doc, 'PQ', agentsMidX, safeY + agentsHeaderH, agentsW / 2, agentsColumnHeaderH, 'center', 8.4);
+  value(doc, dados.agentesLge || '0', agentsX, safeY + agentsHeaderH + agentsColumnHeaderH, agentsW / 2, agentsValueH, { maxSize: 8.5, style: 'italic' });
+  value(doc, dados.agentesPq || '0', agentsMidX, safeY + agentsHeaderH + agentsColumnHeaderH, agentsW / 2, agentsValueH, { maxSize: 8.5, style: 'italic' });
+  return safeY + boxH;
+}
 
-  rect(doc, L, 245.3, W, 21);
-  doc.line(L, 252.1, R, 252.1);
-  label(doc, 'Outros Recursos Utilizados', L, 245.3, W, 6.8, 'left', 8.8);
-  drawWrapped(doc, dados.outrosRecursosUtilizados, L, 252.1, W, 14.2, { maxSize: 10.5, minSize: 6, style: 'italic' });
+function drawOutrosRecursos(doc: jsPDF, conteudo: string, y: number): number {
+  const contentH = Math.max(14.2, alturaNecessariaTexto(doc, conteudo, W, 10.5, 'italic'));
+  const boxH = 6.8 + contentH;
+  const safeY = manterCaixaInteiraNaPagina(doc, y, boxH);
+  rect(doc, L, safeY, W, boxH);
+  doc.line(L, safeY + 6.8, R, safeY + 6.8);
+  label(doc, 'Outros Recursos Utilizados', L, safeY, W, 6.8, 'left', 8.8);
+  drawWrappedNoTamanhoOriginal(doc, conteudo, L, safeY + 6.8, W, 10.5, 'italic');
+  return safeY + boxH;
+}
 
-  rect(doc, L, 267.4, W, 13.2);
-  doc.line(73, 267.4, 73, 280.6);
-  label(doc, 'Assinatura do Chefe de Equipe:', L, 267.4, 68, 13.2, 'left', 8.6);
+function drawAssinatura(doc: jsPDF, y: number): number {
+  const boxH = 13.2;
+  const safeY = manterCaixaInteiraNaPagina(doc, y, boxH);
+  rect(doc, L, safeY, W, boxH);
+  doc.line(73, safeY, 73, safeY + boxH);
+  label(doc, 'Assinatura do Chefe de Equipe:', L, safeY, 68, boxH, 'left', 8.6);
+  return safeY + boxH;
+}
+
+function drawRodapeFormulario(doc: jsPDF, dados: ReturnType<typeof dadosBona>, y: number) {
+  const afterVehicles = drawVeiculosEAgentes(doc, dados, y);
+  const afterOutros = drawOutrosRecursos(doc, dados.outrosRecursosUtilizados, afterVehicles + 1);
+  drawAssinatura(doc, afterOutros + 1.1);
 }
 
 export async function gerarBonaPdf(registro: Ocorrencia): Promise<Blob> {
@@ -375,9 +386,9 @@ export async function gerarBonaPdf(registro: Ocorrencia): Promise<Blob> {
   drawDadosIniciais(doc, registro, dados);
   drawBombeiros(doc, bombeiros);
   drawCronologia(doc, dados);
-  drawSecaoTexto(doc, 'Descrição Sucinta da Ocorrência / Acionamento', dados.descricaoOcorrencia, L, 164.1, W, 20.8, 6.8, 10.8);
-  drawSecaoTexto(doc, 'Descrição Sucinta da Atuação da Equipe do SESCINC', dados.descricaoAtuacaoEquipe, L, 185.9, W, 35, 6.8, 10.8);
-  drawRodapeFormulario(doc, dados);
+  const afterDescricaoOcorrencia = drawSecaoTexto(doc, 'Descrição Sucinta da Ocorrência / Acionamento', dados.descricaoOcorrencia, L, 164.1, W, 20.8, 6.8, 10.8);
+  const afterDescricaoAtuacao = drawSecaoTexto(doc, 'Descrição Sucinta da Atuação da Equipe do SESCINC', dados.descricaoAtuacaoEquipe, L, afterDescricaoOcorrencia + 1, W, 35, 6.8, 10.8);
+  drawRodapeFormulario(doc, dados, afterDescricaoAtuacao + 1.4);
 
   return doc.output('blob');
 }

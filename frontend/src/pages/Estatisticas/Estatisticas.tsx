@@ -46,12 +46,6 @@ const CORES: Record<string, string> = {
   Ferista: '#ec4899', Embaixador: '#6b7280',
 };
 
-const CATEGORIA_CORES: Record<string, string> = {
-  'Incêndio': '#ef4444', 'Resgate': '#f97316', 'Emergência Aeronáutica': '#3b82f6',
-  'Vazamento': '#06b6d4', 'Equipamento': '#8b5cf6', 'Infraestrutura': '#6b7280',
-  'Treinamento': '#10b981', 'Outros': '#a3a3a3',
-};
-
 const TIPO_TREINO_CORES: Record<string, string> = {
   'PTR-BA': '#059669',
   'TP/EPR': '#3b82f6',
@@ -79,6 +73,7 @@ interface OcorrenciaDash {
   hora: string;
   equipe: string;
   categoria: string;
+  tipoOcorrencia: string;
   status: string;
   createdAt: string;
 }
@@ -95,6 +90,7 @@ async function carregarOcorrencias(): Promise<OcorrenciaDash[]> {
       hora: o.hora,
       equipe: o.equipe,
       categoria: o.categoria,
+      tipoOcorrencia: o.bonaDados?.tipoOcorrencia || o.titulo || o.categoria || 'Não informado',
       status: o.status,
       createdAt: o.createdAt,
     }));
@@ -104,9 +100,10 @@ async function carregarOcorrencias(): Promise<OcorrenciaDash[]> {
     numero: r.numero,
     data: r.dataAcidente || r.createdAt.slice(0, 10),
     hora: r.horaAcidente || '',
-    equipe: r.equipe,
-    categoria: 'Emergência Aeronáutica',
-    status: r.status,
+      equipe: r.equipe,
+      categoria: 'Emergência Aeronáutica',
+      tipoOcorrencia: 'Emergência Aeronáutica',
+      status: r.status,
     createdAt: r.createdAt,
   }));
   return [...bonas, ...reasMapped];
@@ -276,10 +273,25 @@ function TabVisaoGeral() {
     return meses.map(m => ({ mes: m, Ocorrências: mapO[m], Treinamentos: mapT[m] }));
   }, [ocorrencias, completos]);
 
-  const porCategoria = useMemo(() => {
+  const porTipoDocumento = useMemo(() => (
+    [
+      { name: 'BONA', value: ocorrencias.filter(o => o.tipo === 'BONA').length, cor: '#3b82f6' },
+      { name: 'REA', value: ocorrencias.filter(o => o.tipo === 'REA').length, cor: '#f97316' },
+    ].filter(item => item.value > 0)
+  ), [ocorrencias]);
+
+  const tiposMaisFrequentes = useMemo(() => {
     const map: Record<string, number> = {};
-    ocorrencias.forEach(o => { map[o.categoria] = (map[o.categoria] || 0) + 1; });
-    return Object.entries(map).map(([name, value]) => ({ name, value, cor: CATEGORIA_CORES[name] || '#a3a3a3' })).sort((a, b) => b.value - a.value);
+    ocorrencias.forEach(o => {
+      const tipo = o.tipo === 'REA'
+        ? 'REA · Emergência Aeronáutica'
+        : `BONA · ${o.tipoOcorrencia || 'Não informado'}`;
+      map[tipo] = (map[tipo] || 0) + 1;
+    });
+    return Object.entries(map)
+      .map(([tipo, total]) => ({ tipo, total }))
+      .sort((a, b) => b.total - a.total || a.tipo.localeCompare(b.tipo))
+      .slice(0, 5);
   }, [ocorrencias]);
 
   return (
@@ -318,17 +330,46 @@ function TabVisaoGeral() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Ocorrências por Categoria" icon={Flame}>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie data={porCategoria} cx="50%" cy="50%" innerRadius={55} outerRadius={100}
-                paddingAngle={3} dataKey="value"
-                label={({ name, percent }: PieLabelProps) => `${String(name)} ${((percent || 0) * 100).toFixed(0)}%`}>
-                {porCategoria.map((e, i) => <Cell key={i} fill={e.cor} />)}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+        <SectionCard title="Ocorrências: BONA / REA e tipos" icon={Flame}>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              {porTipoDocumento.length > 0 ? (
+                <ResponsiveContainer width="100%" height={185}>
+                  <PieChart>
+                    <Pie data={porTipoDocumento} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={3} dataKey="value">
+                      {porTipoDocumento.map((item, index) => <Cell key={index} fill={item.cor} />)}
+                    </Pie>
+                    <Tooltip formatter={(value, _name, item) => [`${value} ocorrência${Number(value) === 1 ? '' : 's'}`, item.payload.name]} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-[185px] items-center justify-center text-sm text-graphite-400 dark:text-graphite-500">Nenhuma ocorrência registrada.</div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                {porTipoDocumento.map(item => (
+                  <div key={item.name} className="rounded-xl bg-graphite-50 px-3 py-2 text-center dark:bg-surface-hover">
+                    <p className="text-lg font-black" style={{ color: item.cor }}>{item.value}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">{item.name}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Tipos mais frequentes</p>
+              <div className="space-y-2">
+                {tiposMaisFrequentes.length > 0 ? tiposMaisFrequentes.map((item, index) => (
+                  <div key={item.tipo} className="flex items-center gap-3 rounded-xl bg-graphite-50 px-3 py-2.5 dark:bg-surface-hover">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-aviation-100 text-xs font-black text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{index + 1}</span>
+                    <span className="min-w-0 flex-1 text-xs font-semibold text-graphite-700 dark:text-graphite-200">{item.tipo}</span>
+                    <span className="shrink-0 text-sm font-black text-graphite-900 dark:text-graphite-100">{item.total}</span>
+                  </div>
+                )) : (
+                  <p className="py-8 text-center text-sm text-graphite-400 dark:text-graphite-500">Nenhum tipo registrado.</p>
+                )}
+              </div>
+            </div>
+          </div>
         </SectionCard>
       </div>
 
@@ -894,6 +935,7 @@ function TabOrdens() {
     const tempoMedio = tempos.length ? tempos.reduce((a, b) => a + b, 0) / tempos.length : 0;
     return { porStatus, porPrioridade, porEquipe, tempoMedio, total: ordens.length, concluidas: concluidas.length };
   }, [ordens]);
+  const statusComOrdens = stats.porStatus.filter(status => status.total > 0);
 
   return (
     <div className="space-y-6">
@@ -910,9 +952,9 @@ function TabOrdens() {
         <SectionCard title="Ordens por Status" icon={Activity}>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={stats.porStatus} cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={3} dataKey="total"
+              <Pie data={statusComOrdens} cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={3} dataKey="total"
                 label={({ status, percent }: PieLabelProps) => `${String(status)} ${((percent || 0) * 100).toFixed(0)}%`}>
-                {stats.porStatus.map((e, i) => <Cell key={i} fill={e.cor} />)}
+                {statusComOrdens.map((e, i) => <Cell key={i} fill={e.cor} />)}
               </Pie>
               <Tooltip />
             </PieChart>

@@ -15,8 +15,8 @@ const CONTENT_W = 196;
 const SIGNATURE_Y = 288.5;
 const EVIDENCE_BOTTOM_Y = 276.5;
 const PARTICIPANTES_FIXOS_EQUIPE = 10;
-const FIELD_FONT_SIZE = 8;
-const NAME_FONT_SIZE = 9;
+const FIELD_FONT_SIZE = 9;
+const NAME_FONT_SIZE = 10;
 
 function formatDate(value: string): string {
   if (!value) return '';
@@ -77,7 +77,7 @@ function drawHeader(doc: jsPDF, logoDataUrl: string | null) {
 
   drawCell(doc, M + 34, 7, 112, 14, 'RELATÓRIO DE REGISTRO PTR-BA', {
     bold: true,
-    size: 12,
+    size: 13,
     align: 'center',
   });
   drawCell(doc, M + 146, 7, 50, 7, 'Código:\nMMS.BR.BA.FOR.004', {
@@ -93,11 +93,11 @@ function drawHeader(doc: jsPDF, logoDataUrl: string | null) {
 }
 
 function drawEquipeLinha(doc: jsPDF, registro: PTRBACompleto) {
-  drawCell(doc, M, 23, 196, 6, 'IDENTIFICAÇÃO DO AEROPORTO:', { bold: true, size: 11 });
+  drawCell(doc, M, 23, 196, 6, 'IDENTIFICAÇÃO DO AEROPORTO:', { bold: true, size: 12 });
   if (registro.identificacaoAeroporto) {
-    drawTextFit(doc, upper(registro.identificacaoAeroporto), M + 75, 27.2, 109, { size: 9 });
+    drawTextFit(doc, upper(registro.identificacaoAeroporto), M + 75, 27.2, 109, { size: 10 });
   }
-  drawCell(doc, M, 29, 32, 6, 'EQUIPE:', { bold: true, size: 9, align: 'center' });
+  drawCell(doc, M, 29, 32, 6, 'EQUIPE:', { bold: true, size: 10, align: 'center' });
   drawCell(doc, M + 32, 29, 110, 6);
   PTRBA_COMPLETO_EQUIPES.forEach((equipe, index) => {
     const x = M + 36 + index * 28;
@@ -107,22 +107,25 @@ function drawEquipeLinha(doc: jsPDF, registro: PTRBACompleto) {
       doc.line(x + 1.1, 32.4, x + 2.3, 30.5);
     }
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
+    doc.setFontSize(10);
     doc.text(equipe.toLocaleUpperCase('pt-BR'), x + 5.2, 32.7);
   });
-  drawCell(doc, M + 142, 29, 13, 6, 'DATA:', { bold: true, size: 9, align: 'center' });
-  drawCell(doc, M + 155, 29, 41, 6, formatDate(registro.data), { bold: true, size: 9, align: 'center' });
+  drawCell(doc, M + 142, 29, 13, 6, 'DATA:', { bold: true, size: 10, align: 'center' });
+  drawCell(doc, M + 155, 29, 41, 6, formatDate(registro.data), { bold: true, size: 10, align: 'center' });
 }
 
 function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[]): number {
   const y0 = 36.5;
   const rowH = 6.7;
-  // Reserva 5 mm a mais para nomes em 9 pt, mantendo uma área ampla para assinatura.
-  const widths = [15, 18, 73, 19, 71];
+  const widths = [15, 18, 68, 19, 76];
   const xs = [M];
   for (let i = 0; i < widths.length - 1; i += 1) xs.push(xs[i] + widths[i]);
   const headers = ['ORD', 'Função', 'NOME COMPLETO', "Situação dos\nBA's", 'ASSINATURA DO BA'];
-  headers.forEach((header, i) => drawCell(doc, xs[i], y0, widths[i], 7, header, { bold: true, size: FIELD_FONT_SIZE, align: 'center' }));
+  headers.forEach((header, i) => drawCell(doc, xs[i], y0, widths[i], 7, header, {
+    bold: true,
+    size: header.startsWith('Situação') ? 8 : FIELD_FONT_SIZE,
+    align: 'center',
+  }));
 
   const participantesEquipe = participantes.slice(0, PARTICIPANTES_FIXOS_EQUIPE);
   const participantesExtras = participantes
@@ -147,7 +150,7 @@ function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[
 function drawObservacoes(doc: jsPDF, registro: PTRBACompleto, y: number): number {
   const obsH = registro.observacoes ? 9 : 6;
   const legendH = 11.5;
-  drawCell(doc, M, y, CONTENT_W, obsH, 'OBSERVAÇÕES:', { bold: true, size: 9, valign: 'top' });
+  drawCell(doc, M, y, CONTENT_W, obsH, 'OBSERVAÇÕES:', { bold: true, size: 10, valign: 'top' });
   if (registro.observacoes) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FIELD_FONT_SIZE);
@@ -161,7 +164,7 @@ function drawObservacoes(doc: jsPDF, registro: PTRBACompleto, y: number): number
     CONTENT_W,
     legendH,
     'LEGENDAS: P - Presente / A - Ausente / EO - Empenho Ocorrência / OC - Operador Comunicação / INSTR.1 - Instrutor PTR 1 / INSTR.2 - Instrutor PTR 2 / INSTR.3 - Instrutor PTR 3 / INSTR.1-2 - Instrutor PTR 1 e 2 / INSTR.2-3 - Instrutor PTR 2 e 3 / INSTR.1-3 - Instrutor PTR 1 e 3.',
-    { bold: true, size: 6.4, valign: 'middle' },
+    { bold: true, size: 7.4, valign: 'middle' },
   );
 
   return y + obsH + legendH;
@@ -183,7 +186,7 @@ function drawEvidenceImage(doc: jsPDF, dataUrl: string, x: number, y: number, w:
     doc.addImage(dataUrl, imageFormat(dataUrl), imgX, imgY, imgW, imgH, undefined, 'FAST');
   } catch {
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
+    doc.setFontSize(10);
     doc.text('Imagem inválida', x + w / 2, y + h / 2, { align: 'center' });
   }
 }
@@ -195,7 +198,7 @@ function drawEvidenceCell(doc: jsPDF, ev: PTRBACompletoEvidencia, x: number, y: 
   drawEvidenceImage(doc, ev.imagem, x + 0.5, y + 0.5, w - 1, imgH - 1);
   if (!ev.imagem && ev.descricao) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
+    doc.setFontSize(8);
     const lines = doc.splitTextToSize(ev.descricao, w - 6).slice(0, 6);
     doc.text(lines, x + 3, y + 6);
   }
@@ -207,14 +210,14 @@ function drawEvidenceCell(doc: jsPDF, ev: PTRBACompletoEvidencia, x: number, y: 
   });
   drawCell(doc, x + 34, y + imgH, w - 34, footerH, ev.assunto || '', {
     bold: true,
-    size: 7.5,
+    size: 8.5,
     align: 'center',
     fill: [220, 220, 220],
   });
 }
 
 function drawEvidencias(doc: jsPDF, evidencias: PTRBACompletoEvidencia[], titleY: number) {
-  drawCell(doc, M, titleY, CONTENT_W, 5, 'ASSUNTOS MINISTRADOS E EVIDÊNCIAS', { bold: true, size: 9, align: 'center' });
+  drawCell(doc, M, titleY, CONTENT_W, 5, 'ASSUNTOS MINISTRADOS E EVIDÊNCIAS', { bold: true, size: 10, align: 'center' });
   const xLeft = M;
   const xRight = M + 98;
   const cellW = 98;
@@ -237,7 +240,7 @@ function drawAssinatura(doc: jsPDF) {
   doc.setLineWidth(0.2);
   doc.line(58, y, 152, y);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.text('ASSINATURA DO CHEFE DE EQUIPE', 105, y + 4, { align: 'center' });
   doc.line(M, 295, M + 196, 295);
 }

@@ -265,13 +265,13 @@ function drawBombeiros(doc: jsPDF, bombeiros: Array<{ nome: string; funcao: stri
     const linha = bombeiros[i];
     if (linha) {
       drawSingleLine(doc, linha.nome, L + 1.2, rowY, 96, rowH, {
-        maxSize: 8.2,
+        maxSize: 10.2,
         minSize: 5.6,
         style: 'italic',
         align: 'left',
       });
       drawSingleLine(doc, linha.funcao, 105.8 + 1.2, rowY, 96.8, rowH, {
-        maxSize: 7.4,
+        maxSize: 9.4,
         minSize: 5,
         style: 'italic',
         align: 'left',

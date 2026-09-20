@@ -15,8 +15,8 @@ const CONTENT_W = 196;
 const SIGNATURE_Y = 288.5;
 const EVIDENCE_BOTTOM_Y = 276.5;
 const PARTICIPANTES_FIXOS_EQUIPE = 10;
-const FIELD_FONT_SIZE = 7;
-const NAME_FONT_SIZE = 7;
+const FIELD_FONT_SIZE = 8;
+const NAME_FONT_SIZE = 8;
 
 function formatDate(value: string): string {
   if (!value) return '';
@@ -95,7 +95,7 @@ function drawHeader(doc: jsPDF, logoDataUrl: string | null) {
 function drawEquipeLinha(doc: jsPDF, registro: PTRBACompleto) {
   drawCell(doc, M, 23, 196, 6, 'IDENTIFICAÇÃO DO AEROPORTO:', { bold: true, size: 10 });
   if (registro.identificacaoAeroporto) {
-    drawTextFit(doc, upper(registro.identificacaoAeroporto), M + 75, 27.2, 109, { size: 8 });
+    drawTextFit(doc, upper(registro.identificacaoAeroporto), M + 75, 27.2, 109, { size: 9 });
   }
   drawCell(doc, M, 29, 32, 6, 'EQUIPE:', { bold: true, size: 8, align: 'center' });
   drawCell(doc, M + 32, 29, 110, 6);
@@ -121,7 +121,11 @@ function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[
   const xs = [M];
   for (let i = 0; i < widths.length - 1; i += 1) xs.push(xs[i] + widths[i]);
   const headers = ['ORD', 'Função', 'NOME COMPLETO', "Situação dos\nBA's", 'ASSINATURA DO BA'];
-  headers.forEach((header, i) => drawCell(doc, xs[i], y0, widths[i], 7, header, { bold: true, size: FIELD_FONT_SIZE, align: 'center' }));
+  headers.forEach((header, i) => drawCell(doc, xs[i], y0, widths[i], 7, header, {
+    bold: true,
+    size: header.startsWith('Situação') ? 7 : FIELD_FONT_SIZE,
+    align: 'center',
+  }));
 
   const participantesEquipe = participantes.slice(0, PARTICIPANTES_FIXOS_EQUIPE);
   const participantesExtras = participantes
@@ -200,7 +204,7 @@ function drawEvidenceCell(doc: jsPDF, ev: PTRBACompletoEvidencia, x: number, y: 
   }
   drawCell(doc, x, y + imgH, 34, footerH, periodo(ev), {
     bold: true,
-    size: FIELD_FONT_SIZE,
+    size: 7,
     align: 'center',
     fill: [220, 220, 220],
   });
@@ -223,7 +227,7 @@ function drawEvidencias(doc: jsPDF, evidencias: PTRBACompletoEvidencia[], titleY
   // 3 instruções, cada uma com 2 evidências juntas
   for (let n = 0; n < 3; n += 1) {
     const labelY = titleY + 5 + n * (labelH + cellH);
-    drawCell(doc, M, labelY, CONTENT_W, labelH, `INSTRUÇÃO ${n + 1}`, { bold: true, size: FIELD_FONT_SIZE, align: 'center', fill: [230, 230, 230] });
+    drawCell(doc, M, labelY, CONTENT_W, labelH, `INSTRUÇÃO ${n + 1}`, { bold: true, size: 7, align: 'center', fill: [230, 230, 230] });
     const y = labelY + labelH;
     const i = n * 2;
     drawEvidenceCell(doc, evidencias[i], xLeft, y, cellW, cellH);

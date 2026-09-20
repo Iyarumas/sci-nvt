@@ -58,6 +58,8 @@ const STATUS_OS_CORES: Record<string, string> = {
   'Aberta': '#3b82f6', 'Manutenção': '#f59e0b', 'Concluída': '#10b981', 'Cancelada': '#ef4444',
 };
 
+const CORES_TIPOS_OCORRENCIA = ['#3b82f6', '#f97316', '#10b981', '#8b5cf6', '#ec4899', '#06b6d4', '#eab308', '#ef4444'];
+
 const PRIORIDADE_OS_CORES: Record<string, string> = {
   'Baixa': '#38bdf8', 'Média': '#f59e0b', 'Alta': '#f97316', 'Urgente': '#ef4444',
 };
@@ -76,6 +78,11 @@ interface OcorrenciaDash {
   tipoOcorrencia: string;
   status: string;
   createdAt: string;
+}
+
+function corParaTipoOcorrencia(tipo: string) {
+  const indice = Array.from(tipo).reduce((total, caractere) => total + caractere.charCodeAt(0), 0);
+  return CORES_TIPOS_OCORRENCIA[indice % CORES_TIPOS_OCORRENCIA.length];
 }
 
 async function carregarOcorrencias(): Promise<OcorrenciaDash[]> {
@@ -289,7 +296,7 @@ function TabVisaoGeral() {
       map[tipo] = (map[tipo] || 0) + 1;
     });
     return Object.entries(map)
-      .map(([tipo, total]) => ({ tipo, total }))
+      .map(([tipo, total]) => ({ tipo, total, cor: corParaTipoOcorrencia(tipo) }))
       .sort((a, b) => b.total - a.total || a.tipo.localeCompare(b.tipo))
       .slice(0, 5);
   }, [ocorrencias]);
@@ -345,24 +352,16 @@ function TabVisaoGeral() {
               ) : (
                 <div className="flex h-[185px] items-center justify-center text-sm text-graphite-400 dark:text-graphite-500">Nenhuma ocorrência registrada.</div>
               )}
-              <div className="grid grid-cols-2 gap-2">
-                {porTipoDocumento.map(item => (
-                  <div key={item.name} className="rounded-xl bg-graphite-50 px-3 py-2 text-center dark:bg-surface-hover">
-                    <p className="text-lg font-black" style={{ color: item.cor }}>{item.value}</p>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">{item.name}</p>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="min-w-0">
               <p className="mb-3 text-xs font-bold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Tipos mais frequentes</p>
               <div className="space-y-2">
                 {tiposMaisFrequentes.length > 0 ? tiposMaisFrequentes.map((item, index) => (
-                  <div key={item.tipo} className="flex items-center gap-3 rounded-xl bg-graphite-50 px-3 py-2.5 dark:bg-surface-hover">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-aviation-100 text-xs font-black text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{index + 1}</span>
+                  <div key={item.tipo} className="flex items-center gap-3 rounded-xl border-l-4 bg-graphite-50 px-3 py-2.5 dark:bg-surface-hover" style={{ borderLeftColor: item.cor }}>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black text-white" style={{ backgroundColor: item.cor }}>{index + 1}</span>
                     <span className="min-w-0 flex-1 text-xs font-semibold text-graphite-700 dark:text-graphite-200">{item.tipo}</span>
-                    <span className="shrink-0 text-sm font-black text-graphite-900 dark:text-graphite-100">{item.total}</span>
+                    <span className="shrink-0 text-sm font-black" style={{ color: item.cor }}>{item.total}</span>
                   </div>
                 )) : (
                   <p className="py-8 text-center text-sm text-graphite-400 dark:text-graphite-500">Nenhum tipo registrado.</p>

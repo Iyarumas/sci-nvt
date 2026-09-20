@@ -113,7 +113,8 @@ function drawWrappedNoTamanhoOriginal(doc: jsPDF, value: string, x: number, y: n
 }
 
 function manterCaixaInteiraNaPagina(doc: jsPDF, y: number, h: number): number {
-  if (y + h <= CONTENT_BOTTOM_Y) return y;
+  // Evita uma nova página quando a caixa termina exatamente no limite útil.
+  if (y + h <= CONTENT_BOTTOM_Y + 0.01) return y;
   doc.addPage();
   return CONTINUATION_TOP_Y;
 }

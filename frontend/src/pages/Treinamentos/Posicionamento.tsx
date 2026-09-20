@@ -73,6 +73,16 @@ function formatDate(d: string) {
   return formatarDataBR(d);
 }
 
+function TextareaField({ label, value, onChange, rows = 3 }: { label: string; value: string; onChange: (v: string) => void; rows?: number }) {
+  return (
+    <div>
+      <label className={labelCls}>{label}</label>
+      <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows}
+        className={`${inputCls} resize-none`} />
+    </div>
+  );
+}
+
 export default function Posicionamento() {
   const { user, contexto, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
   const canCreate = canManageGlobal || !!equipeEfetiva;
@@ -565,16 +575,6 @@ export default function Posicionamento() {
           displayMode="operational"
           placeholder={`Selecione ${label}`}
         />
-      </div>
-    );
-  }
-
-  function TextareaField({ label, value, onChange, rows = 3 }: { label: string; value: string; onChange: (v: string) => void; rows?: number }) {
-    return (
-      <div>
-        <label className={labelCls}>{label}</label>
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows}
-          className={`${inputCls} resize-none`} />
       </div>
     );
   }

@@ -75,6 +75,15 @@ function fmt(d: string) {
   return formatarDataBR(d);
 }
 
+function TextareaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div>
+      <label className={labelCls}>{label}</label>
+      <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} className={`${inputCls} resize-none`} />
+    </div>
+  );
+}
+
 export default function TempoResposta() {
   const { user, contexto, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
   const canCreate = canManageGlobal || !!equipeEfetiva;
@@ -505,15 +514,6 @@ export default function TempoResposta() {
           <option value="">Selecione</option>
           {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-      </div>
-    );
-  }
-
-  function TextareaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-    return (
-      <div>
-        <label className={labelCls}>{label}</label>
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={3} className={`${inputCls} resize-none`} />
       </div>
     );
   }

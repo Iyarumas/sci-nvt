@@ -393,25 +393,13 @@ export async function gerarPDF(dados: Record<string, unknown>): Promise<Blob> {
     const contentPage = idoc.querySelector<HTMLElement>('.page');
     if (!contentPage) throw new Error('Conteúdo do LRO não encontrado.');
 
-    // O canvas não aplica as regras de @media print. Espelhamos o layout de
-    // impressão antes de medir as seções, para que uma tabela inteira passe
-    // para a página seguinte quando não houver espaço suficiente.
-    idocBody.style.margin = '0';
-    idocBody.style.background = '#fff';
-    contentPage.style.width = `${A4_W}px`;
-    contentPage.style.margin = '0';
-    contentPage.style.padding = '0.35mm';
+    // Mantém a paginação contínua do LRO, como era antes: o conteúdo segue
+    // normalmente para a página seguinte, sem reservar uma folha inteira
+    // para cada seção.
     contentPage.style.minHeight = '0';
 
     const contentTop = contentPage.getBoundingClientRect().top;
-    const sections = Array.from(contentPage.children).filter(
-      (element): element is HTMLElement => element instanceof HTMLElement,
-    );
-
-    for (const section of sections) {
-      section.style.breakInside = 'avoid';
-      section.style.pageBreakInside = 'avoid';
-
+    for (const section of Array.from(contentPage.children) as HTMLElement[]) {
       const rect = section.getBoundingClientRect();
       const sectionTop = rect.top - contentTop;
       const positionOnPage = sectionTop % PAGE_CONTENT_H;

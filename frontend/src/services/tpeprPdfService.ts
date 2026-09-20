@@ -138,8 +138,8 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTPEPR) {
     }
     if (!participante) continue;
 
-    drawTextFit(doc, upper(participante.nomeCompleto || participante.nomeGuerra), xName + 1, y + 4.1, nameW - 2, { bold: true, size: 7.8 });
-    drawTextFit(doc, participante.funcao || '', xFunc + funcW / 2, y + 4.1, funcW - 2, { size: 8, align: 'center' });
+    drawTextFit(doc, upper(participante.nomeCompleto || participante.nomeGuerra), xName + 1, y + 4.1, nameW - 2, { bold: true, size: 9 });
+    drawTextFit(doc, participante.funcao || '', xFunc + funcW / 2, y + 4.1, funcW - 2, { size: 9, align: 'center' });
     const tempos = [
       participante.primeiraTomada,
       participante.segundaTomada,
@@ -147,7 +147,7 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTPEPR) {
       participante.quartaTomada,
     ];
     tempos.forEach((tempo, col) => {
-      drawTextFit(doc, tempo || '', xTempo + col * timeW + timeW / 2, y + 4.1, timeW - 2, { size: 8, align: 'center' });
+      drawTextFit(doc, tempo || '', xTempo + col * timeW + timeW / 2, y + 4.1, timeW - 2, { size: 9, align: 'center' });
     });
   }
 

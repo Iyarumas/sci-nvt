@@ -188,13 +188,13 @@ function drawTabela(doc: jsPDF, registro: TreinamentoTAF) {
     const y = y0 + headerH + i * rowH;
     const pessoa = pessoas[i];
     const temPessoa = !!pessoa?.nome;
-    drawCell(doc, xs.nome, y, cols.nome, rowH, pessoa?.nome ? upper(pessoa.nome) : '', { size: 7.5, minSize: 6, valign: 'middle' });
-    drawCell(doc, xs.funcao, y, cols.funcao, rowH, pessoa?.funcao || '', { bold: true, size: 7.6, align: 'center' });
-    drawCell(doc, xs.idade, y, cols.idade, rowH, pessoa?.idade ? String(pessoa.idade) : '', { size: 7.6, align: 'center' });
-    drawCell(doc, xs.flexao, y, cols.flexao, rowH, temPessoa ? '--' : '', { size: 8, align: 'center' });
-    drawCell(doc, xs.abdominal, y, cols.abdominal, rowH, temPessoa ? '--' : '', { size: 8, align: 'center' });
-    drawCell(doc, xs.polichinelo, y, cols.polichinelo, rowH, temPessoa ? '--' : '', { size: 8, align: 'center' });
-    drawCell(doc, xs.completo, y, cols.completo, rowH, pessoa?.tempo || '', { size: 8, align: 'center' });
+    drawCell(doc, xs.nome, y, cols.nome, rowH, pessoa?.nome ? upper(pessoa.nome) : '', { size: 9, minSize: 9, valign: 'middle' });
+    drawCell(doc, xs.funcao, y, cols.funcao, rowH, pessoa?.funcao || '', { bold: true, size: 9, align: 'center' });
+    drawCell(doc, xs.idade, y, cols.idade, rowH, pessoa?.idade ? String(pessoa.idade) : '', { size: 9, align: 'center' });
+    drawCell(doc, xs.flexao, y, cols.flexao, rowH, temPessoa ? '--' : '', { size: 9, align: 'center' });
+    drawCell(doc, xs.abdominal, y, cols.abdominal, rowH, temPessoa ? '--' : '', { size: 9, align: 'center' });
+    drawCell(doc, xs.polichinelo, y, cols.polichinelo, rowH, temPessoa ? '--' : '', { size: 9, align: 'center' });
+    drawCell(doc, xs.completo, y, cols.completo, rowH, pessoa?.tempo || '', { size: 9, align: 'center' });
     drawCell(doc, xs.assinatura, y, cols.assinatura, rowH);
   }
 

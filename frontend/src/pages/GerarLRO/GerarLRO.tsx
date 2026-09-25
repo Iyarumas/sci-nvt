@@ -669,7 +669,7 @@ export function GerarLRO() {
   const [trocaConfirmadaIdx, setTrocaConfirmadaIdx] = useState<number | null>(null);
   const [showConfirmAdicionar, setShowConfirmAdicionar] = useState(false);
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
-  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroEquipeLista, setFiltroEquipeLista] = useState('');
   const [cloneOrigem, setCloneOrigem] = useState<LRODraft | null>(null);
   const [draftCountdowns, setDraftCountdowns] = useState<Record<string, string>>({});
@@ -855,18 +855,11 @@ export function GerarLRO() {
   }, [drafts]);
 
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
-  const [vigenciasLoaded, setVigenciasLoaded] = useState(false);
-  const carregarVigencias = useCallback(async () => {
-    if (vigenciasLoaded) return;
-    const v = await listarVigencias({ ativa: true }).catch(() => []);
-    setVigencias(v);
-    setVigenciasLoaded(true);
-  }, [vigenciasLoaded]);
 
   useEffect(() => {
     async function load() {
       try {
-        const [b, usuariosCadastrados, f, docs, a, ptrbRegistros, ptrbaCompletoRegistros, conferenciaRegistros, ocorrenciaRegistros, reaRegistros, escalasCompletasRegistros, escalasConfigsRegistros] = await Promise.all([
+        const [b, usuariosCadastrados, f, docs, a, ptrbRegistros, ptrbaCompletoRegistros, conferenciaRegistros, ocorrenciaRegistros, reaRegistros, escalasCompletasRegistros, escalasConfigsRegistros, cci, crs, subs, vigenciasAtivas] = await Promise.all([
           listarAtivos(),
           listarUsuarios().catch(() => []),
           listarFeriasGozo(),
@@ -879,6 +872,10 @@ export function GerarLRO() {
           listarReas().catch(() => []),
           listarCompletasEscala().catch(() => []),
           listarConfigsEscala().catch(() => []),
+          listarViaturas({ tipo: 'CCI' }).catch(() => []),
+          listarViaturas({ tipo: 'CRS' }).catch(() => []),
+          listarSubstituicoesTemporarias().catch(() => []),
+          listarVigencias({ ativa: true }).catch(() => []),
         ]);
         setApocs(a);
         setBombeiros(b);
@@ -892,35 +889,14 @@ export function GerarLRO() {
         setOcorrenciasOperacionais(ocorrenciaRegistros);
         setReas(reaRegistros);
 
-        // Load CCI + CRS viaturas
-        const [cci, crs] = await Promise.all([listarViaturas({ tipo: 'CCI' }).catch(() => []), listarViaturas({ tipo: 'CRS' }).catch(() => [])]);
         const todasViaturas = [...cci, ...crs];
         setViaturas(todasViaturas);
         const frotaInit: Record<string, any> = {};
         todasViaturas.forEach((veiculo: any) => { frotaInit[veiculo.id || veiculo.prefixo] = { kmIni: '', kmFim: '', combIni: '', combFim: '', nitrogenio: '', situacao: '' }; });
         setFrotaDados(frotaInit);
 
-        // Load substitutes + troca documents (needed for substitution detection)
-        const subs = await listarSubstituicoesTemporarias();
         setTodasSubstituicoes(subs);
-
-        await carregarVigencias();
-
-        const trocaDocs = docs.filter(documentoEhTroca);
-        if (trocaDocs.length > 0) {
-          const trocaDocPrincipal = trocaDocs.find((d: any) => d.source_module === 'trocas') || trocaDocs[0];
-          setTrocaDocId(trocaDocPrincipal.id);
-          const fillsPorDocumento = await Promise.all(
-            trocaDocs.map((doc: any) => listarPreenchimentos({ documentId: doc.id }).catch(() => [])),
-          );
-          setTrocaFills(fillsPorDocumento.flat().filter(trocaFillVisivelNoLRO));
-        } else {
-          const todosFills = await Promise.all(docs.map((d: any) => listarPreenchimentos({ documentId: d.id }).catch(() => [])));
-          const comNome = todosFills.flat().filter((fl: any) => trocaFillVisivelNoLRO(fl));
-          setTrocaFills(comNome);
-        }
-        const d = await listarDrafts('').catch(() => []);
-        setDrafts(d);
+        setVigencias(vigenciasAtivas);
         const saved = sessionStorage.getItem('lro_form_backup');
         if (saved) {
           try {
@@ -967,8 +943,27 @@ export function GerarLRO() {
             setView('wizard');
           } catch { /* ignore restore errors */ }
         }
+        setLoading(false);
+
+        // Trocas e rascunhos não impedem a abertura do formulário. Eles são
+        // carregados em seguida e atualizam a detecção automática quando chegam.
+        void (async () => {
+          const trocaDocs = docs.filter(documentoEhTroca);
+          if (trocaDocs.length > 0) {
+            const trocaDocPrincipal = trocaDocs.find((d: any) => d.source_module === 'trocas') || trocaDocs[0];
+            setTrocaDocId(trocaDocPrincipal.id);
+            const fillsPorDocumento = await Promise.all(
+              trocaDocs.map((doc: any) => listarPreenchimentos({ documentId: doc.id }).catch(() => [])),
+            );
+            setTrocaFills(fillsPorDocumento.flat().filter(trocaFillVisivelNoLRO));
+          } else {
+            const todosFills = await Promise.all(docs.map((doc: any) => listarPreenchimentos({ documentId: doc.id }).catch(() => [])));
+            setTrocaFills(todosFills.flat().filter((fill: any) => trocaFillVisivelNoLRO(fill)));
+          }
+          setDrafts(await listarDrafts('').catch(() => []));
+        })();
       } catch { /* ignore */ }
-      setLoading(false);
+      finally { setLoading(false); }
     }
     load();
   }, [username]);

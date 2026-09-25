@@ -159,7 +159,7 @@ export function OrdemServico() {
   const [filtroStatus, setFiltroStatus] = useState('');
   const [filtroPrioridade, setFiltroPrioridade] = useState('');
   const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
-  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [dataInicio, setDataInicio] = useState('');
   const [dataFinal, setDataFinal] = useState('');

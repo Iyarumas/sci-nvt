@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -12,7 +12,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
@@ -70,6 +69,11 @@ import type {
   PTRBACompletoParticipante,
 } from '../../types/ptrbaCompleto';
 import { PageTour } from '../../components/ui/PageTour';
+
+const PdfPreview = lazy(async () => {
+  const module = await import('../../components/documentos/PdfPreview');
+  return { default: module.PdfPreview };
+});
 
 const MESES = ['', 'Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 const ANOS = Array.from({ length: 6 }, (_, i) => (new Date().getFullYear() - i).toString());
@@ -313,10 +317,11 @@ function PTRBACompletoForm({
   trocaFills,
   canEscolherEquipe,
   equipeEfetiva,
+  saving,
 }: {
   registro?: PTRBACompleto;
   onCancel: () => void;
-  onSave: (input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) => void;
+  onSave: (input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) => Promise<void>;
   bombeiros: Bombeiro[];
   apocs: APOC[];
   feriasGozo: FeriasGozo[];
@@ -327,6 +332,7 @@ function PTRBACompletoForm({
   trocaFills: any[];
   canEscolherEquipe: boolean;
   equipeEfetiva: string | null;
+  saving: boolean;
 }) {
   const [form, setForm] = useState(() => montarInicial(canEscolherEquipe ? null : equipeEfetiva));
   const ultimaAutoFill = useRef('');
@@ -569,14 +575,15 @@ function PTRBACompletoForm({
     }
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (saving) return;
     if (!form.equipe) {
       alert('Selecione a equipe.');
       return;
     }
     salvarUltimoAeroporto(form.identificacaoAeroporto);
-    onSave({
+    await onSave({
       ...form,
       participantes: normalizarParticipantesPTRBACompleto(form.participantes),
       evidencias: normalizarEvidenciasPTRBACompleto(form.evidencias),
@@ -742,11 +749,11 @@ function PTRBACompletoForm({
       </div>
 
       <div className="flex justify-end gap-3">
-        <button type="button" onClick={onCancel} className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-medium text-graphite-700 shadow-sm backdrop-blur-sm transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card/80 dark:text-graphite-200">
+        <button type="button" onClick={onCancel} disabled={saving} className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-medium text-graphite-700 shadow-sm backdrop-blur-sm transition-all hover:bg-graphite-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-border-dark dark:bg-surface-card/80 dark:text-graphite-200">
           Cancelar
         </button>
-        <button type="submit" className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
-          <Save className="h-4 w-4" /> {registro ? 'Salvar Alterações' : 'Criar PTR-BA'}
+        <button type="submit" disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60">
+          <Save className="h-4 w-4" /> {saving ? 'Salvando...' : registro ? 'Salvar Alterações' : 'Criar PTR-BA'}
         </button>
       </div>
     </form>
@@ -971,7 +978,9 @@ function PTRBACompletoPdfPreviewModal({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto bg-graphite-100/60 p-4 dark:bg-surface-card/40">
-          <PdfPreview pdfData={pdfData} fields={[]} />
+          <Suspense fallback={<div className="flex items-center justify-center py-20 text-sm text-graphite-500 dark:text-graphite-400">Carregando visualização do PDF...</div>}>
+            <PdfPreview pdfData={pdfData} fields={[]} />
+          </Suspense>
         </div>
       </div>
     </div>
@@ -996,7 +1005,8 @@ export function PTRBACompletoPage() {
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [trocaFills, setTrocaFills] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [abrindoNovo, setAbrindoNovo] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const salvandoRef = useRef(false);
   const [mode, setMode] = useState<'list' | 'form'>('list');
   const [editando, setEditando] = useState<PTRBACompleto | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -1004,8 +1014,9 @@ export function PTRBACompletoPage() {
   const [previewingId, setPreviewingId] = useState<string | null>(null);
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
-  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 
@@ -1115,13 +1126,20 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const [lista, apoio] = await Promise.all([
-          listarPTRBACompletos(),
-          buscarDadosApoio(),
-        ]);
+        const lista = await listarPTRBACompletos();
         if (cancelado) return;
         setRegistros(lista);
-        aplicarDadosApoio(apoio);
+        setLoading(false);
+
+        // Os dados auxiliares enriquecem o efetivo, mas não precisam atrasar
+        // a abertura da lista de PTR-BAs.
+        void buscarDadosApoio()
+          .then(apoio => {
+            if (!cancelado) aplicarDadosApoio(apoio);
+          })
+          .catch(() => {
+            // A lista continua disponível mesmo se algum dado auxiliar falhar.
+          });
       } catch (err) {
         alert(err instanceof Error ? err.message : 'Erro ao carregar PTR-BA.');
       } finally {
@@ -1132,32 +1150,20 @@ export function PTRBACompletoPage() {
     return () => { cancelado = true; };
   }, []);
 
-  async function abrirNovoPTRBA() {
-    try {
-      setAbrindoNovo(true);
-      const apoio = await buscarDadosApoio();
-      aplicarDadosApoio(apoio);
-      setEditando(null);
-      setMode('form');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao atualizar dados do PTR-BA.');
-    } finally {
-      setAbrindoNovo(false);
-    }
+  function abrirNovoPTRBA() {
+    setEditando(null);
+    setMode('form');
   }
 
-  async function abrirEdicaoPTRBA(registro: PTRBACompleto) {
-    try {
-      const apoio = await buscarDadosApoio();
-      aplicarDadosApoio(apoio);
-      setEditando(registro);
-      setMode('form');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erro ao atualizar dados do PTR-BA.');
-    }
+  function abrirEdicaoPTRBA(registro: PTRBACompleto) {
+    setEditando(registro);
+    setMode('form');
   }
 
   async function handleSave(input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
+    setSaving(true);
     try {
       if (editando?.id) {
         if (!canEditarRegistroDiario(contexto, editando, username, bombeiros)) {
@@ -1175,11 +1181,16 @@ export function PTRBACompletoPage() {
       } else {
         await criarPTRBACompleto({ ...payload, createdBy: username });
       }
+      const foiEdicao = Boolean(editando?.id);
       setEditando(null);
       await carregar();
       setMode('list');
+      setSuccessMessage(foiEdicao ? 'PTR-BA alterado com sucesso.' : 'PTR-BA criado com sucesso.');
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao salvar PTR-BA.');
+    } finally {
+      salvandoRef.current = false;
+      setSaving(false);
     }
   }
 
@@ -1246,6 +1257,7 @@ export function PTRBACompletoPage() {
           trocaFills={trocaFills}
           canEscolherEquipe={canEscolherEquipe}
           equipeEfetiva={equipePadrao}
+          saving={saving}
         />
       </PageContainer>
     );
@@ -1285,10 +1297,9 @@ export function PTRBACompletoPage() {
         {canCreate && (
           <button
             onClick={abrirNovoPTRBA}
-            disabled={abrindoNovo}
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Plus className="h-4 w-4" /> {abrindoNovo ? 'Atualizando...' : 'Novo PTR-BA'}
+            <Plus className="h-4 w-4" /> Novo PTR-BA
           </button>
         )}
       </div>
@@ -1334,6 +1345,19 @@ export function PTRBACompletoPage() {
               </button>
               <button onClick={() => handleDelete(confirmDelete)} className="rounded-xl bg-gradient-to-r from-alert-red to-red-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-red-500/20 transition-all active:scale-[0.98]">
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {successMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white/95 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:bg-surface-elevated/95">
+            <h3 className="mb-2 text-lg font-bold text-graphite-900 dark:text-graphite-100">PTR-BA salvo</h3>
+            <p className="mb-6 text-sm text-graphite-500 dark:text-graphite-400">{successMessage}</p>
+            <div className="flex justify-end">
+              <button onClick={() => setSuccessMessage(null)} className="rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
+                OK
               </button>
             </div>
           </div>

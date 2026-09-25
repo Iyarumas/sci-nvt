@@ -99,7 +99,7 @@ export function OrdemServicoPublica() {
   const [loading, setLoading] = useState(true);
   const [selecionada, setSelecionada] = useState<OrdemServico | null>(null);
   const [filterMode, setFilterMode] = useState<'mes-ano' | 'periodo'>('mes-ano');
-  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [dataInicio, setDataInicio] = useState('');
   const [dataFinal, setDataFinal] = useState('');

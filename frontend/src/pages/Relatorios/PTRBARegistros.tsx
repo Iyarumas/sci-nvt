@@ -117,7 +117,7 @@ export function PTRBARegistros() {
   const { canVisualizarRelatoriosPtrBa, loadingContexto } = useContextoOperacional();
   const [completos, setCompletos] = useState<PTRBACompleto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtroMes, setFiltroMes] = useState('');
+  const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);

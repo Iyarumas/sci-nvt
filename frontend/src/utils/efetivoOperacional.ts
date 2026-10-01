@@ -62,6 +62,23 @@ export function filtrarQuadroEfetivosPorMes({
   };
 }
 
+/** Oculta a vaga nominal de quem já está exibido cobrindo outra vaga do mesmo quadro. */
+export function resolverPosicoesQuadroEfetivos(
+  membros: Bombeiro[],
+  coberturasPorVaga: ReadonlyMap<string, string>,
+): { posicoes: Bombeiro[]; totalEfetivos: number } {
+  const substitutosExibidos = new Set(membros.flatMap(m => {
+    const substitutoId = coberturasPorVaga.get(m.id);
+    return substitutoId && substitutoId !== m.id ? [substitutoId] : [];
+  }));
+  const posicoes = membros.filter(m => {
+    const substitutoId = coberturasPorVaga.get(m.id);
+    return !substitutosExibidos.has(m.id) || (!!substitutoId && substitutoId !== m.id);
+  });
+  const totalEfetivos = new Set(posicoes.map(m => coberturasPorVaga.get(m.id) || m.id)).size;
+  return { posicoes, totalEfetivos };
+}
+
 export interface EfetivoOperacionalEntry {
   bombeiro: Bombeiro;
   cargoExercido: string;

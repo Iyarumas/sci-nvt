@@ -64,6 +64,7 @@ const {
 } = tpepr;
 const {
   filtrarQuadroEfetivosPorMes,
+  resolverPosicoesQuadroEfetivos,
   montarEfetivoOperacional,
   montarTrocasServicoDoDia,
 } = efetivoOperacional;
@@ -1075,5 +1076,90 @@ assert.deepEqual(
   filtrarQuadroEfetivosPorMes(dadosQuadroAfastamentos).vigencias.map(v => v.id),
   ['inss-ativo', 'inss-cascata', 'substituicao-ativa', 'cascata-origem-desconhecida'],
 );
+
+// Barreto aparece na vaga de Aline; sua vaga nominal nao pode exibi-lo de novo.
+const alineQuadro = bombeiro('quadro-aline', 'BA-2', 'Charlie', 'Aline');
+const barretoQuadro = bombeiro('quadro-barreto', 'BA-2', 'Charlie', 'Barreto');
+const adailtonQuadro = bombeiro('quadro-adailton', 'BA-2', 'Charlie', 'Adailton');
+const coberturaAline = new Map([[alineQuadro.id, barretoQuadro.id]]);
+const quadroSemDuplicata = resolverPosicoesQuadroEfetivos([alineQuadro, barretoQuadro], coberturaAline);
+assert.deepEqual(quadroSemDuplicata.posicoes.map(p => p.id), [alineQuadro.id]);
+assert.equal(quadroSemDuplicata.totalEfetivos, 1);
+assert.deepEqual(
+  resolverPosicoesQuadroEfetivos([barretoQuadro, alineQuadro], coberturaAline).posicoes.map(p => p.id),
+  [alineQuadro.id],
+  'A vaga de cobertura prevalece mesmo quando a vaga nominal vem primeiro.',
+);
+
+// A->B->C preserva a vaga de B exibindo C e remove somente a vaga nominal de C.
+const quadroCascata = resolverPosicoesQuadroEfetivos(
+  [alineQuadro, barretoQuadro, adailtonQuadro],
+  new Map([[alineQuadro.id, barretoQuadro.id], [barretoQuadro.id, adailtonQuadro.id]]),
+);
+assert.deepEqual(quadroCascata.posicoes.map(p => p.id), [alineQuadro.id, barretoQuadro.id]);
+assert.equal(quadroCascata.totalEfetivos, 2);
+const quadroCascataFerista = resolverPosicoesQuadroEfetivos(
+  [alineQuadro, barretoQuadro, adailtonQuadro],
+  new Map([
+    [alineQuadro.id, barretoQuadro.id],
+    [barretoQuadro.id, adailtonQuadro.id],
+    [adailtonQuadro.id, ferista.id],
+  ]),
+);
+assert.deepEqual(
+  quadroCascataFerista.posicoes.map(p => p.id),
+  [alineQuadro.id, barretoQuadro.id, adailtonQuadro.id],
+);
+assert.equal(quadroCascataFerista.totalEfetivos, 3);
+
+// Pessoas homonimas sao diferentes; IDs, e nao nomes, identificam a cobertura.
+const homonimoBarreto = bombeiro('quadro-outro-barreto', 'BA-2', 'Charlie', 'Barreto');
+const quadroHomonimos = resolverPosicoesQuadroEfetivos(
+  [alineQuadro, barretoQuadro, homonimoBarreto],
+  coberturaAline,
+);
+assert.deepEqual(quadroHomonimos.posicoes.map(p => p.id), [alineQuadro.id, homonimoBarreto.id]);
+assert.equal(quadroHomonimos.totalEfetivos, 2);
+
+// Cobertura externa aparece uma vez na vaga de destino, sem apagar outro membro.
+const quadroCoberturaExterna = resolverPosicoesQuadroEfetivos(
+  [alineQuadro, barretoQuadro],
+  new Map([[alineQuadro.id, apoio.id]]),
+);
+assert.deepEqual(quadroCoberturaExterna.posicoes.map(p => p.id), [alineQuadro.id, barretoQuadro.id]);
+assert.equal(quadroCoberturaExterna.totalEfetivos, 2);
+const quadroOutraEquipe = resolverPosicoesQuadroEfetivos(
+  [alineQuadro, barretoQuadro],
+  new Map([[apoio.id, barretoQuadro.id]]),
+);
+assert.deepEqual(quadroOutraEquipe.posicoes.map(p => p.id), [alineQuadro.id, barretoQuadro.id]);
+assert.equal(quadroOutraEquipe.totalEfetivos, 2, 'Cobertura de vaga fora do card nao oculta seu membro nominal.');
+
+// Gozo manual sem cobertura renderizada nao pode eliminar o unico substituto visivel.
+const quadroSemCobertura = resolverPosicoesQuadroEfetivos([barretoQuadro], new Map());
+assert.deepEqual(quadroSemCobertura.posicoes.map(p => p.id), [barretoQuadro.id]);
+assert.equal(quadroSemCobertura.totalEfetivos, 1);
+const quadroAutoCobertura = resolverPosicoesQuadroEfetivos(
+  [alineQuadro, barretoQuadro],
+  new Map([[barretoQuadro.id, barretoQuadro.id]]),
+);
+assert.deepEqual(quadroAutoCobertura.posicoes.map(p => p.id), [alineQuadro.id, barretoQuadro.id]);
+assert.equal(quadroAutoCobertura.totalEfetivos, 2);
+
+// Duas coberturas distintas do mesmo substituto mantem seus alvos, mas contam uma pessoa.
+const quadroDoisAlvos = resolverPosicoesQuadroEfetivos(
+  [alineQuadro, adailtonQuadro, barretoQuadro],
+  new Map([[alineQuadro.id, barretoQuadro.id], [adailtonQuadro.id, barretoQuadro.id]]),
+);
+assert.deepEqual(quadroDoisAlvos.posicoes.map(p => p.id), [alineQuadro.id, adailtonQuadro.id]);
+assert.equal(quadroDoisAlvos.totalEfetivos, 1);
+assert.deepEqual(resolverPosicoesQuadroEfetivos([], coberturaAline), { posicoes: [], totalEfetivos: 0 });
+
+const membrosQuadroImutaveis = Object.freeze([barretoQuadro, alineQuadro]);
+const membrosQuadroAntes = structuredClone(membrosQuadroImutaveis);
+const coberturasQuadroAntes = [...coberturaAline];
+resolverPosicoesQuadroEfetivos(membrosQuadroImutaveis, coberturaAline);
+assert.deepEqual(membrosQuadroImutaveis, membrosQuadroAntes);
+assert.deepEqual([...coberturaAline], coberturasQuadroAntes);
 
 console.log('domain rules ok');

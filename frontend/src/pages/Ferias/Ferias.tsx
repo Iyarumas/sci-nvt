@@ -31,7 +31,7 @@ import {
 } from '../../services/feriasService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { EloCadeiaInput, VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
-import { filtrarQuadroEfetivosPorMes } from '../../utils/efetivoOperacional';
+import { filtrarQuadroEfetivosPorMes, resolverPosicoesQuadroEfetivos } from '../../utils/efetivoOperacional';
 import {
   dataLocalISO,
   estaNoPeriodoISO,
@@ -3039,6 +3039,39 @@ function TabQuadroEfetivos() {
     ) || null;
   }
 
+  function getCoberturaVaga(b: Bombeiro, mes: number) {
+    const vigencia = vigenciaRealPorOriginal(b.id, mes);
+    const item = getItemSubstituicao(b, mes);
+    const ferista = getFeristaDesignado(b, mes);
+    const cobertura = vigencia
+      ? { id: vigencia.substitutoId, nome: vigencia.substitutoNome, cargo: vigencia.cargoExercido }
+      : item
+        ? { id: item.substitutoId, nome: item.substitutoNome, cargo: item.funcaoSubstituicao }
+        : ferista
+          ? { id: ferista.feristaId, nome: ferista.feristaNome, cargo: ferista.funcaoSubstituicao }
+          : null;
+    if (!cobertura) return null;
+
+    // IDs têm prioridade; um nome legado só identifica alguém se for único.
+    const candidatos = cobertura.id ? [] : bombeiros.filter(bb =>
+      bb.nomeCompleto === cobertura.nome || bb.nomeGuerra === cobertura.nome
+    );
+    const pessoa = cobertura.id
+      ? bombeiros.find(bb => bb.id === cobertura.id) || null
+      : candidatos.length === 1 ? candidatos[0] : null;
+    const cargo = cobertura.cargo || pessoa?.cargo || '';
+    const nomeGuerra = pessoa?.nomeGuerra || cobertura.nome;
+    const cargoNome = ABBR_CARGO[cargo as Cargo] || cargo;
+
+    return {
+      pessoaId: cobertura.id || pessoa?.id || '',
+      pessoa,
+      titleNome: pessoa ? `${nomeGuerra}${cargoNome ? ` (${cargoNome})` : ''}` : cobertura.nome,
+      initial: nomeGuerra.charAt(0).toUpperCase(),
+      nomeDisplay: pessoa && cargoNome ? `${cargoNome} ${nomeGuerra}` : cobertura.nome,
+    };
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -3076,20 +3109,17 @@ function TabQuadroEfetivos() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
         {equipes.map(eq => {
           const membros = sortPorHierarquia(bombeiros.filter(b => b.equipe === eq));
-          const emGozo = membros.filter(m => isEmGozo(m, mesSelecionado, ano) && !temSubstituto(m, mesSelecionado));
-          const disponiveis = membros.filter(m => !isEmGozo(m, mesSelecionado, ano) || temSubstituto(m, mesSelecionado));
+          const coberturas = new Map(membros.map(m => [m.id, getCoberturaVaga(m, mesSelecionado)] as const));
+          const coberturasPorVaga = new Map<string, string>();
+          for (const [id, cobertura] of coberturas) {
+            if (cobertura?.pessoaId) coberturasPorVaga.set(id, cobertura.pessoaId);
+          }
+          const emGozo = membros.filter(m => isEmGozo(m, mesSelecionado, ano) && !coberturas.get(m.id));
+          const disponiveis = membros.filter(m => !isEmGozo(m, mesSelecionado, ano) || coberturas.get(m.id));
 
           const mesInicio = monthStart(ano, mesSelecionado);
           const mesFim = dataLocalISO(new Date(ano, mesSelecionado, 0));
           const substitutosDaEquipe: { pessoa: Bombeiro; substituindo: Bombeiro; cargo: Cargo }[] = [];
-
-          // Verifica se a pessoa tem alguém a substituí-la (via vigência, escala aprovada ou ferista)
-          function temSubstituto(b: Bombeiro, mes: number): boolean {
-            return !!(
-              vigenciaRealPorOriginal(b.id, mes) ||
-              allItems.find(i => i.funcionarioId === b.id && i.mes === mes && !i.rejeitado && (i.substitutoId || i.feristaId) && i.feriasGozoId)
-            );
-          }
 
           function addSub(pessoa: Bombeiro, func: Bombeiro, cargo: Cargo) {
             if (!substitutosDaEquipe.some(s => s.pessoa.id === pessoa.id)) {
@@ -3163,7 +3193,8 @@ function TabQuadroEfetivos() {
               addSub(sub, func, (vig.cargoExercido || func.cargo) as Cargo);
             }
           }
-          const ordenados = [...disponiveis].sort((a, b) => {
+          const { posicoes, totalEfetivos } = resolverPosicoesQuadroEfetivos(disponiveis, coberturasPorVaga);
+          const ordenados = [...posicoes].sort((a, b) => {
             return (CARGO_PRIORITY[a.cargo] ?? 99) - (CARGO_PRIORITY[b.cargo] ?? 99);
           });
           const equipeLogo = EQUIPE_LOGOS[eq];
@@ -3183,7 +3214,7 @@ function TabQuadroEfetivos() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-900/20 dark:text-green-400">
-                    {ordenados.length} efetivo(s)
+                    {totalEfetivos} efetivo(s)
                   </span>
                   {emGozo.length > 0 && (
                     <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
@@ -3205,64 +3236,11 @@ function TabQuadroEfetivos() {
                           const subCross = substitutosDaEquipe.find(s => s.pessoa.id === m.id);
                           const substituindo = subCross ? { funcionario: subCross.substituindo, cargo: subCross.cargo } : getSubstituindo(m, mesSelecionado);
                           const item = getItemSubstituicao(m, mesSelecionado) as EscalaFeriasItem | null;
-                          const ferista = getFeristaDesignado(m, mesSelecionado);
                           const vigSub = vigenciaRealPorOriginal(m.id, mesSelecionado);
                           const vigSubstitutoId = vigSub ? vigSub.substitutoId : '';
-                          const temSub = !!(item?.substitutoNome || ferista?.feristaNome || vigSub);
-                          
-                          const subDisplayInfo = (() => {
-                            if (vigSub) {
-                              const sb = bombeiros.find(bb => bb.id === vigSub.substitutoId);
-                              const cargoExibido = vigSub.cargoExercido || sb?.cargo || '';
-                              if (sb) return {
-                                titleNome: `${sb.nomeGuerra} (${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido})`,
-                                initial: sb.nomeGuerra.charAt(0).toUpperCase(),
-                                nomeDisplay: `${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido} ${sb.nomeGuerra}`,
-                                pessoa: sb,
-                              };
-                              return {
-                                titleNome: vigSub.substitutoNome,
-                                initial: vigSub.substitutoNome.charAt(0),
-                                nomeDisplay: vigSub.substitutoNome,
-                                pessoa: null,
-                              };
-                            }
-                            if (item?.substitutoNome) {
-                              const sb = bombeiros.find(bb =>
-                                bb.id === item.substitutoId ||
-                                bb.nomeCompleto === item.substitutoNome ||
-                                bb.nomeGuerra === item.substitutoNome
-                              );
-                              const cargoExibido = item.funcaoSubstituicao || sb?.cargo || '';
-                              if (sb) return {
-                                titleNome: `${sb.nomeGuerra} (${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido})`,
-                                initial: sb.nomeGuerra.charAt(0).toUpperCase(),
-                                nomeDisplay: `${ABBR_CARGO[cargoExibido as keyof typeof ABBR_CARGO] || cargoExibido} ${sb.nomeGuerra}`,
-                                pessoa: sb,
-                              };
-                              return {
-                                titleNome: item.substitutoNome,
-                                initial: item.substitutoNome.charAt(0),
-                                nomeDisplay: item.substitutoNome,
-                                pessoa: null,
-                              };
-                            }
-                            if (ferista?.feristaNome) {
-                              const feristaBombeiro = bombeiros.find(bb =>
-                                bb.id === ferista.feristaId ||
-                                bb.nomeCompleto === ferista.feristaNome ||
-                                bb.nomeGuerra === ferista.feristaNome
-                              );
-                              const cargoFerista = item?.funcaoSubstituicao || '';
-                              return {
-                                titleNome: `${ferista.feristaNome}${cargoFerista ? ` (${cargoFerista})` : ''}`,
-                                initial: ferista.feristaNome.charAt(0),
-                                nomeDisplay: cargoFerista ? `${cargoFerista} ${ferista.feristaNome}` : ferista.feristaNome,
-                                pessoa: feristaBombeiro || null,
-                              };
-                            }
-                            return { titleNome: '', initial: 'S', nomeDisplay: '', pessoa: null };
-                          })();
+                          const cobertura = coberturas.get(m.id);
+                          const temSub = !!cobertura;
+                          const subDisplayInfo = cobertura || { titleNome: '', initial: 'S', nomeDisplay: '', pessoa: null };
 
                           if (temSub) {
                             // Mostra quem está a COBRIR esta posição

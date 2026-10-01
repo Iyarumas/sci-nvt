@@ -492,6 +492,7 @@ Referência: **21/07/2026** = Alfa + Bravo
 **Smoke E2E**: `npm run test:e2e:operational` valida login, sidebar e rotas críticas sem criar dados.
 
 **Quadro de Efetivos (Férias)**: férias e suas correntes pertencem ao mês/ano de início do gozo; terminar no início do mês seguinte não as inclui no quadro desse mês. Afastamentos e substituições temporárias continuam aparecendo por sobreposição de vigência. Esse recorte é exclusivo do quadro mensal; Escala Diária, LRO e permissões continuam respeitando as datas reais.
+O quadro conta pessoas por ID e omite a vaga nominal de quem já aparece cobrindo outra vaga da mesma equipe. Vagas com cobertura própria são preservadas para manter a corrente completa (A → B → C), sem repetir o último substituto na própria posição.
 
 ### Permissões por Cargo/Equipa Efetivos
 

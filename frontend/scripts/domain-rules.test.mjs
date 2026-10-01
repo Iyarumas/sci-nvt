@@ -63,6 +63,7 @@ const {
   normalizarParticipantesTPEPR,
 } = tpepr;
 const {
+  filtrarQuadroEfetivosPorMes,
   montarEfetivoOperacional,
   montarTrocasServicoDoDia,
 } = efetivoOperacional;
@@ -883,5 +884,196 @@ for (const categoria of ['D', 'E', 'AD', 'AE']) {
 for (const categoria of ['A', 'B', 'C', 'AB', 'AC']) {
   assert.equal(cursos.temCategoriaD(categoria), false, `${categoria} nao deve ser aceita como D/E`);
 }
+
+// O quadro mensal pertence ao mes de inicio das ferias, inclusive suas coberturas.
+const feriasQuadroSetembro = gozo(mc, {
+  id: 'quadro-ferias-setembro',
+  dataInicio: '2026-09-02',
+  dataFim: '2026-10-01',
+  substitutoId: ba2.id,
+  substitutoNome: ba2.nomeCompleto,
+});
+const feriasQuadroOutubro = gozo(ce, {
+  id: 'quadro-ferias-outubro',
+  dataInicio: '2026-10-03',
+  dataFim: '2026-11-01',
+  substitutoId: lr.id,
+  substitutoNome: lr.nomeCompleto,
+});
+
+function itemQuadro(overrides = {}) {
+  return {
+    id: 'quadro-item-outubro',
+    mes: 10,
+    dataInicio: feriasQuadroOutubro.dataInicio,
+    dataFim: feriasQuadroOutubro.dataFim,
+    feriasGozoId: feriasQuadroOutubro.id,
+    rejeitado: false,
+    ...overrides,
+  };
+}
+
+function vigenciaQuadro(overrides = {}) {
+  return {
+    id: 'quadro-vigencia-outubro',
+    substitutoId: lr.id,
+    funcionarioOriginalId: ce.id,
+    dataInicio: feriasQuadroOutubro.dataInicio,
+    dataFim: feriasQuadroOutubro.dataFim,
+    motivo: 'ferias',
+    feriasId: feriasQuadroOutubro.id,
+    ativa: true,
+    nivelCascata: 1,
+    ...overrides,
+  };
+}
+
+const vigenciasQuadroFerias = [
+  vigenciaQuadro({
+    id: 'quadro-vigencia-setembro',
+    substitutoId: ba2.id,
+    funcionarioOriginalId: mc.id,
+    dataInicio: feriasQuadroSetembro.dataInicio,
+    dataFim: feriasQuadroSetembro.dataFim,
+    feriasId: feriasQuadroSetembro.id,
+  }),
+  vigenciaQuadro({
+    id: 'quadro-cascata-setembro',
+    substitutoId: ferista.id,
+    funcionarioOriginalId: ba2.id,
+    dataInicio: feriasQuadroSetembro.dataInicio,
+    dataFim: feriasQuadroSetembro.dataFim,
+    motivo: 'cascata',
+    feriasId: feriasQuadroSetembro.id,
+    nivelCascata: 2,
+  }),
+  vigenciaQuadro(),
+  vigenciaQuadro({
+    id: 'quadro-cascata-outubro',
+    substitutoId: ferista.id,
+    funcionarioOriginalId: lr.id,
+    motivo: 'cascata',
+    nivelCascata: 2,
+  }),
+];
+const dadosQuadroFerias = {
+  feriasGozo: [feriasQuadroSetembro, feriasQuadroOutubro],
+  itensEscala: [
+    itemQuadro(),
+    itemQuadro({ id: 'item-rejeitado', rejeitado: true }),
+    itemQuadro({ id: 'item-sem-gozo', feriasGozoId: '' }),
+    itemQuadro({ id: 'item-inicio-setembro', dataInicio: '2026-09-02' }),
+    itemQuadro({ id: 'item-fonte-setembro', feriasGozoId: feriasQuadroSetembro.id }),
+    itemQuadro({ id: 'item-mes-inconsistente', mes: 9 }),
+  ],
+  vigencias: vigenciasQuadroFerias,
+  ano: 2026,
+};
+const quadroOutubro = filtrarQuadroEfetivosPorMes({ ...dadosQuadroFerias, mes: 10 });
+assert.deepEqual(quadroOutubro.feriasGozo.map(g => g.id), [feriasQuadroOutubro.id]);
+assert.deepEqual(quadroOutubro.itensEscala.map(i => i.id), ['quadro-item-outubro']);
+assert.deepEqual(quadroOutubro.vigencias.map(v => v.id), ['quadro-vigencia-outubro', 'quadro-cascata-outubro']);
+assert.deepEqual(
+  filtrarQuadroEfetivosPorMes({ ...dadosQuadroFerias, mes: 9 }).vigencias.map(v => v.id),
+  ['quadro-vigencia-setembro', 'quadro-cascata-setembro'],
+);
+const quadroNovembro = filtrarQuadroEfetivosPorMes({ ...dadosQuadroFerias, mes: 11 });
+assert.deepEqual(quadroNovembro, { feriasGozo: [], itensEscala: [], vigencias: [] });
+assert.equal(
+  montarEfetivoOperacional({
+    bombeiros,
+    feriasGozo: [feriasQuadroSetembro],
+    vigencias: [{
+      ...vigenciasQuadroFerias[0],
+      equipe: 'Alfa',
+      cargoExercido: mc.cargo,
+      funcionarioOriginalNome: mc.nomeCompleto,
+      cargoOriginalFuncionario: mc.cargo,
+    }],
+    trocaFills: [],
+    equipe: 'Alfa',
+    dataPlantao: '2026-10-01',
+  }).find(entry => entry.bombeiro.id === ba2.id)?.substituindo?.id,
+  mc.id,
+  'A cobertura de setembro ainda vale na escala diaria em seu ultimo dia, 01/10.',
+);
+
+const feriasViradaAno = gozo(mc, {
+  id: 'quadro-ferias-dezembro',
+  dataInicio: '2026-12-03',
+  dataFim: '2027-01-01',
+});
+const dadosViradaAno = {
+  feriasGozo: [feriasViradaAno],
+  itensEscala: [],
+  vigencias: [vigenciaQuadro({
+    id: 'quadro-vigencia-dezembro',
+    feriasId: feriasViradaAno.id,
+    dataInicio: feriasViradaAno.dataInicio,
+    dataFim: feriasViradaAno.dataFim,
+  })],
+};
+assert.equal(filtrarQuadroEfetivosPorMes({ ...dadosViradaAno, mes: 12, ano: 2026 }).vigencias.length, 1);
+assert.deepEqual(
+  filtrarQuadroEfetivosPorMes({ ...dadosViradaAno, mes: 1, ano: 2027 }),
+  { feriasGozo: [], itensEscala: [], vigencias: [] },
+);
+
+// Sem registro de gozo legado, a raiz identifica o mes da corrente inteira.
+const dadosQuadroLegado = {
+  feriasGozo: [],
+  itensEscala: [],
+  vigencias: [
+    vigenciaQuadro({
+      id: 'legado-raiz-setembro',
+      feriasId: 'ferias-legadas',
+      dataInicio: '2026-09-02',
+      dataFim: '2026-10-01',
+    }),
+    vigenciaQuadro({
+      id: 'legado-cascata-inicio-outubro',
+      feriasId: 'ferias-legadas',
+      motivo: 'cascata',
+      dataInicio: '2026-10-01',
+      dataFim: '2026-10-01',
+      nivelCascata: 2,
+    }),
+    vigenciaQuadro({ id: 'legado-ferias-outubro-sem-vinculo', feriasId: '' }),
+  ],
+  mes: 10,
+  ano: 2026,
+};
+assert.deepEqual(
+  filtrarQuadroEfetivosPorMes(dadosQuadroLegado).vigencias.map(v => v.id),
+  ['legado-ferias-outubro-sem-vinculo'],
+);
+
+// Afastamentos, substituicoes e cascatas desconhecidas seguem o periodo vigente.
+const vigenciaIndeterminada = {
+  dataInicio: '2026-09-02',
+  dataFim: '9999-12-31',
+  feriasId: 'afastamento-inss',
+  motivo: 'afastamento',
+};
+const dadosQuadroAfastamentos = {
+  feriasGozo: [],
+  itensEscala: [],
+  vigencias: [
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'inss-ativo' }),
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'inss-cascata', motivo: 'cascata', nivelCascata: 2 }),
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'substituicao-ativa', motivo: 'substituicao', feriasId: 'substituicao-temporaria' }),
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'cascata-origem-desconhecida', motivo: 'cascata', feriasId: 'movimentacao-legada' }),
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'inss-inativo', ativa: false }),
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'inss-autosubstituicao', substitutoId: ce.id }),
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'inss-sem-substituto', substitutoId: '' }),
+    vigenciaQuadro({ ...vigenciaIndeterminada, id: 'afastamento-encerrado', dataFim: '2026-09-30' }),
+  ],
+  mes: 10,
+  ano: 2026,
+};
+assert.deepEqual(
+  filtrarQuadroEfetivosPorMes(dadosQuadroAfastamentos).vigencias.map(v => v.id),
+  ['inss-ativo', 'inss-cascata', 'substituicao-ativa', 'cascata-origem-desconhecida'],
+);
 
 console.log('domain rules ok');

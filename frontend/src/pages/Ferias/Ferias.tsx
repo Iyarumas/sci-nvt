@@ -31,6 +31,7 @@ import {
 } from '../../services/feriasService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { EloCadeiaInput, VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
+import { filtrarQuadroEfetivosPorMes } from '../../utils/efetivoOperacional';
 import {
   dataLocalISO,
   estaNoPeriodoISO,
@@ -2954,7 +2955,6 @@ function TabQuadroEfetivos() {
       const [all, gozos, escalas] = await Promise.all([listarAtivos(), listarFeriasGozo(), listarEscalas()]);
       if (cancelled) return;
       setBombeiros(all);
-      setFeriasGozo(gozos);
       const items: EscalaFeriasItem[] = [];
       for (const esc of escalas) {
         if (esc.status !== 'Aprovado') continue;
@@ -2962,14 +2962,21 @@ function TabQuadroEfetivos() {
         const it = await listarItensEscala(esc.id);
         items.push(...it);
       }
-      setAllItems(items);
-
       // Vigencias do mês selecionado
       const mesInicio = `${ano}-${String(mesSelecionado).padStart(2, '0')}-01`;
       const mesFim = dataLocalISO(new Date(ano, mesSelecionado, 0));
       const v = await listarVigencias({ ativa: true, dataInicio: mesInicio, dataFim: mesFim });
       if (cancelled) return;
-      setVigencias(v);
+      const quadroMensal = filtrarQuadroEfetivosPorMes({
+        feriasGozo: gozos,
+        itensEscala: items,
+        vigencias: v,
+        mes: mesSelecionado,
+        ano,
+      });
+      setFeriasGozo(quadroMensal.feriasGozo);
+      setAllItems(quadroMensal.itensEscala);
+      setVigencias(quadroMensal.vigencias);
       setLoading(false);
     })();
     return () => { cancelled = true; };

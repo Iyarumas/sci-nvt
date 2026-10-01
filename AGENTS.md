@@ -491,6 +491,8 @@ Referência: **21/07/2026** = Alfa + Bravo
 **Regras operacionais**: `src/utils/regrasOperacionais.ts` centraliza validações puras de férias, escala anual, escala diária e substituições temporárias; `npm run test:domain` cobre os cenários críticos.
 **Smoke E2E**: `npm run test:e2e:operational` valida login, sidebar e rotas críticas sem criar dados.
 
+**Quadro de Efetivos (Férias)**: férias e suas correntes pertencem ao mês/ano de início do gozo; terminar no início do mês seguinte não as inclui no quadro desse mês. Afastamentos e substituições temporárias continuam aparecendo por sobreposição de vigência. Esse recorte é exclusivo do quadro mensal; Escala Diária, LRO e permissões continuam respeitando as datas reais.
+
 ### Permissões por Cargo/Equipa Efetivos
 
 **Helper**: `src/utils/permissoes.ts` — resolve cargo/equipa efetivos a partir de `vigencia_substituicoes` para aplicar permissões quando há férias, substituições temporárias ou cascatas.

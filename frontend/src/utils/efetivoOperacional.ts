@@ -3,11 +3,64 @@ import type { Bombeiro } from '../types/bombeiro';
 import type { DocumentFill } from '../types/document';
 import type { EscalaMensalCompleta } from '../types/escalaMensal';
 import type { TrocaSlot } from '../types/escala';
-import type { FeriasGozo } from '../types/ferias';
+import type { EscalaFeriasItem, FeriasGozo } from '../types/ferias';
 import type { SubstituicaoTemporaria } from '../types/substituicaoTemporaria';
 import type { VigenciaSubstituicao } from '../services/vigenciaSubstituicaoService';
-import { estaNoPeriodoISO, mesmoDiaISO, parseDataLocalISO } from './datas';
+import {
+  dataLocalISO,
+  estaNoPeriodoISO,
+  mesmoDiaISO,
+  normalizarDataISO,
+  parseDataLocalISO,
+  periodosSobrepostosISO,
+} from './datas';
 import { equipeEstaNoPlantao } from './equipes';
+
+/** Recorte do quadro mensal de férias; o efetivo diário continua usando as datas de vigência. */
+export function filtrarQuadroEfetivosPorMes({
+  feriasGozo,
+  itensEscala,
+  vigencias,
+  mes,
+  ano,
+}: {
+  feriasGozo: FeriasGozo[];
+  itensEscala: EscalaFeriasItem[];
+  vigencias: VigenciaSubstituicao[];
+  mes: number;
+  ano: number;
+}): { feriasGozo: FeriasGozo[]; itensEscala: EscalaFeriasItem[]; vigencias: VigenciaSubstituicao[] } {
+  const mesPrefixo = `${ano}-${String(mes).padStart(2, '0')}-`;
+  const mesInicio = `${mesPrefixo}01`;
+  const mesFim = dataLocalISO(new Date(ano, mes, 0));
+  const iniciaNoMes = (data: string) => normalizarDataISO(data).startsWith(mesPrefixo);
+  const gozosPorId = new Map(feriasGozo.map(g => [g.id, g]));
+  const raizesFerias = new Map(vigencias
+    .filter(v => v.motivo === 'ferias' && v.feriasId)
+    .map(v => [v.feriasId, v]));
+
+  return {
+    feriasGozo: feriasGozo.filter(g => iniciaNoMes(g.dataInicio)),
+    itensEscala: itensEscala.filter(item => {
+      if (item.rejeitado || !item.feriasGozoId || item.mes !== mes || !iniciaNoMes(item.dataInicio)) return false;
+      const gozo = gozosPorId.get(item.feriasGozoId);
+      return !gozo || iniciaNoMes(gozo.dataInicio);
+    }),
+    vigencias: vigencias.filter(v => {
+      if (!v.ativa || !v.substitutoId || v.substitutoId === v.funcionarioOriginalId) return false;
+      if (!periodosSobrepostosISO(v.dataInicio, v.dataFim, mesInicio, mesFim)) return false;
+
+      const gozo = gozosPorId.get(v.feriasId);
+      if (gozo) return iniciaNoMes(gozo.dataInicio);
+      const raizFerias = raizesFerias.get(v.feriasId);
+      if (raizFerias) return iniciaNoMes(raizFerias.dataInicio);
+      if (v.motivo === 'ferias') return iniciaNoMes(v.dataInicio);
+
+      // Afastamentos e suas cascatas podem continuar por vários meses.
+      return true;
+    }),
+  };
+}
 
 export interface EfetivoOperacionalEntry {
   bombeiro: Bombeiro;

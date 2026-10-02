@@ -8,7 +8,7 @@
     "build": "vite build",
     "typecheck": "tsc -b --noEmit",
     "lint": "oxlint",
-    "test:domain": "node scripts/domain-rules.test.mjs",
+    "test:domain": "node scripts/domain-rules.test.mjs && node scripts/substituicoes-service.test.mjs",
     "test:e2e:operational": "node scripts/e2e-operational-smoke.mjs",
     "preview": "vite preview"
   },

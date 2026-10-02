@@ -468,7 +468,7 @@ export function validarSubstituicaoTemporaria(params: {
   const errors = validarPeriodoBasico(substituicao.dataInicio, substituicao.dataFim, diasValidacao, 'Substituicao temporaria');
 
   if (!substituicao.funcionarioId) errors.push('Informe o funcionario substituido.');
-  if (!substituicao.substitutoId) errors.push('Informe o substituto.');
+  if (substituicao.tipo !== 'Afastamento' && !substituicao.substitutoId) errors.push('Informe o substituto.');
   if (substituicao.funcionarioId && substituicao.funcionarioId === substituicao.substitutoId) {
     errors.push('O substituto nao pode ser o proprio funcionario.');
   }
@@ -493,10 +493,14 @@ export function validarSubstituicaoTemporaria(params: {
       errors.push(`${nomePessoa(funcionario)} esta desligado e nao pode ser afastado.`);
     }
 
-    if (!substituto) {
+    if (substituicao.substitutoId && !substituto) {
       errors.push('Substituto do afastamento nao encontrado no cadastro ativo.');
-    } else if (substituto.dataDesligamento) {
+    } else if (substituicao.substitutoId && substituto?.dataDesligamento) {
       errors.push(`${nomePessoa(substituto)} esta desligado e nao pode substituir.`);
+    }
+
+    if (!substituicao.substitutoId && (substituicao.cadeiaSubstituicao || []).some(elo => elo.tipo !== 'extra')) {
+      errors.push('Remova a cadeia de substituicao ao deixar o afastamento sem substituto.');
     }
 
     if (afastamentoComExtras) {

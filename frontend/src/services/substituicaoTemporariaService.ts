@@ -97,6 +97,7 @@ function dataInicioVigenciaFixa(substituicao: SubstituicaoTemporaria): string {
 }
 
 function deveProcessarVigencia(substituicao: SubstituicaoTemporaria): boolean {
+  if (!substituicao.substitutoId) return false;
   if (substituicao.tipo === 'Substituição') return true;
   if (isAfastamentoIndeterminado(substituicao)) return !!substituicao.substitutoId;
   return substituicao.tipo === 'Afastamento' && !temExtrasAfastamento(substituicao);
@@ -263,7 +264,7 @@ async function processarVigenciasSubstituicaoTemporaria(
 ): Promise<void> {
   const funcionario = bombeiros.find(b => b.id === substituicao.funcionarioId);
   const dataInicioVigencia = dataInicioVigenciaFixa(substituicao);
-  if (!dataInicioVigencia) return;
+  if (!substituicao.substitutoId || !dataInicioVigencia || dataInicioVigencia > substituicao.dataFim) return;
   const cadeiaInput: EloCadeiaInput[] = substituicao.cadeiaSubstituicao
     .filter(elo => elo.tipo !== 'extra')
     .map(elo => ({
@@ -367,16 +368,20 @@ export async function solicitarTrocaSubstitutoAfastamentoIndeterminado(params: {
   }
 
   const bombeiros = await listarAtivos();
-  const novoSubstituto = bombeiros.find(b => b.id === params.novoSubstitutoId);
-  if (!novoSubstituto) throw new Error('Novo substituto não encontrado no cadastro ativo.');
+  const novoSubstituto = params.novoSubstitutoId
+    ? bombeiros.find(b => b.id === params.novoSubstitutoId)
+    : undefined;
+  if (params.novoSubstitutoId && !novoSubstituto) {
+    throw new Error('Novo substituto não encontrado no cadastro ativo.');
+  }
 
   return criarSubstituicaoTemporaria({
     funcionarioId: origem.funcionarioId,
     funcionarioNome: origem.funcionarioNome,
     funcionarioCargo: origem.funcionarioCargo,
-    substitutoId: novoSubstituto.id,
-    substitutoNome: novoSubstituto.nomeCompleto,
-    substitutoCargo: novoSubstituto.cargo,
+    substitutoId: novoSubstituto?.id || '',
+    substitutoNome: novoSubstituto?.nomeCompleto || '',
+    substitutoCargo: novoSubstituto?.cargo || '',
     tipo: 'Afastamento',
     motivo: 'INSS Indeterminado',
     motivoOutro: origem.motivoOutro,
@@ -422,7 +427,7 @@ export async function atualizarSubstituicaoTemporaria(
   const contexto = contextoValidacao(merged, bombeiros);
   assertSemErros(validarSubstituicaoTemporaria({
     substituicao: merged,
-    substituicoesExistentes: existentes,
+    substituicoesExistentes: ajustarExistentesParaValidacaoDeTroca(merged, existentes),
     ignoreSubstituicaoId: id,
     ...contexto,
   }));
@@ -494,57 +499,99 @@ export async function aprovarSubstituicaoTemporaria(
   }));
   const now = new Date().toISOString();
   const anteriorIndeterminado = encontrarAfastamentoIndeterminadoAnterior(atual, existentes);
-  if (anteriorIndeterminado) {
-    const anteriorFechado = {
-      ...anteriorIndeterminado,
-      dataFim: diaAnterior(atual.dataInicio),
-      updatedAt: now,
-    };
-    const { error: fecharError } = await db
-      .from(TABLE)
-      .update({ data_fim: anteriorFechado.dataFim, updated_at: now })
-      .eq('id', anteriorIndeterminado.id);
-    if (fecharError) handleSupabaseError(fecharError);
-    await desativarVigencias(anteriorIndeterminado.id);
-    if (deveProcessarVigencia(anteriorFechado)) {
-      await processarVigenciasSubstituicaoTemporaria(anteriorFechado, bombeiros);
-    }
-  }
-
-  const row = {
-    status: 'Aprovada',
-    aprovado_por: aprovadoPor,
-    aprovado_por_nome: aprovadoPorNome,
-    aprovado_em: now,
-    updated_at: now,
-  };
-  const { data: updated, error } = await db
-    .from(TABLE)
-    .update(row)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) handleSupabaseError(error);
-  const aprovado = updated ? rowToSubstituicao(updated) : null;
-  if (aprovado && deveProcessarVigencia(aprovado)) {
-    try {
-      await processarVigenciasSubstituicaoTemporaria(aprovado, bombeiros);
-    } catch (err) {
-      await desativarVigencias(id).catch(() => undefined);
-      await db
+  let anteriorAlterado = false;
+  let atualAlterado = false;
+  try {
+    if (anteriorIndeterminado) {
+      const anteriorFechado = {
+        ...anteriorIndeterminado,
+        dataFim: diaAnterior(atual.dataInicio),
+        updatedAt: now,
+      };
+      const { error: fecharError } = await db
         .from(TABLE)
-        .update({
-          status: 'Pendente',
-          aprovado_por: '',
-          aprovado_por_nome: '',
-          aprovado_em: '',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-      throw err;
+        .update({ data_fim: anteriorFechado.dataFim, updated_at: now })
+        .eq('id', anteriorIndeterminado.id);
+      if (fecharError) handleSupabaseError(fecharError);
+      anteriorAlterado = true;
+      await desativarVigencias(anteriorIndeterminado.id);
+      if (deveProcessarVigencia(anteriorFechado)) {
+        await processarVigenciasSubstituicaoTemporaria(anteriorFechado, bombeiros);
+      }
     }
+
+    const row = {
+      status: 'Aprovada',
+      aprovado_por: aprovadoPor,
+      aprovado_por_nome: aprovadoPorNome,
+      aprovado_em: now,
+      updated_at: now,
+    };
+    const { data: updated, error } = await db
+      .from(TABLE)
+      .update(row)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) handleSupabaseError(error);
+    atualAlterado = true;
+    const aprovado = updated ? rowToSubstituicao(updated) : null;
+    if (aprovado && deveProcessarVigencia(aprovado)) {
+      await processarVigenciasSubstituicaoTemporaria(aprovado, bombeiros);
+    }
+    return aprovado;
+  } catch (err) {
+    // As chamadas REST não são transacionais; compensamos as alterações já aplicadas.
+    const falhasRestauracao: string[] = [];
+    const restaurar = async (etapa: string, action: () => Promise<unknown>) => {
+      try {
+        await action();
+      } catch (restauracaoError) {
+        falhasRestauracao.push(`${etapa}: ${restauracaoError instanceof Error ? restauracaoError.message : String(restauracaoError)}`);
+      }
+    };
+    if (atualAlterado) {
+      await restaurar('vigências da nova movimentação', () => desativarVigencias(id));
+      await restaurar('aprovação da nova movimentação', async () => {
+        const { error: restaurarAtualError } = await db
+          .from(TABLE)
+          .update({
+            status: atual.status,
+            aprovado_por: atual.aprovadoPor,
+            aprovado_por_nome: atual.aprovadoPorNome,
+            aprovado_em: atual.aprovadoEm,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id);
+        if (restaurarAtualError) handleSupabaseError(restaurarAtualError);
+      });
+    }
+    if (anteriorAlterado && anteriorIndeterminado) {
+      await restaurar('período da movimentação anterior', async () => {
+        const { error: restaurarAnteriorError } = await db
+          .from(TABLE)
+          .update({
+            data_fim: anteriorIndeterminado.dataFim,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', anteriorIndeterminado.id);
+        if (restaurarAnteriorError) handleSupabaseError(restaurarAnteriorError);
+      });
+      await restaurar('vigências da movimentação anterior', async () => {
+        await desativarVigencias(anteriorIndeterminado.id);
+        if (deveProcessarVigencia(anteriorIndeterminado)) {
+          await processarVigenciasSubstituicaoTemporaria(anteriorIndeterminado, bombeiros);
+        }
+      });
+    }
+    if (falhasRestauracao.length > 0) {
+      const mensagem = err instanceof Error ? err.message : String(err);
+      throw new Error(`${mensagem} Não foi possível restaurar completamente a troca: ${falhasRestauracao.join('; ')}.`, {
+        cause: err,
+      });
+    }
+    throw err;
   }
-  return aprovado;
 }
 
 export async function rejeitarSubstituicaoTemporaria(

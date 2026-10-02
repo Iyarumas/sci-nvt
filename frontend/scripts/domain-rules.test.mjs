@@ -15,6 +15,7 @@ const filesToCompile = [
   'src/utils/datas.ts',
   'src/utils/tempo.ts',
   'src/utils/equipes.ts',
+  'src/utils/afastamentos.ts',
   'src/utils/efetivoOperacional.ts',
   'src/utils/regrasOperacionais.ts',
   'src/utils/validacaoCursos.ts',
@@ -45,6 +46,7 @@ const regras = requireFromTest(path.join(outRoot, 'src/utils/regrasOperacionais.
 const cursos = requireFromTest(path.join(outRoot, 'src/utils/validacaoCursos.js'));
 const equipesUtils = requireFromTest(path.join(outRoot, 'src/utils/equipes.js'));
 const efetivoOperacional = requireFromTest(path.join(outRoot, 'src/utils/efetivoOperacional.js'));
+const { agruparAfastamentosIndeterminados } = requireFromTest(path.join(outRoot, 'src/utils/afastamentos.js'));
 const tpepr = requireFromTest(path.join(outRoot, 'src/types/tpepr.js'));
 
 const {
@@ -197,6 +199,14 @@ assert.deepEqual(
   validarFeriasGozo({ gozo: gozo(ferista), funcionario: ferista, bombeiros }),
   [],
 );
+
+const feristaMotorista = { ...ferista, cargo: 'BA-MC' };
+assert.deepEqual(validarFeriasGozo({
+  gozo: gozo(feristaMotorista), funcionario: feristaMotorista, bombeiros,
+}), [], 'Equipe Ferista dispensa substituto mesmo para cargo de motorista');
+assert.match(validarFeriasGozo({
+  gozo: gozo(mc), funcionario: mc, bombeiros,
+}).join('\n'), /precisa de substituto/, 'Motorista da equipe operacional continua exigindo cobertura nas férias');
 
 assert.match(
   validarFeriasGozo({
@@ -722,6 +732,122 @@ assert.deepEqual(
   }),
   [],
 );
+
+const afastamentoSemCobertura = {
+  ...inssIndeterminadoSemExtras,
+  substitutoId: '',
+  substitutoNome: '',
+  substitutoCargo: '',
+};
+assert.deepEqual(validarSubstituicaoTemporaria({
+  substituicao: afastamentoSemCobertura,
+  funcionario: lr,
+  bombeiros,
+}), [], 'INSS sem cobertura deve preservar o afastamento');
+assert.deepEqual(validarSubstituicaoTemporaria({
+  substituicao: {
+    ...afastamentoSemCobertura,
+    motivo: 'Atestado Medico',
+    dataFim: '2026-07-22',
+    dias: 2,
+  },
+  funcionario: lr,
+  bombeiros,
+}), [], 'Atestado pode ser registrado sem substituto ou extras');
+assert.match(validarSubstituicaoTemporaria({
+  substituicao: { ...afastamentoSemCobertura, tipo: 'Substituição' },
+  funcionario: lr,
+  bombeiros,
+}).join('\n'), /Informe o substituto/, 'Substituição comum continua exigindo uma pessoa');
+assert.match(validarSubstituicaoTemporaria({
+  substituicao: { ...afastamentoSemCobertura, substitutoId: 'inexistente' },
+  funcionario: lr,
+  bombeiros,
+}).join('\n'), /Substituto do afastamento nao encontrado/, 'ID inválido não representa ausência de cobertura');
+assert.match(validarSubstituicaoTemporaria({
+  substituicao: afastamentoSemCobertura,
+  funcionario: lr,
+  bombeiros,
+  substituicoesExistentes: [{ ...afastamentoSemCobertura, id: 'outro-afastamento', status: 'Aprovada' }],
+}).join('\n'), /conflitante/, 'Sem substituto ainda bloqueia outro afastamento simultâneo da mesma pessoa');
+
+const efetivoSemCobertura = montarEfetivoOperacional({
+  bombeiros,
+  feriasGozo: [],
+  vigencias: [],
+  trocaFills: [],
+  substituicoesTemporarias: [{ ...afastamentoSemCobertura, status: 'Aprovada' }],
+  equipe: 'Alfa',
+  dataPlantao: '2026-07-21',
+});
+assert.equal(efetivoSemCobertura.some(entry => entry.bombeiro.id === lr.id), false,
+  'Pessoa afastada sem cobertura não pode retornar ao efetivo');
+assert.equal(efetivoSemCobertura.some(entry => entry.substituindo?.id === lr.id), false,
+  'Afastamento sem cobertura não pode inventar um substituto');
+
+const inicioInssContinuo = {
+  ...inssIndeterminadoSemExtras,
+  id: 'inss-original',
+  status: 'Aprovada',
+  dataFim: '2026-09-29',
+};
+const coberturaInssAtual = {
+  ...inssIndeterminadoSemExtras,
+  id: 'inss-cobertura-atual',
+  status: 'Aprovada',
+  dataInicio: '2026-09-30',
+  substitutoId: ferista.id,
+  substitutoNome: ferista.nomeCompleto,
+  substitutoCargo: ferista.cargo,
+};
+const retiradaCoberturaPendente = {
+  ...afastamentoSemCobertura,
+  id: 'inss-retirada-pendente',
+  dataInicio: '2026-10-01',
+};
+const [inssAgrupado] = agruparAfastamentosIndeterminados([
+  retiradaCoberturaPendente, coberturaInssAtual, inicioInssContinuo,
+]);
+assert.equal(inssAgrupado.id, inicioInssContinuo.id);
+assert.equal(inssAgrupado.dataInicio, inicioInssContinuo.dataInicio, 'Troca conserva início original do afastamento');
+assert.equal(inssAgrupado.atual.id, coberturaInssAtual.id, 'Pendente não substitui cobertura aprovada');
+assert.deepEqual(inssAgrupado.periodos.map(sub => sub.id), [
+  inicioInssContinuo.id, coberturaInssAtual.id, retiradaCoberturaPendente.id,
+]);
+assert.equal(agruparAfastamentosIndeterminados([
+  retiradaCoberturaPendente, coberturaInssAtual, inicioInssContinuo,
+]).length, 1, 'Troca e retirada de cobertura pertencem ao mesmo card');
+const gruposComRetorno = agruparAfastamentosIndeterminados([
+  { ...inicioInssContinuo, dataFim: '2026-08-31' },
+  coberturaInssAtual,
+]);
+assert.equal(gruposComRetorno.length, 2, 'Retorno entre períodos separa episódios INSS');
+assert.equal(agruparAfastamentosIndeterminados([
+  inicioInssContinuo, { ...coberturaInssAtual, funcionarioId: ce.id },
+]).length, 2, 'Funcionários diferentes nunca compartilham o mesmo afastamento');
+assert.equal(agruparAfastamentosIndeterminados([
+  { ...inicioInssContinuo, motivo: 'Atestado Medico' },
+  { ...coberturaInssAtual, motivo: 'Atestado Medico' },
+]).length, 2, 'Atestados distintos não são unidos por continuidade de datas');
+const coberturaEncerrada = { ...coberturaInssAtual, dataFim: '2026-10-04' };
+const trocaRejeitada = { ...retiradaCoberturaPendente, status: 'Rejeitada', dataInicio: '2026-10-02' };
+const coberturaPosterior = {
+  ...afastamentoSemCobertura,
+  id: 'inss-sem-cobertura-aprovado',
+  status: 'Aprovada',
+  dataInicio: '2026-10-05',
+};
+const gruposComRejeicao = agruparAfastamentosIndeterminados([
+  coberturaPosterior, trocaRejeitada, coberturaEncerrada, inicioInssContinuo,
+]);
+assert.equal(gruposComRejeicao.length, 1, 'Rejeição permanece no histórico mesmo após outra troca aprovada');
+assert.equal(gruposComRejeicao[0].atual.id, coberturaPosterior.id);
+assert.equal(gruposComRejeicao[0].atual.substitutoId, '', 'Período aprovado sem cobertura mantém o mesmo afastamento');
+assert.equal(agruparAfastamentosIndeterminados([
+  { ...inicioInssContinuo, dataFim: '2026-09-01' },
+  { ...trocaRejeitada, dataInicio: '2026-09-02' },
+  coberturaInssAtual,
+]).length, 3, 'Solicitação rejeitada não une episódios separados');
 
 const inssIndeterminadoComExtraInicial = {
   ...inssIndeterminadoSemExtras,

@@ -1681,6 +1681,11 @@ function TabEscalaAnual({ canManage, equipeUsuario }: { canManage: boolean; equi
     return func?.cargo;
   }, [formFuncId, bombeiros]);
 
+  const substitutoObrigatorio = useMemo(() => {
+    const func = bombeiros.find(b => b.id === formFuncId);
+    return !!func && func.equipe !== 'Ferista' && isSubstitutoObrigatorio(func.cargo);
+  }, [formFuncId, bombeiros]);
+
   const idsUsados = useMemo(() => {
     const ids = new Set<string>();
     if (formFuncId) ids.add(formFuncId);
@@ -2277,7 +2282,7 @@ function TabEscalaAnual({ canManage, equipeUsuario }: { canManage: boolean; equi
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <label className={labelCls}>
-                              Substituto {cargoVacationer && isSubstitutoObrigatorio(cargoVacationer) ? <span className="text-alert-red">*</span> : '(opcional)'}
+                              Substituto {substitutoObrigatorio ? <span className="text-alert-red">*</span> : '(opcional)'}
                             </label>
                           </div>
                           <div className="flex gap-2">
@@ -2294,7 +2299,7 @@ function TabEscalaAnual({ canManage, equipeUsuario }: { canManage: boolean; equi
                           </div>
                           <select value={formSubId} onChange={e => handleSubstitutoChange(e.target.value)} className={selectCls}>
                             <option value="" className={optionCls}>
-                              {cargoVacationer && isSubstitutoObrigatorio(cargoVacationer) ? '-- Selecione um substituto --' : 'Nenhum'}
+                              {substitutoObrigatorio ? '-- Selecione um substituto --' : 'Nenhum'}
                             </option>
                             {(() => {
                               const func = bombeiros.find(b => b.id === formFuncId);
@@ -3485,7 +3490,7 @@ function ModalCadastroFeriasManual({ onClose, onSuccess }: { onClose: () => void
 
   const equipe = selectedBombeiro?.equipe || '';
   const cargoVacationer = selectedBombeiro?.cargo;
-  const substitutoObrigatorio = cargoVacationer ? isSubstitutoObrigatorio(cargoVacationer) : false;
+  const substitutoObrigatorio = equipe !== 'Ferista' && !!cargoVacationer && isSubstitutoObrigatorio(cargoVacationer);
   const cargosPermitidos = cargoVacationer ? getCargosPermitidosSubstituto(cargoVacationer) : [];
 
   // IDs já usados na cadeia (incluindo vacationer e substituto direto)

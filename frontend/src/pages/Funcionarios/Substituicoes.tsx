@@ -33,9 +33,13 @@ import { estaNoPeriodoISO, formatarDataBR } from '../../utils/datas';
 import { equipeEstaNoPlantao } from '../../utils/equipes';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import { PageTour } from '../../components/ui/PageTour';
+import { agruparAfastamentosIndeterminados } from '../../utils/afastamentos';
 
 function capitalize(str: string) { return capitalizarNome(str); }
 function formatDate(d: string) { return formatarDataBR(d); }
+function nomeSubstituto(sub: SubstituicaoTemporaria): string {
+  return sub.substitutoId ? capitalize(sub.substitutoNome) || 'Substituto não identificado' : 'Sem substituto';
+}
 
 const INPUT_CLASS = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const TIPO_OPTIONS: TipoSubstituicao[] = ['Substituição', 'Afastamento'];
@@ -313,12 +317,14 @@ export function Substituicoes() {
   const [trocaSub, setTrocaSub] = useState<SubstituicaoTemporaria | null>(null);
   const [trocaDataInicio, setTrocaDataInicio] = useState('');
   const [trocaNovoSubstituto, setTrocaNovoSubstituto] = useState<Bombeiro | null>(null);
+  const [trocaSemSubstituto, setTrocaSemSubstituto] = useState(false);
   const [trocaSaving, setTrocaSaving] = useState(false);
   const [trocaError, setTrocaError] = useState('');
 
   const [formTipo, setFormTipo] = useState<TipoSubstituicao>('Substituição');
   const [formSubstituido, setFormSubstituido] = useState<Bombeiro | null>(null);
   const [formSubstituto, setFormSubstituto] = useState<Bombeiro | null>(null);
+  const [formSemSubstituto, setFormSemSubstituto] = useState(false);
   const [formMotivo, setFormMotivo] = useState<MotivoSubstituicao | '__placeholder__'>('Outro');
   const [formMotivoOutro, setFormMotivoOutro] = useState('');
   const [formCidAtestado, setFormCidAtestado] = useState('');
@@ -384,17 +390,17 @@ export function Substituicoes() {
     return calcularDataFim(formDataInicio, formDias);
   }, [afastamentoIndeterminado, formDataInicio, formDias]);
 
-  const diasParaSalvar = formDias;
+  const diasParaSalvar = afastamentoIndeterminado && formSemSubstituto ? 0 : formDias;
 
   const dataFimExtrasCalculada = useMemo(() => {
-    if (formTipo !== 'Afastamento' || !formDataInicio || formDias <= 0) return '';
+    if (formTipo !== 'Afastamento' || formSemSubstituto || !formDataInicio || formDias <= 0) return '';
     return calcularDataFim(formDataInicio, formDias);
-  }, [formDataInicio, formDias, formTipo]);
+  }, [formDataInicio, formDias, formSemSubstituto, formTipo]);
 
   const dataInicioSubstituicaoFixa = useMemo(() => {
     if (!afastamentoIndeterminado) return '';
-    return dataInicioSubstituicaoIndeterminada(formDataInicio, formDias);
-  }, [afastamentoIndeterminado, formDataInicio, formDias]);
+    return dataInicioSubstituicaoIndeterminada(formDataInicio, diasParaSalvar);
+  }, [afastamentoIndeterminado, formDataInicio, diasParaSalvar]);
 
   const plantoesAfastamento = useMemo(() => {
     if (formTipo !== 'Afastamento' || !formSubstituido || !formDataInicio || !dataFimExtrasCalculada) return [];
@@ -493,12 +499,13 @@ export function Substituicoes() {
       (!afastamentoExigeDescricao || !!formMotivoOutro.trim());
 
   const exigeExtrasAfastamento = formTipo === 'Afastamento' &&
+    !formSemSubstituto &&
     (!afastamentoIndeterminado || formDias > 0);
   const extrasCompletos = formTipo !== 'Afastamento' ||
     !exigeExtrasAfastamento ||
     (extrasAfastamento.length > 0 && extrasAfastamento.every(extra => extra.substitutoId && extra.cargoExercido));
   const diasAfastamentoValidos = afastamentoIndeterminado ? formDias >= 0 : diasParaSalvar > 0;
-  const substitutoFixoIndeterminadoValido = !afastamentoIndeterminado ||
+  const substitutoFixoIndeterminadoValido = !afastamentoIndeterminado || formSemSubstituto ||
     !!(
       formSubstituto &&
       formSubstituido &&
@@ -527,14 +534,20 @@ export function Substituicoes() {
         !bloqueadoPorHierarquia
       );
 
-  const filteredOperacional = subs.filter(s => {
-    const matchTermo = !debouncedTermo ||
+  const gruposAfastamento = useMemo(() => agruparAfastamentosIndeterminados(subs), [subs]);
+  const gruposPorPeriodoId = useMemo(() => new Map(
+    gruposAfastamento.flatMap(grupo => grupo.periodos.map(periodo => [periodo.id, grupo] as const)),
+  ), [gruposAfastamento]);
+  const filteredOperacional = gruposAfastamento.filter(grupo => {
+    const matchTermo = !debouncedTermo || grupo.periodos.some(s =>
       s.funcionarioNome.toLowerCase().includes(debouncedTermo.toLowerCase()) ||
-      s.substitutoNome.toLowerCase().includes(debouncedTermo.toLowerCase()) ||
-      s.tipo.toLowerCase().includes(debouncedTermo.toLowerCase());
-    const matchStatus = !filterStatus || s.status === filterStatus;
-    return matchTermo && matchStatus;
-  });
+      nomeSubstituto(s).toLowerCase().includes(debouncedTermo.toLowerCase()) ||
+      s.tipo.toLowerCase().includes(debouncedTermo.toLowerCase()),
+    );
+    const matchStatus = !filterStatus || grupo.periodos.some(s => s.status === filterStatus);
+    const matchTab = tab !== 'aprovacoes' || grupo.periodos.some(s => s.status === 'Pendente');
+    return matchTermo && matchStatus && matchTab;
+  }).map(grupo => grupo.atual);
 
   const pendentes = subs.filter(s => s.status === 'Pendente');
 
@@ -617,6 +630,10 @@ export function Substituicoes() {
             <p className="font-bold uppercase text-slate-500">Aprovado por</p>
             <p className="mt-1 font-semibold text-slate-950">{sub.aprovadoPorNome || sub.aprovadoPor || '-'}</p>
           </div>
+          <div>
+            <p className="font-bold uppercase text-slate-500">Substituto</p>
+            <p className="mt-1 font-semibold text-slate-950">{nomeSubstituto(sub)}</p>
+          </div>
           {cid && (
             <div>
               <p className="font-bold uppercase text-slate-500">CID</p>
@@ -671,6 +688,7 @@ export function Substituicoes() {
     setFormTipo('Substituição');
     setFormSubstituido(null);
     setFormSubstituto(null);
+    setFormSemSubstituto(false);
     setFormMotivo('Outro');
     setFormMotivoOutro('');
     setFormCidAtestado('');
@@ -697,6 +715,7 @@ export function Substituicoes() {
     setFormTipo(sub.tipo);
     setFormSubstituido(activeBombeiros.find(b => b.id === sub.funcionarioId) || null);
     setFormSubstituto(activeBombeiros.find(b => b.id === sub.substitutoId) || null);
+    setFormSemSubstituto(sub.tipo === 'Afastamento' && !sub.substitutoId);
     setFormMotivo(sub.tipo === 'Substituição' ? 'Outro' : sub.motivo);
     setFormMotivoOutro(descricao);
     setFormCidAtestado(cid);
@@ -711,6 +730,7 @@ export function Substituicoes() {
     setFormTipo(tipo);
     setFormSubstituido(null);
     setFormSubstituto(null);
+    setFormSemSubstituto(false);
     setFormMotivo(tipo === 'Substituição' ? 'Outro' : '__placeholder__');
     setFormMotivoOutro('');
     setFormCidAtestado('');
@@ -728,6 +748,7 @@ export function Substituicoes() {
   function handleSubstitutoChange(id: string) {
     const selected = activeBombeiros.find(b => b.id === id) || null;
     setFormSubstituto(selected);
+    setFormSemSubstituto(false);
     setExtrasAfastamento([]);
   }
 
@@ -761,20 +782,12 @@ export function Substituicoes() {
       canApprove &&
       sub.tipo === 'Afastamento' &&
       sub.status === 'Aprovada' &&
-      isIndeterminadoAtivo(sub) &&
-      !!sub.substitutoId;
+      isIndeterminadoAtivo(sub);
   }
 
   function historicoSubstituicaoIndeterminada(sub: SubstituicaoTemporaria): SubstituicaoTemporaria[] {
-    if (sub.tipo !== 'Afastamento' || sub.motivo !== 'INSS Indeterminado') return [];
-    return subs
-      .filter(item =>
-        item.tipo === 'Afastamento' &&
-        item.motivo === 'INSS Indeterminado' &&
-        item.funcionarioId === sub.funcionarioId &&
-        item.status !== 'Rejeitada'
-      )
-      .sort((a, b) => dataInicioFixaSubstituicao(a).localeCompare(dataInicioFixaSubstituicao(b)));
+    if (sub.tipo !== 'Afastamento' || !isIndeterminado(sub)) return [];
+    return gruposPorPeriodoId.get(sub.id)?.periodos || [sub];
   }
 
   function periodoHistoricoSubstituto(sub: SubstituicaoTemporaria): string {
@@ -789,6 +802,7 @@ export function Substituicoes() {
     setTrocaSub(sub);
     setTrocaDataInicio(hoje > dataMinima ? hoje : dataMinima);
     setTrocaNovoSubstituto(null);
+    setTrocaSemSubstituto(false);
     setTrocaError('');
   }
 
@@ -796,11 +810,13 @@ export function Substituicoes() {
     setTrocaSub(null);
     setTrocaDataInicio('');
     setTrocaNovoSubstituto(null);
+    setTrocaSemSubstituto(false);
     setTrocaError('');
   }
 
   async function handleSolicitarTrocaSubstituto() {
-    if (!trocaSub || !trocaNovoSubstituto || trocaSaving) return;
+    if (!trocaSub || (!trocaSemSubstituto && !trocaNovoSubstituto) || trocaSaving) return;
+    if (trocaSemSubstituto && !trocaSub.substitutoId) return;
     const dataMinima = dataMinimaTrocaSubstituto(trocaSub);
     if (!trocaDataInicio || trocaDataInicio < dataMinima) {
       setTrocaError(`Informe uma data a partir de ${formatDate(dataMinima)}.`);
@@ -812,7 +828,7 @@ export function Substituicoes() {
       await solicitarTrocaSubstitutoAfastamentoIndeterminado({
         substituicaoOrigemId: trocaSub.id,
         dataInicio: trocaDataInicio,
-        novoSubstitutoId: trocaNovoSubstituto.id,
+        novoSubstitutoId: trocaSemSubstituto ? '' : trocaNovoSubstituto!.id,
         criadoPor: user?.username || '',
         criadoPorNome: user?.name || '',
       });
@@ -826,7 +842,7 @@ export function Substituicoes() {
   }
 
   function montarExtrasCadeia(): EloCadeiaSubstituicaoTemporaria[] {
-    if (formTipo !== 'Afastamento' || !formSubstituido) return [];
+    if (formTipo !== 'Afastamento' || formSemSubstituto || !formSubstituido) return [];
     const resultado: EloCadeiaSubstituicaoTemporaria[] = [];
     for (const extra of extrasAfastamento) {
       const substituto = pessoaPorId(extra.substitutoId);
@@ -867,7 +883,7 @@ export function Substituicoes() {
     const linhas = [descricao];
     if (atestadoMedico && formCidAtestado.trim()) linhas.push(`CID: ${formCidAtestado.trim()}.`);
     if (afastamentoIndeterminado) linhas.push('Prazo: indeterminado.');
-    if (extrasAfastamento.length > 0) {
+    if (!formSemSubstituto && extrasAfastamento.length > 0) {
       const resumoExtras = extrasAfastamento.map(extra => {
         const substituto = pessoaPorId(extra.substitutoId);
         const funcao = extra.cargoExercido || formSubstituido?.cargo || '';
@@ -930,27 +946,29 @@ export function Substituicoes() {
         if (exigeExtrasAfastamento && extrasCadeia.length !== extrasAfastamento.length) {
           throw new Error('Revise os extras do afastamento/atestado antes de salvar.');
         }
-        if (afastamentoIndeterminado && (!formSubstituto || formSubstituto.id === formSubstituido.id)) {
+        if (afastamentoIndeterminado && !formSemSubstituto && (!formSubstituto || formSubstituto.id === formSubstituido.id)) {
           throw new Error('Informe quem ficara no lugar da pessoa afastada por tempo indeterminado.');
         }
       }
       const substitutoPrincipal = formTipo === 'Afastamento'
-        ? (afastamentoIndeterminado ? formSubstituto : pessoaPorId(extrasAfastamento[0]?.substitutoId || ''))
+        ? (formSemSubstituto ? null : afastamentoIndeterminado ? formSubstituto : pessoaPorId(extrasAfastamento[0]?.substitutoId || ''))
         : formSubstituto;
-      if (!substitutoPrincipal) throw new Error(afastamentoIndeterminado ? 'Informe quem ficara no lugar.' : 'Informe quem fara os extras.');
+      if (!substitutoPrincipal && !(formTipo === 'Afastamento' && formSemSubstituto)) {
+        throw new Error(afastamentoIndeterminado ? 'Informe quem ficara no lugar.' : 'Informe quem fara os extras.');
+      }
       const payload: Omit<SubstituicaoTemporaria, 'id' | 'createdAt' | 'updatedAt'> = {
         funcionarioId: formSubstituido.id,
         funcionarioNome: formSubstituido.nomeCompleto,
         funcionarioCargo: formSubstituido.cargo,
-        substitutoId: substitutoPrincipal.id,
-        substitutoNome: substitutoPrincipal.nomeCompleto,
+        substitutoId: substitutoPrincipal?.id || '',
+        substitutoNome: substitutoPrincipal?.nomeCompleto || '',
         substitutoCargo: formTipo === 'Afastamento'
-          ? substitutoPrincipal.cargo
+          ? substitutoPrincipal?.cargo || ''
           : substituicaoFuncao,
         tipo: formTipo,
         motivo,
         motivoOutro: descricaoMotivo,
-        plantaoExtra: formTipo === 'Afastamento' ? (extrasAfastamento.length > 0 ? 'Sim' : 'Nao') : formPlantaoExtra,
+        plantaoExtra: formTipo === 'Afastamento' ? (!formSemSubstituto && extrasAfastamento.length > 0 ? 'Sim' : 'Nao') : formPlantaoExtra,
         dataInicio: formDataInicio,
         dataFim: dataFimCalculada,
         dias: diasParaSalvar,
@@ -1028,11 +1046,11 @@ export function Substituicoes() {
   }
 
   const trocaDataMinima = trocaSub ? dataMinimaTrocaSubstituto(trocaSub) : '';
-  const trocaAvisoCurso = trocaSub && trocaNovoSubstituto && trocaNovoSubstituto.id !== trocaSub.funcionarioId
+  const trocaAvisoCurso = !trocaSemSubstituto && trocaSub && trocaNovoSubstituto && trocaNovoSubstituto.id !== trocaSub.funcionarioId
     ? validarCursoParaFuncao(trocaNovoSubstituto, trocaSub.funcionarioCargo as Cargo)
     : null;
   const trocaPodeSalvar = !!trocaSub &&
-    !!trocaNovoSubstituto &&
+    (trocaSemSubstituto ? !!trocaSub.substitutoId : !!trocaNovoSubstituto) &&
     !!trocaDataInicio &&
     (!trocaDataMinima || trocaDataInicio >= trocaDataMinima) &&
     trocaAvisoCurso?.nivel !== 'bloqueado';
@@ -1052,7 +1070,7 @@ export function Substituicoes() {
       {!isRelatorioRoute && canApprove && (
         <div className="mb-6 flex items-center gap-1 rounded-xl border border-graphite-200/60 bg-graphite-50/80 p-1 dark:border-border-dark dark:bg-surface-card/50">
           {([
-            { key: 'lista' as Tab, label: 'Todas', count: subs.length },
+            { key: 'lista' as Tab, label: 'Todas', count: gruposAfastamento.length },
             { key: 'aprovacoes' as Tab, label: 'Pendentes', count: pendentes.length },
           ]).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
@@ -1133,17 +1151,31 @@ export function Substituicoes() {
       ) : (
         <div className="space-y-2">
           {filtered.map(sub => {
-            const expanded = expandedId === sub.id;
-            const extras = sub.cadeiaSubstituicao.filter(elo => elo.tipo === 'extra');
+            const grupo = isRelatorioRoute ? undefined : gruposPorPeriodoId.get(sub.id);
+            const cardId = grupo?.id || sub.id;
+            const periodos = grupo?.periodos || [sub];
+            const solicitacoesPendentes = periodos.filter(item => item.status === 'Pendente');
+            const expanded = expandedId === cardId ||
+              (!isRelatorioRoute && solicitacoesPendentes.length > 0 && (tab === 'aprovacoes' || filterStatus === 'Pendente'));
+            const hoje = dataLocalISO(new Date());
+            const aprovadoVigente = grupo?.periodos.filter(item =>
+              item.status === 'Aprovada' && estaNoPeriodoISO(hoje, dataInicioFixaSubstituicao(item), item.dataFim),
+            ).at(-1);
+            const aprovadoFuturo = grupo?.periodos.find(item =>
+              item.status === 'Aprovada' && dataInicioFixaSubstituicao(item) > hoje,
+            );
+            const coberturaCabecalho = aprovadoVigente || aprovadoFuturo || sub;
+            const trocaFutura = grupo && sub.status === 'Aprovada' && dataInicioFixaSubstituicao(sub) > hoje && sub.id !== aprovadoVigente?.id;
+            const extras = periodos.flatMap(item => item.cadeiaSubstituicao).filter(elo => elo.tipo === 'extra');
             const { descricao, cid } = separarDescricaoMotivo(sub);
-            const inicioSubstituicaoFixa = isIndeterminado(sub)
-              ? dataInicioSubstituicaoIndeterminada(sub.dataInicio, Number(sub.dias) || 0)
+            const inicioSubstituicaoFixa = isIndeterminado(coberturaCabecalho)
+              ? dataInicioFixaSubstituicao(coberturaCabecalho)
               : '';
             const podeTrocarSubstituto = podeSolicitarTrocaSubstituto(sub);
             const historicoIndeterminado = historicoSubstituicaoIndeterminada(sub);
             return (
-              <div key={sub.id}
-                onClick={() => setExpandedId(expanded ? null : sub.id)}
+              <div key={cardId}
+                onClick={() => setExpandedId(expanded ? null : cardId)}
                 className="cursor-pointer rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
@@ -1159,20 +1191,27 @@ export function Substituicoes() {
                         <span className="hidden text-xs text-graphite-400 sm:inline">[{ABBR_CARGO[sub.funcionarioCargo as Cargo] || sub.funcionarioCargo}]</span>
                         <ArrowRight className="h-3 w-3 shrink-0 text-graphite-400" />
                         <span className="truncate font-semibold text-graphite-900 dark:text-graphite-100">
-                          {capitalize(sub.substitutoNome)}
+                          {nomeSubstituto(coberturaCabecalho)}
                         </span>
-                        <span className="hidden text-xs text-graphite-400 sm:inline">[{ABBR_CARGO[sub.substitutoCargo as Cargo] || sub.substitutoCargo}]</span>
+                        {coberturaCabecalho.substitutoId && (
+                          <span className="hidden text-xs text-graphite-400 sm:inline">[{ABBR_CARGO[coberturaCabecalho.substitutoCargo as Cargo] || coberturaCabecalho.substitutoCargo}]</span>
+                        )}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-graphite-500 dark:text-graphite-400">
                         <span>{motivoLabel(sub)}</span>
-                        <span>· {periodoLabel(sub)}</span>
-                        {sub.tipo === 'Afastamento' && sub.plantaoExtra === 'Sim' && (
+                        <span>· {periodoLabel(grupo ? { ...sub, dataInicio: grupo.dataInicio, dataFim: grupo.dataFim } : sub)}</span>
+                        {sub.tipo === 'Afastamento' && extras.length > 0 && (
                           <span>· Extras: {extras.length}</span>
                         )}
-                        {sub.tipo === 'Afastamento' && inicioSubstituicaoFixa && (
+                        {sub.tipo === 'Afastamento' && inicioSubstituicaoFixa && coberturaCabecalho.substitutoId && (
                           <span>· Substituição fixa: {formatDate(inicioSubstituicaoFixa)}</span>
                         )}
                       </div>
+                      {trocaFutura && (
+                        <p className="mt-1 text-xs font-medium text-aviation-700 dark:text-aviation-300">
+                          {aprovadoVigente ? 'Troca aprovada para' : 'A partir de'} {formatDate(dataInicioFixaSubstituicao(sub))}: {nomeSubstituto(sub)}
+                        </p>
+                      )}
                       {sub.tipo === 'Afastamento' && sub.motivoOutro && sub.motivo !== 'Outro' && (
                         <p className="mt-1 line-clamp-2 whitespace-pre-line text-xs text-graphite-500 dark:text-graphite-400">{sub.motivoOutro}</p>
                       )}
@@ -1185,6 +1224,11 @@ export function Substituicoes() {
                     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_SUBSTITUICAO_CORES[sub.status] || ''}`}>
                       {sub.status}
                     </span>
+                    {sub.status !== 'Pendente' && solicitacoesPendentes.length > 0 && (
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_SUBSTITUICAO_CORES.Pendente}`}>
+                        {solicitacoesPendentes.length} {solicitacoesPendentes.length === 1 ? 'troca pendente' : 'trocas pendentes'}
+                      </span>
+                    )}
                     {isRelatorioRoute && canPrintRelatorios && sub.tipo === 'Afastamento' && (
                       <button onClick={event => { event.stopPropagation(); iniciarImpressaoIndividual(sub); }}
                         className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-aviation-50 hover:text-aviation-600 dark:hover:bg-aviation-900/20 dark:hover:text-aviation-300"
@@ -1192,7 +1236,7 @@ export function Substituicoes() {
                         <Printer className="h-4 w-4" />
                       </button>
                     )}
-                    {!isRelatorioRoute && sub.status === 'Pendente' && canApprove && (
+                    {!isRelatorioRoute && sub.status === 'Pendente' && canApprove && (historicoIndeterminado.length === 0 || !expanded) && (
                       <>
                         <button onClick={event => { event.stopPropagation(); handleAprovar(sub.id); }} disabled={!!approvingId}
                           className="rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 transition-colors hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-green-900/20 dark:text-green-400">
@@ -1213,7 +1257,7 @@ export function Substituicoes() {
                         </button>
                         <button onClick={event => { event.stopPropagation(); setConfirmDeleteId(sub.id); setDeleteError(''); }}
                           className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                          title="Excluir">
+                          title={grupo && grupo.periodos.length > 1 ? 'Excluir período atual' : 'Excluir'}>
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </>
@@ -1234,7 +1278,7 @@ export function Substituicoes() {
                       </div>
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-graphite-400">Plantão extra</p>
-                        <p className="mt-1 font-medium text-graphite-900 dark:text-graphite-100">{sub.plantaoExtra || '-'}</p>
+                        <p className="mt-1 font-medium text-graphite-900 dark:text-graphite-100">{extras.length > 0 ? 'Sim' : sub.plantaoExtra || '-'}</p>
                       </div>
                     </div>
                     {cid && (
@@ -1249,7 +1293,7 @@ export function Substituicoes() {
                               type="button"
                               onClick={event => { event.stopPropagation(); abrirTrocaSubstituto(sub); }}
                               className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-aviation-50 hover:text-aviation-600 dark:hover:bg-aviation-900/20 dark:hover:text-aviation-300"
-                              title="Trocar substituto a partir de uma data"
+                              title={sub.substitutoId ? 'Trocar substituto a partir de uma data' : 'Definir substituto a partir de uma data'}
                             >
                               <RefreshCw className="h-4 w-4" />
                             </button>
@@ -1271,16 +1315,16 @@ export function Substituicoes() {
                         </div>
                       </div>
                     )}
-                    {sub.tipo === 'Afastamento' && inicioSubstituicaoFixa && sub.substitutoId && (
+                    {sub.tipo === 'Afastamento' && historicoIndeterminado.length > 0 && (
                       <div className="mt-3 rounded-xl border border-aviation-200 bg-aviation-50/70 p-3 dark:border-aviation-800/40 dark:bg-aviation-900/20">
                         <div className="mb-2 flex items-center justify-between gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Substituição por prazo indeterminado</p>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-aviation-700 dark:text-aviation-300">Histórico de substitutos</p>
                           {!descricao && podeTrocarSubstituto && (
                             <button
                               type="button"
                               onClick={event => { event.stopPropagation(); abrirTrocaSubstituto(sub); }}
                               className="rounded-lg p-1.5 text-aviation-500 transition-colors hover:bg-aviation-100 hover:text-aviation-700 dark:hover:bg-aviation-900/30 dark:hover:text-aviation-200"
-                              title="Trocar substituto a partir de uma data"
+                              title={sub.substitutoId ? 'Trocar substituto a partir de uma data' : 'Definir substituto a partir de uma data'}
                             >
                               <RefreshCw className="h-4 w-4" />
                             </button>
@@ -1294,12 +1338,36 @@ export function Substituicoes() {
                               <span>{cargoLabel(item.funcionarioCargo)} {capitalize(item.funcionarioNome)}</span>
                               <ArrowRight className="h-3 w-3 text-aviation-500" />
                               <span className="font-semibold">
-                                {cargoLabel(item.funcionarioCargo)} {capitalize(item.substitutoNome)}
+                                {item.substitutoId ? `${cargoLabel(item.funcionarioCargo)} ${nomeSubstituto(item)}` : 'Sem substituto'}
                               </span>
-                              {item.status === 'Pendente' && (
-                                <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
-                                  Pendente
-                                </span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_SUBSTITUICAO_CORES[item.status] || ''}`}>
+                                {item.status}
+                              </span>
+                              {item.status === 'Pendente' && canApprove && !isRelatorioRoute && (
+                                <>
+                                  <button type="button"
+                                    onClick={event => { event.stopPropagation(); handleAprovar(item.id); }} disabled={!!approvingId}
+                                    className="rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-100 disabled:opacity-60 dark:bg-green-900/20 dark:text-green-400">
+                                    {approvingId === item.id ? 'Aprovando...' : 'Aprovar'}
+                                  </button>
+                                  <button type="button" onClick={event => { event.stopPropagation(); setRejectId(item.id); }}
+                                    className="rounded-lg bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400">
+                                    Rejeitar
+                                  </button>
+                                  <button type="button" onClick={event => { event.stopPropagation(); abrirEdicao(item); }}
+                                    title="Editar solicitação"
+                                    className="rounded-lg p-1.5 text-aviation-600 hover:bg-aviation-100 dark:text-aviation-300 dark:hover:bg-aviation-900/30">
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onClick={event => { event.stopPropagation(); setConfirmDeleteId(item.id); setDeleteError(''); }}
+                                    title="Excluir solicitação"
+                                    className="rounded-lg p-1.5 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/30">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                              {item.status === 'Rejeitada' && item.observacoesRejeicao && (
+                                <span className="text-red-600 dark:text-red-400">{item.observacoesRejeicao}</span>
                               )}
                             </div>
                           ))}
@@ -1542,8 +1610,8 @@ export function Substituicoes() {
                   {afastamentoIndeterminado && (
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Dias iniciais para extras</label>
-                      <input type="number" min={0} value={formDias} onChange={e => setFormDias(Math.max(0, Number(e.target.value)))}
-                        className={INPUT_CLASS} />
+                      <input type="number" min={0} value={diasParaSalvar} onChange={e => setFormDias(Math.max(0, Number(e.target.value)))}
+                        disabled={formSemSubstituto} className={`${INPUT_CLASS} disabled:opacity-60`} />
                       <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
                         Use 0 quando não houver extras antes da substituição fixa.
                       </p>
@@ -1565,6 +1633,23 @@ export function Substituicoes() {
                     <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Descrição do afastamento/atestado</label>
                     <textarea value={formMotivoOutro} onChange={e => setFormMotivoOutro(e.target.value)}
                       placeholder="Descreva o motivo do afastamento, informações do INSS ou observações do atestado..." className={INPUT_CLASS} rows={3} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-graphite-200 bg-graphite-50/70 px-3 py-3 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                      <input type="checkbox" checked={formSemSubstituto}
+                        onChange={event => {
+                          setFormSemSubstituto(event.target.checked);
+                          if (event.target.checked) {
+                            setFormSubstituto(null);
+                            setExtrasAfastamento([]);
+                          }
+                        }}
+                        className="h-4 w-4 accent-aviation-600" />
+                      Sem substituto
+                    </label>
+                    <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
+                      Registra o afastamento sem cobertura fixa nem plantões extras.
+                    </p>
                   </div>
                 </>
               )}
@@ -1593,7 +1678,9 @@ export function Substituicoes() {
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-orange-800 dark:text-orange-300">Afastamento/Atestados</p>
                         <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
-                          Ao aprovar, o funcionário ficará com status Afastado e os plantões selecionados serão puxados como extras na Escala Diária.
+                          {formSemSubstituto
+                            ? 'Ao aprovar, o funcionário ficará com status Afastado, sem substituto definido.'
+                            : 'Ao aprovar, o funcionário ficará com status Afastado e os plantões selecionados serão puxados como extras na Escala Diária.'}
                         </p>
                       </div>
                     </div>
@@ -1614,7 +1701,7 @@ export function Substituicoes() {
                 </div>
               )}
 
-              {formTipo === 'Afastamento' && plantoesAfastamento.length > 0 && (
+              {formTipo === 'Afastamento' && !formSemSubstituto && plantoesAfastamento.length > 0 && (
                 <div className="md:col-span-2">
                   <div className="space-y-2 rounded-xl border border-purple-200 bg-purple-50/70 p-4 dark:border-purple-800/40 dark:bg-purple-900/20">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1681,7 +1768,7 @@ export function Substituicoes() {
                 </div>
               )}
 
-              {formTipo === 'Afastamento' && formSubstituido && formDataInicio && dataFimExtrasCalculada && plantoesAfastamento.length === 0 && (
+              {formTipo === 'Afastamento' && !formSemSubstituto && formSubstituido && formDataInicio && dataFimExtrasCalculada && plantoesAfastamento.length === 0 && (
                 <div className="md:col-span-2">
                   <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-700 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300">
                     Não encontrei plantões para essa pessoa no período. Se for ferista, confira se há férias aprovadas/vigência ativa colocando ele em uma equipe nesses dias.
@@ -1689,7 +1776,7 @@ export function Substituicoes() {
                 </div>
               )}
 
-              {afastamentoIndeterminado && formSubstituido && formDataInicio && (
+              {afastamentoIndeterminado && !formSemSubstituto && formSubstituido && formDataInicio && (
                 <div className="md:col-span-2">
                   <div className="space-y-3 rounded-xl border border-aviation-200 bg-aviation-50/70 p-4 dark:border-aviation-800/40 dark:bg-aviation-900/20">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1764,7 +1851,7 @@ export function Substituicoes() {
                 {formTipo === 'Afastamento' ? (
                   <div className="space-y-2 text-sm">
                     <p className="font-semibold text-graphite-900 dark:text-graphite-100">{nomeOperacional(formSubstituido)}</p>
-                    {extrasAfastamento.length > 0 ? extrasAfastamento.map(extra => {
+                    {!formSemSubstituto && extrasAfastamento.length > 0 ? extrasAfastamento.map(extra => {
                       const substituto = pessoaPorId(extra.substitutoId);
                       const funcaoLabel = substituto && substituto.cargo !== extra.cargoExercido
                         ? `${cargoLabel(substituto.cargo)} -> ${cargoLabel(extra.cargoExercido)}`
@@ -1787,9 +1874,9 @@ export function Substituicoes() {
                         </div>
                       );
                     }) : (
-                      <p className="text-xs text-graphite-500">{afastamentoIndeterminado ? 'Sem extras iniciais.' : 'Nenhum plantão extra selecionado.'}</p>
+                      <p className="text-xs text-graphite-500">{formSemSubstituto ? 'Sem substituto.' : afastamentoIndeterminado ? 'Sem extras iniciais.' : 'Nenhum plantão extra selecionado.'}</p>
                     )}
-                    {afastamentoIndeterminado && dataInicioSubstituicaoFixa && (
+                    {afastamentoIndeterminado && !formSemSubstituto && dataInicioSubstituicaoFixa && (
                       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-aviation-200 bg-white px-3 py-2 text-xs dark:border-aviation-800/40 dark:bg-surface-hover">
                         <span className="font-semibold text-aviation-700 dark:text-aviation-300">Substituição fixa</span>
                         <span className="text-graphite-400">·</span>
@@ -1817,7 +1904,7 @@ export function Substituicoes() {
                   ) : (
                     <span>· {formatDate(formDataInicio)} a {formatDate(dataFimCalculada)} ({diasParaSalvar} dias)</span>
                   )}
-                  {formTipo === 'Afastamento' && extrasAfastamento.length > 0 && (
+                  {formTipo === 'Afastamento' && !formSemSubstituto && extrasAfastamento.length > 0 && (
                     <span>· {extrasAfastamento.length} plantão(ões) extra</span>
                   )}
                   <span>· Status: <strong className="text-yellow-600">Pendente</strong></span>
@@ -1872,7 +1959,7 @@ export function Substituicoes() {
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-aviation-600 dark:text-aviation-400">Solicitar aprovação</p>
-                <h3 className="mt-1 text-lg font-bold text-graphite-900 dark:text-graphite-100">Trocar substituto do INSS</h3>
+                <h3 className="mt-1 text-lg font-bold text-graphite-900 dark:text-graphite-100">{trocaSub.substitutoId ? 'Trocar substituto do INSS' : 'Definir substituto do INSS'}</h3>
                 <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">
                   A substituição atual só será encerrada quando esta troca for aprovada.
                 </p>
@@ -1888,9 +1975,21 @@ export function Substituicoes() {
               <div className="mt-1 flex flex-wrap items-center gap-2 text-graphite-800 dark:text-graphite-100">
                 <span>{cargoLabel(trocaSub.funcionarioCargo)} {capitalize(trocaSub.funcionarioNome)}</span>
                 <ArrowRight className="h-3.5 w-3.5 text-aviation-500" />
-                <span className="font-semibold">{cargoLabel(trocaSub.funcionarioCargo)} {capitalize(trocaSub.substitutoNome)}</span>
+                <span className="font-semibold">{trocaSub.substitutoId ? `${cargoLabel(trocaSub.funcionarioCargo)} ${nomeSubstituto(trocaSub)}` : 'Sem substituto'}</span>
               </div>
             </div>
+
+            {trocaSub.substitutoId && (
+              <label className="mb-4 flex cursor-pointer items-center gap-2 rounded-xl border border-graphite-200 bg-graphite-50/70 px-3 py-3 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                <input type="checkbox" checked={trocaSemSubstituto}
+                  onChange={event => {
+                    setTrocaSemSubstituto(event.target.checked);
+                    if (event.target.checked) setTrocaNovoSubstituto(null);
+                  }}
+                  className="h-4 w-4 accent-aviation-600" />
+                Encerrar cobertura e deixar sem substituto
+              </label>
+            )}
 
             <div className="grid gap-4 md:grid-cols-[160px_minmax(220px,1fr)] md:items-end">
               <div>
@@ -1903,7 +2002,7 @@ export function Substituicoes() {
                   className={INPUT_CLASS}
                 />
               </div>
-              <div>
+              {!trocaSemSubstituto && <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">Nova pessoa</label>
                 <SearchSelect
                   value={trocaNovoSubstituto?.id || ''}
@@ -1915,10 +2014,10 @@ export function Substituicoes() {
                   disabledTooltip="Pessoa não pode assumir esta função ou já é a substituição atual"
                   displayMode="operational"
                 />
-              </div>
+              </div>}
             </div>
 
-            {trocaNovoSubstituto && (
+            {!trocaSemSubstituto && trocaNovoSubstituto && (
               <p className="mt-2 text-xs text-graphite-500 dark:text-graphite-400">{nomeOperacional(trocaNovoSubstituto)}</p>
             )}
             {trocaDataMinima && trocaDataInicio && trocaDataInicio < trocaDataMinima && (
@@ -1957,7 +2056,9 @@ export function Substituicoes() {
       <AlertModal
         open={!!confirmDeleteId}
         title="Excluir movimentação"
-        message="Tem certeza que deseja excluir esta movimentação? Esta ação não pode ser desfeita."
+        message={confirmDeleteId && (gruposPorPeriodoId.get(confirmDeleteId)?.periodos.length || 0) > 1
+          ? 'Tem certeza que deseja excluir somente este período? Os demais períodos do histórico serão preservados. Esta ação não pode ser desfeita.'
+          : 'Tem certeza que deseja excluir esta movimentação? Esta ação não pode ser desfeita.'}
         variant="danger"
         confirmLabel="Excluir"
         loadingLabel="Excluindo..."

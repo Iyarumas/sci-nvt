@@ -86,6 +86,7 @@ Hierarquia: GS(0) → BA-CE(1) → BA-LR(2) → BA-MC(3) → BA-2(4) → Ferista
 - **Substituto obrigatório** para BA-CE, BA-LR, BA-MC, GS
 - **BA-2** só pode ser substituído por BA-2 ou Ferista
 - **Ferista** é fim de linha (não precisa de substituto)
+- Pessoas da equipe `Ferista` podem cadastrar férias sem substituto, inclusive com cargo `BA-2` ou `BA-MC`; essa exceção também se aplica ao cadastro manual e à Escala Anual.
 - **Corrente**: A(férias) → B substitui A → C substitui B → D substitui C → ... até Ferista
 - Cada substituto **herda o cargo** de quem está a substituir
 - A corrente aparece na **Escala Diária** e no **LRO** (secção "Cadeia de Substituições")
@@ -522,9 +523,11 @@ O quadro conta pessoas por ID e omite a vaga nominal de quem já aparece cobrind
 ### Troca de Substituto em INSS Indeterminado
 
 - Em afastamento `INSS/Indeterminado` aprovado e ativo, a troca de substituto cria uma nova movimentação `Pendente`.
+- A listagem reúne os períodos contínuos do mesmo INSS em um único afastamento, mantendo a data inicial e o histórico de coberturas. Episódios separados por retorno ao trabalho continuam separados. O helper `frontend/src/utils/afastamentos.ts` centraliza esse agrupamento.
 - A substituição anterior continua valendo até a nova movimentação ser aprovada.
-- Ao aprovar a nova movimentação, o sistema encerra a anterior na véspera da nova data de início, reprocessa a vigência histórica e cria a nova vigência a partir da data aprovada.
+- Ao aprovar a nova movimentação, o sistema encerra a anterior na véspera da nova data de início, reprocessa a vigência histórica e cria a nova vigência a partir da data aprovada quando há substituto.
 - Os detalhes do afastamento exibem o histórico de substitutos do mesmo afastado, incluindo solicitações pendentes.
+- Afastamentos podem ser registrados sem substituto e sem extras; a pessoa continua afastada e nenhuma cobertura é criada. No INSS indeterminado é possível encerrar a cobertura ou definir um substituto posteriormente, sempre com data e aprovação. Substituições comuns continuam exigindo substituto.
 
 ### Horários por Equipa
 

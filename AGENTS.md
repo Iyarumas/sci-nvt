@@ -494,6 +494,7 @@ Referência: **21/07/2026** = Alfa + Bravo
 
 **Quadro de Efetivos (Férias)**: férias e suas correntes pertencem ao mês/ano de início do gozo; terminar no início do mês seguinte não as inclui no quadro desse mês. Afastamentos e substituições temporárias continuam aparecendo por sobreposição de vigência. Esse recorte é exclusivo do quadro mensal; Escala Diária, LRO e permissões continuam respeitando as datas reais.
 O quadro conta pessoas por ID e omite a vaga nominal de quem já aparece cobrindo outra vaga da mesma equipe. Vagas com cobertura própria são preservadas para manter a corrente completa (A → B → C), sem repetir o último substituto na própria posição.
+O quadro consulta também os afastamentos aprovados que cruzam o mês selecionado, mesmo sem substituto ou vigência. Pessoas afastadas sem cobertura aparecem em "Afastados" e não entram na contagem de efetivos. Solicitações pendentes/rejeitadas e afastamentos encerrados antes do mês não retiram pessoas do quadro.
 
 ### Permissões por Cargo/Equipa Efetivos
 

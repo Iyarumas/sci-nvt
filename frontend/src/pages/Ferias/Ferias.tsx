@@ -22,6 +22,8 @@ import type {
   PeriodoAquisitivo, FeriasGozo, EscalaFerias, EscalaFeriasItem,
 } from '../../types/ferias';
 import type { Bombeiro, Cargo, Equipe } from '../../types/bombeiro';
+import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
+import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import {
   listarFeriasGozo, criarFeriasGozo, excluirFeriasGozo,
   listarEscalas, obterEscala, criarEscala,
@@ -31,7 +33,7 @@ import {
 } from '../../services/feriasService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { EloCadeiaInput, VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
-import { filtrarQuadroEfetivosPorMes, resolverPosicoesQuadroEfetivos } from '../../utils/efetivoOperacional';
+import { filtrarAfastamentosQuadroEfetivosPorMes, filtrarQuadroEfetivosPorMes, resolverPosicoesQuadroEfetivos } from '../../utils/efetivoOperacional';
 import {
   dataLocalISO,
   estaNoPeriodoISO,
@@ -2914,6 +2916,7 @@ function TabQuadroEfetivos() {
   const [mesSelecionado, setMesSelecionado] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(true);
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
+  const [afastamentos, setAfastamentos] = useState<SubstituicaoTemporaria[]>([]);
 
   const equipes: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
 
@@ -2949,17 +2952,30 @@ function TabQuadroEfetivos() {
   function vigenciaRealPorOriginal(funcionarioId: string, mes: number): VigenciaSubstituicao | undefined {
     return vigencias.find(v =>
       v.funcionarioOriginalId === funcionarioId &&
-      isVigenciaRealNoMes(v, mes, ano)
+      isVigenciaRealNoMes(v, mes, ano) &&
+      !isPessoaAfastadaNoPeriodo(v.substitutoId, v.dataInicio, v.dataFim)
     );
+  }
+
+  function isPessoaAfastadaNoPeriodo(pessoaId: string, dataInicio: string, dataFim: string): boolean {
+    return afastamentos.some(sub => sub.funcionarioId === pessoaId &&
+      periodosSobrepostosISO(sub.dataInicio, sub.dataFim, dataInicio, dataFim));
+  }
+
+  function getAfastamento(b: Bombeiro): SubstituicaoTemporaria | undefined {
+    return afastamentos.find(sub => sub.funcionarioId === b.id);
   }
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const [all, gozos, escalas] = await Promise.all([listarAtivos(), listarFeriasGozo(), listarEscalas()]);
+      const [all, gozos, escalas, substituicoes] = await Promise.all([
+        listarAtivos(), listarFeriasGozo(), listarEscalas(), listarSubstituicoesTemporarias(),
+      ]);
       if (cancelled) return;
       setBombeiros(all);
+      setAfastamentos(filtrarAfastamentosQuadroEfetivosPorMes(substituicoes, mesSelecionado, ano));
       const items: EscalaFeriasItem[] = [];
       for (const esc of escalas) {
         if (esc.status !== 'Aprovado') continue;
@@ -3000,7 +3016,8 @@ function TabQuadroEfetivos() {
 
   function getItemSubstituicao(b: Bombeiro, mes: number): EscalaFeriasItem | null {
     return allItems.find(i =>
-      i.funcionarioId === b.id && i.mes === mes && !i.rejeitado && i.substitutoId && i.feriasGozoId
+      i.funcionarioId === b.id && i.mes === mes && !i.rejeitado && i.substitutoId && i.feriasGozoId &&
+      !isPessoaAfastadaNoPeriodo(i.substitutoId, i.dataInicio, i.dataFim)
     ) || null;
   }
 
@@ -3040,7 +3057,8 @@ function TabQuadroEfetivos() {
 
   function getFeristaDesignado(b: Bombeiro, mes: number): EscalaFeriasItem | null {
     return allItems.find(i =>
-      i.funcionarioId === b.id && i.mes === mes && !i.rejeitado && i.feristaId && i.feriasGozoId
+      i.funcionarioId === b.id && i.mes === mes && !i.rejeitado && i.feristaId && i.feriasGozoId &&
+      !isPessoaAfastadaNoPeriodo(i.feristaId, i.dataInicio, i.dataFim)
     ) || null;
   }
 
@@ -3119,14 +3137,17 @@ function TabQuadroEfetivos() {
           for (const [id, cobertura] of coberturas) {
             if (cobertura?.pessoaId) coberturasPorVaga.set(id, cobertura.pessoaId);
           }
-          const emGozo = membros.filter(m => isEmGozo(m, mesSelecionado, ano) && !coberturas.get(m.id));
-          const disponiveis = membros.filter(m => !isEmGozo(m, mesSelecionado, ano) || coberturas.get(m.id));
+          const afastados = membros.filter(m => getAfastamento(m) && !coberturas.get(m.id));
+          const emGozo = membros.filter(m => !getAfastamento(m) && isEmGozo(m, mesSelecionado, ano) && !coberturas.get(m.id));
+          const disponiveis = membros.filter(m =>
+            (!getAfastamento(m) && !isEmGozo(m, mesSelecionado, ano)) || coberturas.get(m.id));
 
           const mesInicio = monthStart(ano, mesSelecionado);
           const mesFim = dataLocalISO(new Date(ano, mesSelecionado, 0));
           const substitutosDaEquipe: { pessoa: Bombeiro; substituindo: Bombeiro; cargo: Cargo }[] = [];
 
-          function addSub(pessoa: Bombeiro, func: Bombeiro, cargo: Cargo) {
+          function addSub(pessoa: Bombeiro, func: Bombeiro, cargo: Cargo, dataInicio: string, dataFim: string) {
+            if (isPessoaAfastadaNoPeriodo(pessoa.id, dataInicio, dataFim)) return;
             if (!substitutosDaEquipe.some(s => s.pessoa.id === pessoa.id)) {
               substitutosDaEquipe.push({ pessoa, substituindo: func, cargo });
             }
@@ -3141,7 +3162,7 @@ function TabQuadroEfetivos() {
             if (!periodosSobrepostosISO(gozo.dataInicio, gozo.dataFim, mesInicio, mesFim)) continue;
             if (gozo.substitutoId) {
               const sub = bombeiros.find(b => b.id === gozo.substitutoId);
-              if (sub && sub.equipe !== eq) addSub(sub, func, (gozo.funcaoSubstituicao || func.cargo) as Cargo);
+              if (sub && sub.equipe !== eq) addSub(sub, func, (gozo.funcaoSubstituicao || func.cargo) as Cargo, gozo.dataInicio, gozo.dataFim);
             }
           }
 
@@ -3164,13 +3185,13 @@ function TabQuadroEfetivos() {
             if (!fer) continue;
             if (cobreN) {
               const coberto = bombeiros.find(b => b.nomeGuerra === cobreN || b.nomeCompleto === cobreN);
-              if (coberto && coberto.equipe === eq) addSub(fer, coberto, coberto.cargo as Cargo);
+              if (coberto && coberto.equipe === eq) addSub(fer, coberto, coberto.cargo as Cargo, gozo.dataInicio, gozo.dataFim);
             } else {
               const func = bombeiros.find(b => b.id === gozo.funcionarioId);
               if (func && func.equipe === eq) {
                 const subB = gozo.substitutoId ? bombeiros.find(bb => bb.id === gozo.substitutoId) : null;
                 const alvo = subB || func;
-                addSub(fer, alvo, alvo.cargo as Cargo);
+                addSub(fer, alvo, alvo.cargo as Cargo, gozo.dataInicio, gozo.dataFim);
               }
             }
           }
@@ -3181,11 +3202,11 @@ function TabQuadroEfetivos() {
             if (!func || func.equipe !== eq) continue;
             if (item.substitutoId) {
               const sub = bombeiros.find(b => b.id === item.substitutoId);
-              if (sub && sub.equipe !== eq) addSub(sub, func, (item.funcaoSubstituicao || func.cargo) as Cargo);
+              if (sub && sub.equipe !== eq) addSub(sub, func, (item.funcaoSubstituicao || func.cargo) as Cargo, item.dataInicio, item.dataFim);
             }
             if (item.feristaId) {
               const fer = bombeiros.find(b => b.id === item.feristaId);
-              if (fer) addSub(fer, func, (item.funcaoSubstituicao || func.cargo) as Cargo);
+              if (fer) addSub(fer, func, (item.funcaoSubstituicao || func.cargo) as Cargo, item.dataInicio, item.dataFim);
             }
           }
 
@@ -3195,7 +3216,7 @@ function TabQuadroEfetivos() {
             const func = bombeiros.find(b => b.id === vig.funcionarioOriginalId);
             const sub = bombeiros.find(b => b.id === vig.substitutoId);
             if (func && sub && sub.equipe !== eq) {
-              addSub(sub, func, (vig.cargoExercido || func.cargo) as Cargo);
+              addSub(sub, func, (vig.cargoExercido || func.cargo) as Cargo, vig.dataInicio, vig.dataFim);
             }
           }
           const { posicoes, totalEfetivos } = resolverPosicoesQuadroEfetivos(disponiveis, coberturasPorVaga);
@@ -3224,6 +3245,11 @@ function TabQuadroEfetivos() {
                   {emGozo.length > 0 && (
                     <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
                       {emGozo.length} em gozo
+                    </span>
+                  )}
+                  {afastados.length > 0 && (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                      {afastados.length} afastado(s)
                     </span>
                   )}
                 </div>
@@ -3387,6 +3413,31 @@ function TabQuadroEfetivos() {
                                   </div>
                                 </div>
                               )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {afastados.length > 0 && (
+                      <div className="space-y-1 mt-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 px-1">Afastados</p>
+                        {afastados.map(m => {
+                          const afastamento = getAfastamento(m)!;
+                          const periodo = afastamento.dataFim === '9999-12-31'
+                            ? `Desde ${fmt(afastamento.dataInicio)} · prazo indeterminado`
+                            : `${fmt(afastamento.dataInicio)} - ${fmt(afastamento.dataFim)}`;
+                          return (
+                            <div key={m.id} className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50/50 px-3 py-2 dark:border-red-800/30 dark:bg-red-900/10">
+                              <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="yellow" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-graphite-700 dark:text-graphite-300 truncate">
+                                  {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
+                                </p>
+                                <p className="text-[10px] text-red-600 dark:text-red-400">
+                                  {afastamento.motivo === 'INSS Indeterminado' ? 'INSS/Indeterminado' : afastamento.motivo} · {periodo}
+                                </p>
+                              </div>
                             </div>
                           );
                         })}

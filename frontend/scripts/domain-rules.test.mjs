@@ -65,6 +65,7 @@ const {
   normalizarParticipantesTPEPR,
 } = tpepr;
 const {
+  filtrarAfastamentosQuadroEfetivosPorMes,
   filtrarQuadroEfetivosPorMes,
   resolverPosicoesQuadroEfetivos,
   montarEfetivoOperacional,
@@ -784,6 +785,25 @@ assert.equal(efetivoSemCobertura.some(entry => entry.bombeiro.id === lr.id), fal
   'Pessoa afastada sem cobertura não pode retornar ao efetivo');
 assert.equal(efetivoSemCobertura.some(entry => entry.substituindo?.id === lr.id), false,
   'Afastamento sem cobertura não pode inventar um substituto');
+
+const inssAprovadoSemCobertura = { ...afastamentoSemCobertura, status: 'Aprovada', dataInicio: '2026-09-01' };
+const atestadoAprovadoSemCobertura = {
+  ...afastamentoSemCobertura, id: 'atestado-sem-cobertura', motivo: 'Atestado Medico',
+  status: 'Aprovada', dataInicio: '2026-10-05', dataFim: '2026-10-09', dias: 5,
+};
+assert.deepEqual(filtrarAfastamentosQuadroEfetivosPorMes([
+  inssAprovadoSemCobertura,
+  atestadoAprovadoSemCobertura,
+  { ...inssAprovadoSemCobertura, id: 'inss-encerrado', dataFim: '2026-09-30' },
+  { ...inssAprovadoSemCobertura, id: 'inss-pendente', status: 'Pendente' },
+  { ...inssAprovadoSemCobertura, id: 'inss-rejeitado', status: 'Rejeitada' },
+  { ...inssAprovadoSemCobertura, id: 'substituicao-comum', tipo: 'Substituição' },
+], 10, 2026).map(sub => sub.id), [inssAprovadoSemCobertura.id, atestadoAprovadoSemCobertura.id],
+'Quadro mensal considera apenas afastamentos aprovados no período, mesmo sem vigência');
+assert.deepEqual(filtrarAfastamentosQuadroEfetivosPorMes([inssAprovadoSemCobertura], 11, 2026),
+  [inssAprovadoSemCobertura], 'INSS indeterminado iniciado antes do mês continua afastando');
+assert.deepEqual(filtrarAfastamentosQuadroEfetivosPorMes([inssAprovadoSemCobertura], 8, 2026), [],
+  'Afastamento futuro não altera meses anteriores');
 
 const inicioInssContinuo = {
   ...inssIndeterminadoSemExtras,

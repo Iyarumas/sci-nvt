@@ -16,6 +16,20 @@ import {
 } from './datas';
 import { equipeEstaNoPlantao } from './equipes';
 
+/** A ausência pode continuar no mês seguinte, mesmo quando não há vigência de cobertura. */
+export function filtrarAfastamentosQuadroEfetivosPorMes(
+  substituicoes: SubstituicaoTemporaria[],
+  mes: number,
+  ano: number,
+): SubstituicaoTemporaria[] {
+  const inicioMes = `${ano}-${String(mes).padStart(2, '0')}-01`;
+  const fimMes = dataLocalISO(new Date(ano, mes, 0));
+  return substituicoes.filter(sub =>
+    sub.tipo === 'Afastamento' && sub.status === 'Aprovada' &&
+    periodosSobrepostosISO(sub.dataInicio, sub.dataFim, inicioMes, fimMes)
+  );
+}
+
 /** Recorte do quadro mensal de férias; o efetivo diário continua usando as datas de vigência. */
 export function filtrarQuadroEfetivosPorMes({
   feriasGozo,

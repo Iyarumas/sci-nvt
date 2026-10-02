@@ -84,6 +84,7 @@ function AvatarPessoaFerias({
 }
 
 const EQUIPES: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
+const PESSOAS_POR_PAGINA_QUADRO = 4;
 
 const EQUIPE_LOGOS: Partial<Record<Equipe, string>> = {
   Alfa: '/assets/equipe-alfa-logo.jpeg',
@@ -3114,13 +3115,16 @@ function TabQuadroEfetivos() {
     .map(equipe => ({ equipe, pessoas: afastadosDoMes.filter(b => b.equipe === equipe) }))
     .filter(grupo => grupo.pessoas.length > 0);
   const afastadosOrdenados = afastadosPorEquipe.flatMap(grupo => grupo.pessoas);
-  const paginasAfastados = Array.from({ length: Math.ceil(afastadosOrdenados.length / 2) }, (_, pagina) =>
-    afastadosOrdenados.slice(pagina * 2, pagina * 2 + 2));
+  const paginasAfastados = Array.from({ length: Math.ceil(afastadosOrdenados.length / PESSOAS_POR_PAGINA_QUADRO) }, (_, pagina) =>
+    afastadosOrdenados.slice(pagina * PESSOAS_POR_PAGINA_QUADRO, (pagina + 1) * PESSOAS_POR_PAGINA_QUADRO));
   const pessoasFeriasDoMes = sortPorHierarquia(bombeiros.filter(b =>
     feriasGozo.some(gozo => gozo.funcionarioId === b.id)));
   const feriasPorEquipe = [...equipes, 'Embaixador' as Equipe]
     .map(equipe => ({ equipe, pessoas: pessoasFeriasDoMes.filter(b => b.equipe === equipe) }))
     .filter(grupo => grupo.pessoas.length > 0);
+  const feriasOrdenadas = feriasPorEquipe.flatMap(grupo => grupo.pessoas);
+  const paginasFerias = Array.from({ length: Math.ceil(feriasOrdenadas.length / PESSOAS_POR_PAGINA_QUADRO) }, (_, pagina) =>
+    feriasOrdenadas.slice(pagina * PESSOAS_POR_PAGINA_QUADRO, (pagina + 1) * PESSOAS_POR_PAGINA_QUADRO));
 
   if (loading) {
     return (
@@ -3578,50 +3582,63 @@ function TabQuadroEfetivos() {
           <div className="space-y-4 p-3">
             {pessoasFeriasDoMes.length === 0 ? (
               <p className="py-4 text-center text-xs text-graphite-400 dark:text-graphite-500">Nenhuma pessoa com férias neste mês</p>
-            ) : feriasPorEquipe.map(({ equipe, pessoas }) => (
-              <section key={equipe} className="space-y-1.5" aria-label={`Férias da equipe ${equipe}`}>
-                <div className="flex items-center gap-2 px-1">
-                  {EQUIPE_LOGOS[equipe] && <img src={EQUIPE_LOGOS[equipe]} alt="" className="h-6 w-6 rounded-md object-cover" />}
-                  <h5 className="flex-1 text-xs font-bold text-graphite-700 dark:text-graphite-200">Equipe {equipe}</h5>
-                  <span className="text-[10px] font-semibold text-yellow-700 dark:text-yellow-400">{pessoas.length} pessoa(s)</span>
-                </div>
-                {pessoas.map(m => (
-                  <div key={m.id} className="flex items-start gap-2.5 rounded-xl border border-yellow-200 bg-yellow-50/50 px-3 py-2 dark:border-yellow-800/30 dark:bg-yellow-900/10">
-                    <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="yellow" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-bold text-graphite-700 dark:text-graphite-300">
-                        {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
-                      </p>
-                      {feriasGozo.filter(gozo => gozo.funcionarioId === m.id).map(gozo => {
-                        const tempo = calcularTempoAfastamento(gozo.dataInicio, gozo.dataFim);
-                        const dias = tempo.diasPrevistos ?? gozo.dias;
-                        return (
-                          <div key={gozo.id} className="mt-1 space-y-1 border-t border-yellow-200/60 pt-1 dark:border-yellow-800/30">
-                            <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_GOZO_COLORS[gozo.status]}`}>
-                              {gozo.status === 'Em Gozo' ? 'Em gozo' : gozo.status}
-                            </span>
-                            <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
-                              <div>
-                                <dt className="text-graphite-500 dark:text-graphite-400">Início</dt>
-                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(gozo.dataInicio)}</dd>
-                              </div>
-                              <div>
-                                <dt className="text-graphite-500 dark:text-graphite-400">Retorno previsto</dt>
-                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(tempo.dataRetorno)}</dd>
-                              </div>
-                              <div className="col-span-2">
-                                <dt className="text-graphite-500 dark:text-graphite-400">Duração das férias</dt>
-                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{dias} {dias === 1 ? 'dia' : 'dias'}</dd>
-                              </div>
-                            </dl>
+            ) : (
+              <CardCarousel
+                ariaLabel="Férias do mês"
+                resetKey={`${ano}-${mesSelecionado}-${feriasOrdenadas.map(b => b.id).join(',')}`}
+                pages={paginasFerias.map(pessoasNaPagina => (
+                  <div className="space-y-4">
+                    {feriasPorEquipe.map(grupo => ({
+                      equipe: grupo.equipe, total: grupo.pessoas.length,
+                      pessoas: pessoasNaPagina.filter(b => b.equipe === grupo.equipe),
+                    })).filter(grupo => grupo.pessoas.length > 0).map(({ equipe, pessoas, total }) => (
+                      <section key={equipe} className="space-y-1.5" aria-label={`Férias da equipe ${equipe}`}>
+                        <div className="flex items-center gap-2 px-1">
+                          {EQUIPE_LOGOS[equipe] && <img src={EQUIPE_LOGOS[equipe]} alt="" className="h-6 w-6 rounded-md object-cover" />}
+                          <h5 className="flex-1 text-xs font-bold text-graphite-700 dark:text-graphite-200">Equipe {equipe}</h5>
+                          <span className="text-[10px] font-semibold text-yellow-700 dark:text-yellow-400">{total} pessoa(s)</span>
+                        </div>
+                        {pessoas.map(m => (
+                          <div key={m.id} className="flex items-start gap-2.5 rounded-xl border border-yellow-200 bg-yellow-50/50 px-3 py-2 dark:border-yellow-800/30 dark:bg-yellow-900/10">
+                            <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="yellow" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-bold text-graphite-700 dark:text-graphite-300">
+                                {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
+                              </p>
+                              {feriasGozo.filter(gozo => gozo.funcionarioId === m.id).map(gozo => {
+                                const tempo = calcularTempoAfastamento(gozo.dataInicio, gozo.dataFim);
+                                const dias = tempo.diasPrevistos ?? gozo.dias;
+                                return (
+                                  <div key={gozo.id} className="mt-1 space-y-1 border-t border-yellow-200/60 pt-1 dark:border-yellow-800/30">
+                                    <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_GOZO_COLORS[gozo.status]}`}>
+                                      {gozo.status === 'Em Gozo' ? 'Em gozo' : gozo.status}
+                                    </span>
+                                    <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
+                                      <div>
+                                        <dt className="text-graphite-500 dark:text-graphite-400">Início</dt>
+                                        <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(gozo.dataInicio)}</dd>
+                                      </div>
+                                      <div>
+                                        <dt className="text-graphite-500 dark:text-graphite-400">Retorno previsto</dt>
+                                        <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(tempo.dataRetorno)}</dd>
+                                      </div>
+                                      <div className="col-span-2">
+                                        <dt className="text-graphite-500 dark:text-graphite-400">Duração das férias</dt>
+                                        <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{dias} {dias === 1 ? 'dia' : 'dias'}</dd>
+                                      </div>
+                                    </dl>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        ))}
+                      </section>
+                    ))}
                   </div>
                 ))}
-              </section>
-            ))}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -34,6 +34,7 @@ import {
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { EloCadeiaInput, VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import { filtrarAfastamentosQuadroEfetivosPorMes, filtrarQuadroEfetivosPorMes, resolverPosicoesQuadroEfetivos } from '../../utils/efetivoOperacional';
+import { agruparAfastamentosIndeterminados, calcularTempoAfastamento } from '../../utils/afastamentos';
 import {
   dataLocalISO,
   estaNoPeriodoISO,
@@ -2916,7 +2917,18 @@ function TabQuadroEfetivos() {
   const [mesSelecionado, setMesSelecionado] = useState(new Date().getMonth() + 1);
   const [loading, setLoading] = useState(true);
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
-  const [afastamentos, setAfastamentos] = useState<SubstituicaoTemporaria[]>([]);
+  const [historicoAfastamentos, setHistoricoAfastamentos] = useState<SubstituicaoTemporaria[]>([]);
+
+  const afastamentos = useMemo(() =>
+    filtrarAfastamentosQuadroEfetivosPorMes(historicoAfastamentos, mesSelecionado, ano),
+  [historicoAfastamentos, mesSelecionado, ano]);
+  const gruposAfastamento = useMemo(() =>
+    agruparAfastamentosIndeterminados(historicoAfastamentos.filter(sub =>
+      sub.tipo === 'Afastamento' && sub.status === 'Aprovada'
+    )).filter(grupo => periodosSobrepostosISO(
+      grupo.dataInicio, grupo.dataFim, monthStart(ano, mesSelecionado), dataLocalISO(new Date(ano, mesSelecionado, 0))
+    )),
+  [historicoAfastamentos, mesSelecionado, ano]);
 
   const equipes: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
 
@@ -2975,7 +2987,7 @@ function TabQuadroEfetivos() {
       ]);
       if (cancelled) return;
       setBombeiros(all);
-      setAfastamentos(filtrarAfastamentosQuadroEfetivosPorMes(substituicoes, mesSelecionado, ano));
+      setHistoricoAfastamentos(substituicoes);
       const items: EscalaFeriasItem[] = [];
       for (const esc of escalas) {
         if (esc.status !== 'Aprovado') continue;
@@ -3095,6 +3107,11 @@ function TabQuadroEfetivos() {
     };
   }
 
+  const afastadosDoMes = sortPorHierarquia(bombeiros.filter(b => getAfastamento(b)));
+  const afastadosPorEquipe = [...equipes, 'Embaixador' as Equipe]
+    .map(equipe => ({ equipe, pessoas: afastadosDoMes.filter(b => b.equipe === equipe) }))
+    .filter(grupo => grupo.pessoas.length > 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -3137,7 +3154,6 @@ function TabQuadroEfetivos() {
           for (const [id, cobertura] of coberturas) {
             if (cobertura?.pessoaId) coberturasPorVaga.set(id, cobertura.pessoaId);
           }
-          const afastados = membros.filter(m => getAfastamento(m) && !coberturas.get(m.id));
           const emGozo = membros.filter(m => !getAfastamento(m) && isEmGozo(m, mesSelecionado, ano) && !coberturas.get(m.id));
           const disponiveis = membros.filter(m =>
             (!getAfastamento(m) && !isEmGozo(m, mesSelecionado, ano)) || coberturas.get(m.id));
@@ -3245,11 +3261,6 @@ function TabQuadroEfetivos() {
                   {emGozo.length > 0 && (
                     <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
                       {emGozo.length} em gozo
-                    </span>
-                  )}
-                  {afastados.length > 0 && (
-                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/20 dark:text-red-400">
-                      {afastados.length} afastado(s)
                     </span>
                   )}
                 </div>
@@ -3419,31 +3430,6 @@ function TabQuadroEfetivos() {
                       </div>
                     )}
 
-                    {afastados.length > 0 && (
-                      <div className="space-y-1 mt-2">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 px-1">Afastados</p>
-                        {afastados.map(m => {
-                          const afastamento = getAfastamento(m)!;
-                          const periodo = afastamento.dataFim === '9999-12-31'
-                            ? `Desde ${fmt(afastamento.dataInicio)} · prazo indeterminado`
-                            : `${fmt(afastamento.dataInicio)} - ${fmt(afastamento.dataFim)}`;
-                          return (
-                            <div key={m.id} className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50/50 px-3 py-2 dark:border-red-800/30 dark:bg-red-900/10">
-                              <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="yellow" />
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs font-bold text-graphite-700 dark:text-graphite-300 truncate">
-                                  {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
-                                </p>
-                                <p className="text-[10px] text-red-600 dark:text-red-400">
-                                  {afastamento.motivo === 'INSS Indeterminado' ? 'INSS/Indeterminado' : afastamento.motivo} · {periodo}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
                     {emGozo.length > 0 && (
                       <div className="space-y-1 mt-2">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-yellow-600 dark:text-yellow-400 px-1">Em Gozo</p>
@@ -3484,6 +3470,74 @@ function TabQuadroEfetivos() {
             </div>
           );
         })}
+        <div className="min-w-0 rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
+          <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3 dark:border-border-dark">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <h4 className="text-sm font-bold text-graphite-900 dark:text-graphite-100">Afastados</h4>
+            </div>
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/20 dark:text-red-400">
+              {afastadosDoMes.length} afastado(s)
+            </span>
+          </div>
+          <div className="space-y-4 p-3">
+            {afastadosDoMes.length === 0 ? (
+              <p className="py-4 text-center text-xs text-graphite-400 dark:text-graphite-500">Nenhum afastado neste mês</p>
+            ) : afastadosPorEquipe.map(({ equipe, pessoas }) => (
+              <section key={equipe} className="space-y-1.5" aria-label={`Afastados da equipe ${equipe}`}>
+                <div className="flex items-center gap-2 px-1">
+                  {EQUIPE_LOGOS[equipe] && <img src={EQUIPE_LOGOS[equipe]} alt="" className="h-6 w-6 rounded-md object-cover" />}
+                  <h5 className="flex-1 text-xs font-bold text-graphite-700 dark:text-graphite-200">Equipe {equipe}</h5>
+                  <span className="text-[10px] font-semibold text-red-600 dark:text-red-400">{pessoas.length} afastado(s)</span>
+                </div>
+                {pessoas.map(m => (
+                  <div key={m.id} className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50/50 px-3 py-2 dark:border-red-800/30 dark:bg-red-900/10">
+                    <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="red" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-bold text-graphite-700 dark:text-graphite-300">
+                        {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
+                      </p>
+                      {gruposAfastamento.filter(grupo => grupo.atual.funcionarioId === m.id).map(grupo => {
+                        const tempo = calcularTempoAfastamento(grupo.dataInicio, grupo.dataFim);
+                        const diasLabel = (dias: number) => `${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+                        const previstoLabel = tempo.diasPrevistos !== null
+                          ? `${diasLabel(tempo.diasPrevistos)} ${tempo.diasPrevistos === 1 ? 'previsto' : 'previstos'}` : '';
+                        const tempoLabel = !tempo.iniciado
+                          ? `Ainda não iniciado${previstoLabel ? ` · ${previstoLabel}` : ''}`
+                          : tempo.diasPrevistos !== null && !tempo.encerrado
+                            ? `${diasLabel(tempo.diasDecorridos)} de ${previstoLabel}`
+                            : `${diasLabel(tempo.diasDecorridos)}${tempo.encerrado ? ' no total' : ' até hoje'}`;
+                        const motivo = grupo.atual.motivo === 'INSS Indeterminado' ? 'INSS/Indeterminado'
+                          : grupo.atual.motivo === 'Outro' ? grupo.atual.motivoOutro || 'Outro' : grupo.atual.motivo;
+                        return (
+                          <div key={grupo.id} className="mt-1 space-y-1 border-t border-red-200/60 pt-1 first:border-t-0 first:pt-0 dark:border-red-800/30">
+                            <p className="break-words text-[10px] font-medium text-red-600 dark:text-red-400">{motivo}</p>
+                            <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
+                              <div>
+                                <dt className="text-graphite-500 dark:text-graphite-400">Início</dt>
+                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(grupo.dataInicio)}</dd>
+                              </div>
+                              <div>
+                                <dt className="text-graphite-500 dark:text-graphite-400">Retorno previsto</dt>
+                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{tempo.dataRetorno ? fmt(tempo.dataRetorno) : 'Sem previsão'}</dd>
+                              </div>
+                              <div className="col-span-2">
+                                <dt className="text-graphite-500 dark:text-graphite-400">Tempo afastado</dt>
+                                <dd className="break-words font-semibold text-graphite-700 dark:text-graphite-300">{tempoLabel}</dd>
+                              </div>
+                            </dl>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </section>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

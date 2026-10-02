@@ -46,7 +46,7 @@ const regras = requireFromTest(path.join(outRoot, 'src/utils/regrasOperacionais.
 const cursos = requireFromTest(path.join(outRoot, 'src/utils/validacaoCursos.js'));
 const equipesUtils = requireFromTest(path.join(outRoot, 'src/utils/equipes.js'));
 const efetivoOperacional = requireFromTest(path.join(outRoot, 'src/utils/efetivoOperacional.js'));
-const { agruparAfastamentosIndeterminados } = requireFromTest(path.join(outRoot, 'src/utils/afastamentos.js'));
+const { agruparAfastamentosIndeterminados, calcularTempoAfastamento } = requireFromTest(path.join(outRoot, 'src/utils/afastamentos.js'));
 const tpepr = requireFromTest(path.join(outRoot, 'src/types/tpepr.js'));
 
 const {
@@ -811,6 +811,24 @@ const inicioInssContinuo = {
   status: 'Aprovada',
   dataFim: '2026-09-29',
 };
+assert.deepEqual(calcularTempoAfastamento('2026-09-15', '9999-12-31', '2026-10-15'), {
+  dataRetorno: '', diasDecorridos: 31, diasPrevistos: null, iniciado: true, encerrado: false,
+}, 'INSS aberto conta dias desde o início original e não inventa data de retorno');
+assert.deepEqual(calcularTempoAfastamento('2026-10-01', '2026-10-05', '2026-10-15'), {
+  dataRetorno: '2026-10-06', diasDecorridos: 5, diasPrevistos: 5, iniciado: true, encerrado: true,
+}, 'Período encerrado para a contagem no último dia; retorno é no dia seguinte');
+assert.deepEqual(calcularTempoAfastamento('2026-10-20', '2026-10-24', '2026-10-15'), {
+  dataRetorno: '2026-10-25', diasDecorridos: 0, diasPrevistos: 5, iniciado: false, encerrado: false,
+}, 'Período futuro tem duração prevista, sem dias decorridos negativos');
+assert.deepEqual(calcularTempoAfastamento('2026-10-10', '2026-10-20', '2026-10-15'), {
+  dataRetorno: '2026-10-21', diasDecorridos: 6, diasPrevistos: 11, iniciado: true, encerrado: false,
+}, 'Afastamento em andamento distingue dias transcorridos de duração prevista');
+assert.equal(calcularTempoAfastamento('2026-10-15', '9999-12-31', '2026-10-15').diasDecorridos, 1,
+  'Primeiro dia de afastamento conta como um dia');
+assert.equal(calcularTempoAfastamento('2026-12-30', '2026-12-31', '2027-01-01').dataRetorno, '2027-01-01',
+  'Retorno atravessa corretamente a virada do ano');
+assert.equal(calcularTempoAfastamento('2028-02-28', '2028-03-01', '2028-03-02').diasDecorridos, 3,
+  'Tempo afastado inclui 29 de fevereiro em ano bissexto');
 const coberturaInssAtual = {
   ...inssIndeterminadoSemExtras,
   id: 'inss-cobertura-atual',

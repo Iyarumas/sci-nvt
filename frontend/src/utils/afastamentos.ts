@@ -1,5 +1,6 @@
 import type { SubstituicaoTemporaria } from '../types/substituicaoTemporaria';
-import { normalizarDataISO, somarDiasISO } from './datas';
+import { hojeLocalISO, normalizarDataISO, somarDiasISO } from './datas';
+import { diasInclusivos } from './regrasOperacionais';
 
 export interface GrupoAfastamento {
   id: string;
@@ -7,6 +8,24 @@ export interface GrupoAfastamento {
   periodos: SubstituicaoTemporaria[];
   dataInicio: string;
   dataFim: string;
+}
+
+/** Conta o período completo, incluindo o primeiro e o último dia de afastamento. */
+export function calcularTempoAfastamento(dataInicio: string, dataFim: string, dataReferencia = hojeLocalISO()) {
+  const inicio = normalizarDataISO(dataInicio);
+  const fim = normalizarDataISO(dataFim);
+  const referencia = normalizarDataISO(dataReferencia);
+  const indeterminado = fim === '9999-12-31';
+  const iniciado = !!inicio && !!referencia && referencia >= inicio;
+  const encerrado = !indeterminado && !!fim && !!referencia && referencia > fim;
+  const fimDecorrido = !indeterminado && fim < referencia ? fim : referencia;
+  return {
+    dataRetorno: indeterminado ? '' : somarDiasISO(fim, 1),
+    diasDecorridos: iniciado ? Math.max(0, diasInclusivos(inicio, fimDecorrido)) : 0,
+    diasPrevistos: indeterminado ? null : Math.max(0, diasInclusivos(inicio, fim)),
+    iniciado,
+    encerrado,
+  };
 }
 
 function isInssIndeterminado(sub: SubstituicaoTemporaria): boolean {

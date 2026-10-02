@@ -23,7 +23,7 @@ import type { ReaRegistro } from '../../types/rea';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import type { CertificacaoNR } from '../../types/certificacao';
 import type { CertificacaoCurso } from '../../types/certificacaoCurso';
-import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
+import { estaNoPeriodoISO, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 
 function fmt(d?: string) {
   return formatarDataBR(d);
@@ -75,7 +75,7 @@ const DASHBOARD_TOUR_STEPS: AnimatedTourStep[] = [
     target: 'dashboard-equipes',
     title: 'Distribuição por equipe',
     body: 'Aqui você compara quantos bombeiros ativos existem em Alfa, Bravo, Charlie e Delta.',
-    detail: 'A barra maior vira referência visual. Isso ajuda a enxergar rapidamente se alguma equipe está com efetivo menor.',
+    detail: 'Pessoas com afastamento aprovado e vigente não entram na contagem. A barra maior vira referência visual para comparar as equipes.',
   },
   {
     target: 'dashboard-ferias-status',
@@ -211,12 +211,16 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
     });
 
     const hoje = hojeLocalISO();
+    const afastadosIds = new Set(substituicoes
+      .filter(s => s.tipo === 'Afastamento' && s.status === 'Aprovada' && estaNoPeriodoISO(hoje, s.dataInicio, s.dataFim))
+      .map(s => s.funcionarioId));
+    const bombeirosAtivos = bombeiros.filter(b => !afastadosIds.has(b.id));
     const vagasPendentesAtivas = vagasPendentes.filter(v =>
       !v.dataFim || v.dataFim >= hoje
     );
 
     return {
-      totalBombeiros: bombeiros.length,
+      totalBombeiros: bombeirosAtivos.length,
       emGozo: emGozo.length,
       programadas: programadas.length,
       ocorrenciasAbertas,
@@ -224,7 +228,7 @@ const documentos = useMemo<DocumentoResumo[]>(() => {
       vagasPendentes: vagasPendentesAtivas.length,
       certVencendo: certVencendo.length + cursosVencendo.length,
       equipes: ['Alfa', 'Bravo', 'Charlie', 'Delta'].map(eq => ({
-        nome: eq, total: bombeiros.filter(b => b.equipe === eq).length,
+        nome: eq, total: bombeirosAtivos.filter(b => b.equipe === eq).length,
       })),
     };
   }, [bombeiros, feriasGozo, documentos, substituicoes, certificacoes, cursos, vagasPendentes]);

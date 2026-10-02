@@ -240,16 +240,26 @@ function gerarResponsabilidades(pessoas: PessoaEscala[], faxina: { local: string
   });
 }
 
-export function gerarEscalaMensal(config: EscalaMensalConfig): EscalaMensalCompleta {
+export interface GeracaoEscalaMensalOpcoes {
+  pessoasNoPlantao?: (data: string) => PessoaEscala[];
+  radioManualNoPlantao?: (data: string) => EscalaMensalConfig['radioManual'];
+}
+
+export function gerarEscalaMensal(config: EscalaMensalConfig, opcoes: GeracaoEscalaMensalOpcoes = {}): EscalaMensalCompleta {
   const { mes, ano, paridade, pessoas, equipe } = config;
   const dias = diasPlantao(mes, ano, equipe, paridade);
   const faxinaMensal = gerarFaxinaMensal(pessoas, mes, config.faxinaManual, config.faxinaManualModo);
   const responsabilidades = gerarResponsabilidades(pessoas, faxinaMensal, config.responsabilidadesManual);
-  const paradas: PlantaoGerado[] = dias.map((dia, idx) => ({
-    dia,
-    data: fmtDate(dia, mes, ano),
-    veiculos: buildVeiculos(pessoas),
-    radio: gerarRadioPlantao(pessoas, idx + 1, equipe, config.radioManual),
-  }));
+  const paradas: PlantaoGerado[] = dias.map((dia, idx) => {
+    const data = fmtDate(dia, mes, ano);
+    const pessoasDoDia = opcoes.pessoasNoPlantao?.(data) || pessoas;
+    const radioManual = opcoes.radioManualNoPlantao ? opcoes.radioManualNoPlantao(data) : config.radioManual;
+    return {
+      dia,
+      data,
+      veiculos: buildVeiculos(pessoasDoDia),
+      radio: gerarRadioPlantao(pessoasDoDia, idx + 1, equipe, radioManual),
+    };
+  });
   return { config, paradas, faxinaMensal, responsabilidades };
 }

@@ -242,6 +242,9 @@ function referenciasMensaisDoPlantao(completa: EscalaMensalCompleta | undefined,
   addNome(parada?.veiculos?.crs?.ba2_1, 'BA-2');
   addNome(parada?.veiculos?.crs?.ba2_2, 'BA-2');
 
+  // A configuração é a referência do mês; a guarnição gerada vale para este dia.
+  if (parada?.veiculos) return refs;
+
   for (const pessoa of completa.config?.pessoas || []) {
     refs.push({
       id: pessoa.id,
@@ -254,22 +257,63 @@ function referenciasMensaisDoPlantao(completa: EscalaMensalCompleta | undefined,
   return refs;
 }
 
+function cargoMensalNoPlantao(params: {
+  bombeiro: Bombeiro;
+  cargoMensal: string;
+  porId: ReadonlyMap<string, Bombeiro>;
+  vigencias: VigenciaSubstituicao[];
+  feriasGozo: FeriasGozo[];
+  equipe: string;
+  dataPlantao: string;
+}): string | null {
+  const { bombeiro, cargoMensal, porId, vigencias, feriasGozo, equipe, dataPlantao } = params;
+  const cargo = cargoMensal || bombeiro.cargo;
+  const historicoVigencias = vigencias.filter(v =>
+    v.substitutoId === bombeiro.id &&
+    v.substitutoId !== v.funcionarioOriginalId &&
+    (porId.get(v.funcionarioOriginalId)?.equipe || v.equipe) === equipe &&
+    (v.cargoExercido || porId.get(v.funcionarioOriginalId)?.cargo || v.cargoOriginalFuncionario) === cargo
+  );
+  const historicoFerias = feriasGozo.filter(g =>
+    g.substitutoId === bombeiro.id &&
+    (porId.get(g.funcionarioId)?.equipe || g.equipe) === equipe &&
+    (g.funcaoSubstituicao || porId.get(g.funcionarioId)?.cargo) === cargo
+  );
+  if (historicoVigencias.length === 0 && historicoFerias.length === 0) return cargo;
+
+  const temCoberturaNoDia = historicoVigencias.some(v =>
+    v.ativa && estaNoPeriodoISO(dataPlantao, v.dataInicio, v.dataFim)
+  ) || historicoFerias.some(g => estaNoPeriodoISO(dataPlantao, g.dataInicio, g.dataFim));
+  if (temCoberturaNoDia) return cargo;
+
+  // Uma mensal antiga pode ter gravado o cargo temporário para todos os plantões.
+  // Encerrada a cobertura, membros da equipe voltam ao cargo cadastrado.
+  return bombeiro.equipe === equipe ? bombeiro.cargo : null;
+}
+
 export function montarMembrosEscalaMensalPlantao(params: {
   bombeiros: Bombeiro[];
   escalasCompletas?: EscalaMensalCompleta[];
+  vigencias?: VigenciaSubstituicao[];
+  feriasGozo?: FeriasGozo[];
   equipe: string;
   dataPlantao: string;
 }): Array<{ bombeiro: Bombeiro; cargoExercido: string }> {
-  const { bombeiros, escalasCompletas, equipe, dataPlantao } = params;
+  const { bombeiros, escalasCompletas, vigencias = [], feriasGozo = [], equipe, dataPlantao } = params;
   const completa = escalaMensalDoPlantao(escalasCompletas, equipe, dataPlantao);
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
+  const porId = new Map(ativos.map(b => [b.id, b]));
   const usados = new Set<string>();
   const membros: Array<{ bombeiro: Bombeiro; cargoExercido: string }> = [];
 
   for (const ref of referenciasMensaisDoPlantao(completa, dataPlantao)) {
     const bombeiro = ativos.find(b => pessoaCorrespondeReferencia(b, ref.id, ref.nome, ref.nomeGuerra));
     if (!bombeiro || usados.has(bombeiro.id)) continue;
-    membros.push({ bombeiro, cargoExercido: ref.cargo || bombeiro.cargo });
+    const cargoExercido = cargoMensalNoPlantao({
+      bombeiro, cargoMensal: ref.cargo, porId, vigencias, feriasGozo, equipe, dataPlantao,
+    });
+    if (!cargoExercido) continue;
+    membros.push({ bombeiro, cargoExercido });
     usados.add(bombeiro.id);
   }
 
@@ -280,11 +324,12 @@ export function resolverPessoaNoPlantaoOperacional(params: {
   pessoa?: Bombeiro;
   bombeiros: Bombeiro[];
   vigencias?: VigenciaSubstituicao[];
+  feriasGozo?: FeriasGozo[];
   escalasCompletas?: EscalaMensalCompleta[];
   equipe: string;
   dataPlantao: string;
 }): { pertence: boolean; cargoExercido?: string } {
-  const { pessoa, bombeiros, vigencias = [], escalasCompletas, equipe, dataPlantao } = params;
+  const { pessoa, bombeiros, vigencias = [], feriasGozo = [], escalasCompletas, equipe, dataPlantao } = params;
   if (!pessoa || !equipe || !dataPlantao) return { pertence: false };
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
   const porId = new Map(ativos.map(b => [b.id, b]));
@@ -296,7 +341,16 @@ export function resolverPessoaNoPlantaoOperacional(params: {
   });
   if (vigencia) return { pertence: true, cargoExercido: vigencia.cargoExercido || pessoa.cargo };
 
-  const membroMensal = montarMembrosEscalaMensalPlantao({ bombeiros, escalasCompletas, equipe, dataPlantao })
+  const gozo = feriasGozo.find(g =>
+    g.substitutoId === pessoa.id &&
+    (porId.get(g.funcionarioId)?.equipe || g.equipe) === equipe &&
+    estaNoPeriodoISO(dataPlantao, g.dataInicio, g.dataFim)
+  );
+  if (gozo) {
+    return { pertence: true, cargoExercido: gozo.funcaoSubstituicao || porId.get(gozo.funcionarioId)?.cargo || pessoa.cargo };
+  }
+
+  const membroMensal = montarMembrosEscalaMensalPlantao({ bombeiros, escalasCompletas, vigencias, feriasGozo, equipe, dataPlantao })
     .find(membro => membro.bombeiro.id === pessoa.id);
   if (membroMensal) return { pertence: true, cargoExercido: membroMensal.cargoExercido };
 
@@ -329,11 +383,12 @@ function montarTrocasServicoResolvidas(params: {
   bombeiros: Bombeiro[];
   trocaFills: DocumentFill[];
   vigencias?: VigenciaSubstituicao[];
+  feriasGozo?: FeriasGozo[];
   escalasCompletas?: EscalaMensalCompleta[];
   equipe: string;
   dataPlantao: string;
 }): TrocaServicoResolvida[] {
-  const { bombeiros, trocaFills, vigencias = [], escalasCompletas, equipe, dataPlantao } = params;
+  const { bombeiros, trocaFills, vigencias = [], feriasGozo = [], escalasCompletas, equipe, dataPlantao } = params;
   if (!equipe || !dataPlantao) return [];
 
   const ativos = bombeiros.filter(b => !b.dataDesligamento);
@@ -361,6 +416,7 @@ function montarTrocasServicoResolvidas(params: {
             pessoa,
             bombeiros: ativos,
             vigencias,
+            feriasGozo,
             escalasCompletas,
             equipe,
             dataPlantao,
@@ -407,6 +463,7 @@ export function montarTrocasServicoDoDia(params: {
   bombeiros: Bombeiro[];
   trocaFills: DocumentFill[];
   vigencias?: VigenciaSubstituicao[];
+  feriasGozo?: FeriasGozo[];
   escalasCompletas?: EscalaMensalCompleta[];
   equipe: string;
   dataPlantao: string;
@@ -470,7 +527,7 @@ export function montarEfetivoOperacional(params: {
   const trocaExcluidosNomes = new Set<string>();
   const trocaIncluidos: EfetivoOperacionalEntry[] = [];
   const trocasResolvidas = aplicarTrocas
-    ? montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, vigencias, escalasCompletas, equipe, dataPlantao })
+    ? montarTrocasServicoResolvidas({ bombeiros: ativos, trocaFills, vigencias, feriasGozo, escalasCompletas, equipe, dataPlantao })
     : [];
   for (const troca of trocasResolvidas) {
     trocaExcluidos.add(troca.saindo.id);
@@ -492,10 +549,7 @@ export function montarEfetivoOperacional(params: {
     trocaExcluidosNomes.has(identidadePessoaKey(bombeiro))
   );
 
-  const gozosNoDia = feriasGozo.filter(g =>
-    g.status !== 'Gozadas' &&
-    estaNoPeriodoISO(dataPlantao, g.dataInicio, g.dataFim)
-  );
+  const gozosNoDia = feriasGozo.filter(g => estaNoPeriodoISO(dataPlantao, g.dataInicio, g.dataFim));
   const emGozo = new Set(gozosNoDia.map(g => g.funcionarioId));
   const vagasAbertas = new Set(vigenciasAuto.map(v => v.funcionarioOriginalId));
 
@@ -545,7 +599,7 @@ export function montarEfetivoOperacional(params: {
     if (identidade) nomesAdicionados.add(identidade);
   };
 
-  for (const membroMensal of montarMembrosEscalaMensalPlantao({ bombeiros: ativos, escalasCompletas, equipe, dataPlantao })) {
+  for (const membroMensal of montarMembrosEscalaMensalPlantao({ bombeiros: ativos, escalasCompletas, vigencias, feriasGozo, equipe, dataPlantao })) {
     const membro = membroMensal.bombeiro;
     if (excluidoPorTroca(membro)) continue;
     if (

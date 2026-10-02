@@ -978,6 +978,7 @@ export function GerarLRO() {
       pessoa,
       bombeiros,
       vigencias,
+      feriasGozo,
       escalasCompletas,
       equipe,
       dataPlantao: dataInicio,
@@ -1053,7 +1054,7 @@ export function GerarLRO() {
         return confirmada === undefined ? item : { ...item, confirmada };
       });
     });
-  }, [dataInicio, equipe, trocaFills, todasSubstituicoes, bombeiros, vigencias, escalasCompletas]);
+  }, [dataInicio, equipe, trocaFills, todasSubstituicoes, bombeiros, vigencias, feriasGozo, escalasCompletas]);
 
   const equipeInversa: Record<string, string> = { Alfa: 'Charlie', Charlie: 'Alfa', Bravo: 'Delta', Delta: 'Bravo' };
 
@@ -1323,13 +1324,15 @@ export function GerarLRO() {
     montarMembrosEscalaMensalPlantao({
       bombeiros,
       escalasCompletas,
+      vigencias,
+      feriasGozo,
       equipe,
       dataPlantao: dataInicio,
     }).forEach(({ bombeiro }) => {
       if (!bombeiro.dataDesligamento) porId.set(bombeiro.id, bombeiro);
     });
     return Array.from(porId.values());
-  }, [bombeiros, equipe, dataInicio, escalasCompletas]);
+  }, [bombeiros, equipe, dataInicio, escalasCompletas, vigencias, feriasGozo]);
 
   const bombeiroPorId = useMemo(() => new Map(bombeiros.map(b => [b.id, b])), [bombeiros]);
 
@@ -1338,16 +1341,17 @@ export function GerarLRO() {
       montarMembrosEscalaMensalPlantao({
         bombeiros,
         escalasCompletas,
+        vigencias,
+        feriasGozo,
         equipe,
         dataPlantao: dataInicio,
       }).map(({ bombeiro, cargoExercido }) => [bombeiro.id, cargoExercido])
     );
-  }, [bombeiros, escalasCompletas, equipe, dataInicio]);
+  }, [bombeiros, escalasCompletas, equipe, dataInicio, vigencias, feriasGozo]);
 
   const emFerias = useMemo(() => {
     return feriasGozo.filter(f =>
       f.equipe === equipe &&
-      f.status !== 'Gozadas' &&
       estaNoPeriodoISO(dataInicio, f.dataInicio, f.dataFim)
     );
   }, [feriasGozo, equipe, dataInicio]);
@@ -1413,6 +1417,7 @@ export function GerarLRO() {
       pessoa,
       bombeiros,
       vigencias,
+      feriasGozo,
       escalasCompletas,
       equipe,
       dataPlantao: dataInicio,
@@ -1522,7 +1527,7 @@ export function GerarLRO() {
       }, 'manual');
     });
     return map;
-  }, [dataInicio, vigencias, todasSubstituicoes, substituicoesDetectadas, trocasManuais, bombeiros, equipe, escalasCompletas]);
+  }, [dataInicio, vigencias, feriasGozo, todasSubstituicoes, substituicoesDetectadas, trocasManuais, bombeiros, equipe, escalasCompletas]);
 
   const substituicoesPorSubstituto = useMemo(() => {
     const map: Record<string, SubstituicaoInfo> = {};
@@ -1701,8 +1706,9 @@ export function GerarLRO() {
     const chefeAtual = buscarBombeiroPorNome(chefeEquipe);
     const chefeAtualSaiu = pessoaSaiuDoPlantao(chefeAtual);
     const chefeAtualPresente = !!chefeAtual && disponiveis.some(b => b.id === chefeAtual.id);
+    const chefeAtualExerceFuncao = !!chefeAtual && cargoExercidoNoPlantao(chefeAtual) === 'BA-CE';
     const candidatoChefe = [nomeChefeDaEscala, nomeChefeEfetivo].find(Boolean) || '';
-    if (!campoEquipeFoiEditado('chefeEquipe') && candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente) && candidatoChefe !== chefeEquipe) {
+    if (!campoEquipeFoiEditado('chefeEquipe') && candidatoChefe && (!chefeEquipe || chefeAtualSaiu || !chefeAtualPresente || !chefeAtualExerceFuncao) && candidatoChefe !== chefeEquipe) {
       setChefeEquipe(candidatoChefe);
     }
 

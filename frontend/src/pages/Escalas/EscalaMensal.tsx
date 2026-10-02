@@ -9,8 +9,9 @@ import { AlertModal } from '../../components/ui/AlertModal';
 import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import { listarAtivos } from '../../services/bombeiroService';
 import { equipesNoDia } from '../../utils/equipes';
-import { dataLocalISO, formatarDataBR, periodosSobrepostosISO } from '../../utils/datas';
-import { listarFeriasGozo, listarItensEscala } from '../../services/feriasService';
+import { formatarDataBR } from '../../utils/datas';
+import { dataReferenciaEfetivoMensal, montarEfetivoMensal, type EfetivoMensalEntry } from '../../utils/efetivoMensal';
+import { listarFeriasGozo } from '../../services/feriasService';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
 import type { FeriasGozo } from '../../types/ferias';
@@ -113,32 +114,6 @@ function criarRadioManualVazio(): RadioManualState {
   };
 }
 
-interface EfetivoMensalEntry {
-  bombeiro: Bombeiro;
-  cargoExercido: string;
-  equipeEfetiva: string;
-  substituindo?: {
-    id: string;
-    nome: string;
-    cargo: string;
-  };
-}
-
-function dataLocal(data: string): Date {
-  return new Date(`${data}T12:00:00`);
-}
-
-function intervaloMes(mes: number, ano: number) {
-  const inicio = new Date(ano, mes - 1, 1, 12);
-  const fim = new Date(ano, mes, 0, 12);
-  return { inicio, fim };
-}
-
-function sobrepoePeriodo(dataInicio: string, dataFim: string, inicio: Date, fim: Date): boolean {
-  if (!dataInicio || !dataFim) return false;
-  return dataLocal(dataInicio) <= fim && dataLocal(dataFim) >= inicio;
-}
-
 function cargoParaSlot(slot: SlotDef): Cargo {
   if (slot.funcao === 'chefe') return 'BA-CE';
   if (slot.funcao === 'lider') return 'BA-LR';
@@ -157,131 +132,6 @@ function paridadePorSequencia(equipe: string, mes: number, ano: number): 'par' |
     if (equipes.some(eq => eq === equipe)) return dia % 2 === 0 ? 'par' : 'impar';
   }
   return equipe === 'Alfa' || equipe === 'Bravo' ? 'impar' : 'par';
-}
-
-function montarEfetivoMensal(params: {
-  bombeiros: Bombeiro[];
-  feriasGozo: FeriasGozo[];
-  vigencias: VigenciaSubstituicao[];
-  equipe: string;
-  mes: number;
-  ano: number;
-}): EfetivoMensalEntry[] {
-  const { bombeiros, feriasGozo, vigencias, equipe, mes, ano } = params;
-  if (!equipe) return [];
-
-  const { inicio, fim } = intervaloMes(mes, ano);
-  const ativos = bombeiros.filter(b => !b.dataDesligamento);
-  const porId = new Map(ativos.map(b => [b.id, b]));
-
-  const equipeDaVaga = (v: VigenciaSubstituicao): string => {
-    const original = porId.get(v.funcionarioOriginalId);
-    return original?.equipe || v.equipe;
-  };
-
-  const vigenciasNoMes = vigencias.filter(v =>
-    v.ativa &&
-    sobrepoePeriodo(v.dataInicio, v.dataFim, inicio, fim) &&
-    equipeDaVaga(v) === equipe
-  );
-  const vigenciasReais = vigenciasNoMes.filter(v => v.substitutoId && v.substitutoId !== v.funcionarioOriginalId);
-  const vigenciasAuto = vigenciasNoMes.filter(v => v.substitutoId && v.substitutoId === v.funcionarioOriginalId);
-
-  const realPorOriginal = new Map<string, VigenciaSubstituicao>();
-  const realPorSubstituto = new Map<string, VigenciaSubstituicao>();
-  for (const v of vigenciasReais) {
-    realPorOriginal.set(v.funcionarioOriginalId, v);
-    realPorSubstituto.set(v.substitutoId, v);
-  }
-
-  const vagasAbertas = new Set(vigenciasAuto.map(v => v.funcionarioOriginalId));
-  const gozosNoMes = feriasGozo.filter(g =>
-    g.status !== 'Gozadas' &&
-    sobrepoePeriodo(g.dataInicio, g.dataFim, inicio, fim)
-  );
-  const emGozo = new Set(gozosNoMes.map(g => g.funcionarioId));
-
-  const fallbackPorOriginal = new Map<string, { substituto: Bombeiro; cargo: string; original: Bombeiro }>();
-  const fallbackPorSubstituto = new Map<string, { substituto: Bombeiro; cargo: string; original: Bombeiro }>();
-  for (const gozo of gozosNoMes) {
-    if (realPorOriginal.has(gozo.funcionarioId)) continue;
-    const original = porId.get(gozo.funcionarioId);
-    const substituto = gozo.substitutoId ? porId.get(gozo.substitutoId) : undefined;
-    if (!original || !substituto) continue;
-    if ((original.equipe || gozo.equipe) !== equipe) continue;
-    const fallback = {
-      substituto,
-      cargo: gozo.funcaoSubstituicao || original.cargo,
-      original,
-    };
-    fallbackPorOriginal.set(original.id, fallback);
-    fallbackPorSubstituto.set(substituto.id, fallback);
-  }
-
-  const resultado: EfetivoMensalEntry[] = [];
-  const adicionados = new Set<string>();
-
-  const adicionar = (bombeiro: Bombeiro, cargoExercido: string, substituindo?: EfetivoMensalEntry['substituindo']) => {
-    if (adicionados.has(bombeiro.id)) return;
-    resultado.push({ bombeiro, cargoExercido, equipeEfetiva: equipe, substituindo });
-    adicionados.add(bombeiro.id);
-  };
-
-  const membrosEquipe = ativos.filter(b => b.equipe === equipe);
-  for (const membro of membrosEquipe) {
-    const substitui = realPorSubstituto.get(membro.id);
-    const fallbackSubstitui = fallbackPorSubstituto.get(membro.id);
-
-    if (substitui) {
-      adicionar(membro, substitui.cargoExercido || membro.cargo, {
-        id: substitui.funcionarioOriginalId,
-        nome: substitui.funcionarioOriginalNome,
-        cargo: substitui.cargoOriginalFuncionario,
-      });
-      continue;
-    }
-
-    if (fallbackSubstitui) {
-      adicionar(membro, fallbackSubstitui.cargo, {
-        id: fallbackSubstitui.original.id,
-        nome: fallbackSubstitui.original.nomeCompleto,
-        cargo: fallbackSubstitui.original.cargo,
-      });
-      continue;
-    }
-
-    if (emGozo.has(membro.id) || realPorOriginal.has(membro.id) || fallbackPorOriginal.has(membro.id) || vagasAbertas.has(membro.id)) {
-      continue;
-    }
-
-    adicionar(membro, membro.cargo);
-  }
-
-  for (const v of vigenciasReais) {
-    const substituto = porId.get(v.substitutoId);
-    if (!substituto) continue;
-    adicionar(substituto, v.cargoExercido || substituto.cargo, {
-      id: v.funcionarioOriginalId,
-      nome: v.funcionarioOriginalNome,
-      cargo: v.cargoOriginalFuncionario,
-    });
-  }
-
-  for (const fallback of fallbackPorSubstituto.values()) {
-    adicionar(fallback.substituto, fallback.cargo, {
-      id: fallback.original.id,
-      nome: fallback.original.nomeCompleto,
-      cargo: fallback.original.cargo,
-    });
-  }
-
-  const ordemCargo = ['GS', 'BA-CE', 'BA-LR', 'BA-MC', 'BA-2', 'BA-RE', 'OC'];
-  return resultado.sort((a, b) => {
-    const cargoA = ordemCargo.indexOf(a.cargoExercido);
-    const cargoB = ordemCargo.indexOf(b.cargoExercido);
-    if (cargoA !== cargoB) return cargoA - cargoB;
-    return a.bombeiro.nomeGuerra.localeCompare(b.bombeiro.nomeGuerra);
-  });
 }
 
 function montarOpcoesEfetivo(efetivo: EfetivoMensalEntry[], equipe: string): AtivoItem[] {
@@ -330,6 +180,7 @@ function resolverPessoaSelecionada(
   pessoa: Partial<PessoaEscala> | null,
   slot: SlotDef,
   efetivo: EfetivoMensalEntry[],
+  efetivoReferencia: EfetivoMensalEntry[] = [],
 ): Partial<PessoaEscala> | null {
   if (!pessoa?.id) return pessoa;
   const cargoSlot = cargoParaSlot(slot);
@@ -343,14 +194,40 @@ function resolverPessoaSelecionada(
   );
   if (substitutoDaVaga) return pessoaEscala(substitutoDaVaga, slot);
 
-  return pessoa;
+  const vagaOriginalId = efetivoReferencia.find(entry =>
+    entry.bombeiro.id === pessoa.id && entry.cargoExercido === cargoSlot
+  )?.substituindo?.id;
+  const titularDaVaga = vagaOriginalId ? efetivo.find(entry =>
+    entry.bombeiro.id === vagaOriginalId && entry.cargoExercido === cargoSlot
+  ) : undefined;
+  return titularDaVaga ? pessoaEscala(titularDaVaga, slot) : null;
 }
 
 function resolverPessoasSelecionadas(
   pessoas: (Partial<PessoaEscala> | null)[],
   efetivo: EfetivoMensalEntry[],
+  efetivoReferencia: EfetivoMensalEntry[] = [],
 ): (Partial<PessoaEscala> | null)[] {
-  return SLOTS.map((slot, idx) => resolverPessoaSelecionada(pessoas[idx], slot, efetivo));
+  const resolvidas = SLOTS.map((slot, idx) => resolverPessoaSelecionada(pessoas[idx], slot, efetivo, efetivoReferencia));
+  const usados = new Set<string>();
+  for (let idx = 0; idx < resolvidas.length; idx++) {
+    const id = resolvidas[idx]?.id;
+    if (!id) continue;
+    if (usados.has(id)) resolvidas[idx] = null;
+    else usados.add(id);
+  }
+  return SLOTS.map((slot, idx) => {
+    if (resolvidas[idx] || !pessoas[idx]?.id) return resolvidas[idx];
+    const cargoSlot = cargoParaSlot(slot);
+    const disponivel = efetivo.find(entry => {
+      if (entry.cargoExercido !== cargoSlot || usados.has(entry.bombeiro.id)) return false;
+      const veiculoBA = slot.veiculo === 'crs' ? 'crs' as const : 'cci' as const;
+      return validarCursoParaFuncao(entry.bombeiro, cargoSlot, slot.funcao === 'ba-mc' ? veiculoBA : undefined)?.nivel !== 'bloqueado';
+    });
+    if (!disponivel) return null;
+    usados.add(disponivel.bombeiro.id);
+    return pessoaEscala(disponivel, slot);
+  });
 }
 
 function montarFaxinaPadraoSelecionada(faxinaPadrao: Record<string, string>, efetivo: EfetivoMensalEntry[]): FaxinaMensalItem[] {
@@ -830,12 +707,13 @@ export function EscalaMensal() {
     setTimeout(restoreTitle, 1000);
   }
 
-  // Cache de vigências para uso no substituirFerias
+  // O efetivo do formulário usa uma data do mês; a geração resolve cada plantão.
   const [vigenciasCache, setVigenciasCache] = useState<VigenciaSubstituicao[]>([]);
   useEffect(() => {
     listarVigencias({ ativa: true }).then(setVigenciasCache).catch(() => {});
   }, []);
 
+  const dataReferenciaMensal = dataReferenciaEfetivoMensal(mes, ano);
   const efetivoMensal = useMemo(() => montarEfetivoMensal({
     bombeiros,
     feriasGozo,
@@ -843,11 +721,16 @@ export function EscalaMensal() {
     equipe,
     mes,
     ano,
-  }), [bombeiros, feriasGozo, vigenciasCache, equipe, mes, ano]);
+    dataReferencia: dataReferenciaMensal,
+  }), [bombeiros, feriasGozo, vigenciasCache, equipe, mes, ano, dataReferenciaMensal]);
 
   const efetivoOptions = useMemo(
     () => montarOpcoesEfetivo(efetivoMensal, equipe),
     [efetivoMensal, equipe],
+  );
+  const pessoasResolvidas = useMemo(
+    () => resolverPessoasSelecionadas(pessoas, efetivoMensal),
+    [pessoas, efetivoMensal],
   );
 
   const radioEfetivo = useMemo(
@@ -899,7 +782,9 @@ export function EscalaMensal() {
 
   const veiculosView = useMemo(() => {
     if (!completaAtual || completaAtual.paradas.length === 0) return null;
-    const v = completaAtual.paradas[0].veiculos || {} as any;
+    const referencia = dataReferenciaEfetivoMensal(completaAtual.config.mes, completaAtual.config.ano);
+    const parada = completaAtual.paradas.find(p => p.data >= referencia) || completaAtual.paradas.at(-1)!;
+    const v = parada.veiculos || {} as any;
     const nomeExibido = (nome: string): string => nome || '-';
     const linha = (label: string, nome: string) => {
       return `${label}: ${nomeExibido(nome)}`;
@@ -908,7 +793,7 @@ export function EscalaMensal() {
       <div className="monthly-screen-panel rounded border-2 border-graphite-300 bg-white/80 p-1 dark:border-graphite-600 dark:bg-surface-card print:border-graphite-500 print:bg-white">
         <div className="mb-0.5 flex items-center gap-1">
           <Shield className="h-3.5 w-3.5 text-aviation-600 dark:text-aviation-400 print:text-graphite-800" />
-          <span className="text-[12px] font-bold text-graphite-800 dark:text-graphite-100 print:text-graphite-900">Guarnições</span>
+          <span className="text-[12px] font-bold text-graphite-800 dark:text-graphite-100 print:text-graphite-900">Guarnições · {formatarDataBR(parada.data)}</span>
         </div>
         <div className="flex gap-2">
           {[
@@ -953,7 +838,7 @@ export function EscalaMensal() {
       : getSlotsRadio(completaAtual.config.equipe))
     : [];
 
-  const qtdPessoas = pessoas.filter(pessoaValida).length;
+  const qtdPessoas = pessoasResolvidas.filter(pessoaValida).length;
 
   const anosFiltro = useMemo(() => {
     const anoAtual = new Date().getFullYear();
@@ -1033,7 +918,13 @@ export function EscalaMensal() {
       updatedAt: new Date().toISOString(),
     };
 
-    return gerarEscalaMensal(cfg);
+    const efetivoNoPlantao = (data: string) => montarEfetivoMensal({
+      bombeiros: all, feriasGozo: gozos, vigencias: vigs, equipe, mes, ano, dataReferencia: data,
+    });
+    return gerarEscalaMensal(cfg, {
+      pessoasNoPlantao: data => resolverPessoasSelecionadas(validadas, efetivoNoPlantao(data), efetivoParaGerar).filter(pessoaValida),
+      radioManualNoPlantao: data => montarRadioSelecionado(radioManual, efetivoNoPlantao(data).filter(podeFazerRadio)),
+    });
   }
 
   async function atualizarListaSelecionando(configId: string) {
@@ -1115,54 +1006,6 @@ export function EscalaMensal() {
     }
   }
 
-  function substituirFerias(p: Partial<PessoaEscala> | null, cargoEfetivo?: string): Partial<PessoaEscala> | null {
-    if (!p?.id) return p;
-    const slot = SLOTS.find(s =>
-      s.cargoFiltro === cargoEfetivo &&
-      s.funcao === p.funcao &&
-      s.veiculo === p.veiculo &&
-      s.funcaoNoVeiculo === p.funcaoNoVeiculo
-    );
-    if (slot) return resolverPessoaSelecionada(p, slot, efetivoMensal);
-    const { inicio, fim } = intervaloMes(mes, ano);
-    const jaEstaNoEfetivo = efetivoMensal.some(entry =>
-      entry.bombeiro.id === p.id &&
-      (!cargoEfetivo || entry.cargoExercido === cargoEfetivo)
-    );
-    if (jaEstaNoEfetivo) return p;
-
-    // Verificar vigências ativas primeiro (substituições em cascata)
-    const vigencia = vigenciasCache.find(v =>
-      v.funcionarioOriginalId === p.id &&
-      v.substitutoId !== p.id &&
-      v.ativa &&
-      (bombeiros.find(b => b.id === v.funcionarioOriginalId)?.equipe || v.equipe) === equipe &&
-      (!cargoEfetivo || v.cargoExercido === cargoEfetivo) &&
-      // Verificar se a vigência cobre o mês atual
-      sobrepoePeriodo(v.dataInicio, v.dataFim, inicio, fim)
-    );
-    if (vigencia) {
-      const sub = bombeiros.find(b => b.id === vigencia.substitutoId);
-      if (sub) {
-        return { id: sub.id, nome: sub.nomeCompleto, nomeGuerra: sub.nomeGuerra, funcao: p.funcao, veiculo: p.veiculo, funcaoNoVeiculo: p.funcaoNoVeiculo, isRadioFixo: p.isRadioFixo || false };
-      }
-    }
-
-    // Fallback: verificar férias diretamente
-    const gozo = feriasGozo.find(g =>
-      g.funcionarioId === p.id &&
-      g.status !== 'Gozadas' &&
-      g.substitutoId &&
-      (bombeiros.find(b => b.id === g.funcionarioId)?.equipe || g.equipe) === equipe &&
-      (!cargoEfetivo || (g.funcaoSubstituicao || bombeiros.find(b => b.id === g.funcionarioId)?.cargo) === cargoEfetivo) &&
-      sobrepoePeriodo(g.dataInicio, g.dataFim, inicio, fim)
-    );
-    if (!gozo) return p;
-    const sub = bombeiros.find(b => b.id === gozo.substitutoId);
-    if (!sub) return p;
-    return { id: sub.id, nome: sub.nomeCompleto, nomeGuerra: sub.nomeGuerra, funcao: p.funcao, veiculo: p.veiculo, funcaoNoVeiculo: p.funcaoNoVeiculo, isRadioFixo: p.isRadioFixo || false };
-  }
-
   async function handleDelete() {
     if (!deleteTarget) return;
     if (!canManageEquipe(deleteTarget.config.equipe)) {
@@ -1193,15 +1036,26 @@ export function EscalaMensal() {
       return;
     }
     try {
-      const bombeirosBase = bombeiros.length ? bombeiros : await listarAtivos();
-      if (!bombeiros.length) setBombeiros(bombeirosBase);
+      const [bombeirosBase, gozos, vigs] = await Promise.all([
+        listarAtivos(), listarFeriasGozo(), listarVigencias({ ativa: true }),
+      ]);
+      setBombeiros(bombeirosBase);
+      setFeriasGozo(gozos);
+      setVigenciasCache(vigs);
       const { config: cfg } = completaAtual;
       setSelecionada(cfg.id);
       setEquipe(cfg.equipe);
       setMes(cfg.mes);
       setAno(cfg.ano);
       setParidade(cfg.paridade);
-      setPessoas(SLOTS.map((_, idx) => cfg.pessoas[idx] ? { ...cfg.pessoas[idx] } : null));
+      const efetivoDaEdicao = montarEfetivoMensal({
+        bombeiros: bombeirosBase, feriasGozo: gozos, vigencias: vigs,
+        equipe: cfg.equipe, mes: cfg.mes, ano: cfg.ano,
+      });
+      const selecionadas = SLOTS.map(slot => cfg.pessoas.find(p =>
+        p.veiculo === slot.veiculo && p.funcaoNoVeiculo === slot.funcaoNoVeiculo
+      ) || null);
+      setPessoas(resolverPessoasSelecionadas(selecionadas, efetivoDaEdicao));
       const modoFaxina: ModoPreenchimentoManual = cfg.faxinaManualModo === 'livre' ? 'manual' : 'padrao';
       setFaxinaModo(modoFaxina);
       setFaxinaPadrao(modoFaxina === 'padrao' ? faxinaPadraoParaState(cfg.faxinaManual?.length ? cfg.faxinaManual : completaAtual.faxinaMensal, bombeirosBase) : {});
@@ -1223,179 +1077,17 @@ export function EscalaMensal() {
 
   async function handleAutoFillComEfetivo(exibirModal = false) {
     try {
-      // ── Carregar os MESMOS dados do Quadro de Efetivos ──
       const [all, gozos, vigs] = await Promise.all([
         listarAtivos(),
         listarFeriasGozo(),
         listarVigencias({ ativa: true }),
       ]);
-
-      // allItems = items de escalas aprovadas com feriasGozoId (exato como o Quadro faz)
-      const allItems: any[] = [];
-      for (const esc of [] as any[]) {
-        if (esc.status !== 'Aprovado') continue;
-        const its = await listarItensEscala(esc.id);
-        for (const i of its) {
-          if (i.mes === mes && !i.rejeitado && i.feriasGozoId) allItems.push(i);
-        }
-      }
-
-      const mesInicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
-      const mesFim = dataLocalISO(new Date(ano, mes, 0));
-
-      // ── isEmGozo (exato como o Quadro) ──
-      function isEmGozo(bId: string) {
-        return gozos.find((g: any) => {
-          if (g.funcionarioId !== bId || g.status === 'Gozadas') return false;
-          return periodosSobrepostosISO(g.dataInicio, g.dataFim, mesInicio, mesFim);
-        });
-      }
-
-      // ── temSubstituto (exato como o Quadro) ──
-      function _temSubstituto(bId: string): boolean {
-        return !!(
-          vigs.find((v: any) => v.funcionarioOriginalId === bId && v.ativa) ||
-          allItems.find((i: any) => i.funcionarioId === bId && (i.substitutoId || i.feristaId))
-        );
-      }
-
-      // ── getSubstituindo (exato como o Quadro) ──
-      function _getSubstituindo(bId: string): { id: string; cargo: string } | null {
-        // 1. allItems (escala aprovada)
-        const item = allItems.find((i: any) => i.substitutoId === bId);
-        if (item) {
-          const func = all.find((bb: any) => bb.id === item.funcionarioId);
-          if (func) return { id: bId, cargo: item.funcaoSubstituicao || func.cargo };
-        }
-        // 2. Gozo direto
-        const gozo = gozos.find((g: any) =>
-          g.substitutoId === bId && g.status !== 'Gozadas' &&
-          periodosSobrepostosISO(g.dataInicio, g.dataFim, mesInicio, mesFim)
-        );
-        if (gozo) {
-          const func = all.find((bb: any) => bb.id === gozo.funcionarioId);
-          if (func) return { id: bId, cargo: gozo.funcaoSubstituicao || func.cargo };
-        }
-        // 3. Vigência (cascata)
-        const vigV = vigs.find((v: any) =>
-          v.substitutoId === bId && v.ativa &&
-          periodosSobrepostosISO(v.dataInicio, v.dataFim, mesInicio, mesFim)
-        );
-        if (vigV) {
-          const func = all.find((bb: any) => bb.id === vigV.funcionarioOriginalId);
-          if (func) return { id: bId, cargo: vigV.cargoExercido || func.cargo };
-        }
-        return null;
-      }
-
       setBombeiros(all);
       setFeriasGozo(gozos);
       setVigenciasCache(vigs);
 
       const efetivo = montarEfetivoMensal({ bombeiros: all, feriasGozo: gozos, vigencias: vigs, equipe, mes, ano });
-      const _membrosEquipe = all.filter((b: any) => b.equipe === equipe);
-      const pool: { bombeiro: Bombeiro; cargo: string }[] = efetivo.map(entry => ({
-        bombeiro: entry.bombeiro,
-        cargo: entry.cargoExercido,
-      }));
-      const ocupados = new Set<string>();
-      let gozosEncontrados = 0;
-      let substitutosEncontrados = 0;
-      let semSubstituto: string[] = [];
-      let poolInfo: string[] = [];
-
-      for (const m of [] as any[]) {
-        if (!isEmGozo(m.id)) {
-          pool.push({ bombeiro: m, cargo: m.cargo });
-          poolInfo.push(`${m.nomeGuerra} (${m.cargo})`);
-          continue;
-        }
-        gozosEncontrados++;
-        const subVig = vigs.find((v: any) => v.funcionarioOriginalId === m.id && v.ativa);
-        if (subVig && subVig.substitutoId && !ocupados.has(subVig.substitutoId)) {
-          const sub = all.find((bb: any) => bb.id === subVig.substitutoId);
-          if (sub) {
-            pool.push({ bombeiro: sub, cargo: m.cargo });
-            ocupados.add(sub.id);
-            substitutosEncontrados++;
-            poolInfo.push(`${sub.nomeGuerra} (${m.cargo}) → substitui ${m.nomeGuerra}`);
-            continue;
-          }
-        }
-        const subItem = allItems.find((i: any) => i.funcionarioId === m.id && (i.substitutoId || i.feristaId));
-        if (subItem) {
-          const subId = subItem.substitutoId || subItem.feristaId;
-          if (subId && !ocupados.has(subId)) {
-            const sub = all.find((bb: any) => bb.id === subId);
-            if (sub) {
-              pool.push({ bombeiro: sub, cargo: subItem.funcaoSubstituicao || m.cargo });
-              ocupados.add(sub.id);
-              substitutosEncontrados++;
-              poolInfo.push(`${sub.nomeGuerra} (${subItem.funcaoSubstituicao || m.cargo}) → substitui ${m.nomeGuerra}`);
-              continue;
-            }
-          }
-        }
-        semSubstituto.push(m.nomeGuerra);
-      }
-
-      // Substitutos externos (de outras equipas)
-      for (const v of [] as any[]) {
-        if (v.equipe === equipe && !ocupados.has(v.substitutoId)) {
-          const sub = all.find((bb: any) => bb.id === v.substitutoId);
-          if (sub) {
-            pool.push({ bombeiro: sub, cargo: v.cargoExercido || sub.cargo });
-            ocupados.add(sub.id);
-          }
-        }
-      }
-
-      const usado = new Set<string>();
-      const buscar = (cargo: string) => {
-        const idx = pool.findIndex(p => p.cargo === cargo && !usado.has(p.bombeiro.id));
-        if (idx === -1) return null;
-        usado.add(pool[idx].bombeiro.id);
-        return pool[idx];
-      };
-
-      const cargoParaSlot = (slot: typeof SLOTS[0]) =>
-        slot.funcao === 'chefe' ? 'BA-CE' : slot.funcao === 'lider' ? 'BA-LR' : slot.funcao === 'ba-mc' ? 'BA-MC' : 'BA-2';
-
-      const novas = SLOTS.map(slot => {
-        const cargoSlot = cargoParaSlot(slot);
-        let encontrado = buscar(cargoSlot);
-        if (encontrado && slot.funcao !== 'ba-2') {
-          const veiculoBA = slot.veiculo === 'crs' ? 'crs' as const : 'cci' as const;
-          const validacao = validarCursoParaFuncao(encontrado.bombeiro, cargoSlot as 'BA-CE' | 'BA-LR' | 'BA-MC', slot.funcao === 'ba-mc' ? veiculoBA : undefined);
-          if (validacao?.nivel === 'bloqueado') encontrado = null;
-        }
-        if (!encontrado) return null;
-        const b = encontrado.bombeiro;
-        return {
-          id: b.id, nome: b.nome, nomeGuerra: b.nomeGuerra,
-          funcao: slot.funcao, veiculo: slot.veiculo,
-          funcaoNoVeiculo: slot.funcaoNoVeiculo, isRadioFixo: slot.isRadioFixo,
-        } as Partial<PessoaEscala>;
-      });
-
-      // ── Pós-processamento: substituir vacationers pelos substitutos ──
-      const _novasSubstituidas = novas.map(p => {
-        if (!p || !p.id) return p;
-        // Verificar se esta pessoa está de férias com substituto (vigência, gozo, item)
-        const { inicio, fim } = intervaloMes(mes, ano);
-        const gozo = gozos.find((g: any) =>
-          g.funcionarioId === p.id &&
-          g.substitutoId &&
-          g.status !== 'Gozadas' &&
-          sobrepoePeriodo(g.dataInicio, g.dataFim, inicio, fim)
-        );
-        if (gozo) {
-          const sub = all.find((bb: any) => bb.id === gozo.substitutoId);
-          if (sub) return { ...p, id: sub.id, nome: sub.nome, nomeGuerra: sub.nomeGuerra };
-        }
-        return p;
-      });
-
+      const novas = montarPessoasPorSlots(efetivo);
       setPessoas(novas);
       const mensagem = `Preenchimento: ${novas.filter(Boolean).length}/${SLOTS.length} funções com o efetivo de ${equipe}.`;
       if (exibirModal) mostrarAlerta('Preenchimento concluído', mensagem, 'success');
@@ -1532,6 +1224,9 @@ export function EscalaMensal() {
             </div>
           </div>
 
+          <p className="text-xs text-graphite-500 dark:text-graphite-400">
+            Funções de referência em {formatarDataBR(dataReferenciaMensal)}. Cada plantão respeita as datas das férias e substituições.
+          </p>
           <div className="space-y-4" data-escala-mensal-tour="mensal-guarnicoes">
             {[
               { nome: 'CRS', cor: 'border-blue-300 bg-blue-50/30 dark:border-blue-800 dark:bg-blue-900/10', indices: [2, 1, 5, 6] },
@@ -1545,44 +1240,15 @@ export function EscalaMensal() {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {veiculo.indices.map(idx => {
                     const slot = SLOTS[idx];
-                    const p = pessoas[idx];
-                    const pResolvida = substituirFerias(p, slot.cargoFiltro);
-                    const _pNomeGuerra = (() => {
-                      if (!p?.nomeGuerra) return '';
-                      // Se a pessoa no slot estiver de férias com substituto, mostra o substituto
-                      const pId = p.id;
-                      const subVig = vigenciasCache.find((v: any) => v.funcionarioOriginalId === pId && v.ativa);
-                      if (subVig && subVig.substitutoId) {
-                        const sub = bombeiros.find((bb: any) => bb.id === subVig.substitutoId);
-                        if (sub) return sub.nomeGuerra;
-                      }
-                      const gozo = feriasGozo.find((g: any) => g.funcionarioId === pId && g.substitutoId && g.status !== 'Gozadas');
-                      if (gozo) {
-                        const sub = bombeiros.find((bb: any) => bb.id === gozo.substitutoId);
-                        if (sub) return sub.nomeGuerra;
-                      }
-                      return p.nomeGuerra;
-                    })();
-                    const _pNomeGuerraEfetivo = pResolvida?.nomeGuerra || _pNomeGuerra;
-                    const selectedId = pResolvida?.id || p?.id || '';
+                    const p = pessoasResolvidas[idx];
+                    const selectedId = p?.id || '';
                     const b = selectedId ? bombeiros.find(bb => bb.id === selectedId) : null;
                     const cargoReq = slot.funcao === 'chefe' ? 'BA-CE' as const : slot.funcao === 'lider' ? 'BA-LR' as const : slot.funcao === 'ba-mc' ? 'BA-MC' as const : undefined;
                     const veiculoBA = slot.veiculo === 'crs' ? 'crs' as const : 'cci' as const;
                     const aviso = b && cargoReq ? validarCursoParaFuncao(b, cargoReq, slot.funcao === 'ba-mc' ? veiculoBA : undefined) : null;
-                    const _mesIni = `${ano}-${String(mes).padStart(2, '0')}-01`;
-                    const _mesFim = dataLocalISO(new Date(ano, mes, 0));
-                    const _emGozoIds = new Set(
-                      feriasGozo
-                        .filter(g => {
-                          if (!g.funcionarioId || g.status === 'Gozadas') return false;
-                          return periodosSobrepostosISO(g.dataInicio, g.dataFim, _mesIni, _mesFim);
-                        })
-                        .map(g => g.funcionarioId)
-                    );
-                    const selectedIds = new Set(pessoas
-                      .map((p2, i2) => i2 === idx ? null : substituirFerias(p2, SLOTS[i2]?.cargoFiltro))
-                      .filter((p2): p2 is Partial<PessoaEscala> => !!p2?.id)
-                      .map(p2 => p2.id!));
+                    const selectedIds = new Set(pessoasResolvidas
+                      .filter((p2, i2) => i2 !== idx && !!p2?.id)
+                      .map(p2 => p2!.id!));
                     return (
                       <div key={idx} className="rounded-xl border border-graphite-200/60 bg-white/70 p-3 dark:border-border-dark dark:bg-surface-card/70">
                         <p className="mb-1.5 text-xs font-medium text-graphite-500 dark:text-graphite-400">{slot.label} <span className="text-red-500">*</span></p>

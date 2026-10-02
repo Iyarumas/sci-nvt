@@ -68,6 +68,8 @@ const {
   filtrarAfastamentosQuadroEfetivosPorMes,
   filtrarQuadroEfetivosPorMes,
   resolverPosicoesQuadroEfetivos,
+  montarMembrosEscalaMensalPlantao,
+  resolverPessoaNoPlantaoOperacional,
   montarEfetivoOperacional,
   montarTrocasServicoDoDia,
 } = efetivoOperacional;
@@ -1049,6 +1051,184 @@ for (const categoria of ['D', 'E', 'AD', 'AE']) {
 for (const categoria of ['A', 'B', 'C', 'AB', 'AC']) {
   assert.equal(cursos.temCategoriaD(categoria), false, `${categoria} nao deve ser aceita como D/E`);
 }
+
+// Uma mensal antiga não prolonga os cargos da corrente depois do retorno das férias.
+const gozoCorrenteMensal = gozo(ce, {
+  id: 'gozo-corrente-mensal',
+  dataInicio: '2026-09-02',
+  dataFim: '2026-10-01',
+  status: 'Gozadas',
+  substitutoId: lr.id,
+  substitutoNome: lr.nomeCompleto,
+  funcaoSubstituicao: 'BA-CE',
+});
+const vigenciasCorrenteMensal = [
+  [ce, lr, 'BA-CE'],
+  [lr, mc, 'BA-LR'],
+  [mc, ferista, 'BA-MC'],
+].map(([original, substituto, cargoExercido], index) => ({
+  id: `vigencia-corrente-mensal-${index}`,
+  substitutoId: substituto.id,
+  substitutoNome: substituto.nomeCompleto,
+  cargoOriginalSubstituto: substituto.cargo,
+  cargoExercido,
+  funcionarioOriginalId: original.id,
+  funcionarioOriginalNome: original.nomeCompleto,
+  cargoOriginalFuncionario: original.cargo,
+  equipe: 'Alfa',
+  dataInicio: gozoCorrenteMensal.dataInicio,
+  dataFim: gozoCorrenteMensal.dataFim,
+  nivelCascata: index + 1,
+  motivo: index === 0 ? 'ferias' : 'cascata',
+  feriasId: gozoCorrenteMensal.id,
+  ativa: true,
+  createdAt: '',
+}));
+const veiculosCorrenteMensal = {
+  cciF2: { baCe: lr.nomeGuerra, baMc: ferista.nomeGuerra, ba2: ba2.nomeGuerra },
+  cciF3: { baMc: '-', ba2_1: '-', ba2_2: '-' },
+  crs: { baMc: '-', baLr: mc.nomeGuerra, ba2_1: '-', ba2_2: '-' },
+};
+const mensalComCorrenteLegada = {
+  config: {
+    id: 'mensal-corrente-legada', equipe: 'Alfa', mes: 10, ano: 2026,
+    paridade: 'par', createdAt: '', updatedAt: '',
+    pessoas: [
+      { id: lr.id, nome: lr.nomeCompleto, nomeGuerra: lr.nomeGuerra, funcao: 'chefe', veiculo: 'cciF2', funcaoNoVeiculo: 'BaCe', isRadioFixo: false },
+      { id: mc.id, nome: mc.nomeCompleto, nomeGuerra: mc.nomeGuerra, funcao: 'lider', veiculo: 'crs', funcaoNoVeiculo: 'BaLr', isRadioFixo: false },
+      { id: ferista.id, nome: ferista.nomeCompleto, nomeGuerra: ferista.nomeGuerra, funcao: 'ba-mc', veiculo: 'cciF2', funcaoNoVeiculo: 'BaMc', isRadioFixo: false },
+    ],
+  },
+  paradas: [1, 2, 3].map(dia => ({
+    dia, data: `2026-10-0${dia}`, veiculos: veiculosCorrenteMensal, radio: [],
+  })),
+  faxinaMensal: [], responsabilidades: [],
+};
+const contextoCorrenteMensal = {
+  bombeiros,
+  feriasGozo: [gozoCorrenteMensal],
+  vigencias: vigenciasCorrenteMensal,
+  trocaFills: [],
+  escalasCompletas: [mensalComCorrenteLegada],
+  equipe: 'Alfa',
+};
+const cargosDoEfetivo = efetivo => Object.fromEntries(efetivo.map(entry => [entry.bombeiro.id, entry.cargoExercido]));
+const contextoCorrenteAindaNaoIniciada = {
+  ...contextoCorrenteMensal,
+  feriasGozo: [{ ...gozoCorrenteMensal, dataInicio: '2026-10-02', dataFim: '2026-10-03' }],
+  vigencias: vigenciasCorrenteMensal.map(v => ({ ...v, dataInicio: '2026-10-02', dataFim: '2026-10-03' })),
+};
+assert.deepEqual(cargosDoEfetivo(montarEfetivoOperacional({
+  ...contextoCorrenteAindaNaoIniciada, dataPlantao: '2026-10-01',
+})), {
+  [ce.id]: 'BA-CE', [lr.id]: 'BA-LR', [mc.id]: 'BA-MC', [ba2.id]: 'BA-2',
+}, 'O cargo temporário não começa antes do início da vigência');
+assert.deepEqual(cargosDoEfetivo(montarEfetivoOperacional({
+  ...contextoCorrenteAindaNaoIniciada, dataPlantao: '2026-10-02',
+})), {
+  [lr.id]: 'BA-CE', [mc.id]: 'BA-LR', [ferista.id]: 'BA-MC', [ba2.id]: 'BA-2',
+}, 'O primeiro dia das férias já aplica todos os cargos da corrente');
+assert.deepEqual(cargosDoEfetivo(montarEfetivoOperacional({
+  ...contextoCorrenteMensal, dataPlantao: '2026-10-01',
+})), {
+  [lr.id]: 'BA-CE', [mc.id]: 'BA-LR', [ferista.id]: 'BA-MC', [ba2.id]: 'BA-2',
+}, 'O último dia das férias preserva a corrente, mesmo com status atual Gozadas');
+const efetivoDepoisDaCorrente = montarEfetivoOperacional({
+  ...contextoCorrenteMensal, dataPlantao: '2026-10-02',
+});
+assert.deepEqual(cargosDoEfetivo(efetivoDepoisDaCorrente), {
+  [ce.id]: 'BA-CE', [lr.id]: 'BA-LR', [mc.id]: 'BA-MC', [ba2.id]: 'BA-2',
+}, 'Após o retorno, titulares e substitutos da equipe recuperam seus cargos e o Ferista sai');
+assert.equal(efetivoDepoisDaCorrente.filter(entry => entry.cargoExercido === 'BA-CE').length, 1);
+assert.equal(efetivoDepoisDaCorrente.filter(entry => entry.cargoExercido === 'BA-LR').length, 1);
+assert.deepEqual(cargosDoEfetivo(montarEfetivoOperacional({
+  ...contextoCorrenteMensal,
+  feriasGozo: [{ ...gozoCorrenteMensal, dataFim: '2026-09-30' }],
+  vigencias: vigenciasCorrenteMensal.map(v => ({ ...v, dataFim: '2026-09-30' })),
+  dataPlantao: '2026-10-01',
+})), {
+  [ce.id]: 'BA-CE', [lr.id]: 'BA-LR', [mc.id]: 'BA-MC', [ba2.id]: 'BA-2',
+}, 'A mensal clonada no mês seguinte não prolonga uma corrente encerrada em setembro');
+assert.deepEqual(resolverPessoaNoPlantaoOperacional({
+  ...contextoCorrenteMensal, pessoa: lr, dataPlantao: '2026-10-02',
+}), { pertence: true, cargoExercido: 'BA-LR' });
+assert.deepEqual(resolverPessoaNoPlantaoOperacional({
+  ...contextoCorrenteMensal, pessoa: ferista, dataPlantao: '2026-10-02',
+}), { pertence: false });
+assert.deepEqual(resolverPessoaNoPlantaoOperacional({
+  ...contextoCorrenteMensal, pessoa: ferista, dataPlantao: '2026-10-01',
+}), { pertence: true, cargoExercido: 'BA-MC' });
+assert.deepEqual(cargosDoEfetivo(montarEfetivoOperacional({
+  ...contextoCorrenteMensal,
+  vigencias: [],
+  dataPlantao: '2026-10-02',
+  escalasCompletas: [{
+    ...mensalComCorrenteLegada,
+    config: { ...mensalComCorrenteLegada.config, pessoas: [mensalComCorrenteLegada.config.pessoas[0]] },
+    paradas: [],
+  }],
+})), {
+  [ce.id]: 'BA-CE', [lr.id]: 'BA-LR', [mc.id]: 'BA-MC', [ba2.id]: 'BA-2',
+}, 'Sem vigências, o histórico de férias também impede prolongar o cargo temporário');
+assert.deepEqual(cargosDoEfetivo(montarEfetivoOperacional({
+  ...contextoCorrenteMensal,
+  vigencias: [],
+  escalasCompletas: [],
+  dataPlantao: '2026-10-01',
+})), {
+  [lr.id]: 'BA-CE', [mc.id]: 'BA-MC', [ba2.id]: 'BA-2',
+}, 'Férias Gozadas continuam retirando o titular no seu último plantão histórico');
+
+const mensalComRetornoPorPlantao = {
+  ...mensalComCorrenteLegada,
+  paradas: [{
+    dia: 2, data: '2026-10-02', radio: [],
+    veiculos: {
+      ...veiculosCorrenteMensal,
+      cciF2: { ...veiculosCorrenteMensal.cciF2, baCe: ce.nomeGuerra, baMc: mc.nomeGuerra },
+      crs: { ...veiculosCorrenteMensal.crs, baLr: lr.nomeGuerra },
+    },
+  }],
+};
+const membrosDaParadaCorrigida = montarMembrosEscalaMensalPlantao({
+  bombeiros, escalasCompletas: [mensalComRetornoPorPlantao], equipe: 'Alfa', dataPlantao: '2026-10-02',
+});
+assert.deepEqual(cargosDoEfetivo(membrosDaParadaCorrigida), {
+  [ce.id]: 'BA-CE', [mc.id]: 'BA-MC', [ba2.id]: 'BA-2', [lr.id]: 'BA-LR',
+}, 'A guarnição da parada prevalece sobre o config do mês e não reintroduz o Ferista');
+assert.deepEqual(montarMembrosEscalaMensalPlantao({
+  bombeiros,
+  escalasCompletas: [{
+    ...mensalComRetornoPorPlantao,
+    paradas: [{
+      dia: 2, data: '2026-10-02', radio: [],
+      veiculos: {
+        cciF2: { baCe: '-', baMc: '-', ba2: '-' },
+        cciF3: { baMc: '-', ba2_1: '-', ba2_2: '-' },
+        crs: { baMc: '-', baLr: '-', ba2_1: '-', ba2_2: '-' },
+      },
+    }],
+  }],
+  equipe: 'Alfa', dataPlantao: '2026-10-02',
+}), [], 'Uma guarnição vazia explícita não recupera pessoas do config de outro período');
+assert.equal(montarMembrosEscalaMensalPlantao({
+  bombeiros,
+  escalasCompletas: [{ ...mensalComCorrenteLegada, paradas: [] }],
+  equipe: 'Alfa', dataPlantao: '2026-10-02',
+}).length, 3, 'Uma mensal legada sem parada usa seu config como fallback');
+const feristaMensalSemHistorico = montarMembrosEscalaMensalPlantao({
+  ...contextoCorrenteMensal,
+  vigencias: [], feriasGozo: [],
+  dataPlantao: '2026-10-02',
+});
+assert.equal(feristaMensalSemHistorico.some(entry => entry.bombeiro.id === ferista.id), true,
+  'Um Ferista manual sem evidência de cobertura mantém sua designação');
+assert.equal(montarMembrosEscalaMensalPlantao({
+  ...contextoCorrenteMensal,
+  vigencias: vigenciasCorrenteMensal.map(v => ({ ...v, dataInicio: '2026-08-01', dataFim: '2026-08-30' })),
+  feriasGozo: [], dataPlantao: '2026-10-02',
+}).some(entry => entry.bombeiro.id === ferista.id), false,
+'Uma cobertura encerrada não mantém o substituto externo em uma mensal posterior');
 
 // O quadro mensal pertence ao mes de inicio das ferias, inclusive suas coberturas.
 const feriasQuadroSetembro = gozo(mc, {

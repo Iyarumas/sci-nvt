@@ -293,7 +293,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   ├── src/
 │   │   ├── App.tsx         # Provider hierarchy (Auth → Theme → Sidebar → Router)
 │   │   ├── main.tsx        # Entry point
-│   │   ├── components/     # chat, documentos, layout, ui (inclui AnimatedPageTour/PageTour, DailyOperationsTutorial e ChefeVencimentosAlert)
+│   │   ├── components/     # chat, documentos, layout, ui (inclui AnimatedPageTour/PageTour, DailyOperationsTutorial, ChefeVencimentosAlert e CardCarousel)
 │   │   ├── context/        # Auth, GlobalAlert, Theme, Sidebar
 │   │   ├── data/           # Dados estáticos
 │   │   ├── hooks/          # Hooks compartilhados
@@ -362,6 +362,10 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 // Card de item na lista
 <div className="rounded-xl border border-graphite-200 bg-white p-3 dark:border-border-dark dark:bg-surface-hover">
 ```
+
+### Carrossel em Cards
+
+`src/components/ui/CardCarousel.tsx` recebe `pages`, `ariaLabel` e `resetKey`. O componente usa páginas horizontais com pontos clicáveis, arraste com mouse, toque e navegação por teclado (setas, Home/End). Páginas inativas ficam fora da interação e da leitura assistiva. Trocar `resetKey` volta à primeira página; o consumidor define quantos itens há em cada página.
 
 ### Estilos de Input
 ```tsx
@@ -494,7 +498,8 @@ Referência: **21/07/2026** = Alfa + Bravo
 
 **Quadro de Efetivos (Férias)**: férias e suas correntes pertencem ao mês/ano de início do gozo; terminar no início do mês seguinte não as inclui no quadro desse mês. Afastamentos e substituições temporárias continuam aparecendo por sobreposição de vigência. Esse recorte é exclusivo do quadro mensal; Escala Diária, LRO e permissões continuam respeitando as datas reais.
 O quadro conta pessoas por ID e omite a vaga nominal de quem já aparece cobrindo outra vaga da mesma equipe. Vagas com cobertura própria são preservadas para manter a corrente completa (A → B → C), sem repetir o último substituto na própria posição.
-O quadro consulta também os afastamentos aprovados que cruzam o mês selecionado, mesmo sem substituto ou vigência. Um card próprio "Afastados", após o card de Feristas no grid, reúne essas pessoas em seções por equipe, inclusive quando há cobertura. Cada pessoa exibe motivo, início original (preservado nas trocas contínuas de INSS), retorno previsto no dia seguinte ao término e tempo afastado até hoje, limitado ao término nos períodos encerrados; períodos futuros aparecem como ainda não iniciados e INSS indeterminado tem retorno "Sem previsão". A pessoa afastada não entra na contagem de efetivos; seu substituto válido ocupa a vaga. Solicitações pendentes/rejeitadas e afastamentos encerrados antes do mês não retiram pessoas do quadro.
+O quadro consulta também os afastamentos aprovados que cruzam o mês selecionado, mesmo sem substituto ou vigência. Um card próprio "Afastados", após o card de Feristas no grid, reúne essas pessoas em seções por equipe, inclusive quando há cobertura. O card mostra no máximo duas pessoas por página, com carrossel por arraste/toque e um ponto clicável por página; a navegação volta ao início ao trocar mês/ano ou as pessoas exibidas. Cada pessoa exibe motivo, início original (preservado nas trocas contínuas de INSS), retorno previsto no dia seguinte ao término e tempo afastado até hoje, limitado ao término nos períodos encerrados; períodos futuros aparecem como ainda não iniciados e INSS indeterminado tem retorno "Sem previsão". A pessoa afastada não entra na contagem de efetivos; seu substituto válido ocupa a vaga. Solicitações pendentes/rejeitadas e afastamentos encerrados antes do mês não retiram pessoas do quadro.
+O card "Férias do mês", após "Afastados", reúne por equipe as pessoas com férias que começam no mês selecionado, com início, retorno previsto, duração e status (Programadas, Em gozo ou Gozadas). Inclui quem tem cobertura, preserva os períodos históricos desse mês e conta cada pessoa uma vez.
 
 ### Permissões por Cargo/Equipa Efetivos
 

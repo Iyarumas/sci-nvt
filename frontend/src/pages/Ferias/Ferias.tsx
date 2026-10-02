@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CalendarDays, Plus, Search, Pencil, Trash2, X, Save, User,
   Calendar, Clock, ChevronDown, ChevronRight, Users, AlertTriangle,
@@ -9,11 +9,13 @@ import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { AlertModal } from '../../components/ui/AlertModal';
 import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
+import CardCarousel from '../../components/ui/CardCarousel';
 import { useAuth } from '../../context/AuthContext';
 import { listarAtivos, obterBombeiro } from '../../services/bombeiroService';
 import {
   calcularPeriodosAquisitivos, MESES, ABBR_CARGO,
   STATUS_ESCALA_COLORS,
+  STATUS_GOZO_COLORS,
   isSubstitutoObrigatorio,
   getCargosPermitidosSubstituto,
   getCargosPermitidosParaVaga,
@@ -3111,6 +3113,14 @@ function TabQuadroEfetivos() {
   const afastadosPorEquipe = [...equipes, 'Embaixador' as Equipe]
     .map(equipe => ({ equipe, pessoas: afastadosDoMes.filter(b => b.equipe === equipe) }))
     .filter(grupo => grupo.pessoas.length > 0);
+  const afastadosOrdenados = afastadosPorEquipe.flatMap(grupo => grupo.pessoas);
+  const paginasAfastados = Array.from({ length: Math.ceil(afastadosOrdenados.length / 2) }, (_, pagina) =>
+    afastadosOrdenados.slice(pagina * 2, pagina * 2 + 2));
+  const pessoasFeriasDoMes = sortPorHierarquia(bombeiros.filter(b =>
+    feriasGozo.some(gozo => gozo.funcionarioId === b.id)));
+  const feriasPorEquipe = [...equipes, 'Embaixador' as Equipe]
+    .map(equipe => ({ equipe, pessoas: pessoasFeriasDoMes.filter(b => b.equipe === equipe) }))
+    .filter(grupo => grupo.pessoas.length > 0);
 
   if (loading) {
     return (
@@ -3470,7 +3480,7 @@ function TabQuadroEfetivos() {
             </div>
           );
         })}
-        <div className="min-w-0 rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
+        <div className="min-w-0 self-start rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
           <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3 dark:border-border-dark">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400">
@@ -3485,47 +3495,123 @@ function TabQuadroEfetivos() {
           <div className="space-y-4 p-3">
             {afastadosDoMes.length === 0 ? (
               <p className="py-4 text-center text-xs text-graphite-400 dark:text-graphite-500">Nenhum afastado neste mês</p>
-            ) : afastadosPorEquipe.map(({ equipe, pessoas }) => (
-              <section key={equipe} className="space-y-1.5" aria-label={`Afastados da equipe ${equipe}`}>
+            ) : (
+              <CardCarousel
+                ariaLabel="Afastados do mês"
+                resetKey={`${ano}-${mesSelecionado}-${afastadosOrdenados.map(b => b.id).join(',')}`}
+                pages={paginasAfastados.map(pessoasNaPagina => (
+                  <div className="space-y-4">
+                    {afastadosPorEquipe.map(grupo => ({
+                      equipe: grupo.equipe, total: grupo.pessoas.length,
+                      pessoas: pessoasNaPagina.filter(b => b.equipe === grupo.equipe),
+                    })).filter(grupo => grupo.pessoas.length > 0).map(({ equipe, pessoas, total }) => (
+                      <section key={equipe} className="space-y-1.5" aria-label={`Afastados da equipe ${equipe}`}>
+                        <div className="flex items-center gap-2 px-1">
+                          {EQUIPE_LOGOS[equipe] && <img src={EQUIPE_LOGOS[equipe]} alt="" className="h-6 w-6 rounded-md object-cover" />}
+                          <h5 className="flex-1 text-xs font-bold text-graphite-700 dark:text-graphite-200">Equipe {equipe}</h5>
+                          <span className="text-[10px] font-semibold text-red-600 dark:text-red-400">
+                            {total} afastado(s)
+                          </span>
+                        </div>
+                        {pessoas.map(m => (
+                          <div key={m.id} className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50/50 px-3 py-2 dark:border-red-800/30 dark:bg-red-900/10">
+                            <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="red" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-bold text-graphite-700 dark:text-graphite-300">
+                                {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
+                              </p>
+                              {gruposAfastamento.filter(grupo => grupo.atual.funcionarioId === m.id).map(grupo => {
+                                const tempo = calcularTempoAfastamento(grupo.dataInicio, grupo.dataFim);
+                                const diasLabel = (dias: number) => `${dias} ${dias === 1 ? 'dia' : 'dias'}`;
+                                const previstoLabel = tempo.diasPrevistos !== null
+                                  ? `${diasLabel(tempo.diasPrevistos)} ${tempo.diasPrevistos === 1 ? 'previsto' : 'previstos'}` : '';
+                                const tempoLabel = !tempo.iniciado
+                                  ? `Ainda não iniciado${previstoLabel ? ` · ${previstoLabel}` : ''}`
+                                  : tempo.diasPrevistos !== null && !tempo.encerrado
+                                    ? `${diasLabel(tempo.diasDecorridos)} de ${previstoLabel}`
+                                    : `${diasLabel(tempo.diasDecorridos)}${tempo.encerrado ? ' no total' : ' até hoje'}`;
+                                const motivo = grupo.atual.motivo === 'INSS Indeterminado' ? 'INSS/Indeterminado'
+                                  : grupo.atual.motivo === 'Outro' ? grupo.atual.motivoOutro || 'Outro' : grupo.atual.motivo;
+                                return (
+                                  <div key={grupo.id} className="mt-1 space-y-1 border-t border-red-200/60 pt-1 first:border-t-0 first:pt-0 dark:border-red-800/30">
+                                    <p className="break-words text-[10px] font-medium text-red-600 dark:text-red-400">{motivo}</p>
+                                    <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
+                                      <div>
+                                        <dt className="text-graphite-500 dark:text-graphite-400">Início</dt>
+                                        <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(grupo.dataInicio)}</dd>
+                                      </div>
+                                      <div>
+                                        <dt className="text-graphite-500 dark:text-graphite-400">Retorno previsto</dt>
+                                        <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{tempo.dataRetorno ? fmt(tempo.dataRetorno) : 'Sem previsão'}</dd>
+                                      </div>
+                                      <div className="col-span-2">
+                                        <dt className="text-graphite-500 dark:text-graphite-400">Tempo afastado</dt>
+                                        <dd className="break-words font-semibold text-graphite-700 dark:text-graphite-300">{tempoLabel}</dd>
+                                      </div>
+                                    </dl>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </section>
+                    ))}
+                  </div>
+                ))}
+              />
+            )}
+          </div>
+        </div>
+        <div className="min-w-0 self-start rounded-2xl border border-graphite-200 bg-white shadow-sm dark:border-border-dark dark:bg-surface-card">
+          <div className="flex items-center justify-between border-b border-graphite-200 px-4 py-3 dark:border-border-dark">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
+                <CalendarDays className="h-4 w-4" />
+              </div>
+              <h4 className="text-sm font-bold text-graphite-900 dark:text-graphite-100">Férias do mês</h4>
+            </div>
+            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
+              {pessoasFeriasDoMes.length} pessoa(s)
+            </span>
+          </div>
+          <div className="space-y-4 p-3">
+            {pessoasFeriasDoMes.length === 0 ? (
+              <p className="py-4 text-center text-xs text-graphite-400 dark:text-graphite-500">Nenhuma pessoa com férias neste mês</p>
+            ) : feriasPorEquipe.map(({ equipe, pessoas }) => (
+              <section key={equipe} className="space-y-1.5" aria-label={`Férias da equipe ${equipe}`}>
                 <div className="flex items-center gap-2 px-1">
                   {EQUIPE_LOGOS[equipe] && <img src={EQUIPE_LOGOS[equipe]} alt="" className="h-6 w-6 rounded-md object-cover" />}
                   <h5 className="flex-1 text-xs font-bold text-graphite-700 dark:text-graphite-200">Equipe {equipe}</h5>
-                  <span className="text-[10px] font-semibold text-red-600 dark:text-red-400">{pessoas.length} afastado(s)</span>
+                  <span className="text-[10px] font-semibold text-yellow-700 dark:text-yellow-400">{pessoas.length} pessoa(s)</span>
                 </div>
                 {pessoas.map(m => (
-                  <div key={m.id} className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50/50 px-3 py-2 dark:border-red-800/30 dark:bg-red-900/10">
-                    <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="red" />
+                  <div key={m.id} className="flex items-start gap-2.5 rounded-xl border border-yellow-200 bg-yellow-50/50 px-3 py-2 dark:border-yellow-800/30 dark:bg-yellow-900/10">
+                    <AvatarPessoaFerias pessoa={m} fallback={m.nomeGuerra} tone="yellow" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-bold text-graphite-700 dark:text-graphite-300">
                         {ABBR_CARGO[m.cargo] || m.cargo} {m.nomeGuerra}
                       </p>
-                      {gruposAfastamento.filter(grupo => grupo.atual.funcionarioId === m.id).map(grupo => {
-                        const tempo = calcularTempoAfastamento(grupo.dataInicio, grupo.dataFim);
-                        const diasLabel = (dias: number) => `${dias} ${dias === 1 ? 'dia' : 'dias'}`;
-                        const previstoLabel = tempo.diasPrevistos !== null
-                          ? `${diasLabel(tempo.diasPrevistos)} ${tempo.diasPrevistos === 1 ? 'previsto' : 'previstos'}` : '';
-                        const tempoLabel = !tempo.iniciado
-                          ? `Ainda não iniciado${previstoLabel ? ` · ${previstoLabel}` : ''}`
-                          : tempo.diasPrevistos !== null && !tempo.encerrado
-                            ? `${diasLabel(tempo.diasDecorridos)} de ${previstoLabel}`
-                            : `${diasLabel(tempo.diasDecorridos)}${tempo.encerrado ? ' no total' : ' até hoje'}`;
-                        const motivo = grupo.atual.motivo === 'INSS Indeterminado' ? 'INSS/Indeterminado'
-                          : grupo.atual.motivo === 'Outro' ? grupo.atual.motivoOutro || 'Outro' : grupo.atual.motivo;
+                      {feriasGozo.filter(gozo => gozo.funcionarioId === m.id).map(gozo => {
+                        const tempo = calcularTempoAfastamento(gozo.dataInicio, gozo.dataFim);
+                        const dias = tempo.diasPrevistos ?? gozo.dias;
                         return (
-                          <div key={grupo.id} className="mt-1 space-y-1 border-t border-red-200/60 pt-1 first:border-t-0 first:pt-0 dark:border-red-800/30">
-                            <p className="break-words text-[10px] font-medium text-red-600 dark:text-red-400">{motivo}</p>
+                          <div key={gozo.id} className="mt-1 space-y-1 border-t border-yellow-200/60 pt-1 dark:border-yellow-800/30">
+                            <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_GOZO_COLORS[gozo.status]}`}>
+                              {gozo.status === 'Em Gozo' ? 'Em gozo' : gozo.status}
+                            </span>
                             <dl className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
                               <div>
                                 <dt className="text-graphite-500 dark:text-graphite-400">Início</dt>
-                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(grupo.dataInicio)}</dd>
+                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(gozo.dataInicio)}</dd>
                               </div>
                               <div>
                                 <dt className="text-graphite-500 dark:text-graphite-400">Retorno previsto</dt>
-                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{tempo.dataRetorno ? fmt(tempo.dataRetorno) : 'Sem previsão'}</dd>
+                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{fmt(tempo.dataRetorno)}</dd>
                               </div>
                               <div className="col-span-2">
-                                <dt className="text-graphite-500 dark:text-graphite-400">Tempo afastado</dt>
-                                <dd className="break-words font-semibold text-graphite-700 dark:text-graphite-300">{tempoLabel}</dd>
+                                <dt className="text-graphite-500 dark:text-graphite-400">Duração das férias</dt>
+                                <dd className="font-semibold text-graphite-700 dark:text-graphite-300">{dias} {dias === 1 ? 'dia' : 'dias'}</dd>
                               </div>
                             </dl>
                           </div>

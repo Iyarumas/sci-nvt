@@ -371,6 +371,8 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 
 A Escala Mensal reserva 84px para a coluna de horários, sem alterar a largura total da tabela, fontes ou alturas das linhas. Na exportação PNG, as células mantêm `overflow: hidden` mesmo quando a captura libera o overflow dos demais elementos, evitando sobreposição entre horários e nomes.
 
+O PNG sempre usa as cores do tema claro, inclusive nos títulos, guarnições, faxina, responsabilidades, bordas e avisos. A captura remove temporariamente as classes `dark:` apenas da área do documento e restaura seus atributos ao terminar, inclusive em caso de erro; o tema escolhido pelo usuário é preservado.
+
 ### Estilos de Input
 ```tsx
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';

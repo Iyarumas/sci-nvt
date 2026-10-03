@@ -389,10 +389,13 @@ function ajustarListaIds(ids: string[], quantidade: number, idsValidos: Set<stri
 
 function prepararCapturaPng(el: HTMLElement): { width: number; height: number; restore: () => void } {
   const elements = [el, ...Array.from(el.querySelectorAll<HTMLElement>('*'))];
-  const previousStyles = elements.map(node => [node, node.getAttribute('style')] as const);
+  const previousAttributes = elements.map(node => [node, node.getAttribute('style'), node.getAttribute('class')] as const);
   el.classList.add('png-exporting');
 
   for (const node of elements) {
+    // O documento salvo usa a paleta clara, independentemente do tema da tela.
+    const darkClasses = Array.from(node.classList).filter(className => className.startsWith('dark:'));
+    node.classList.remove(...darkClasses);
     node.style.overflow = 'visible';
     node.style.overflowX = 'visible';
     node.style.overflowY = 'visible';
@@ -408,10 +411,11 @@ function prepararCapturaPng(el: HTMLElement): { width: number; height: number; r
     width,
     height,
     restore: () => {
-      el.classList.remove('png-exporting');
-      for (const [node, style] of previousStyles) {
+      for (const [node, style, className] of previousAttributes) {
         if (style === null) node.removeAttribute('style');
         else node.setAttribute('style', style);
+        if (className === null) node.removeAttribute('class');
+        else node.setAttribute('class', className);
       }
     },
   };
@@ -1773,20 +1777,20 @@ export function EscalaMensal() {
             .linha-radio-escura > td {
               background-color: #e8ebf0 !important;
             }
-            .dark #print-area .escala-radio-mensal th,
-            .dark #print-area .escala-radio-mensal td {
+            .dark #print-area:where(:not(.png-exporting)) .escala-radio-mensal th,
+            .dark #print-area:where(:not(.png-exporting)) .escala-radio-mensal td {
               border-bottom-color: #334155;
               color: #f8fafc !important;
             }
-            .dark #print-area .escala-radio-mensal thead th {
+            .dark #print-area:where(:not(.png-exporting)) .escala-radio-mensal thead th {
               color: #cbd5e1 !important;
             }
-            .dark #print-area .linha-radio-clara,
-            .dark #print-area .linha-radio-clara > td {
+            .dark #print-area:where(:not(.png-exporting)) .linha-radio-clara,
+            .dark #print-area:where(:not(.png-exporting)) .linha-radio-clara > td {
               background-color: #111827 !important;
             }
-            .dark #print-area .linha-radio-escura,
-            .dark #print-area .linha-radio-escura > td {
+            .dark #print-area:where(:not(.png-exporting)) .linha-radio-escura,
+            .dark #print-area:where(:not(.png-exporting)) .linha-radio-escura > td {
               background-color: #1f2937 !important;
             }
             @media print {

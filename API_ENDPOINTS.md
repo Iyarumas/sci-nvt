@@ -845,6 +845,8 @@ GET com filtro `ativa=true`. ✅ OK
 **Ficheiro:** `src/services/ptrbaCompletoService.ts`
 **Tipo:** `src/types/ptrbaCompleto.ts` — `PTRBACompleto`
 
+**PTR-BA EXTRA:** `isExtra: boolean` no TypeScript corresponde a `is_extra BOOLEAN NOT NULL DEFAULT false` no PostgreSQL, adicionada pela migration `backend/database/migrations/067_ptrba_completo_extra.sql`. Registros anteriores permanecem regulares; a leitura assume `false` quando o campo não existe no payload legado. As operações continuam passando pelo adapter HTTP e pelos endpoints NestJS `/data/ptrba_completo_registros/query`, `/insert`, `/update` e `/delete`, sem chamadas diretas ao Supabase.
+
 ---
 
 ### listarPTRBACompletos
@@ -866,6 +868,7 @@ GET com filtro `ativa=true`. ✅ OK
   "updatedAt": "string (ISO datetime)",
   "data": "string (ISO date)",
   "equipe": "Alfa | Bravo | Charlie | Delta",
+  "isExtra": false,
   "identificacaoAeroporto": "string",
   "observacoes": "string",
   "chefeEquipe": "string",
@@ -879,7 +882,10 @@ GET com filtro `ativa=true`. ✅ OK
 **Método:** GET / POST / PATCH / DELETE
 **REST equivalência:** `.../ptrba_completo_registros`
 **Estado:** ✅ OK
+**Request Body:** criação recebe `PTRBACompletoInput`, incluindo `isExtra`; atualização recebe `Partial<PTRBACompletoInput>`. O service envia `is_extra` somente quando `isExtra` está definido, preservando o valor nas atualizações parciais que omitem o campo. `true` e `false` são gravados explicitamente quando informados.
 **Regras:** a tela aparece para o usuário como `PTR-BA` e permite visualização geral, mas criação/edição/exclusão apenas para quem pode gerenciar o registro diário conforme permissão operacional. Relatórios e estatísticas de PTR-BA usam esta tabela como fonte atual; o módulo antigo `ptrb_registros` fica separado como `PTR-BA por Instrução`. O registro pode ser aberto na própria lista para conferência, e as ações de `Ver documento`, `Download PDF`, edição e exclusão aparecem conforme a permissão do usuário. O download usa `ptrbaCompletoPdfService.ts` e gera PDF client-side com o layout do modelo PTR-BA.
+
+**Nome do PDF:** usa a data e a equipe do registro: `DD-MM-AAAA NVT PTRBA EXTRA EQUIPE.pdf` quando `isExtra` é `true`, ou o nome regular `DD-MM-AAAA NVT PTRBA EQUIPE.pdf` quando é `false`.
 
 ---
 

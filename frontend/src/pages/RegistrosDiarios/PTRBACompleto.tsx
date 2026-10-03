@@ -268,6 +268,7 @@ function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' |
   return {
     data: hojeLocalISO(),
     equipe,
+    isExtra: false,
     identificacaoAeroporto: getUltimoAeroporto(),
     observacoes: '',
     chefeEquipe: '',
@@ -349,6 +350,7 @@ function PTRBACompletoForm({
       setForm({
         data: registro.data,
         equipe: registro.equipe,
+        isExtra: registro.isExtra ?? false,
         identificacaoAeroporto: registro.identificacaoAeroporto,
         observacoes: registro.observacoes,
         chefeEquipe: registro.chefeEquipe,
@@ -644,6 +646,20 @@ function PTRBACompletoForm({
             <input value={form.chefeEquipe} onChange={e => setForm(f => ({ ...f, chefeEquipe: e.target.value }))} className={input} placeholder="Nome do chefe" />
           </div>
         </div>
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-graphite-200/60 bg-graphite-50/50 p-3 dark:border-border-dark dark:bg-surface-hover/50">
+          <input
+            type="checkbox"
+            checked={form.isExtra}
+            onChange={event => setForm(f => ({ ...f, isExtra: event.target.checked }))}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-graphite-300 accent-aviation-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aviation-500"
+            aria-labelledby="ptrba-extra-label"
+            aria-describedby="ptrba-extra-descricao"
+          />
+          <span>
+            <span id="ptrba-extra-label" className="block text-sm font-semibold text-graphite-900 dark:text-graphite-100">PTR-BA EXTRA</span>
+            <span id="ptrba-extra-descricao" className="mt-1 block text-xs text-graphite-500 dark:text-graphite-400">Marque para incluir EXTRA no nome do PDF.</span>
+          </span>
+        </label>
       </div>
 
       <div className={card}>
@@ -809,7 +825,7 @@ function PTRBACompletoCard({
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h3 className="text-base font-bold text-graphite-900 dark:text-graphite-100">
-              PTR-BA - {registro.equipe} - {formatDate(registro.data)}
+              {registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - {registro.equipe} - {formatDate(registro.data)}
             </h3>
             <span className="rounded-full bg-aviation-50 px-2.5 py-1 text-xs font-semibold text-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               {evidenciasPreenchidas.length} evidência(s)
@@ -1226,7 +1242,7 @@ export function PTRBACompletoPage() {
       setPreviewingId(registro.id);
       const blob = await gerarPTRBACompletoPdf(registro);
       setPreviewPdfData(await blob.arrayBuffer());
-      setPreviewPdfTitle(`PTR-BA - ${registro.equipe} - ${formatDate(registro.data)}`);
+      setPreviewPdfTitle(`${registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - ${registro.equipe} - ${formatDate(registro.data)}`);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao visualizar PDF.');
     } finally {

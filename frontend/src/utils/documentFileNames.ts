@@ -3,6 +3,7 @@ import { formatarDataArquivo, normalizarDataISO } from './datas';
 export type TipoDocumentoOperacional =
   | 'LRO'
   | 'PTRBA'
+  | 'PTRBA EXTRA'
   | 'TAF'
   | 'TP EPR'
   | 'EXERCICIO DE POSICIONAMENTO'

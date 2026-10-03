@@ -193,7 +193,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | Rota | Tela | Descrição |
 |------|------|-----------|
 | `/registros-diarios/ptr-ba` | PTR-BA por Instrução | Registro de PTR-BA por assunto ministrado |
-| `/registros-diarios/ptr-ba-completo` | PTR-BA | Registro PTR-BA com efetivo, evidências e download em PDF |
+| `/registros-diarios/ptr-ba-completo` | PTR-BA | Registro PTR-BA com efetivo, evidências, opção PTR-BA EXTRA preservada na edição e download em PDF com EXTRA no nome quando marcada |
 | `/registros-diarios/lro-ocorrencias` | LRO/Ocorrências | Registo de ocorrências do turno |
 | `/registros-diarios/bona-rea` | BONA/REA | Registos de ocorrências operacionais — BONA e REA |
 | `/registros-diarios/inspecoes` | Inspeções | Registos de inspeções operacionais |

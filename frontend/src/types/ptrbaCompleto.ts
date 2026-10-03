@@ -22,6 +22,7 @@ export interface PTRBACompleto {
   updatedBy?: string;
   data: string;
   equipe: Equipe | string;
+  isExtra: boolean;
   identificacaoAeroporto: string;
   observacoes: string;
   chefeEquipe: string;

@@ -248,7 +248,7 @@ function drawAssinatura(doc: jsPDF) {
 export async function gerarPTRBACompletoPdf(registro: PTRBACompleto): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
-    title: nomeDocumentoOperacional(registro.data, 'PTRBA', registro.equipe, ''),
+    title: nomeDocumentoOperacional(registro.data, registro.isExtra ? 'PTRBA EXTRA' : 'PTRBA', registro.equipe, ''),
     subject: 'Relatório de Registro PTR-BA',
     creator: 'SESCINC Manager',
   });
@@ -267,6 +267,6 @@ export async function gerarPTRBACompletoPdf(registro: PTRBACompleto): Promise<Bl
 
 export async function baixarPTRBACompletoPdf(registro: PTRBACompleto): Promise<void> {
   const blob = await gerarPTRBACompletoPdf(registro);
-  const nome = nomeDocumentoOperacional(registro.data, 'PTRBA', registro.equipe);
+  const nome = nomeDocumentoOperacional(registro.data, registro.isExtra ? 'PTRBA EXTRA' : 'PTRBA', registro.equipe);
   downloadPdf(blob, nome);
 }

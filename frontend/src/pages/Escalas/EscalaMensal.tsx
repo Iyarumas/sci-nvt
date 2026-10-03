@@ -1763,6 +1763,7 @@ export function EscalaMensal() {
             }
             .escala-radio-horario-label {
               font-size: 8px;
+              width: 84px;
             }
             .linha-radio-clara,
             .linha-radio-clara > td {
@@ -1847,6 +1848,10 @@ export function EscalaMensal() {
               scrollbar-width: none !important;
               -ms-overflow-style: none !important;
             }
+            #print-area.png-exporting .escala-radio-mensal th,
+            #print-area.png-exporting .escala-radio-mensal td {
+              overflow: hidden !important;
+            }
             #print-area.png-exporting,
             #print-area.png-exporting .monthly-screen-panel,
             #print-area.png-exporting .monthly-screen-cell {
@@ -1893,7 +1898,7 @@ export function EscalaMensal() {
               <table className="escala-radio-mensal w-full">
                 <thead>
                   <tr className="border-b-2 border-graphite-300 dark:border-graphite-600 print:border-graphite-300">
-                    <th className="escala-radio-horario-label w-12 bg-white px-0.5 py-0.5 text-left font-bold text-graphite-600 dark:bg-surface-card dark:text-graphite-300 print:bg-white print:text-graphite-800">Horário</th>
+                    <th className="escala-radio-horario-label bg-white px-0.5 py-0.5 text-left font-bold text-graphite-600 dark:bg-surface-card dark:text-graphite-300 print:bg-white print:text-graphite-800">Horário</th>
                     {completaAtual.paradas.map(plantao => (
                       <th
                         key={plantao.data}

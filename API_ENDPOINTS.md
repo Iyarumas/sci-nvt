@@ -945,6 +945,8 @@ GET com filtro `ativa=true`. ✅ OK
 
 # 9. LRO Drafts — `lroDraftService.ts`
 
+**Assinatura do coordenador:** novos snapshots guardam `dados.coordenadorAssinatura` com o nome da pessoa cadastrada como `COORDENADOR` e `dados.coordenadorFuncao = COORDENADOR`. O helper `assinaturaCoordenadorLRO` prioriza Rinaldo entre coordenadores; caso contrário usa o único coordenador cadastrado. Se não houver cadastro disponível ou houver ambiguidade, usa `RINALDO SANTOS RACHADEL`. O gerador HTML/PDF aceita o nome do snapshot somente quando a função também é Coordenador; drafts legados sem essa indicação usam Rinaldo, corrigindo a escolha antiga de supervisores. PDFs já armazenados ou assinados permanecem preservados.
+
 **Tabela:** `lro_drafts`  
 **Ficheiro:** `src/services/lroDraftService.ts`
 
@@ -1292,9 +1294,11 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
 **Ficheiro:** `src/services/apocService.ts`  
 **Tipo:** `src/types/apoc.ts` — `APOC`
 
-**Empresa/equipe (2026-10-07):** novos cadastros usam `ASUR` em `equipe`; `funcao` continua `APOC` ou `SUPERVISOR`. A migration `068_apocs_empresa_asur.sql` atualiza o default e os cadastros cuja equipe era `MOTIVA`/`CCR`, preservando IDs, funções e vínculos. O mapper apresenta essas equipes antigas como `ASUR` também antes da aplicação da migration. A mesma migration atualiza o item da lista de ramais apenas nos modelos editáveis do CHECK LIST TOTAL (`meta.equipe = MODELO FIXO`, `meta.responsavel = MODELO:*`). Checklists preenchidos e PDFs históricos já salvos não são reescritos. O curso `cvaMotiva` mantém seu identificador persistido; a categoria e os textos exibidos passam a usar ASUR.
+**Empresa/equipe (2026-10-07):** novos cadastros usam `ASUR` em `equipe`; `funcao` aceita `APOC`, `SUPERVISOR` e `COORDENADOR`. A migration `068_apocs_empresa_asur.sql` atualiza o default e os cadastros cuja equipe era `MOTIVA`/`CCR`, preservando IDs, funções e vínculos. O mapper apresenta essas equipes antigas como `ASUR` também antes da aplicação da migration. A mesma migration atualiza o item da lista de ramais apenas nos modelos editáveis do CHECK LIST TOTAL (`meta.equipe = MODELO FIXO`, `meta.responsavel = MODELO:*`). Checklists preenchidos e PDFs históricos já salvos não são reescritos. O curso `cvaMotiva` mantém seu identificador persistido; a categoria e os textos exibidos passam a usar ASUR.
 
 ---
+
+**Coordenador:** a migration `069_apoc_coordenador.sql` classifica o registro existente de Rinaldo Rachadel como `COORDENADOR`, preservando ID, nome, e-mail e vínculos. Não cria pessoas; se houver duplicidade de nomes conhecidos, interrompe a migration para revisão. A coluna `funcao` já é TEXT. Na criação de usuários, Coordenador mantém o mesmo papel `gerente` do Supervisor. Seleções de responsáveis em documentos exibem a função correta.
 
 ### listarAPOCs / buscarAPOC / criarAPOC / atualizarAPOC / excluirAPOC
 
@@ -1327,7 +1331,7 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
   "nomeCompleto": "string",
   "nomeGuerra": "string",
   "email": "string",
-  "funcao": "APOC | SUPERVISOR",
+  "funcao": "APOC | SUPERVISOR | COORDENADOR",
   "equipe": "ASUR",
   "createdAt": "string",
   "updatedAt": "string"

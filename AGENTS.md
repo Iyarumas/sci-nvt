@@ -487,9 +487,13 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 
 ## Conhecimento Permanente do Sistema
 
+**Coordenador do LRO:** a assinatura "COORD DE PREV E EMERG" usa o cadastro com função `COORDENADOR`, pelo helper `assinaturaCoordenadorLRO` em `frontend/src/types/lro.ts`, priorizando Rinaldo ou o único coordenador cadastrado. Não selecionar supervisores APOC. Snapshots incluem `coordenadorAssinatura` e `coordenadorFuncao`; drafts legados sem função ou cadastro indisponível/ambíguo usam a alternativa `RINALDO SANTOS RACHADEL`. A regra vale para prévia, impressão e PDF; PDFs já armazenados ou assinados não são reescritos.
+
 ### Empresa aeroportuária
 
 A empresa aeroportuária exibida no sistema é **ASUR**. APOC e Supervisor são funções de pessoas, não nomes de empresa. Novos APOCs usam `ASUR` no campo equipe. O mapper aceita as equipes antigas até a aplicação da migration `068_apocs_empresa_asur.sql`. O código persistido `cvaMotiva` e a chave de backup `solicitacoesCCR` são mantidos por compatibilidade; textos de UI, LRO e checklist usam ASUR. PDFs históricos e migrations antigas são preservados.
+
+**Funções ASUR:** o cadastro APOC permite `APOC`, `SUPERVISOR` e `COORDENADOR`. A migration 069 classifica o Rinaldo existente como Coordenador sem duplicar a pessoa. Coordenador e Supervisor mapeiam para o papel `gerente` ao criar usuários. As seleções de responsáveis em documentos devem respeitar a função cadastrada.
 
 ### Regime de Plantões
 

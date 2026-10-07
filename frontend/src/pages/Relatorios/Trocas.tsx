@@ -32,6 +32,7 @@ import type { Bombeiro } from '../../types/bombeiro';
 import { CARGO_OPTIONS, EQUIPE_OPTIONS } from '../../types/bombeiro';
 import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import type { APOC } from '../../types/apoc';
+import { FUNCAO_APOC_OPTIONS } from '../../types/apoc';
 import { estaNoPeriodoISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, normalizarDataISO } from '../../utils/datas';
 import { nomeArquivoTrocaServicoPdf } from '../../utils/documentFileNames';
 import { resolverPessoaNoPlantaoOperacional } from '../../utils/efetivoOperacional';
@@ -54,6 +55,7 @@ const MAX_TROCAS_PER_MONTH = 3;
 const STATUS_TROCA_BLOQUEIA_CONFLITO = new Set<DocumentFill['status']>(['draft', 'pending', 'signed']);
 const EQUIPES_OPERACIONAIS_TROCAS = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 const AUDITORIA_CARGO_PREFIXES = [
+  'COORDENADOR',
   'SUPERVISOR',
   'FERISTA',
   'BA-CE',
@@ -1027,7 +1029,7 @@ export function Trocas() {
         return { label: b.nomeCompleto, sublabel: `${cargoLabel} - ${b.email}`, _type: 'bombeiro' as const, _raw: b };
       }),
       ...apocsList.map(a => {
-        const funcaoLabel = a.funcao === 'SUPERVISOR' ? 'Supervisor' : 'APOC';
+        const funcaoLabel = FUNCAO_APOC_OPTIONS.find(f => f.value === a.funcao)?.label || a.funcao;
         return { label: a.nomeCompleto, sublabel: `${funcaoLabel} - ${a.email}`, _type: 'apoc' as const, _raw: a };
       }),
     ];

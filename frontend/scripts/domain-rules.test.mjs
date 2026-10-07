@@ -11,6 +11,7 @@ const filesToCompile = [
   'src/types/escala.ts',
   'src/types/ferias.ts',
   'src/types/tpepr.ts',
+  'src/types/lro.ts',
   'src/types/substituicaoTemporaria.ts',
   'src/utils/datas.ts',
   'src/utils/tempo.ts',
@@ -48,6 +49,16 @@ const equipesUtils = requireFromTest(path.join(outRoot, 'src/utils/equipes.js'))
 const efetivoOperacional = requireFromTest(path.join(outRoot, 'src/utils/efetivoOperacional.js'));
 const { agruparAfastamentosIndeterminados, calcularTempoAfastamento } = requireFromTest(path.join(outRoot, 'src/utils/afastamentos.js'));
 const tpepr = requireFromTest(path.join(outRoot, 'src/types/tpepr.js'));
+const { assinaturaCoordenadorLRO, COORDENADOR_LRO_NOME } = requireFromTest(path.join(outRoot, 'src/types/lro.js'));
+
+// O supervisor mais recente não pode ocupar a assinatura do coordenador.
+const supervisorLRO = { nomeCompleto: 'Rosineide Freitas', funcao: 'SUPERVISOR' };
+assert.equal(assinaturaCoordenadorLRO([supervisorLRO, { nomeCompleto: 'Rinaldo Rachadel', funcao: 'COORDENADOR' }]).coordenadorAssinatura, 'Rinaldo Rachadel');
+assert.equal(assinaturaCoordenadorLRO([supervisorLRO, { nomeCompleto: 'Novo Coordenador', funcao: 'COORDENADOR' }]).coordenadorAssinatura, 'Novo Coordenador');
+assert.equal(assinaturaCoordenadorLRO([supervisorLRO]).coordenadorAssinatura, COORDENADOR_LRO_NOME);
+assert.equal(assinaturaCoordenadorLRO([]).coordenadorFuncao, 'COORDENADOR');
+assert.equal(assinaturaCoordenadorLRO([{ nomeCompleto: 'Outro Coordenador', funcao: 'COORDENADOR' }, { nomeCompleto: 'Rinaldo Rachadel', funcao: 'COORDENADOR' }]).coordenadorAssinatura, 'Rinaldo Rachadel');
+assert.equal(assinaturaCoordenadorLRO([{ nomeCompleto: 'Pessoa A', funcao: 'COORDENADOR' }, { nomeCompleto: 'Pessoa B', funcao: 'COORDENADOR' }]).coordenadorAssinatura, COORDENADOR_LRO_NOME);
 
 const {
   validarFeriasGozo,

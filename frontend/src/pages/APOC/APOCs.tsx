@@ -16,7 +16,7 @@ const APOCS_TOUR_STEPS = [
   {
     selector: 'main h1',
     title: 'Cadastro de APOC',
-    body: 'Esta página reúne o pessoal do Centro de Operações Aeroportuárias. No sistema, esses usuários aparecem como equipe ASUR, com função APOC ou Supervisor.',
+    body: 'Esta página reúne o pessoal do Centro de Operações Aeroportuárias. No sistema, esses usuários aparecem como equipe ASUR, com função APOC, Supervisor ou Coordenador.',
     detail: 'Manter nome, e-mail, equipe e função corretos ajuda na identificação de responsáveis, documentos e vínculos com equipamentos quando o cadastro for usado em outras telas.',
   },
   {

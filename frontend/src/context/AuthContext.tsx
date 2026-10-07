@@ -145,7 +145,7 @@ async function syncSeedsToSupabase(users: Record<string, StoredUser>) {
 const ROLE_HIERARQUIA: UserRole[] = ['desenvolvedor', 'admin', 'gerente', 'chefe', 'lider', 'bombeiro', 'sem_funcao'];
 
 function apocParaUserRole(funcao: string): UserRole {
-  if (funcao.toUpperCase() === 'SUPERVISOR') return 'gerente';
+  if (['SUPERVISOR', 'COORDENADOR'].includes(funcao.toUpperCase())) return 'gerente';
   return 'chefe';
 }
 

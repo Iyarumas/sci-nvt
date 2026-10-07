@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { toCanvas } from 'html-to-image';
 import { formatarDataBR } from '../utils/datas';
 import { nomeDocumentoOperacional } from '../utils/documentFileNames';
+import { COORDENADOR_LRO_NOME } from '../types/lro';
 
 const LRO_FONT_SIZE_INCREMENT_PX = 1;
 
@@ -112,7 +113,9 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
 
   const chefeAss = e('chefeAssinatura', chefeEquipe).toUpperCase();
   const gerenteAss = e('gerenteAssinatura').toUpperCase();
-  const coordAss = e('coordenadorAssinatura').toUpperCase();
+  const coordAss = dados.coordenadorFuncao === 'COORDENADOR' && e('coordenadorAssinatura').trim()
+    ? e('coordenadorAssinatura').trim().toUpperCase()
+    : COORDENADOR_LRO_NOME;
 
   const instrucoes = (dados.instrucoes as string[]) || [];
   const instrucoesHorarios = (dados.instrucoesHorarios as string[]) || [];

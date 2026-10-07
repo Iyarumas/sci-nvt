@@ -1,3 +1,18 @@
+import type { APOC } from './apoc';
+
+// Alternativa para rascunhos antigos ou cadastro indisponível.
+export const COORDENADOR_LRO_NOME = 'RINALDO SANTOS RACHADEL';
+
+export function assinaturaCoordenadorLRO(apocs: Pick<APOC, 'funcao' | 'nomeCompleto'>[]) {
+  const coordenadores = apocs.filter(a => a.funcao === 'COORDENADOR');
+  const rinaldo = coordenadores.find(a => ['RINALDO RACHADEL', COORDENADOR_LRO_NOME].includes(a.nomeCompleto.trim().toUpperCase()));
+  const coordenador = rinaldo || (coordenadores.length === 1 ? coordenadores[0] : undefined);
+  return {
+    coordenadorAssinatura: coordenador?.nomeCompleto.trim() || COORDENADOR_LRO_NOME,
+    coordenadorFuncao: 'COORDENADOR' as const,
+  };
+}
+
 export interface LROSlot {
   funcao: string;
   nome: string;

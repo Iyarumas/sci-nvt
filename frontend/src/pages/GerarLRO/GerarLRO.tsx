@@ -24,6 +24,7 @@ import { listarUsuarios } from '../../services/usuarioService';
 import type { Usuario } from '../../services/usuarioService';
 import { salvarDraft, listarDrafts, excluirDraft, atualizarStatus, type LRODraft, type LRODraftStatus } from '../../services/lroDraftService';
 import { gerarPDF, dividirEmLancamentos } from '../../services/lroGenerator';
+import { assinaturaCoordenadorLRO } from '../../types/lro';
 import type { Bombeiro } from '../../types/bombeiro';
 import type { Conferencia } from '../../types/conferencia';
 import type { FeriasGozo } from '../../types/ferias';
@@ -1873,7 +1874,7 @@ export function GerarLRO() {
         dataAssinatura: formatarDataBR(new Date()),
         chefeAssinatura: bombeiros.find((b: any) => b.nomeGuerra === chefeEquipe || b.nomeCompleto === chefeEquipe)?.nomeCompleto || chefeEquipe,
         gerenteAssinatura: bombeiros.find((b: any) => b.cargo === 'GS')?.nomeCompleto || bombeiros.find((b: any) => b.cargo === 'GS')?.nomeGuerra || '',
-        coordenadorAssinatura: apocs.find((a: any) => a.funcao === 'SUPERVISOR')?.nomeCompleto || '',
+        ...assinaturaCoordenadorLRO(apocs),
         _trocasManuais: trocasManuais,
         _substituicoesDetectadas: trocasServicoLRO,
         _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
@@ -1924,6 +1925,7 @@ export function GerarLRO() {
         crs: Object.entries(equipagemCRS).filter(([, v]) => v).map(([k, v]) => ({ funcao: k.split('_')[0], nome: v })),
         dataAssinatura: formatarDataBR(new Date()),
         chefeAssinatura: bombeiros.find((b: any) => b.nomeGuerra === chefeEquipe || b.nomeCompleto === chefeEquipe)?.nomeCompleto || chefeEquipe,
+        ...assinaturaCoordenadorLRO(apocs),
         _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
       };
 
@@ -1984,7 +1986,7 @@ export function GerarLRO() {
       dataAssinatura: formatarDataBR(new Date()),
       chefeAssinatura: bombeiros.find((b: any) => b.nomeGuerra === chefeEquipe || b.nomeCompleto === chefeEquipe)?.nomeCompleto || chefeEquipe,
       gerenteAssinatura: bombeiros.find((b: any) => b.cargo === 'GS')?.nomeCompleto || '',
-      coordenadorAssinatura: apocs.find((a: any) => a.funcao === 'SUPERVISOR')?.nomeCompleto || '',
+      ...assinaturaCoordenadorLRO(apocs),
       cidade: 'NAVEGANTES',
       uf: 'SC',
       _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
@@ -2025,7 +2027,7 @@ export function GerarLRO() {
         dataAssinatura: formatarDataBR(new Date()),
         chefeAssinatura: bombeiros.find((b: any) => b.nomeGuerra === chefeEquipe || b.nomeCompleto === chefeEquipe)?.nomeCompleto || chefeEquipe,
         gerenteAssinatura: bombeiros.find((b: any) => b.cargo === 'GS')?.nomeCompleto || bombeiros.find((b: any) => b.cargo === 'GS')?.nomeGuerra || '',
-        coordenadorAssinatura: apocs.find((a: any) => a.funcao === 'SUPERVISOR')?.nomeCompleto || '',
+        ...assinaturaCoordenadorLRO(apocs),
         cidade: 'NAVEGANTES',
         uf: 'SC',
         _trocasManuais: trocasManuais,

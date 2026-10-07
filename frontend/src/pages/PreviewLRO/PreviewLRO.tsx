@@ -5,6 +5,7 @@ import { gerarPDF, montarHTML } from '../../services/lroGenerator';
 import { PageTour } from '../../components/ui/PageTour';
 import { downloadPdf } from '../../services/pdfService';
 import { nomeDocumentoOperacional } from '../../utils/documentFileNames';
+import { COORDENADOR_LRO_NOME } from '../../types/lro';
 
 const STATUS_LRO_EXPORTAVEIS = new Set(['aguardando', 'assinado', 'finalizado', 'arquivado']);
 
@@ -39,7 +40,8 @@ const SAMPLE_DATA: Record<string, unknown> = {
   dataAssinatura: '16 de Julho de 2026',
   chefeAssinatura: 'MICHAEL ALEXANDRE DE AZEVEDO',
   gerenteAssinatura: 'GUILHERME SERRA CARDIAS',
-  coordenadorAssinatura: 'FELIPE AUGUSTO DE OLIVEIRA',
+  coordenadorAssinatura: COORDENADOR_LRO_NOME,
+  coordenadorFuncao: 'COORDENADOR',
   instrucoes: [
     '14. PCINC - Verificar conformidade dos extintores',
     '15. EQUIPAMENTOS DE PROTEÇÃO - Manter EPIs atualizados',

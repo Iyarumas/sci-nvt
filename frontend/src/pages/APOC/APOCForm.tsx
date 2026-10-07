@@ -79,7 +79,7 @@ export function APOCForm({ apoc, onSave, onClose, serverError }: Props) {
           )}
 
           <div className="rounded-xl border border-aviation-200/50 bg-aviation-50/50 px-4 py-3 dark:border-aviation-700/30 dark:bg-aviation-900/20">
-            <p className="text-xs font-medium text-aviation-700 dark:text-aviation-300">Equipe: <strong>MOTIVA</strong> (preenchido automaticamente)</p>
+            <p className="text-xs font-medium text-aviation-700 dark:text-aviation-300">Equipe: <strong>ASUR</strong> (preenchido automaticamente)</p>
           </div>
 
           <div>

@@ -16,12 +16,12 @@ const APOCS_TOUR_STEPS = [
   {
     selector: 'main h1',
     title: 'Cadastro de APOC',
-    body: 'Esta página reúne o pessoal do Centro de Operações Aeroportuárias. No sistema, esses usuários aparecem como equipe MOTIVA e função APOC/MOTIVA.',
+    body: 'Esta página reúne o pessoal do Centro de Operações Aeroportuárias. No sistema, esses usuários aparecem como equipe ASUR, com função APOC ou Supervisor.',
     detail: 'Manter nome, e-mail, equipe e função corretos ajuda na identificação de responsáveis, documentos e vínculos com equipamentos quando o cadastro for usado em outras telas.',
   },
   {
     selector: 'main p',
-    title: 'Aviso da função MOTIVA',
+    title: 'Pessoal da ASUR',
     body: 'Este aviso lembra que os registros desta tela representam o pessoal do Centro de Operações Aeroportuárias.',
     detail: 'Diferente dos bombeiros das equipes Alfa, Bravo, Charlie e Delta, o APOC não entra na escala operacional diária como BA, mas pode aparecer como pessoa vinculada ou referência administrativa.',
   },
@@ -144,7 +144,7 @@ export function APOCs() {
 
       <div className="mb-4 rounded-xl border border-aviation-200/50 bg-aviation-50/50 px-4 py-3 dark:border-aviation-700/30 dark:bg-aviation-900/20">
         <p className="text-sm text-aviation-700 dark:text-aviation-300">
-          Pessoal do <strong>Centro de Operações Aeroportuárias</strong> — todos possuem a função <strong>MOTIVA</strong>.
+          Pessoal do <strong>Centro de Operações Aeroportuárias</strong> — equipe <strong>ASUR</strong>, com funções APOC ou Supervisor.
         </p>
       </div>
 
@@ -201,7 +201,7 @@ export function APOCs() {
                   <td className="px-4 py-3 text-graphite-700 dark:text-graphite-300">{a.email}</td>
                   <td className="px-4 py-3">
                     <span className="inline-flex rounded-full bg-aviation-50 px-2.5 py-0.5 text-xs font-medium text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">
-                      {a.equipe || 'MOTIVA'}
+                      {a.equipe || 'ASUR'}
                     </span>
                   </td>
                   <td className="px-4 py-3">

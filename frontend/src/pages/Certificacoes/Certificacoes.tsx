@@ -277,7 +277,7 @@ function CursoFormInline({ funcionarioId, funcionarioNome, onSave, onCancel }: {
   const input = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100';
   const label = 'block mb-1 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
   const cursosInternos = CURSO_OPTIONS.filter(c => c.categoria === 'interno');
-  const cursosMotiva = CURSO_OPTIONS.filter(c => c.categoria === 'motiva');
+  const cursosAsur = CURSO_OPTIONS.filter(c => c.categoria === 'asur');
 
   const cursosSemValidade = ['chefeEquipe', 'motoristaCCI'];
 
@@ -302,8 +302,8 @@ function CursoFormInline({ funcionarioId, funcionarioNome, onSave, onCancel }: {
               <optgroup label="Cursos Internos">
                 {cursosInternos.map(c => <option key={c.tipo} value={c.tipo}>{c.nome}</option>)}
               </optgroup>
-              <optgroup label="Cursos Motiva">
-                {cursosMotiva.map(c => <option key={c.tipo} value={c.tipo}>{c.nome}</option>)}
+              <optgroup label="Cursos ASUR">
+                {cursosAsur.map(c => <option key={c.tipo} value={c.tipo}>{c.nome}</option>)}
               </optgroup>
             </select>
           </div>
@@ -366,9 +366,9 @@ function FuncionarioCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const cursosInternos = CURSO_OPTIONS.filter(c => c.categoria === 'interno');
-  const cursosMotiva = CURSO_OPTIONS.filter(c => c.categoria === 'motiva');
+  const cursosAsur = CURSO_OPTIONS.filter(c => c.categoria === 'asur');
   const certInternos = certCurso.filter(c => cursosInternos.some(ci => ci.tipo === c.cursoTipo));
-  const certMotiva = certCurso.filter(c => cursosMotiva.some(cm => cm.tipo === c.cursoTipo));
+  const certAsur = certCurso.filter(c => cursosAsur.some(cm => cm.tipo === c.cursoTipo));
 
   return (
     <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
@@ -389,7 +389,7 @@ function FuncionarioCard({
             <GraduationCap className="h-3 w-3" /> Cursos {certInternos.length}
           </span>
           <span className="flex items-center gap-1 rounded-full bg-teal-50 px-2.5 py-0.5 text-[10px] font-bold text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
-            <Award className="h-3 w-3" /> Motiva {certMotiva.length}
+            <Award className="h-3 w-3" /> ASUR {certAsur.length}
           </span>
           {expanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
         </div>
@@ -579,11 +579,11 @@ function FuncionarioCard({
             )}
           </div>
 
-          {/* ── Cursos Anexados Motiva ── */}
+          {/* ── Cursos Anexados ASUR ── */}
           <div className="mb-4">
             <div className="mb-2 flex items-center justify-between">
               <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-teal-500 dark:text-teal-400">
-                <GraduationCap className="h-3.5 w-3.5" /> Cursos Motiva
+                <GraduationCap className="h-3.5 w-3.5" /> Cursos ASUR
               </h4>
               {canManage && (
                 <button onClick={() => onAddCurso(funcionario.id, funcionario.nomeCompleto)}
@@ -592,11 +592,11 @@ function FuncionarioCard({
                 </button>
               )}
             </div>
-            {certMotiva.length === 0 ? (
-              <p className="text-center text-xs text-graphite-400 py-3">Nenhum curso Motiva anexado.</p>
+            {certAsur.length === 0 ? (
+              <p className="text-center text-xs text-graphite-400 py-3">Nenhum curso ASUR anexado.</p>
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {certMotiva.map(cert => {
+                {certAsur.map(cert => {
                   const status = cert.semValidade ? null : getStatusValidade(cert.dataValidade);
                   return (
                     <button key={cert.id} onClick={() => onViewArquivo(cert.arquivo, cert.cursoNome)}

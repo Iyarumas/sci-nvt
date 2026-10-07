@@ -26,7 +26,7 @@ export const CHECKLIST_TOTAL_ROWS = [
   { secao: 'DOCUMENTOS E PUBLICAÇÕES', quantidade: '1', item: 'Mapa de grade externo' },
   { secao: 'DOCUMENTOS E PUBLICAÇÕES', quantidade: '10', item: 'Fluxogramas de acionamento' },
   { secao: 'DOCUMENTOS E PUBLICAÇÕES', quantidade: '1', item: 'Prancheta com fichas de Emergências Aeronáuticas' },
-  { secao: 'DOCUMENTOS E PUBLICAÇÕES', quantidade: '1', item: 'Lista de Ramais CCR NVT' },
+  { secao: 'DOCUMENTOS E PUBLICAÇÕES', quantidade: '1', item: 'Lista de Ramais ASUR NVT' },
   { secao: 'DOCUMENTOS E PUBLICAÇÕES', quantidade: '5', item: 'Check-list das Viaturas e Equipamentos' },
   { secao: 'OUTROS EQUIPAMENTOS', quantidade: '1', item: 'Central do sistema de detecção e alarme de incêndio' },
   { secao: 'OUTROS EQUIPAMENTOS', quantidade: '1', item: 'Fonte de alimentação do sistema de incêndio' },

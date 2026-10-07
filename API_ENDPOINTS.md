@@ -1292,6 +1292,8 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
 **Ficheiro:** `src/services/apocService.ts`  
 **Tipo:** `src/types/apoc.ts` — `APOC`
 
+**Empresa/equipe (2026-10-07):** novos cadastros usam `ASUR` em `equipe`; `funcao` continua `APOC` ou `SUPERVISOR`. A migration `068_apocs_empresa_asur.sql` atualiza o default e os cadastros cuja equipe era `MOTIVA`/`CCR`, preservando IDs, funções e vínculos. O mapper apresenta essas equipes antigas como `ASUR` também antes da aplicação da migration. A mesma migration atualiza o item da lista de ramais apenas nos modelos editáveis do CHECK LIST TOTAL (`meta.equipe = MODELO FIXO`, `meta.responsavel = MODELO:*`). Checklists preenchidos e PDFs históricos já salvos não são reescritos. O curso `cvaMotiva` mantém seu identificador persistido; a categoria e os textos exibidos passam a usar ASUR.
+
 ---
 
 ### listarAPOCs / buscarAPOC / criarAPOC / atualizarAPOC / excluirAPOC
@@ -1325,8 +1327,8 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
   "nomeCompleto": "string",
   "nomeGuerra": "string",
   "email": "string",
-  "funcao": "APOC | APOC Lider",
-  "equipe": "string",
+  "funcao": "APOC | SUPERVISOR",
+  "equipe": "ASUR",
   "createdAt": "string",
   "updatedAt": "string"
 }
@@ -1585,6 +1587,8 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
 **Tabela:** `checklists`
 **Ficheiro:** `src/services/checklistService.ts`
 **Tipo:** `src/types/checklist.ts` — `Checklist`
+
+**Modelos ASUR (2026-10-07):** o mapper normaliza o item da lista de ramais dos modelos salvos (`MODELO FIXO` / `MODELO:*`) para `Lista de Ramais ASUR NVT`, preservando colunas, ordem, IDs e valores. A migration `068_apocs_empresa_asur.sql` persiste a mesma atualização. Registros operacionais preenchidos mantêm seu conteúdo histórico.
 
 ---
 

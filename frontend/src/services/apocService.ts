@@ -1,4 +1,5 @@
 import type { APOC } from '../types/apoc';
+import { EQUIPE_APOC } from '../types/apoc';
 import { supabase } from '../lib/supabase';
 
 const TABLE = 'apocs';
@@ -25,7 +26,10 @@ function rowToApoc(row: Record<string, unknown>): APOC {
     nomeGuerra: row.nome_guerra as string,
     email: row.email as string,
     funcao: row.funcao as APOC['funcao'],
-    equipe: row.equipe as string,
+    // Compatibilidade enquanto os cadastros antigos aguardam a migration ASUR.
+    equipe: ['MOTIVA', 'CCR'].includes(String(row.equipe || '').trim().toUpperCase())
+      ? EQUIPE_APOC
+      : row.equipe as string,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

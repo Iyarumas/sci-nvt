@@ -293,7 +293,7 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
 
   <!-- XIII -->
   <table class="mb" style="border:1px solid #000; border-collapse:separate; border-spacing:0;">
-    <tr><td colspan="6" style="border:none; border-bottom:1px solid #000; font-weight:bold; font-size:11px; background:#d4d4d4; text-align:center; padding:2px 3px;">XIII. SOLICITAÇÕES EFETUADAS A CCR</td></tr>
+    <tr><td colspan="6" style="border:none; border-bottom:1px solid #000; font-weight:bold; font-size:11px; background:#d4d4d4; text-align:center; padding:2px 3px;">XIII. SOLICITAÇÕES EFETUADAS A ASUR</td></tr>
     ${solicitacoesHTML}
   </table>
 

@@ -171,7 +171,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | Rota | Tela | Descrição |
 |------|------|-----------|
 | `/cadastro/bombeiros` | Bombeiros | Cadastro de bombeiros e equipas operacionais |
-| `/cadastro/apoc` | APOCs | Pessoal do Centro de Operações Aeroportuárias (MOTIVA) |
+| `/cadastro/apoc` | APOCs | Pessoal do Centro de Operações Aeroportuárias (ASUR) |
 | `/cadastro/viaturas` | Viaturas | Cadastro de veículos operacionais |
 | `/cadastro/equipamentos` | Equipamentos | Inventário de equipamentos |
 | `/cadastro/extintores` | Extintores | Cadastro e manutenção de extintores |
@@ -486,6 +486,10 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 ---
 
 ## Conhecimento Permanente do Sistema
+
+### Empresa aeroportuária
+
+A empresa aeroportuária exibida no sistema é **ASUR**. APOC e Supervisor são funções de pessoas, não nomes de empresa. Novos APOCs usam `ASUR` no campo equipe. O mapper aceita as equipes antigas até a aplicação da migration `068_apocs_empresa_asur.sql`. O código persistido `cvaMotiva` e a chave de backup `solicitacoesCCR` são mantidos por compatibilidade; textos de UI, LRO e checklist usam ASUR. PDFs históricos e migrations antigas são preservados.
 
 ### Regime de Plantões
 

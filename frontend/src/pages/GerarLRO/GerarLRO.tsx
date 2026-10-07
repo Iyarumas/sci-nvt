@@ -2551,7 +2551,7 @@ export function GerarLRO() {
                       {lroDetailCard('Ocorrências/BONA', `${countDraftTextLines(dd.ocorrenciasNA)} lançamento(s)`)}
                       {lroDetailCard('REA', `${countDraftTextLines(dd.emergenciaXI)} lançamento(s)`)}
                       {lroDetailCard('Inspeções', `${countDraftTextLines(dd.inspecoes)} lançamento(s)`)}
-                      {lroDetailCard('Solicitações CCR', `${countDraftTextLines(dd.solicitacoes)} lançamento(s)`)}
+                      {lroDetailCard('Solicitações ASUR', `${countDraftTextLines(dd.solicitacoes)} lançamento(s)`)}
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -2576,7 +2576,7 @@ export function GerarLRO() {
                       {lroTextCard('REA', dd.emergenciaXI)}
                       {lroTextCard('Inspeções', dd.inspecoes)}
                       {lroTextCard('Outras Ocorrências', dd.ocorrenciasXII)}
-                      {lroTextCard('Solicitações CCR', dd.solicitacoes)}
+                      {lroTextCard('Solicitações ASUR', dd.solicitacoes)}
                       {lroTextCard('Trocas Manuais', formatarTrocasDraft(dd._trocasManuais))}
                       {lroTextCard('Substituições', formatarSubstituicoesDraft(dd._substituicoesDetectadas))}
                     </div>
@@ -3641,7 +3641,7 @@ export function GerarLRO() {
 
           {/* XIII */}
           <div className="rounded-2xl border border-graphite-200 bg-white p-6 dark:border-border-dark dark:bg-surface-card">
-            <h3 className="mb-2 font-bold text-graphite-900 dark:text-graphite-100">XIII. Solicitações à CCR</h3>
+            <h3 className="mb-2 font-bold text-graphite-900 dark:text-graphite-100">XIII. Solicitações à ASUR</h3>
             <textarea value={solicitacoesCCR} onChange={e => setSolicitacoesCCR(e.target.value)} rows={2} placeholder="Uma solicitação por linha..." className={inputClass + ' resize-y'} />
           </div>
 

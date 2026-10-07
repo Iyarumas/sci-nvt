@@ -50,7 +50,7 @@ const SAMPLE_DATA: Record<string, unknown> = {
     { viatura: 'CCI 320', prefixo: 'VT-02', kmIni: '8900', kmFim: '8975', combIni: 'Cheio', combFim: '3/4', situacao: 'EM LINHA' },
     { viatura: 'CCI 333', prefixo: 'VT-03', kmIni: '5400', kmFim: '5400', combIni: '1/2', combFim: '1/2', situacao: 'RESERVA' },
   ],
-  centralFaisca: 'FISCAL GABRIEL (MOTIVA) ESTEVE NA SCI, PARTICIPANDO DO NOSSO PTR',
+  centralFaisca: 'FISCAL GABRIEL (ASUR) ESTEVE NA SCI, PARTICIPANDO DO NOSSO PTR',
   radioComunicacao: 'REALIZADO TESTE DO SAE E RÁDIO, COM TWR, VEÍCULOS OPERACIONAIS',
   tpStatus: '<span style="display:inline-block; width:9px; height:9px; border:1px solid black; text-align:center; line-height:8px; font-size:7px; vertical-align:baseline; position:relative; top:-2px;"></span> ABAIXO &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="display:inline-block; width:9px; height:9px; border:1px solid black; text-align:center; line-height:8px; font-size:7px; vertical-align:baseline; position:relative; top:1px;"></span> SEM ALTERAÇÕES',
   tpTexto: 'Conferido TP da viatura CCI 319 - OK. EPI do CCI 2 com 1 par de luvas vencido, substituído.',

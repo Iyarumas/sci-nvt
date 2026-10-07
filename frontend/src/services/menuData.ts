@@ -64,7 +64,7 @@ export const menuItems: MenuItem[] = [
         label: 'APOC',
         icon: Radio,
         path: '/cadastro/apoc',
-        description: 'Centro de Operações Aeroportuárias — pessoal MOTIVA.',
+        description: 'Centro de Operações Aeroportuárias — pessoal ASUR.',
         adminOrGsOnly: true,
       },
       {

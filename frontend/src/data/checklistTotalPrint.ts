@@ -158,7 +158,7 @@ const CHECKLIST_TOTAL_PRINT_DOCUMENTS_BASE: ChecklistTotalPrintDocument[] = [
           },
           {
             "quantidade": "1",
-            "item": "Lista de Ramais CCR NVT"
+            "item": "Lista de Ramais ASUR NVT"
           },
           {
             "quantidade": "5",

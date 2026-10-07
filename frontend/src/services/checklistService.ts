@@ -51,6 +51,14 @@ function rowToChecklist(row: Record<string, unknown>): Checklist {
   const raw = asChecklistJson(row.itens);
   const meta = raw.meta || {};
   const payload = normalizarPayload(raw);
+  // Modelos antigos continuam utilizaveis antes de aplicar a migration ASUR.
+  if (meta.equipe === 'MODELO FIXO' && meta.responsavel?.startsWith('MODELO:')) {
+    payload.linhas = payload.linhas.map(linha => (
+      ['LISTA DE RAMAIS CCR NVT', 'LISTA DE RAMAIS MOTIVA NVT'].includes(linha.item.trim().toUpperCase())
+        ? { ...linha, item: 'Lista de Ramais ASUR NVT' }
+        : linha
+    ));
+  }
   return {
     id: String(row.id || ''),
     titulo: String(row.titulo || ''),

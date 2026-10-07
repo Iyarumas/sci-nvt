@@ -4,7 +4,7 @@ export const FUNCAO_APOC_OPTIONS: { value: FuncaoAPOC; label: string }[] = [
   { value: 'APOC', label: 'APOC' },
   { value: 'SUPERVISOR', label: 'SUPERVISOR' },
 ];
-export const EQUIPE_APOC = 'MOTIVA';
+export const EQUIPE_APOC = 'ASUR';
 
 export interface APOC {
   id: string;

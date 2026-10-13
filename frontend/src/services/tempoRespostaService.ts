@@ -10,7 +10,7 @@ function getDb() {
 
 function handleSupabaseError(err: unknown): never {
   console.error('Erro Supabase:', err);
-  const msg = err instanceof Error ? err.message : 'Erro inesperado no banco de dados';
+  const msg = err instanceof Error ? err.message : (err as { message?: string })?.message || 'Erro inesperado no banco de dados';
   throw new Error(msg);
 }
 
@@ -95,19 +95,21 @@ export async function obterProximoNumero(ano: string): Promise<number> {
     .select('numero')
     .eq('ano', ano)
     .order('numero', { ascending: false })
-    .limit(1);
+    .limit(1)
+    .cache('no-store');
   if (error) handleSupabaseError(error);
-  return (data && data.length > 0 ? data[0].numero + 1 : 1);
+  return Math.max(data?.[0]?.numero || 0, ano === '2026' ? 24 : 0) + 1;
 }
 
 export async function criarTreino(
   data: TreinamentoTempoRespostaInput,
+  options?: { numeroAutomatico?: boolean },
 ): Promise<TreinamentoTempoResposta> {
   const db = getDb();
   const now = new Date().toISOString();
   const row: Record<string, unknown> = {
     equipe: data.equipe,
-    numero: data.numero,
+    numero: options?.numeroAutomatico ? 0 : data.numero,
     ano: data.ano,
     data: data.data,
     hora: data.hora,

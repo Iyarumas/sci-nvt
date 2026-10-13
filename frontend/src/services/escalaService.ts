@@ -59,9 +59,13 @@ function rowToEscala(row: Record<string, unknown>): EscalaDiaria {
   };
 }
 
-export async function listarEscalas(): Promise<EscalaDiaria[]> {
+export async function listarEscalas(params?: { equipe?: string; dataPlantao?: string; fresh?: boolean }): Promise<EscalaDiaria[]> {
   const db = getDb();
-  const { data, error } = await db.from(TABLE).select('*').order('created_at', { ascending: false });
+  let query = db.from(TABLE).select('*').order('created_at', { ascending: false });
+  if (params?.equipe) query = query.eq('equipe', params.equipe);
+  if (params?.dataPlantao) query = query.eq('data_plantao', params.dataPlantao);
+  if (params?.fresh) query = query.cache('no-store');
+  const { data, error } = await query;
   if (error) handleSupabaseError(error);
   return (data || []).map(rowToEscala);
 }

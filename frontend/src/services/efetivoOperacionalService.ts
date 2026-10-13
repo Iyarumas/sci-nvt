@@ -2,10 +2,11 @@ import { listarAtivos } from './bombeiroService';
 import { listarPreenchimentos } from './documentoService';
 import { listarFeriasGozo } from './feriasService';
 import { listarCompletas } from './escalaMensalService';
+import { listarEscalas } from './escalaService';
 import { listarSubstituicoesTemporarias } from './substituicaoTemporariaService';
 import { listarVigencias } from './vigenciaSubstituicaoService';
 import type { Document, DocumentFill } from '../types/document';
-import { montarEfetivoOperacional, trocaServicoAprovada, trocaServicoTemCamposBasicos } from '../utils/efetivoOperacional';
+import { montarEfetivoOperacional, montarGuarnicoesExercicio, trocaServicoAprovada, trocaServicoTemCamposBasicos } from '../utils/efetivoOperacional';
 import type { EfetivoOperacionalEntry } from '../utils/efetivoOperacional';
 
 function normalizarTexto(value: unknown): string {
@@ -56,4 +57,17 @@ export async function resolverEfetivoOperacional(
     dataPlantao,
     aplicarTrocas: opcoes.aplicarTrocas,
   });
+}
+
+export async function resolverEquipagemExercicio(equipe: string, dataPlantao: string, hora: string) {
+  const [efetivo, diarias, mensais, bombeiros] = await Promise.all([
+    resolverEfetivoOperacional(equipe, dataPlantao),
+    listarEscalas({ equipe, dataPlantao, fresh: true }),
+    listarCompletas(),
+    listarAtivos(),
+  ]);
+  return {
+    efetivo,
+    ...montarGuarnicoesExercicio({ efetivo, bombeiros, escalaDiaria: diarias[0], escalasCompletas: mensais, equipe, dataPlantao, hora }),
+  };
 }

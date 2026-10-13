@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Timer, Pencil,
   AlertTriangle, Shield, Download, Eye, Printer, CheckCircle2,
@@ -9,7 +9,7 @@ import { SearchSelect } from '../../components/ui/SearchSelect';
 import type { AtivoItem } from '../../components/ui/SearchSelect';
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
-import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
+import { resolverEfetivoOperacional, resolverEquipagemExercicio } from '../../services/efetivoOperacionalService';
 import {
   listarTreinos, criarTreino, atualizarTreino,
   excluirTreino, obterProximoNumero,
@@ -17,6 +17,7 @@ import {
 import { listarAtivos } from '../../services/bombeiroService';
 import { baixarTempoRespostaPdf, gerarTempoRespostaPdf } from '../../services/tempoRespostaPdfService';
 import type { TreinamentoTempoResposta, TreinamentoTempoRespostaInput } from '../../types/tempoResposta';
+import { TEMPO_RESPOSTA_PADRAO } from '../../types/tempoResposta';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { montarOpcoesEfetivoOperacional } from '../../utils/efetivoOperacional';
 import { imprimirPdfBlob } from '../../utils/pdfPrint';
@@ -107,10 +108,16 @@ export default function TempoResposta() {
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [nomeGsPadrao, setNomeGsPadrao] = useState('');
   const saving = savingAction !== null;
+  const equipagemContexto = useRef('');
+  const [carregandoEquipagem, setCarregandoEquipagem] = useState(false);
+  const [erroEquipagem, setErroEquipagem] = useState('');
 
   // Form state
   const [formEquipe, setFormEquipe] = useState('');
   const [formNumero, setFormNumero] = useState(0);
+  const [numeroManual, setNumeroManual] = useState(false);
+  const [carregandoNumero, setCarregandoNumero] = useState(false);
+  const [erroNumero, setErroNumero] = useState('');
   const [formAno, setFormAno] = useState('');
   const [formData, setFormData] = useState('');
   const [formHora, setFormHora] = useState('');
@@ -183,6 +190,26 @@ export default function TempoResposta() {
     return () => { active = false; };
   }, [formOpen]);
 
+  useEffect(() => {
+    if (!formOpen || !formAno) return;
+    if (editando && formAno === editando.ano) {
+      setFormNumero(editando.numero);
+      setNumeroManual(true);
+      setCarregandoNumero(false);
+      setErroNumero('');
+      return;
+    }
+    let active = true;
+    setNumeroManual(false);
+    setCarregandoNumero(true);
+    setErroNumero('');
+    obterProximoNumero(formAno)
+      .then(numero => { if (active) setFormNumero(numero); })
+      .catch(err => { if (active) setErroNumero(err instanceof Error ? err.message : 'Não foi possível consultar a numeração.'); })
+      .finally(() => { if (active) setCarregandoNumero(false); });
+    return () => { active = false; };
+  }, [formOpen, formAno, editando]);
+
   async function carregar() {
     const [lista, ativos] = await Promise.all([listarTreinos({ ano: filtroAno }), listarAtivos()]);
     setTreinos(lista);
@@ -247,7 +274,7 @@ export default function TempoResposta() {
           item.nomeCompleto.toLowerCase() === nomeSalvo ||
           item.nomeGuerra.toLowerCase() === nomeSalvo
         )
-      ) || opcoes.find(item => item.cargo === 'BA-CE');
+      ) || (!nomeSalvo ? opcoes.find(item => item.cargo === 'BA-CE') : undefined);
       chefeEquipe = chefe?.nomeCompleto || chefeEquipe;
     } catch {
       // Mantém o nome salvo se não conseguir consultar o efetivo.
@@ -270,6 +297,7 @@ export default function TempoResposta() {
   }
 
   function limparSelecoesEquipe() {
+    equipagemContexto.current = '';
     setF2BaMc('');
     setF2BaCe('');
     setF2Ba2('');
@@ -293,12 +321,16 @@ export default function TempoResposta() {
   }
 
   function resetForm() {
-    setFormEquipe(canManageGlobal ? '' : equipeEfetiva || ''); setFormNumero(0); setFormAno(''); setFormData(''); setFormHora(''); setFormLocal('');
+    equipagemContexto.current = '';
+    setErroEquipagem('');
+    setNumeroManual(false);
+    setErroNumero('');
+    setFormEquipe(canManageGlobal ? '' : equipeEfetiva || ''); setFormNumero(0); setFormAno(''); setFormData(''); setFormHora(''); setFormLocal(TEMPO_RESPOSTA_PADRAO.local);
     setF2Cci(''); setF2BaMc(''); setF2BaCe(''); setF2Ba2(''); setF2T1(''); setF2T2(''); setF2T3(''); setF2Conceito(''); setF2Performance('');
     setF3Cci(''); setF3BaMc(''); setF3Ba21(''); setF3Ba22(''); setF3T1(''); setF3T2(''); setF3T3(''); setF3Conceito(''); setF3Performance('');
-    setFormObservacoes(''); setFormResumo(''); setFormConsideracoes(''); setFormCoordenacao('');
-    setFormAcionamento(''); setFormSistemaAlarmes(''); setFormComunicacao(''); setFormDeslocamento('');
-    setFormVisibilidade(''); setFormProcedimentos(''); setFormTempoResposta(''); setFormFeedbackSpe(''); setFormFeedbackTwr(''); setFormFeedbackSci('');
+    setFormObservacoes(TEMPO_RESPOSTA_PADRAO.observacoes); setFormResumo(TEMPO_RESPOSTA_PADRAO.resumoExercicio); setFormConsideracoes(TEMPO_RESPOSTA_PADRAO.consideracoesFinais); setFormCoordenacao(TEMPO_RESPOSTA_PADRAO.coordenacaoTwrSpeSci);
+    setFormAcionamento(TEMPO_RESPOSTA_PADRAO.acionamento); setFormSistemaAlarmes(TEMPO_RESPOSTA_PADRAO.sistemaAlarmes); setFormComunicacao(TEMPO_RESPOSTA_PADRAO.comunicacaoFraseologia); setFormDeslocamento(TEMPO_RESPOSTA_PADRAO.deslocamentoVtrs);
+    setFormVisibilidade(TEMPO_RESPOSTA_PADRAO.visibilidadeSuperficie); setFormProcedimentos(TEMPO_RESPOSTA_PADRAO.procedimentoPcinc); setFormTempoResposta(TEMPO_RESPOSTA_PADRAO.tempoResposta); setFormFeedbackSpe(TEMPO_RESPOSTA_PADRAO.feedbackSpe); setFormFeedbackTwr(TEMPO_RESPOSTA_PADRAO.feedbackTwr); setFormFeedbackSci(TEMPO_RESPOSTA_PADRAO.feedbackSci);
     setFormGerente(contexto.cargo === 'GS' ? currentName : '');
     setFormChefeEquipe('');
     setOpcoesParticipantes([]);
@@ -315,41 +347,50 @@ export default function TempoResposta() {
     setFormAno(anoAtual);
     setFormData(hojeLocalISO());
     setFormHora(new Date().toTimeString().slice(0, 5));
-    const prox = await obterProximoNumero(anoAtual);
-    setFormNumero(prox);
     setFormOpen(true);
   }
 
   useEffect(() => {
     if (!formOpen || !formEquipe || !formData) {
       setOpcoesParticipantes([]);
+      setCarregandoEquipagem(false);
       return;
     }
-
     let active = true;
+    setCarregandoEquipagem(true);
+    setErroEquipagem('');
     (async () => {
       try {
-        const efetivo = await resolverEfetivoOperacional(formEquipe, formData);
+        const equipagem = await resolverEquipagemExercicio(formEquipe, formData, formHora);
         if (!active) return;
-        const opcoes = montarOpcoesEfetivoOperacional(efetivo, formEquipe);
-        setOpcoesParticipantes(opcoes);
-        const deveAtualizarChefe = !editando || formEquipe !== editando.equipe || formData !== editando.data || !formChefeEquipe;
-        if (deveAtualizarChefe) {
-          const chefe = opcoes.find(item => item.cargo === 'BA-CE');
-          setFormChefeEquipe(chefe?.nomeCompleto || chefe?.nomeGuerra || '');
+        setOpcoesParticipantes(montarOpcoesEfetivoOperacional(equipagem.efetivo, formEquipe));
+        const chave = `${formEquipe}:${formData}`;
+        if (equipagemContexto.current !== chave) {
+          const { guarnicoes } = equipagem;
+          setF2BaMc(prev => prev || guarnicoes.cci02.baMc);
+          setF2BaCe(prev => prev || guarnicoes.cci02.baCe);
+          setF2Ba2(prev => prev || guarnicoes.cci02.ba2);
+          setF3BaMc(prev => prev || guarnicoes.cci03.baMc);
+          setF3Ba21(prev => prev || guarnicoes.cci03.ba2_1);
+          setF3Ba22(prev => prev || guarnicoes.cci03.ba2_2);
+          setFormChefeEquipe(prev => prev || equipagem.chefeEquipe);
+          equipagemContexto.current = chave;
         }
-      } catch {
-        if (active) setOpcoesParticipantes([]);
+      } catch (err) {
+        if (active) setErroEquipagem(err instanceof Error ? err.message : 'Não foi possível carregar a equipagem do plantão. Selecione os participantes manualmente.');
+      } finally {
+        if (active) setCarregandoEquipagem(false);
       }
     })();
     return () => { active = false; };
-  }, [formOpen, editando, formEquipe, formData, formChefeEquipe]);
+  }, [formOpen, editando, formEquipe, formData]);
 
   function handleEditar(t: TreinamentoTempoResposta) {
     if (!canAlterarRegistro(t)) {
       alert(mensagemBloqueioRegistro(t));
       return;
     }
+    equipagemContexto.current = `${t.equipe}:${t.data}`;
     setEditando(t);
     setFormEquipe(t.equipe); setFormNumero(t.numero); setFormAno(t.ano);
     setFormData(t.data); setFormHora(t.hora); setFormLocal(t.local);
@@ -368,7 +409,12 @@ export default function TempoResposta() {
 
   async function handleSalvar(aprovar = false) {
     const equipeAlvo = canManageGlobal ? formEquipe : equipeEfetiva || '';
-    if (!equipeAlvo || !formData) return;
+    if (!equipeAlvo || !formData || saving || carregandoNumero || carregandoEquipagem) return;
+    if (erroNumero) { alert(erroNumero); return; }
+    if (!Number.isInteger(formNumero) || formNumero < 1 || formNumero > 2147483647) {
+      alert('Informe um número inteiro maior que zero para o documento.');
+      return;
+    }
     if (editando && !canAlterarRegistro(editando)) {
       alert(mensagemBloqueioRegistro(editando));
       return;
@@ -397,7 +443,7 @@ export default function TempoResposta() {
       };
       if (editando) data.updatedBy = currentUsername;
       data.ano = ano;
-      data.numero = formNumero || await obterProximoNumero(ano);
+      data.numero = formNumero;
       if (aprovar) {
         data.status = 'Aprovado';
         data.aprovadoPor = currentUsername;
@@ -407,7 +453,7 @@ export default function TempoResposta() {
       if (editando) {
         await atualizarTreino(editando.id, data);
       } else {
-        await criarTreino(data);
+        await criarTreino(data, { numeroAutomatico: !numeroManual });
       }
       if (filtroAno !== ano) setFiltroAno(ano);
       setTreinos(await listarTreinos({ ano }));
@@ -761,6 +807,7 @@ export default function TempoResposta() {
             </div>
 
             <div className="space-y-6">
+              {!editando && <p className="text-sm text-graphite-500 dark:text-graphite-400">Textos preenchidos com o modelo de referência. A equipagem é carregada pela equipe/data do plantão e pode ser alterada por quem estiver criando o documento.</p>}
               {/* Cabeçalho */}
               <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                 <div>
@@ -772,7 +819,15 @@ export default function TempoResposta() {
                 </div>
                 <div>
                   <label className={labelCls}>Nº do Treino</label>
-                  <input value={`${String(formNumero).padStart(3, '0')}/${formAno}`} disabled className={`${inputCls} opacity-60`} />
+                  <div className="flex items-center gap-2">
+                    <input type="number" min={1} max={2147483647} step={1} aria-label="Número do documento" value={formNumero || ''}
+                      disabled={carregandoNumero || saving}
+                      onChange={e => { setFormNumero(Number(e.target.value)); setNumeroManual(true); }} className={inputCls} />
+                    <span className="shrink-0 text-sm text-graphite-500 dark:text-graphite-400">/{formAno}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
+                    {carregandoNumero ? 'Consultando sequência...' : erroNumero || (numeroManual ? 'Número definido manualmente.' : 'Sequência automática por ano. Pode alterar o número.')}
+                  </p>
                 </div>
                 <div>
                   <label className={labelCls}>Data</label>
@@ -788,6 +843,7 @@ export default function TempoResposta() {
                 <input type="text" value={formLocal} onChange={e => setFormLocal(e.target.value)} placeholder="Local..." className={inputCls} />
               </div>
 
+              <p className="text-sm text-graphite-500 dark:text-graphite-400" role="status">{carregandoEquipagem ? 'Carregando equipagem do plantão...' : erroEquipagem}</p>
               {/* F2 */}
               <div className="rounded-xl border-2 border-amber-200 bg-amber-50/30 p-4 dark:border-amber-800 dark:bg-amber-900/10">
                 <h4 className="text-sm font-bold text-amber-700 dark:text-amber-300 mb-3 flex items-center gap-2">
@@ -878,7 +934,8 @@ export default function TempoResposta() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-graphite-200/60 bg-graphite-50/80 p-4 dark:border-border-dark dark:bg-surface-card/80">
                   <label className={labelCls}>Chefe de Equipe</label>
-                  <p className="text-sm font-semibold text-graphite-900 dark:text-graphite-100">{formChefeEquipe || user?.name || '-'}</p>
+                  <SearchSelect value={formChefeEquipe} onChange={setFormChefeEquipe} valueField="nomeCompleto" cargo="BA-CE"
+                    options={opcoesParticipantes} placeholder={formChefeEquipe || 'Selecione o chefe de equipe'} />
                 </div>
                 <div>
                   <label className={labelCls}>GS / Embaixador (Gerente)</label>
@@ -893,12 +950,12 @@ export default function TempoResposta() {
                   className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                   Cancelar
                 </button>
-                <button onClick={() => handleSalvar(false)} disabled={!formEquipe || !formData || saving}
+                <button onClick={() => handleSalvar(false)} disabled={!formEquipe || !formData || saving || carregandoNumero || carregandoEquipagem || !!erroNumero}
                   className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
                   <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) ? 'Salvar' : 'Salvar rascunho'}
                 </button>
                 {!registroAprovado(editando) && (
-                  <button onClick={() => handleSalvar(true)} disabled={!formEquipe || !formData || saving}
+                  <button onClick={() => handleSalvar(true)} disabled={!formEquipe || !formData || saving || carregandoNumero || carregandoEquipagem || !!erroNumero}
                     className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
                     <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
                   </button>
@@ -969,7 +1026,7 @@ function SlotField({ label, value, onChange, cargo, options }: { label: string; 
         options={options}
         showCargo
         displayMode="operational"
-        placeholder={`Selecione ${label}`}
+        placeholder={value || `Selecione ${label}`}
       />
     </div>
   );

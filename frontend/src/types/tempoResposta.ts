@@ -68,3 +68,22 @@ type CamposAprovacaoTempoResposta = Pick<
 export type TreinamentoTempoRespostaInput =
   Omit<TreinamentoTempoResposta, CamposControleTempoResposta> &
   Partial<CamposAprovacaoTempoResposta>;
+
+// Campos do modelo MMS.BR.BA.FOR.005 nº 24/2026; aplicados somente a novos treinos.
+export const TEMPO_RESPOSTA_PADRAO = {
+  local: 'CABECEIRA 26',
+  observacoes: 'Treinamento realizado com briefing e acordado junto ao APOC, TWR e Equipe',
+  resumoExercicio: 'EXERCÍCIO EXECUTADO SEM INTERCORRÊNCIAS E DENTRO DO ESPERADO',
+  consideracoesFinais: 'SEM APONTAMENTOS',
+  coordenacaoTwrSpeSci: 'SCI / TWR / APOC',
+  acionamento: 'A TWR ACIONOU O ALARME, ATRAVÉS DO SAE, SEM ALTERAÇÃO NO SEU FUNCIONAMENTO.',
+  sistemaAlarmes: 'EXECUTADO ACIONAMENTO DE UM SILVO LONGO DE 30s, CONFORME PRECONIZADO.',
+  comunicacaoFraseologia: 'UTILIZADA FRASEOLOGIA PADRÃO',
+  deslocamentoVtrs: 'VIATURAS DESLOCARAM APENAS APÓS CONFIRMAÇÃO DO BA-CE, EM FORMATO DE ESCAMA NA PISTA.',
+  visibilidadeSuperficie: 'AS CONDIÇÕES ERAM PERFEITAS',
+  procedimentoPcinc: 'TODOS PROCEDIMENTOS PREVISTOS NO PCINC FORAM SEGUIDOS',
+  tempoResposta: 'O TEMPO RESPOSTA FOI ATINGIDO EM CONFORMIDADE COM A LEGISLAÇÃO',
+  feedbackSpe: 'NÃO HOUVE FEEDBACK DO SPE/APOC',
+  feedbackTwr: 'NÃO HOUVE FEEDBACK DA TWR',
+  feedbackSci: 'EFETUADO FEEDBACK APÓS O EXERCÍCIO COM A EQUIPE, PARABENIZANDO PELO OBJETIVO ALCANÇADO',
+} satisfies Partial<TreinamentoTempoRespostaInput>;

@@ -2,7 +2,7 @@ import type { AtivoItem } from '../components/ui/SearchSelect';
 import type { Bombeiro } from '../types/bombeiro';
 import type { DocumentFill } from '../types/document';
 import type { EscalaMensalCompleta } from '../types/escalaMensal';
-import type { TrocaSlot } from '../types/escala';
+import type { EscalaDiaria, TrocaSlot } from '../types/escala';
 import type { EscalaFeriasItem, FeriasGozo } from '../types/ferias';
 import type { SubstituicaoTemporaria } from '../types/substituicaoTemporaria';
 import type { VigenciaSubstituicao } from '../services/vigenciaSubstituicaoService';
@@ -737,6 +737,80 @@ export function montarOpcoesEfetivoOperacional(efetivo: EfetivoOperacionalEntry[
     cargo: entry.cargoExercido,
     equipe,
   }));
+}
+
+/** Mantém cada membro no veículo do plantão, resolvendo a cobertura da sua vaga. */
+export function montarGuarnicoesExercicio(params: {
+  efetivo: EfetivoOperacionalEntry[];
+  bombeiros?: Bombeiro[];
+  escalaDiaria?: EscalaDiaria;
+  escalasCompletas: EscalaMensalCompleta[];
+  equipe: string;
+  dataPlantao: string;
+  hora: string;
+}): { guarnicoes: EscalaDiaria['guarnicoes']; chefeEquipe: string; operadorComunicacoes: string } {
+  const { efetivo, equipe, dataPlantao, hora } = params;
+  const diaria = params.escalaDiaria?.equipe === equipe && mesmoDiaISO(params.escalaDiaria.dataPlantao, dataPlantao)
+    ? params.escalaDiaria : undefined;
+  const mensal = escalaMensalDoPlantao(params.escalasCompletas, equipe, dataPlantao);
+  const parada = mensal?.paradas.find(p => mesmoDiaISO(p.data, dataPlantao));
+  const nomeConfig = (veiculo: string, funcao: string) => {
+    const pessoa = mensal?.config.pessoas.find(p => p.veiculo === veiculo && p.funcaoNoVeiculo === funcao);
+    return pessoa?.nomeGuerra || pessoa?.nome || '';
+  };
+  const veiculos = parada?.veiculos;
+  const origem = diaria?.guarnicoes || {
+    cci02: {
+      baMc: veiculos ? veiculos.cciF2.baMc : nomeConfig('cciF2', 'BaMc'),
+      baCe: veiculos ? veiculos.cciF2.baCe : nomeConfig('cciF2', 'BaCe'),
+      ba2: veiculos ? veiculos.cciF2.ba2 : nomeConfig('cciF2', 'Ba2'),
+    },
+    cci03: {
+      baMc: veiculos ? veiculos.cciF3.baMc : nomeConfig('cciF3', 'BaMc'),
+      ba2_1: veiculos ? veiculos.cciF3.ba2_1 : nomeConfig('cciF3', 'Ba2-1'),
+      ba2_2: veiculos ? veiculos.cciF3.ba2_2 : nomeConfig('cciF3', 'Ba2-2'),
+    },
+    crs: {
+      baMc: veiculos ? veiculos.crs.baMc : nomeConfig('crs', 'BaMc'),
+      baLr: veiculos ? veiculos.crs.baLr : nomeConfig('crs', 'BaLr'),
+      baRe1: veiculos ? veiculos.crs.ba2_1 : nomeConfig('crs', 'Ba2-1'),
+      baRe2: veiculos ? veiculos.crs.ba2_2 : nomeConfig('crs', 'Ba2-2'),
+    },
+  };
+  const resolve = (nome: string, cargos?: string[]) => {
+    const key = nomeKey(nome);
+    if (!key || key === '-') return undefined;
+    const compativel = (entry: EfetivoOperacionalEntry) => !cargos || cargos.includes(entry.cargoExercido);
+    // A cobertura tem prioridade se o titular ainda consta no efetivo em outro cargo.
+    return efetivo.find(entry => {
+      if (!compativel(entry) || !entry.substituindo) return false;
+      const titular = params.bombeiros?.find(b => b.id === entry.substituindo?.id);
+      return [entry.substituindo.nome, titular?.nomeGuerra, titular?.nomeCompleto].some(n => nomeKey(n) === key);
+    })
+      || efetivo.find(entry => compativel(entry) && [entry.bombeiro.nomeGuerra, entry.bombeiro.nomeCompleto].some(n => nomeKey(n) === key));
+  };
+  const usados = new Set<string>();
+  const slot = (nome: string, cargos: string[]) => {
+    const entry = resolve(nome, cargos);
+    if (!entry || usados.has(entry.bombeiro.id)) return '';
+    usados.add(entry.bombeiro.id);
+    return entry.bombeiro.nomeGuerra;
+  };
+  const guarnicoes = {
+    cci02: { baMc: slot(origem.cci02.baMc, ['BA-MC']), baCe: slot(origem.cci02.baCe, ['BA-CE']), ba2: slot(origem.cci02.ba2, ['BA-2']) },
+    cci03: { baMc: slot(origem.cci03.baMc, ['BA-MC']), ba2_1: slot(origem.cci03.ba2_1, ['BA-2']), ba2_2: slot(origem.cci03.ba2_2, ['BA-2']) },
+    crs: { baMc: slot(origem.crs.baMc, ['BA-MC']), baLr: slot(origem.crs.baLr, ['BA-LR']), baRe1: slot(origem.crs.baRe1, ['BA-RE', 'BA-2']), baRe2: slot(origem.crs.baRe2, ['BA-RE', 'BA-2']) },
+  };
+  const noHorario = (inicio: string, fim: string) => inicio <= fim ? hora >= inicio && hora < fim : hora >= inicio || hora < fim;
+  const nomeRadio = diaria
+    ? diaria.radio.find(r => noHorario(r.horarioInicio, r.horarioFim))?.nomeGuerra
+    : parada?.radio.find(r => noHorario(r.horario, r.horarioFim))?.pessoaNomeGuerra;
+  const chefe = resolve(guarnicoes.cci02.baCe || diaria?.chefeEquipe || '', ['BA-CE']);
+  return {
+    guarnicoes,
+    chefeEquipe: chefe?.bombeiro.nomeCompleto || '',
+    operadorComunicacoes: resolve(nomeRadio || '')?.bombeiro.nomeGuerra || '',
+  };
 }
 
 function contextoAfastamentoNoPlantao(params: {

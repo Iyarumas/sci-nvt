@@ -640,6 +640,8 @@ GET com filtro `ativa=true`. ✅ OK
 ### listarEscalas
 
 **Método HTTP:** GET  
+**Filtros opcionais:** `equipe?: string`, `dataPlantao?: string`, `fresh?: boolean`. `fresh: true` consulta a API sem cache.
+**REST equivalência com filtros:** `GET /rest/v1/escalas_diarias?select=*&equipe=eq.{equipe}&data_plantao=eq.{dataPlantao}&order=created_at.desc`
 **Estado:** ✅ OK  
 
 **Payload Response:**
@@ -2308,13 +2310,15 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Método HTTP:** GET (custom)  
 **REST equivalência:** `GET /rest/v1/exercicios_posicionamento?select=numero&ano=eq.{ano}&order=numero.desc&limit=1`  
 **Request Body:** —  
-**Parâmetros:** `ano: string`  
-**Response:** `number` (último número + 1, ou 1 se for o primeiro do ano)  
+**Parâmetros:** `ano: string`. Consulta sem cache (`no-store`), independente da equipe.
+**Response:** `number`: `max(maior número salvo no ano, 42 somente em 2026) + 1`. Nos outros anos sem registros, retorna 1.
 **Estado:** ✅ OK  
 
 ---
 
 ### criarExercicio
+
+**Assinatura:** `criarExercicio(data, options?: { numeroAutomatico?: boolean })`. Quando automático, o service envia `numero: 0` como pedido de reserva na API; o backend devolve o número efetivamente salvo. Sem essa opção, respeita o número manual.
 
 **Método HTTP:** POST  
 **REST equivalência:** `POST /rest/v1/exercicios_posicionamento`  
@@ -2343,6 +2347,12 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Estado:** ✅ OK  
 
 **Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `gerente`, `createdBy`, `updatedBy`, `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
+
+**Numeração anual:** referência histórica nº 42/2026 (MMS.BR.BA.FOR.006). O formulário sugere 043/2026, ou o maior número já cadastrado + 1. A mudança do ano da data recalcula a sugestão; a edição no mesmo ano conserva o número salvo. Ano da data e `ano` devem coincidir. Número manual deve ser inteiro positivo (até 2147483647). O backend reserva números automáticos em transação PostgreSQL com advisory lock por modelo, incluindo criações simultâneas; números manuais/edições duplicados no mesmo modelo/ano são recusados. A edição do maior número passa a orientar a próxima sugestão. A aprovação não consome outro número. Nenhum documento histórico é renumerado.
+
+**Preenchimento inicial:** somente textos (local, observações, resumo, considerações e checklist) do PDF de referência, usando ASUR no texto atual da empresa. Não copia nomes, datas, horários, tempos medidos, viaturas, conceitos ou assinaturas históricas. Os campos permanecem editáveis por qualquer usuário autorizado a criar/editar o registro na equipe; aprovado continua restrito a admin/desenvolvedor conforme a regra existente. Abrir edição preserva os valores salvos, inclusive campos vazios.
+
+**Equipagem do plantão:** `efetivoOperacionalService.resolverEquipagemExercicio(equipe, dataPlantao, hora)` combina efetivo operacional, diária fresca e mensal. `montarGuarnicoesExercicio` prioriza os veículos da diária; sem diária, usa a parada mensal da data e, sem parada, a configuração mensal. Resolve férias, afastamentos, extras e trocas pelo efetivo e pelas coberturas, sem distribuir motoristas arbitrariamente ou repetir pessoas. Vagas sem cobertura ficam vazias para seleção manual. Posicionamento também preenche o comunicante da escala de rádio do horário. Trocar equipe/data recarrega participantes; seleção manual e edição no mesmo plantão não são sobrescritas. A assinatura do chefe selecionado é preservada no PDF.
 
 **PDF:** `exercicioPosicionamentoPdfService.ts` gera client-side o formulário MMS.BR.BA.FOR.006 para visualização e impressão após aprovação.
 
@@ -2378,13 +2388,16 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 ### obterProximoNumero
 
 **Método HTTP:** GET (custom)  
-**Parâmetros:** `ano: string`  
-**Response:** `number`  
+**Parâmetros:** `ano: string`. Consulta sem cache (`no-store`), independente da equipe.
+**REST equivalência:** `GET /rest/v1/treinamentos_tempo_resposta?select=numero&ano=eq.{ano}&order=numero.desc&limit=1`
+**Response:** `number`: `max(maior número salvo no ano, 24 somente em 2026) + 1`. Nos outros anos sem registros, retorna 1.
 **Estado:** ✅ OK  
 
 ---
 
 ### criarTreino
+
+**Assinatura:** `criarTreino(data, options?: { numeroAutomatico?: boolean })`. Quando automático, o service envia `numero: 0` como pedido de reserva na API; o backend devolve o número efetivamente salvo. Sem essa opção, respeita o número manual.
 
 **Método HTTP:** POST  
 **Request Body:** `TreinamentoTempoRespostaInput`
@@ -2406,6 +2419,12 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Estado:** ✅ OK  
 
 **Mapping snake_case ↔ camelCase:** ✅ Completo (inclui `createdBy`, `updatedBy`, `status`, `aprovadoPor`, `aprovadoPorNome`, `aprovadoEm`)
+
+**Numeração anual:** referência histórica nº 24/2026 (MMS.BR.BA.FOR.005). O formulário sugere 025/2026, ou o maior número já cadastrado + 1. A mudança do ano da data recalcula a sugestão; a edição no mesmo ano conserva o número salvo. Ano da data e `ano` devem coincidir. Número manual deve ser inteiro positivo (até 2147483647). O backend reserva números automáticos em transação PostgreSQL com advisory lock por modelo, incluindo criações simultâneas; números manuais/edições duplicados no mesmo modelo/ano são recusados. A edição do maior número passa a orientar a próxima sugestão. A aprovação não consome outro número. Nenhum documento histórico é renumerado.
+
+**Preenchimento inicial:** somente textos (local, observações, resumo, considerações e checklist) do PDF de referência, usando ASUR no texto atual da empresa. Não copia nomes, datas, horários, tempos medidos, viaturas, conceitos ou assinaturas históricas. Os campos permanecem editáveis por qualquer usuário autorizado a criar/editar o registro na equipe; aprovado continua restrito a admin/desenvolvedor conforme a regra existente. Abrir edição preserva os valores salvos, inclusive campos vazios.
+
+**Equipagem do plantão:** `efetivoOperacionalService.resolverEquipagemExercicio(equipe, dataPlantao, hora)` combina efetivo operacional, diária fresca e mensal. `montarGuarnicoesExercicio` prioriza os veículos da diária; sem diária, usa a parada mensal da data e, sem parada, a configuração mensal. Resolve férias, afastamentos, extras e trocas pelo efetivo e pelas coberturas, sem distribuir motoristas arbitrariamente ou repetir pessoas. Vagas sem cobertura ficam vazias para seleção manual. Posicionamento também preenche o comunicante da escala de rádio do horário. Trocar equipe/data recarrega participantes; seleção manual e edição no mesmo plantão não são sobrescritas. A assinatura do chefe selecionado é preservada no PDF.
 
 **PDF:** `tempoRespostaPdfService.ts` gera client-side o formulário MMS.BR.BA.FOR.005 para visualização e impressão após aprovação.
 

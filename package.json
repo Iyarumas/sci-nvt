@@ -12,6 +12,7 @@
     "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
     "typecheck": "npm run typecheck --workspace=frontend && npm run typecheck --workspace=backend",
     "lint": "npm run lint --workspace=frontend && npm run lint --workspace=backend",
+    "test:exercicios": "npm run build --workspace=backend && node backend/scripts/exercicios-number.test.mjs && npm run test:exercicios --workspace=frontend",
     "db:up": "docker compose up -d postgres pgadmin",
     "db:down": "docker compose down",
     "db:migrate": "npm run db:migrate --workspace=backend",

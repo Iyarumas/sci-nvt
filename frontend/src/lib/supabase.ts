@@ -49,6 +49,7 @@ class QueryBuilder<T = any> implements PromiseLike<CompatResponse<T>> {
   private headMode = false;
   private returning = false;
   private singleMode: 'single' | 'maybeSingle' | null = null;
+  private cacheMode?: RequestCache;
 
   constructor(table: string) {
     this.table = table;
@@ -135,6 +136,11 @@ class QueryBuilder<T = any> implements PromiseLike<CompatResponse<T>> {
     return this;
   }
 
+  cache(mode: RequestCache): this {
+    this.cacheMode = mode;
+    return this;
+  }
+
   single(): this {
     this.singleMode = 'single';
     return this;
@@ -164,6 +170,7 @@ class QueryBuilder<T = any> implements PromiseLike<CompatResponse<T>> {
       const result = await apiFetch<ApiResult>(endpoint, {
         method: 'POST',
         body: JSON.stringify(body),
+        cache: this.cacheMode,
       });
       return this.normalize(result);
     } catch (error) {

@@ -62,7 +62,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     queryCache.clear();
   }
 
-  if (!isDataQuery(path, init) || typeof init.body !== 'string') {
+  // Validacoes operacionais precisam consultar a API mesmo com cache ou leitura em andamento.
+  if (init.cache === 'no-store' || !isDataQuery(path, init) || typeof init.body !== 'string') {
     return requestApi<T>(path, init);
   }
 

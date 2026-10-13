@@ -21,13 +21,15 @@ function handleSupabaseError(err: unknown): never {
 // DOCUMENTOS (TEMPLATES)
 // =====================================================
 
-export async function listarDocumentos(): Promise<Document[]> {
+export async function listarDocumentos(options?: { fresh?: boolean }): Promise<Document[]> {
   const db = getDb();
-  const { data, error } = await db
+  const query = db
     .from('documents')
     .select('*')
     .eq('active', true)
     .order('created_at', { ascending: false });
+  if (options?.fresh) query.cache('no-store');
+  const { data, error } = await query;
   if (error) handleSupabaseError(error);
   return (data as Document[]) || [];
 }
@@ -287,10 +289,12 @@ export async function listarPreenchimentos(params?: string | {
   status?: string;
   created_at_gte?: string;
   created_at_lte?: string;
+  fresh?: boolean;
 }): Promise<DocumentFill[]> {
   const db = getDb();
   const filtros = typeof params === 'string' ? { documentId: params } : params;
   let query = db.from('document_fills').select('*').order('created_at', { ascending: false });
+  if (filtros?.fresh) query = query.cache('no-store');
   if (filtros?.documentId) query = query.eq('document_id', filtros.documentId);
   if (filtros?.status) query = query.eq('status', filtros.status);
   if (filtros?.created_at_gte) query = query.gte('created_at', filtros.created_at_gte);

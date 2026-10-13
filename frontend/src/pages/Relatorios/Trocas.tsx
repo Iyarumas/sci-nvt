@@ -72,9 +72,9 @@ function documentoEhTroca(doc: any): boolean {
   return doc?.source_module === 'trocas' || findTemplate(String(doc?.name || '')) !== null;
 }
 
-async function listarPreenchimentosDeDocumentosTroca(docs: any[]): Promise<DocumentFill[]> {
+async function listarPreenchimentosDeDocumentosTroca(docs: any[], fresh = false): Promise<DocumentFill[]> {
   const fillsPorDocumento = await Promise.all(
-    docs.filter(documentoEhTroca).map(doc => listarPreenchimentos(doc.id).catch(() => [])),
+    docs.filter(documentoEhTroca).map(doc => listarPreenchimentos({ documentId: doc.id, fresh })),
   );
   return fillsPorDocumento.flat();
 }
@@ -966,9 +966,11 @@ export function Trocas() {
     }
   }
 
-  async function recarregarPreenchimentosTroca() {
-    const docs = await listarDocumentos();
-    setFills(await listarPreenchimentosDeDocumentosTroca(docs));
+  async function recarregarPreenchimentosTroca(fresh = false): Promise<DocumentFill[]> {
+    const docs = await listarDocumentos({ fresh });
+    const registrosAtuais = await listarPreenchimentosDeDocumentosTroca(docs, fresh);
+    setFills(registrosAtuais);
+    return registrosAtuais;
   }
 
   async function ensureDocumentExists(): Promise<DocumentWithFields | null> {
@@ -1346,11 +1348,11 @@ export function Trocas() {
     return 'Registrada';
   }
 
-  function buscarConflitoTroca(data: Record<string, string>): ConflitoTroca | null {
+  function buscarConflitoTroca(data: Record<string, string>, registrosAtuais: DocumentFill[]): ConflitoTroca | null {
     const ocorrenciasAtuais = getOcorrenciasConflitoTroca(data);
     if (ocorrenciasAtuais.length === 0) return null;
 
-    for (const fill of fills) {
+    for (const fill of registrosAtuais) {
       if (editingFillId && fill.id === editingFillId) continue;
       if (!STATUS_TROCA_BLOQUEIA_CONFLITO.has(fill.status)) continue;
       const dataExistente = fill.filled_data as Record<string, string>;
@@ -1374,11 +1376,19 @@ export function Trocas() {
     return null;
   }
 
-  function validarConflitoTroca(data: Record<string, string> = formData): boolean {
-    const conflito = buscarConflitoTroca(data);
-    if (!conflito) return true;
-    setConflitoTroca(conflito);
-    return false;
+  async function validarConflitoTroca(data: Record<string, string> = formData): Promise<DocumentFill[] | null> {
+    setSaving(true);
+    try {
+      const registrosAtuais = await recarregarPreenchimentosTroca(true);
+      const conflito = buscarConflitoTroca(data, registrosAtuais);
+      setConflitoTroca(conflito);
+      return conflito ? null : registrosAtuais;
+    } catch {
+      setShowNotifPopup({ msg: 'Não foi possível conferir as trocas existentes. Tente novamente.', type: 'error' });
+      return null;
+    } finally {
+      setSaving(false);
+    }
   }
 
   function getExcessoLimiteFillIds(sourceFills: DocumentFill[]): Set<string> {
@@ -1627,13 +1637,14 @@ export function Trocas() {
 
   async function handleConfirmGerarPdf() {
     setShowConfirmPdf(false);
-    if (!validarConflitoTroca(formData)) return;
+    const registrosAtuais = await validarConflitoTroca(formData);
+    if (!registrosAtuais) return;
     if (!canManageFormData(formData)) {
       setShowNotifPopup({ msg: 'Você não tem permissão para aprovar esta troca.', type: 'error' });
       return;
     }
     if (editingFillId) {
-      const existingFill = fills.find(fill => fill.id === editingFillId);
+      const existingFill = registrosAtuais.find(fill => fill.id === editingFillId);
       if (existingFill && !canManageFill(existingFill)) {
         setShowNotifPopup({ msg: 'Você não tem permissão para editar esta troca.', type: 'error' });
         return;
@@ -1690,9 +1701,9 @@ export function Trocas() {
     await handleConfirmGerarPdf();
   }
 
-  function handleVisualizar() {
+  async function handleVisualizar() {
     if (!validateForm()) return;
-    if (!validarConflitoTroca()) return;
+    if (!(await validarConflitoTroca())) return;
     setShowPreviewInfo(true);
   }
 
@@ -1716,14 +1727,15 @@ export function Trocas() {
     }
   }
 
-  function handleGerarPdf() {
+  async function handleGerarPdf() {
     if (!validateForm()) return;
-    if (!validarConflitoTroca()) return;
+    const registrosAtuais = await validarConflitoTroca();
+    if (!registrosAtuais) return;
     if (!canManageFormData(formData)) {
       setShowNotifPopup({ msg: 'Você não tem permissão para aprovar esta troca.', type: 'error' });
       return;
     }
-    if (precisaAutorizacaoGerente(formData)) {
+    if (precisaAutorizacaoGerente(formData, registrosAtuais)) {
       setShowAutorizacaoAviso(true);
     } else {
       setShowConfirmPdf(true);
@@ -1833,13 +1845,14 @@ export function Trocas() {
 
   async function handleSaveDraft() {
     if (!validateForm()) return;
-    if (!validarConflitoTroca()) return;
+    const registrosAtuais = await validarConflitoTroca();
+    if (!registrosAtuais) return;
     if (!canManageFormData(formData)) {
       setShowNotifPopup({ msg: 'Você não tem permissão para salvar esta troca.', type: 'error' });
       return;
     }
     if (editingFillId) {
-      const existingFill = fills.find(fill => fill.id === editingFillId);
+      const existingFill = registrosAtuais.find(fill => fill.id === editingFillId);
       if (existingFill && !canManageFill(existingFill)) {
         setShowNotifPopup({ msg: 'Você não tem permissão para editar esta troca.', type: 'error' });
         return;

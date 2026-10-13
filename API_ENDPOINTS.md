@@ -1265,6 +1265,10 @@ GET com joins: busca `document` + `document_fields` + `document_signers` em para
 
 ✅ OK  
 
+**Leitura atualizada:** `listarDocumentos({ fresh: true })` e `listarPreenchimentos({ documentId, fresh: true })` consultam a API sem reutilizar o cache local ou consultas anteriores em andamento. O adapter HTTP usa `.cache('no-store')`; `fresh` nao faz parte do payload enviado ao backend.
+
+**Conflitos de trocas:** antes de visualizar, salvar rascunho ou aprovar (inclusive na confirmacao), a tela consulta novamente todos os templates ativos de troca e seus preenchimentos. A validacao usa diretamente os registros retornados, ignorando o proprio preenchimento em edicao e os status `cancelled`/`archived`. Registros excluidos nao bloqueiam uma nova troca mesmo com o formulario aberto em outra sessao. Falhas de consulta interrompem a acao e exibem uma mensagem para tentar novamente.
+
 **Payload `DocumentFill`:**
 ```json
 {

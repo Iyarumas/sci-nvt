@@ -24,7 +24,7 @@ import type { FeriasGozo } from '../../types/ferias';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import type { APOC } from '../../types/apoc';
 import type { PTRB, PTRBParticipante } from '../../types/ptrb';
-import { EQUIPES, SITUACOES, ASSUNTOS, SITUACAO_DESCRICOES } from '../../types/ptrb';
+import { EQUIPES, SITUACOES, opcoesAssuntoPTRBA, SITUACAO_DESCRICOES } from '../../types/ptrb';
 import { horarioPlantaoPorEquipe } from '../../utils/equipes';
 import { formatarDataArquivo, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import {
@@ -469,7 +469,7 @@ function PTRBAForm({
             <label className={label}>Assunto Ministrado</label>
             <select value={form.assuntoMinistrado} onChange={e => setForm(f => ({ ...f, assuntoMinistrado: e.target.value }))} className={input}>
               <option value="">Selecione</option>
-              {ASSUNTOS.map(a => <option key={a} value={a}>{a}</option>)}
+              {opcoesAssuntoPTRBA(form.assuntoMinistrado).map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
           <div>

@@ -11,6 +11,7 @@
     "test:domain": "node scripts/domain-rules.test.mjs && node scripts/substituicoes-service.test.mjs && node scripts/efetivo-mensal.test.mjs && node scripts/trocas-service.test.mjs && node scripts/exercicios-service.test.mjs",
     "test:exercicios": "node scripts/exercicios-service.test.mjs",
     "test:e2e:exercicios": "node scripts/exercicios-ui.test.mjs",
+    "test:e2e:ptrba-apoc": "node scripts/ptrba-apoc-ui.test.mjs",
     "test:e2e:operational": "node scripts/e2e-operational-smoke.mjs",
     "preview": "vite preview"
   },

@@ -8,7 +8,7 @@ import { listarBombeiros } from '../../services/bombeiroService';
 import { listarAPOCs } from '../../services/apocService';
 import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
 import type { PTRB } from '../../types/ptrb';
-import { EQUIPES, ASSUNTOS } from '../../types/ptrb';
+import { EQUIPES, ASSUNTOS, canonicalizarAssuntoPTRBA, participanteContaNoAssuntoPTRBA } from '../../types/ptrb';
 import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
 import type { PTRBACompleto } from '../../types/ptrbaCompleto';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
@@ -99,15 +99,6 @@ const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py
 const HIERARQUIA = ['BA-CE', 'BA-LR', 'BA-MC', 'BA-RE', 'BA-2', 'GS', 'OC', 'APOC', ''];
 const EQUIPE_ORDER = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Ferista'];
 
-// APOCs só participam/contam horas nestes assuntos
-const ASSUNTOS_APOC = ['01', '02', '06', '12', '13', '14', '17'];
-
-function apocParticipaDoAssunto(assunto: string): boolean {
-  const t = (assunto || '').trim();
-  if (!t) return false;
-  return ASSUNTOS_APOC.some(num => t === num || t.startsWith(num + '.'));
-}
-
 function normalizarNome(nome: string): string {
   return (nome || '')
     .toLowerCase()
@@ -178,8 +169,7 @@ function expandParticipants(ptrbs: PTRB[]): ExpandedPTRB[] {
     } else {
       for (const part of p.participantes) {
         // APOCs só contam horas em assuntos dos quais participam
-        const isApoc = (part.funcao || '').toUpperCase() === 'APOC';
-        if (isApoc && !apocParticipaDoAssunto(p.assuntoMinistrado)) continue;
+        if (!participanteContaNoAssuntoPTRBA(part, p.assuntoMinistrado)) continue;
         result.push({ ptrb: p, nome: part.nomeCompleto || '(sem nome)', funcao: part.funcao || '', horas: h });
       }
     }
@@ -189,6 +179,7 @@ function expandParticipants(ptrbs: PTRB[]): ExpandedPTRB[] {
 
 // Converte um registro PTR-BA com evidências em registros de instrução (uma por assunto/par de evidências)
 function converterCompletoParaPTRBs(c: PTRBACompleto): PTRB[] {
+  if (c.isApoc) return [];
   const participantes = (c.participantes || []).filter(p => p.nomeCompleto && p.nomeCompleto.trim());
   if (participantes.length === 0) return [];
   const base = {
@@ -220,7 +211,7 @@ function converterCompletoParaPTRBs(c: PTRBACompleto): PTRB[] {
       horaTermino: ev.horaTermino || '',
       duracao: '',
       horas: calcHoras(ev.horaInicio || '', ev.horaTermino || ''),
-      assuntoMinistrado: ev.assunto,
+      assuntoMinistrado: canonicalizarAssuntoPTRBA(ev.assunto),
       descricao: ev.descricao || '',
     });
   }
@@ -457,14 +448,14 @@ export function PTRBA() {
   if (filtroPessoa) {
     const nomeBusca = filtroPessoa.trim();
     lista = lista.filter(p =>
-      p.participantes.some(part => mesmaPessoaRelatorio(part.nomeCompleto, nomeBusca))
+      p.participantes.some(part => mesmaPessoaRelatorio(part.nomeCompleto, nomeBusca) && participanteContaNoAssuntoPTRBA(part, p.assuntoMinistrado))
     );
   }
     lista = applyPeriodFilter(lista);
   if (view === 'detail' && selectedPessoa) {
     const nomeBusca = selectedPessoa.trim();
     lista = lista.filter(p =>
-      p.participantes.some(part => mesmaPessoaRelatorio(part.nomeCompleto, nomeBusca))
+      p.participantes.some(part => mesmaPessoaRelatorio(part.nomeCompleto, nomeBusca) && participanteContaNoAssuntoPTRBA(part, p.assuntoMinistrado))
     );
   }
     return lista.sort((a, b) => new Date(b.data || '').getTime() - new Date(a.data || '').getTime());

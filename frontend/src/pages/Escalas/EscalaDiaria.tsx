@@ -20,7 +20,7 @@ import { listarFeriasGozo, listarEscalas as listarEscalasFerias, listarItensEsca
 import { listarCompletas } from '../../services/escalaMensalService';
 import { gerarRadioPlantao } from '../../services/escalaMensalGenerator';
 import { FUNCOES_BDS_PTR } from '../../types/escala';
-import { ASSUNTOS as ASSUNTOS_PTRBA } from '../../types/ptrb';
+import { opcoesAssuntoPTRBA } from '../../types/ptrb';
 import type { EscalaDiaria, ExtraSlot, TrocaSlot } from '../../types/escala';
 import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import type { Bombeiro, Cargo } from '../../types/bombeiro';
@@ -1620,7 +1620,7 @@ function EscalaDiariaForm({
                 className="w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated"
               >
                 <option value="" className={optionCls}>Selecione o assunto</option>
-                {ASSUNTOS_PTRBA.map(assunto => <option key={assunto} value={assunto} className={optionCls}>{assunto}</option>)}
+                {opcoesAssuntoPTRBA(form[section].assunto).map(assunto => <option key={assunto} value={assunto} className={optionCls}>{assunto}</option>)}
               </select>
             </div>
           )}

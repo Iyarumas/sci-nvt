@@ -6,7 +6,7 @@ import {
   PTRBA_COMPLETO_EVIDENCIA_PARES,
 } from '../types/ptrbaCompleto';
 import { downloadPdf } from './pdfService';
-import { nomeDocumentoOperacional } from '../utils/documentFileNames';
+import { nomeArquivoPTRBACompleto } from '../utils/documentFileNames';
 import { carregarMedGroupLogo, drawMedGroupLogo } from './pdfLogo';
 
 const PAGE_H = 297;
@@ -71,11 +71,11 @@ function drawTextFit(doc: jsPDF, text: string, x: number, y: number, maxW: numbe
   doc.text(out, x, y, { align: options?.align || 'left' });
 }
 
-function drawHeader(doc: jsPDF, logoDataUrl: string | null) {
+function drawHeader(doc: jsPDF, logoDataUrl: string | null, isApoc: boolean) {
   doc.setLineWidth(0.25);
   drawMedGroupLogo(doc, logoDataUrl, M, 7, 34, 14, true);
 
-  drawCell(doc, M + 34, 7, 112, 14, 'RELATÓRIO DE REGISTRO PTR-BA', {
+  drawCell(doc, M + 34, 7, 112, 14, isApoc ? 'PTR-BA - SOMENTE APOC' : 'RELATÓRIO DE REGISTRO PTR-BA', {
     bold: true,
     size: 12,
     align: 'center',
@@ -114,13 +114,13 @@ function drawEquipeLinha(doc: jsPDF, registro: PTRBACompleto) {
   drawCell(doc, M + 155, 29, 41, 6, formatDate(registro.data), { bold: true, size: 8, align: 'center' });
 }
 
-function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[]): number {
+function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[], isApoc: boolean): number {
   const y0 = 36.5;
   const rowH = 6.7;
   const widths = [15, 18, 68, 19, 76];
   const xs = [M];
   for (let i = 0; i < widths.length - 1; i += 1) xs.push(xs[i] + widths[i]);
-  const headers = ['ORD', 'Função', 'NOME COMPLETO', "Situação dos\nBA's", 'ASSINATURA DO BA'];
+  const headers = ['ORD', 'Função', 'NOME COMPLETO', isApoc ? 'Situação' : "Situação dos\nBA's", isApoc ? 'ASSINATURA DO APOC' : 'ASSINATURA DO BA'];
   headers.forEach((header, i) => drawCell(doc, xs[i], y0, widths[i], 7, header, {
     bold: true,
     size: header.startsWith('Situação') ? 7 : FIELD_FONT_SIZE,
@@ -131,7 +131,9 @@ function drawParticipantes(doc: jsPDF, participantes: PTRBACompletoParticipante[
   const participantesExtras = participantes
     .slice(PARTICIPANTES_FIXOS_EQUIPE)
     .filter(p => p.nomeCompleto.trim());
-  const linhas = [...participantesEquipe, ...participantesExtras];
+  const linhas = isApoc
+    ? participantes.filter(p => p.funcao === 'APOC' && p.nomeCompleto.trim())
+    : [...participantesEquipe, ...participantesExtras];
 
   for (let i = 0; i < linhas.length; i += 1) {
     const y = y0 + 7 + i * rowH;
@@ -167,7 +169,14 @@ function drawObservacoes(doc: jsPDF, registro: PTRBACompleto, y: number): number
     { bold: true, size: 5.4, valign: 'middle' },
   );
 
-  return y + obsH + legendH;
+  const bottom = y + obsH + legendH;
+  if (registro.isApoc) {
+    drawCell(doc, M, bottom, CONTENT_W, 9,
+      'Registro exclusivo dos participantes APOC. A contabilização desta instrução consta no PTR-BA da equipe.',
+      { size: 7, align: 'center' });
+    return bottom + 9;
+  }
+  return bottom;
 }
 
 function imageFormat(dataUrl: string): 'PNG' | 'JPEG' {
@@ -223,7 +232,7 @@ function drawEvidencias(doc: jsPDF, evidencias: PTRBACompletoEvidencia[], titleY
   const cellW = 98;
   const labelH = 4;
   const availableForPhotos = EVIDENCE_BOTTOM_Y - (titleY + 5) - (PTRBA_COMPLETO_EVIDENCIA_PARES.length * labelH);
-  const cellH = Math.max(30, Math.min(58, availableForPhotos / PTRBA_COMPLETO_EVIDENCIA_PARES.length));
+  const cellH = Math.max(24, Math.min(58, availableForPhotos / PTRBA_COMPLETO_EVIDENCIA_PARES.length));
   // 3 instruções, cada uma com 2 evidências juntas
   for (let n = 0; n < 3; n += 1) {
     const labelY = titleY + 5 + n * (labelH + cellH);
@@ -248,14 +257,14 @@ function drawAssinatura(doc: jsPDF) {
 export async function gerarPTRBACompletoPdf(registro: PTRBACompleto): Promise<Blob> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
-    title: nomeDocumentoOperacional(registro.data, registro.isExtra ? 'PTRBA EXTRA' : 'PTRBA', registro.equipe, ''),
+    title: nomeArquivoPTRBACompleto(registro).replace(/\.pdf$/, ''),
     subject: 'Relatório de Registro PTR-BA',
     creator: 'SESCINC Manager',
   });
   const logoDataUrl = await carregarMedGroupLogo();
-  drawHeader(doc, logoDataUrl);
+  drawHeader(doc, logoDataUrl, registro.isApoc);
   drawEquipeLinha(doc, registro);
-  const participantesBottom = drawParticipantes(doc, registro.participantes);
+  const participantesBottom = drawParticipantes(doc, registro.participantes, registro.isApoc);
   const observacoesY = Math.min(participantesBottom + 1.5, 144);
   const evidenciasY = drawObservacoes(doc, registro, observacoesY) + 2;
   drawEvidencias(doc, normalizarEvidenciasPTRBACompleto(registro.evidencias), evidenciasY);
@@ -267,6 +276,6 @@ export async function gerarPTRBACompletoPdf(registro: PTRBACompleto): Promise<Bl
 
 export async function baixarPTRBACompletoPdf(registro: PTRBACompleto): Promise<void> {
   const blob = await gerarPTRBACompletoPdf(registro);
-  const nome = nomeDocumentoOperacional(registro.data, registro.isExtra ? 'PTRBA EXTRA' : 'PTRBA', registro.equipe);
+  const nome = nomeArquivoPTRBACompleto(registro);
   downloadPdf(blob, nome);
 }

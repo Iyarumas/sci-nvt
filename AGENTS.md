@@ -193,7 +193,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | Rota | Tela | Descrição |
 |------|------|-----------|
 | `/registros-diarios/ptr-ba` | PTR-BA por Instrução | Registro de PTR-BA por assunto ministrado |
-| `/registros-diarios/ptr-ba-completo` | PTR-BA | Registro PTR-BA com efetivo, evidências, opção PTR-BA EXTRA preservada na edição e download em PDF com EXTRA no nome quando marcada |
+| `/registros-diarios/ptr-ba-completo` | PTR-BA | Abas Normais e APOC, formulário compartilhado, botão Criar PTR-BA APOC e pesquisa por nome na aba APOC; registros exclusivos APOC não contabilizam relatórios, estatísticas, LRO ou horas. PTR-BA EXTRA continua disponível nos normais |
 | `/registros-diarios/lro-ocorrencias` | LRO/Ocorrências | Registo de ocorrências do turno |
 | `/registros-diarios/bona-rea` | BONA/REA | Registos de ocorrências operacionais — BONA e REA |
 | `/registros-diarios/inspecoes` | Inspeções | Registos de inspeções operacionais |
@@ -367,6 +367,10 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 
 `src/components/ui/CardCarousel.tsx` recebe `pages`, `ariaLabel` e `resetKey`. O componente usa páginas horizontais com pontos clicáveis, arraste com mouse, toque e navegação por teclado (setas, Home/End). Páginas inativas ficam fora da interação e da leitura assistiva. Trocar `resetKey` volta à primeira página; o consumidor define quantos itens há em cada página.
 
+### Assuntos do PTR-BA
+
+Os selects de assunto na diária e nos PTR-BAs usam `opcoesAssuntoPTRBA(valorSalvo)` de `frontend/src/types/ptrb.ts`: oferecem os títulos atuais e preservam a opção histórica na edição. Atualizar a lista não regrava registros antigos. Relatórios podem agrupar títulos equivalentes com `canonicalizarAssuntoPTRBA`.
+
 ### Tabela de Rádio Mensal
 
 A Escala Mensal reserva 84px para a coluna de horários, sem alterar a largura total da tabela, fontes ou alturas das linhas. Na exportação PNG, as células mantêm `overflow: hidden` mesmo quando a captura libera o overflow dos demais elementos, evitando sobreposição entre horários e nomes.
@@ -486,6 +490,10 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 ---
 
 ## Conhecimento Permanente do Sistema
+
+**Contagem dos APOCs no PTR-BA normal:** somente participantes incluídos no registro e assuntos marcados na coluna OC da tabela de referência contam para o APOC: familiarização com o aeródromo/aeronaves, sistemas de comunicação e alarme, emergências com artigos perigosos, PLEM, PCINC e operações em baixa visibilidade. A regra em `frontend/src/types/ptrb.ts` usa somente os números 01, 02, 06, 12, 13, 14 e 17 (coluna OC). Assuntos acima de 17 não contam para APOC. Equivalências de grafia preservam o número salvo e não alteram elegibilidade. Filtro por pessoa, detalhes e impressão respeitam a mesma elegibilidade. Estatísticas filtram participações/instrutores APOC, preservando horas globais da equipe. Exclusivos APOC nunca contam. As opções 01, 03, 06, 07, 16 e 17 foram alinhadas à tabela, mantendo compatibilidade com títulos salvos. Testes `test:ptrba-apoc` e `test:e2e:ptrba-apoc` incluem numeração da coluna OC, exclusão dos números 18 a 31, assuntos mistos, APOC não incluído, estatísticas e impressão.
+
+**PTR-BA somente APOC:** `isApoc` mapeia para `is_apoc` (migration 070, padrão `false` preservando históricos). `listarPTRBACompletos()` retorna apenas normais; `modalidade: 'apoc'` busca exclusivos e `'todos'` é usado somente na tela de gestão, cujas abas/filtros separam os registros. Todos os consumidores de horas, relatórios, estatísticas e LRO usam a consulta padrão. O formulário APOC não preenche nem reconcilia efetivo/instrutores automaticamente, seleciona apenas cadastros com função APOC, impede duplicatas e permite até 15 participantes. Backend valida participantes também nos PATCHs sem modalidade e impede trocar a modalidade na edição. PDF mostra apenas APOCs selecionados, assinatura APOC e aviso de contabilização no registro da equipe; nome `PTR-BA_APOC_DD-MM-AAAA.pdf`. `npm run test:ptrba-apoc` testa services/adapter e backend com HTTP/SQL em memória; `npm run test:e2e:ptrba-apoc --workspace=frontend` verifica UI e PDF com API sintética.
 
 **Coordenador do LRO:** a assinatura "COORD DE PREV E EMERG" usa o cadastro com função `COORDENADOR`, pelo helper `assinaturaCoordenadorLRO` em `frontend/src/types/lro.ts`, priorizando Rinaldo ou o único coordenador cadastrado. Não selecionar supervisores APOC. Snapshots incluem `coordenadorAssinatura` e `coordenadorFuncao`; drafts legados sem função ou cadastro indisponível/ambíguo usam a alternativa `RINALDO SANTOS RACHADEL`. A regra vale para prévia, impressão e PDF; PDFs já armazenados ou assinados não são reescritos.
 

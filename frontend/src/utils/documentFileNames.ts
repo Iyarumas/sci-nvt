@@ -1,4 +1,10 @@
 import { formatarDataArquivo, normalizarDataISO } from './datas';
+import type { PTRBACompleto } from '../types/ptrbaCompleto';
+
+export function nomeArquivoPTRBACompleto(registro: Pick<PTRBACompleto, 'data' | 'equipe' | 'isExtra' | 'isApoc'>): string {
+  if (registro.isApoc) return `PTR-BA_APOC_${formatarDataArquivo(registro.data)}.pdf`;
+  return nomeDocumentoOperacional(registro.data, registro.isExtra ? 'PTRBA EXTRA' : 'PTRBA', registro.equipe);
+}
 
 export type TipoDocumentoOperacional =
   | 'LRO'

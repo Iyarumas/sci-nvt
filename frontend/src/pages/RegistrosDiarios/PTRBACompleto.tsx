@@ -8,6 +8,7 @@ import {
   Image,
   Pencil,
   Plus,
+  Users,
   Save,
   Trash2,
   X,
@@ -49,7 +50,7 @@ import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import type { EscalaDiaria } from '../../types/escala';
 import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import type { FeriasGozo } from '../../types/ferias';
-import { ASSUNTOS } from '../../types/ptrb';
+import { opcoesAssuntoPTRBA } from '../../types/ptrb';
 import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import {
   criarEvidenciasPTRBACompletoVazias,
@@ -59,6 +60,7 @@ import {
   PTRBA_COMPLETO_EVIDENCIA_PARES,
   PTRBA_COMPLETO_EQUIPES,
   PTRBA_COMPLETO_FUNCOES,
+  PTRBA_COMPLETO_PARTICIPANTE_SLOTS,
   PTRBA_COMPLETO_SITUACAO_DESCRICOES,
   PTRBA_COMPLETO_SITUACOES,
 } from '../../types/ptrbaCompleto';
@@ -263,16 +265,17 @@ function reconciliarParticipantesComEfetivo(
   return participantes;
 }
 
-function montarInicial(equipePadrao?: string | null): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
+function montarInicial(equipePadrao?: string | null, isApoc = false): Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'> {
   const equipe = PTRBA_COMPLETO_EQUIPES.includes(equipePadrao as Equipe) ? equipePadrao as Equipe : '';
   return {
     data: hojeLocalISO(),
     equipe,
     isExtra: false,
+    isApoc,
     identificacaoAeroporto: getUltimoAeroporto(),
     observacoes: '',
     chefeEquipe: '',
-    participantes: criarParticipantesPTRBACompletoVazios(),
+    participantes: criarParticipantesPTRBACompletoVazios(isApoc),
     evidencias: criarEvidenciasPTRBACompletoVazias(),
   };
 }
@@ -306,6 +309,7 @@ async function reduzirImagem(file: File): Promise<string> {
 
 function PTRBACompletoForm({
   registro,
+  somenteApoc,
   onCancel,
   onSave,
   bombeiros,
@@ -321,6 +325,7 @@ function PTRBACompletoForm({
   saving,
 }: {
   registro?: PTRBACompleto;
+  somenteApoc: boolean;
   onCancel: () => void;
   onSave: (input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) => Promise<void>;
   bombeiros: Bombeiro[];
@@ -335,7 +340,7 @@ function PTRBACompletoForm({
   equipeEfetiva: string | null;
   saving: boolean;
 }) {
-  const [form, setForm] = useState(() => montarInicial(canEscolherEquipe ? null : equipeEfetiva));
+  const [form, setForm] = useState(() => montarInicial(canEscolherEquipe ? null : equipeEfetiva, somenteApoc));
   const ultimaAutoFill = useRef('');
   const ultimaEscalaPTRFill = useRef('');
   const ultimoRegistroReconciliado = useRef('');
@@ -351,18 +356,27 @@ function PTRBACompletoForm({
         data: registro.data,
         equipe: registro.equipe,
         isExtra: registro.isExtra ?? false,
+        isApoc: registro.isApoc ?? false,
         identificacaoAeroporto: registro.identificacaoAeroporto,
         observacoes: registro.observacoes,
         chefeEquipe: registro.chefeEquipe,
-        participantes: normalizarParticipantesPTRBACompleto(registro.participantes),
+        participantes: normalizarParticipantesPTRBACompleto(registro.participantes, registro.isApoc),
         evidencias: normalizarEvidenciasPTRBACompleto(registro.evidencias),
       });
       return;
     }
-    setForm(montarInicial(canEscolherEquipe ? null : equipeEfetiva));
-  }, [registro, canEscolherEquipe, equipeEfetiva]);
+    setForm(montarInicial(canEscolherEquipe ? null : equipeEfetiva, somenteApoc));
+  }, [registro, canEscolherEquipe, equipeEfetiva, somenteApoc]);
 
   const opcoesParticipantes: AtivoItem[] = useMemo(() => {
+    const apocsList = apocs.filter(a => !form.isApoc || a.funcao === 'APOC').map(a => ({
+      id: a.id,
+      nomeGuerra: a.nomeGuerra,
+      nomeCompleto: a.nomeCompleto,
+      cargo: 'APOC',
+      equipe: a.equipe,
+    }));
+    if (form.isApoc) return apocsList;
     const efetivo = montarEfetivoOperacional({
       bombeiros,
       feriasGozo,
@@ -374,15 +388,8 @@ function PTRBACompletoForm({
       dataPlantao: form.data,
     });
     const bombeirosList = montarOpcoesEfetivoOperacional(efetivo, form.equipe);
-    const apocsList = apocs.map(a => ({
-      id: a.id,
-      nomeGuerra: a.nomeGuerra,
-      nomeCompleto: a.nomeCompleto,
-      cargo: 'APOC',
-      equipe: a.equipe,
-    }));
     return [...bombeirosList, ...apocsList];
-  }, [bombeiros, apocs, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias, form.equipe, form.data]);
+  }, [bombeiros, apocs, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias, form.equipe, form.data, form.isApoc]);
 
   const assinaturaEfetivoOperacional = useMemo(() => (
     opcoesParticipantes
@@ -392,7 +399,7 @@ function PTRBACompletoForm({
   ), [opcoesParticipantes, form.equipe]);
 
   useEffect(() => {
-    if (!registro || !assinaturaEfetivoOperacional) return;
+    if (form.isApoc || !registro || !assinaturaEfetivoOperacional) return;
     const chave = `${registro.id}-${assinaturaEfetivoOperacional}`;
     if (ultimoRegistroReconciliado.current === chave) return;
     ultimoRegistroReconciliado.current = chave;
@@ -406,10 +413,10 @@ function PTRBACompletoForm({
       const chefeEquipe = participantes.find(p => p.funcao === 'BA-CE' && p.nomeCompleto)?.nomeCompleto || '';
       return { ...formAtual, participantes, chefeEquipe };
     });
-  }, [registro, assinaturaEfetivoOperacional, opcoesParticipantes, bombeiros]);
+  }, [registro, assinaturaEfetivoOperacional, opcoesParticipantes, bombeiros, form.isApoc]);
 
   useEffect(() => {
-    if (registro) return;
+    if (registro || form.isApoc) return;
     if (!form.equipe) return;
     if (!assinaturaEfetivoOperacional) return;
     if (participantesEditadosRef.current) return;
@@ -429,10 +436,10 @@ function PTRBACompletoForm({
     });
     const chefeEquipe = preenchidos.find(p => p.funcao === 'BA-CE')?.nomeCompleto || '';
     setForm(f => ({ ...f, participantes: preenchidos, chefeEquipe }));
-  }, [registro, form.equipe, form.data, opcoesParticipantes, assinaturaEfetivoOperacional]);
+  }, [registro, form.equipe, form.data, opcoesParticipantes, assinaturaEfetivoOperacional, form.isApoc]);
 
   useEffect(() => {
-    if (registro) return;
+    if (registro || form.isApoc) return;
     if (!form.equipe) return;
     const escala = escalasDiarias.find(e => e.equipe === form.equipe && mesmoDiaISO(e.dataPlantao, form.data));
     const instrucoesBase = extrairInstrucoesPTREscala(escala);
@@ -504,7 +511,7 @@ function PTRBACompletoForm({
       const chefeEquipe = participantes.find(p => p.funcao === 'BA-CE' && p.nomeCompleto)?.nomeCompleto || f.chefeEquipe;
       return { ...f, participantes, evidencias, chefeEquipe };
     });
-  }, [registro, escalasDiarias, form.equipe, form.data, opcoesParticipantes]);
+  }, [registro, escalasDiarias, form.equipe, form.data, opcoesParticipantes, form.isApoc]);
 
   function updateEquipe(equipe: string) {
     if (!canEscolherEquipe) return;
@@ -515,8 +522,8 @@ function PTRBACompletoForm({
       setForm(f => ({
         ...f,
         equipe: '',
-        chefeEquipe: '',
-        participantes: criarParticipantesPTRBACompletoVazios(),
+        chefeEquipe: f.isApoc ? f.chefeEquipe : '',
+        participantes: f.isApoc ? f.participantes : criarParticipantesPTRBACompletoVazios(),
       }));
       return;
     }
@@ -584,10 +591,21 @@ function PTRBACompletoForm({
       alert('Selecione a equipe.');
       return;
     }
+    if (form.isApoc) {
+      const selecionados = form.participantes.filter(p => p.nomeCompleto.trim());
+      if (!selecionados.length || selecionados.some(p => p.funcao !== 'APOC')) {
+        alert('Selecione pelo menos um participante com função APOC.');
+        return;
+      }
+      if (new Set(selecionados.map(p => normalizarBusca(p.nomeCompleto))).size !== selecionados.length) {
+        alert('O mesmo APOC não pode ser selecionado mais de uma vez.');
+        return;
+      }
+    }
     salvarUltimoAeroporto(form.identificacaoAeroporto);
     await onSave({
       ...form,
-      participantes: normalizarParticipantesPTRBACompleto(form.participantes),
+      participantes: normalizarParticipantesPTRBACompleto(form.participantes, form.isApoc),
       evidencias: normalizarEvidenciasPTRBACompleto(form.evidencias),
       chefeEquipe: form.chefeEquipe || form.participantes.find(p => p.funcao === 'BA-CE')?.nomeCompleto || '',
     });
@@ -621,6 +639,12 @@ function PTRBACompletoForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {form.isApoc && (
+        <div className="rounded-xl border border-aviation-200 bg-aviation-50 p-4 text-sm text-aviation-800 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-200">
+          <p className="font-semibold">PTR-BA somente APOC</p>
+          <p className="mt-1">Este registro gera apenas o documento e não entra nos relatórios, nas estatísticas, no LRO ou no tempo de PTR-BA.</p>
+        </div>
+      )}
       <div className={card}>
         <h2 className={cardTitle}><FileText className="h-4 w-4" /> Informações Gerais</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -646,7 +670,7 @@ function PTRBACompletoForm({
             <input value={form.chefeEquipe} onChange={e => setForm(f => ({ ...f, chefeEquipe: e.target.value }))} className={input} placeholder="Nome do chefe" />
           </div>
         </div>
-        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-graphite-200/60 bg-graphite-50/50 p-3 dark:border-border-dark dark:bg-surface-hover/50">
+        {!form.isApoc && <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-graphite-200/60 bg-graphite-50/50 p-3 dark:border-border-dark dark:bg-surface-hover/50">
           <input
             type="checkbox"
             checked={form.isExtra}
@@ -659,11 +683,11 @@ function PTRBACompletoForm({
             <span id="ptrba-extra-label" className="block text-sm font-semibold text-graphite-900 dark:text-graphite-100">PTR-BA EXTRA</span>
             <span id="ptrba-extra-descricao" className="mt-1 block text-xs text-graphite-500 dark:text-graphite-400">Marque para incluir EXTRA no nome do PDF.</span>
           </span>
-        </label>
+        </label>}
       </div>
 
       <div className={card}>
-        <h2 className={cardTitle}><Plus className="h-4 w-4" /> Efetivo do PTR-BA</h2>
+        <h2 className={cardTitle}><Plus className="h-4 w-4" /> {form.isApoc ? 'Participantes APOC' : 'Efetivo do PTR-BA'}</h2>
         <div className="space-y-3">
           {form.participantes.map((participante, index) => (
             <div key={index} className="grid grid-cols-1 gap-3 rounded-xl border border-graphite-200/60 bg-graphite-50/50 p-3 dark:border-border-dark dark:bg-surface-card/50 sm:grid-cols-[52px_130px_1fr_140px]">
@@ -673,23 +697,24 @@ function PTRBACompletoForm({
               </div>
               <div>
                 <label className={label}>Função</label>
-                <select value={participante.funcao} onChange={e => updateParticipante(index, 'funcao', e.target.value)} className={input}>
+                <select value={participante.funcao} onChange={e => updateParticipante(index, 'funcao', e.target.value)} className={input} disabled={form.isApoc}>
                   <option value="">Selecione</option>
-                  {PTRBA_COMPLETO_FUNCOES.map(funcao => <option key={funcao} value={funcao}>{funcao}</option>)}
+                  {(form.isApoc ? ['APOC'] : PTRBA_COMPLETO_FUNCOES).map(funcao => <option key={funcao} value={funcao}>{funcao}</option>)}
                 </select>
               </div>
               <div>
-                <label className={label}>Nome Completo</label>
+                <label className={label}>{form.isApoc ? 'Nome do APOC' : 'Nome Completo'}</label>
                 <SearchSelect
                   value={participante.nomeCompleto}
                   onChange={value => updateParticipante(index, 'nomeCompleto', value)}
-                  placeholder="Selecione o nome"
+                  placeholder={form.isApoc ? 'Selecione o APOC' : 'Selecione o nome'}
                   cargo={participante.funcao || undefined}
                   equipe={participante.funcao === 'APOC' ? undefined : String(form.equipe)}
                   valueField="nomeCompleto"
                   showCargo
                   showEquipe
                   options={opcoesParticipantes}
+                  disabledIds={form.isApoc ? new Set(opcoesParticipantes.filter(p => form.participantes.some((outro, i) => i !== index && outro.nomeCompleto === p.nomeCompleto)).map(p => p.id)) : undefined}
                 />
               </div>
               <div>
@@ -712,9 +737,21 @@ function PTRBACompletoForm({
                   ))}
                 </select>
               </div>
+              {form.isApoc && (
+                <button type="button" onClick={() => setForm(f => ({ ...f, participantes: f.participantes.length === 1 ? criarParticipantesPTRBACompletoVazios(true) : f.participantes.filter((_, i) => i !== index) }))}
+                  className="flex items-center gap-2 text-xs font-medium text-red-600 dark:text-red-400 sm:col-start-3" aria-label={`Remover APOC ${index + 1}`}>
+                  <Trash2 className="h-3.5 w-3.5" /> Remover APOC
+                </button>
+              )}
             </div>
           ))}
         </div>
+        {form.isApoc && form.participantes.length < PTRBA_COMPLETO_PARTICIPANTE_SLOTS && (
+          <button type="button" onClick={() => setForm(f => ({ ...f, participantes: [...f.participantes, ...criarParticipantesPTRBACompletoVazios(true)] }))}
+            className="mt-4 flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-medium text-aviation-700 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+            <Plus className="h-4 w-4" /> Adicionar APOC
+          </button>
+        )}
       </div>
 
       <div className={card}>
@@ -742,7 +779,7 @@ function PTRBACompletoForm({
                   <label className={label}>Assunto</label>
                   <select value={dados.assunto} onChange={e => updateEvidenciaPar(idxDados, 'assunto', e.target.value)} className={input}>
                     <option value="">Selecione</option>
-                    {ASSUNTOS.map(assunto => <option key={assunto} value={assunto}>{assunto}</option>)}
+                    {opcoesAssuntoPTRBA(dados.assunto).map(assunto => <option key={assunto} value={assunto}>{assunto}</option>)}
                   </select>
                 </div>
                 <div className="mt-3">
@@ -769,7 +806,7 @@ function PTRBACompletoForm({
           Cancelar
         </button>
         <button type="submit" disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60">
-          <Save className="h-4 w-4" /> {saving ? 'Salvando...' : registro ? 'Salvar Alterações' : 'Criar PTR-BA'}
+          <Save className="h-4 w-4" /> {saving ? 'Salvando...' : registro ? 'Salvar Alterações' : form.isApoc ? 'Criar PTR-BA APOC' : 'Criar PTR-BA'}
         </button>
       </div>
     </form>
@@ -825,7 +862,7 @@ function PTRBACompletoCard({
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h3 className="text-base font-bold text-graphite-900 dark:text-graphite-100">
-              {registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - {registro.equipe} - {formatDate(registro.data)}
+              {registro.isApoc ? 'PTR-BA APOC' : registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - {registro.equipe} - {formatDate(registro.data)}
             </h3>
             <span className="rounded-full bg-aviation-50 px-2.5 py-1 text-xs font-semibold text-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               {evidenciasPreenchidas.length} evidência(s)
@@ -836,6 +873,7 @@ function PTRBACompletoCard({
             {registro.chefeEquipe ? ` - Chefe: ${registro.chefeEquipe}` : ''}
           </p>
           <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
+          {registro.isApoc && <p className="mt-1 text-xs font-medium text-aviation-700 dark:text-aviation-300">Documento exclusivo APOC · Não contabilizado nos relatórios</p>}
           {gruposEvidencias.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {gruposEvidencias.slice(0, 3).map(grupo => {
@@ -1034,6 +1072,9 @@ export function PTRBACompletoPage() {
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroEquipe, setFiltroEquipe] = useState('');
+  const [aba, setAba] = useState<'normal' | 'apoc'>('normal');
+  const [novoSomenteApoc, setNovoSomenteApoc] = useState(false);
+  const [filtroApoc, setFiltroApoc] = useState('');
   const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 
   function montarAuditoriaPessoasDoRegistro(registro: Pick<PTRBACompleto, 'data' | 'equipe'>): PessoaAuditoria[] {
@@ -1045,6 +1086,7 @@ export function PTRBACompletoPage() {
   }
 
   const registrosComEfetivoDoDia = useMemo(() => registros.map(registro => {
+    if (registro.isApoc) return registro;
     const efetivo = montarEfetivoOperacional({
       bombeiros,
       feriasGozo,
@@ -1076,6 +1118,8 @@ export function PTRBACompletoPage() {
   }), [registros, bombeiros, apocs, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias]);
 
   const registrosFiltrados = registrosComEfetivoDoDia.filter(registro => {
+    if (registro.isApoc !== (aba === 'apoc')) return false;
+    if (aba === 'apoc' && filtroApoc && !registro.participantes.some(p => normalizarBusca(p.nomeCompleto).includes(normalizarBusca(filtroApoc)))) return false;
     if (filtroEquipe && registro.equipe !== filtroEquipe) return false;
     if (filtroAno && !registro.data.startsWith(filtroAno)) return false;
     if (filtroMes) {
@@ -1086,7 +1130,7 @@ export function PTRBACompletoPage() {
   });
 
   async function carregar() {
-    const lista = await listarPTRBACompletos();
+    const lista = await listarPTRBACompletos({ modalidade: 'todos' });
     setRegistros(lista);
   }
 
@@ -1142,7 +1186,7 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const lista = await listarPTRBACompletos();
+        const lista = await listarPTRBACompletos({ modalidade: 'todos' });
         if (cancelado) return;
         setRegistros(lista);
         setLoading(false);
@@ -1166,13 +1210,16 @@ export function PTRBACompletoPage() {
     return () => { cancelado = true; };
   }, []);
 
-  function abrirNovoPTRBA() {
+  function abrirNovoPTRBA(somenteApoc = false) {
     setEditando(null);
+    setNovoSomenteApoc(somenteApoc);
+    setAba(somenteApoc ? 'apoc' : 'normal');
     setMode('form');
   }
 
   function abrirEdicaoPTRBA(registro: PTRBACompleto) {
     setEditando(registro);
+    setNovoSomenteApoc(registro.isApoc);
     setMode('form');
   }
 
@@ -1242,7 +1289,7 @@ export function PTRBACompletoPage() {
       setPreviewingId(registro.id);
       const blob = await gerarPTRBACompletoPdf(registro);
       setPreviewPdfData(await blob.arrayBuffer());
-      setPreviewPdfTitle(`${registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - ${registro.equipe} - ${formatDate(registro.data)}`);
+      setPreviewPdfTitle(`${registro.isApoc ? 'PTR-BA APOC' : registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - ${registro.equipe} - ${formatDate(registro.data)}`);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao visualizar PDF.');
     } finally {
@@ -1258,9 +1305,10 @@ export function PTRBACompletoPage() {
   if (mode === 'form') {
     return (
       <PageContainer>
-        <PageTitle icon={FileText} title={`PTR-BA - ${editando ? 'Editar' : 'Novo'} Registro`} />
+        <PageTitle icon={FileText} title={`${novoSomenteApoc ? 'PTR-BA somente APOC' : 'PTR-BA'} - ${editando ? 'Editar' : 'Novo'} Registro`} />
         <PTRBACompletoForm
           registro={editando || undefined}
+          somenteApoc={novoSomenteApoc}
           onCancel={() => { setMode('list'); setEditando(null); }}
           onSave={handleSave}
           bombeiros={bombeiros}
@@ -1294,6 +1342,15 @@ export function PTRBACompletoPage() {
     <PageContainer>
       <PageTitle icon={FileText} title="PTR-BA" />
 
+      <div className="mb-5 flex flex-wrap gap-2" aria-label="Modalidade de PTR-BA">
+        {(['normal', 'apoc'] as const).map(modalidade => (
+          <button key={modalidade} type="button" aria-pressed={aba === modalidade} onClick={() => setAba(modalidade)}
+            className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${aba === modalidade ? 'border-aviation-600 bg-aviation-600 text-white' : 'border-graphite-200 bg-white text-graphite-600 hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300'}`}>
+            {modalidade === 'normal' ? 'PTR-BA Normais' : 'PTR-BA APOC'}
+          </button>
+        ))}
+      </div>
+      {aba === 'apoc' && <p className="mb-4 text-sm text-graphite-500 dark:text-graphite-400">Documentos exclusivos dos APOCs. Não entram nos relatórios, nas estatísticas, no LRO ou no tempo de PTR-BA.</p>}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={inputClass}>
@@ -1309,14 +1366,20 @@ export function PTRBACompletoPage() {
             {PTRBA_COMPLETO_EQUIPES.map(equipe => <option key={equipe} value={equipe}>{equipe}</option>)}
           </select>
           <p className="text-sm text-graphite-500 dark:text-graphite-400">{registrosFiltrados.length} registro(s)</p>
+          {aba === 'apoc' && <input type="search" value={filtroApoc} onChange={e => setFiltroApoc(e.target.value)} placeholder="Pesquisar pelo nome do APOC" aria-label="Pesquisar pelo nome do APOC" className={`${inputClass} w-full sm:w-72`} />}
         </div>
         {canCreate && (
-          <button
-            onClick={abrirNovoPTRBA}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Plus className="h-4 w-4" /> Novo PTR-BA
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => abrirNovoPTRBA()}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus className="h-4 w-4" /> Novo PTR-BA
+            </button>
+            <button type="button" onClick={() => abrirNovoPTRBA(true)} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2 text-sm font-medium text-aviation-700 transition-colors hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+              <Users className="h-4 w-4" /> Criar PTR-BA APOC
+            </button>
+          </div>
         )}
       </div>
 
@@ -1324,7 +1387,7 @@ export function PTRBACompletoPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300/60 bg-white/50 p-12 text-center backdrop-blur-sm dark:border-border-dark dark:bg-surface-card">
           <FileText className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhum registro encontrado</h3>
-          <p className="text-sm text-graphite-400">{canCreate ? 'Clique em "Novo PTR-BA" para criar o primeiro.' : 'Nenhum registro disponível.'}</p>
+          <p className="text-sm text-graphite-400">{canCreate ? `Ajuste os filtros ou clique em "${aba === 'apoc' ? 'Criar PTR-BA APOC' : 'Novo PTR-BA'}" para criar um registro.` : 'Nenhum registro disponível.'}</p>
         </div>
       ) : (
         <div className="space-y-3">

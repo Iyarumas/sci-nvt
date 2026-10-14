@@ -48,11 +48,13 @@ function rowToPTRBACompleto(row: Record<string, unknown>): PTRBACompleto {
     data: (row.data as string) || '',
     equipe: (row.equipe as string) || '',
     isExtra: row.is_extra === true,
+    isApoc: row.is_apoc === true,
     identificacaoAeroporto: (row.identificacao_aeroporto as string) || '',
     observacoes: (row.observacoes as string) || '',
     chefeEquipe: (row.chefe_equipe as string) || '',
     participantes: normalizarParticipantesPTRBACompleto(
       parseJSON<PTRBACompletoParticipante[]>(row.participantes, []),
+      row.is_apoc === true,
     ),
     evidencias: normalizarEvidenciasPTRBACompleto(
       parseJSON<PTRBACompletoEvidencia[]>(row.evidencias, []),
@@ -67,11 +69,15 @@ function inputToRow(input: Partial<PTRBACompletoInput>): Record<string, unknown>
   if (input.data !== undefined) row.data = input.data;
   if (input.equipe !== undefined) row.equipe = input.equipe;
   if (input.isExtra !== undefined) row.is_extra = input.isExtra;
+  if (input.isApoc !== undefined) row.is_apoc = input.isApoc;
   if (input.identificacaoAeroporto !== undefined) row.identificacao_aeroporto = input.identificacaoAeroporto;
   if (input.observacoes !== undefined) row.observacoes = input.observacoes;
   if (input.chefeEquipe !== undefined) row.chefe_equipe = input.chefeEquipe;
   if (input.participantes !== undefined) {
-    row.participantes = JSON.stringify(normalizarParticipantesPTRBACompleto(input.participantes));
+    // A modalidade pode ser omitida em PATCH: o backend valida com o registro salvo.
+    row.participantes = JSON.stringify(input.isApoc === undefined
+      ? input.participantes
+      : normalizarParticipantesPTRBACompleto(input.participantes, input.isApoc));
   }
   if (input.evidencias !== undefined) {
     row.evidencias = JSON.stringify(normalizarEvidenciasPTRBACompleto(input.evidencias));
@@ -85,6 +91,7 @@ export async function listarPTRBACompletos(params?: {
   dataGte?: string;
   dataLte?: string;
   createdBy?: string;
+  modalidade?: 'normal' | 'apoc' | 'todos';
 }): Promise<PTRBACompleto[]> {
   const db = getDb();
   let query = db.from(TABLE).select('*').order('data', { ascending: false }).order('created_at', { ascending: false });
@@ -97,7 +104,11 @@ export async function listarPTRBACompletos(params?: {
   if (params?.createdBy) query = query.eq('created_by', params.createdBy);
   const { data, error } = await query;
   if (error) handleSupabaseError(error);
-  return (data || []).map(rowToPTRBACompleto);
+  // Filtrar depois do mapper preserva registros legados sem is_apoc e garante
+  // que todos os consumidores operacionais excluam APOCs por padrão.
+  const registros = (data || []).map(rowToPTRBACompleto);
+  const modalidade = params?.modalidade ?? 'normal';
+  return registros.filter(registro => modalidade === 'todos' || registro.isApoc === (modalidade === 'apoc'));
 }
 
 export async function obterPTRBACompleto(id: string): Promise<PTRBACompleto | null> {

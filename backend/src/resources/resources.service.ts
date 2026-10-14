@@ -80,6 +80,10 @@ export class ResourcesService {
     const rows = Array.isArray(dto.payload) ? dto.payload : dto.payload ? [dto.payload] : [];
     if (!rows.length) throw new BadRequestException('Insert payload is required');
 
+    if (table === 'ptrba_completo_registros') {
+      rows.forEach((row) => this.validatePtrbaApoc(row));
+    }
+
     const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
     if (!columns.length) throw new BadRequestException('Insert payload must contain at least one column');
 
@@ -102,6 +106,30 @@ export class ResourcesService {
   }
 
   async update(table: string, dto: UpdateDto): Promise<ResourceResult> {
+    if (table === 'ptrba_completo_registros') {
+      return this.database.transaction(async (client) => {
+        const params: unknown[] = [];
+        const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+        if (!whereSql) throw new BadRequestException('Update requires at least one filter');
+        const current = await client.query(`SELECT is_apoc, participantes FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
+        for (const row of current.rows) {
+          if (dto.payload.is_apoc !== undefined && dto.payload.is_apoc !== row.is_apoc) {
+            throw new BadRequestException('A modalidade do PTR-BA não pode ser alterada na edição.');
+          }
+          this.validatePtrbaApoc({ ...row, ...dto.payload });
+        }
+        const columns = Object.keys(dto.payload);
+        if (!columns.length) throw new BadRequestException('Update payload must contain at least one column');
+        const values = columns.map((column) => dto.payload[column]);
+        const updateWhere = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, values);
+        const returningSql = dto.select !== undefined ? `RETURNING ${selectClause(dto.select)}` : '';
+        const result = await client.query(
+          `UPDATE ${this.tableName(table)} SET ${columns.map((column, index) => `${quoteIdentifier(column)} = $${index + 1}`).join(', ')} ${updateWhere} ${returningSql}`,
+          values,
+        );
+        return { data: dto.select !== undefined ? result.rows : null, error: null };
+      });
+    }
     if (EXERCISE_NUMBER_BASE[table] !== undefined && ['numero', 'ano', 'data'].some((key) => dto.payload[key] !== undefined)) {
       return this.database.transaction(async (client) => {
         await this.lockExerciseNumbers(client, table);
@@ -157,6 +185,32 @@ export class ResourcesService {
     const returningSql = dto.select !== undefined ? `RETURNING ${selectClause(dto.select)}` : '';
     const result = await this.database.query(`DELETE FROM ${safeTable} ${whereSql} ${returningSql}`, params);
     return { data: dto.select !== undefined ? result.rows : null, error: null };
+  }
+
+  private validatePtrbaApoc(row: Record<string, unknown>): void {
+    if (row.is_apoc !== undefined && typeof row.is_apoc !== 'boolean') {
+      throw new BadRequestException('Informe uma modalidade válida para o PTR-BA.');
+    }
+    if (!row.is_apoc) return;
+    let participantes: unknown = row.participantes;
+    if (typeof participantes === 'string') {
+      try { participantes = JSON.parse(participantes); } catch {
+        throw new BadRequestException('Participantes do PTR-BA APOC inválidos.');
+      }
+    }
+    if (!Array.isArray(participantes) || participantes.length > 15 || !participantes.some(p => p && typeof p.nomeCompleto === 'string' && p.nomeCompleto.trim())) {
+      throw new BadRequestException('Selecione pelo menos um APOC (máximo de 15 participantes).');
+    }
+    const nomes = new Set<string>();
+    for (const participante of participantes) {
+      if (!participante || participante.funcao !== 'APOC' || typeof participante.nomeCompleto !== 'string') {
+        throw new BadRequestException('O PTR-BA somente APOC aceita apenas participantes com função APOC.');
+      }
+      const nome = participante.nomeCompleto.trim().toLocaleLowerCase('pt-BR');
+      if (!nome) continue;
+      if (nomes.has(nome)) throw new BadRequestException('O mesmo APOC não pode ser selecionado mais de uma vez.');
+      nomes.add(nome);
+    }
   }
 
   private tableName(table: string): string {

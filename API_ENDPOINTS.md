@@ -849,13 +849,19 @@ GET com filtro `ativa=true`. ✅ OK
 
 **PTR-BA EXTRA:** `isExtra: boolean` no TypeScript corresponde a `is_extra BOOLEAN NOT NULL DEFAULT false` no PostgreSQL, adicionada pela migration `backend/database/migrations/067_ptrba_completo_extra.sql`. Registros anteriores permanecem regulares; a leitura assume `false` quando o campo não existe no payload legado. As operações continuam passando pelo adapter HTTP e pelos endpoints NestJS `/data/ptrba_completo_registros/query`, `/insert`, `/update` e `/delete`, sem chamadas diretas ao Supabase.
 
+**PTR-BA somente APOC:** `isApoc: boolean` corresponde a `is_apoc BOOLEAN NOT NULL DEFAULT false`, adicionada pela migration idempotente `backend/database/migrations/070_ptrba_completo_apoc.sql`. Históricos e payloads sem a propriedade permanecem normais. O formulário é compartilhado com o normal, mas seleciona somente pessoas com função cadastrada `APOC`, sem incluir automaticamente o efetivo/instrutores da equipe. Há abas Normais/APOC e pesquisa de participantes por nome na aba APOC. A modalidade é fixada na criação. Backend rejeita mudança de modalidade na edição, participantes de outras funções, ausência de nomes selecionados, duplicatas e mais de 15 participantes, inclusive em atualização parcial sem `is_apoc`. Campos de evidências, horários, aeroporto, equipe responsável e chefe continuam disponíveis.
+
+**Contabilização:** `listarPTRBACompletos()` e `modalidade: 'normal'` excluem exclusivos APOC; `'apoc'` retorna somente exclusivos e `'todos'` retorna ambos para a gestão. A filtragem ocorre após o mapper, preservando o comportamento com payloads legados sem `is_apoc`. Relatórios (incluindo impressão), totais de horas, participações, estatísticas e Gerar LRO usam a modalidade padrão normal. APOCs incluídos no PTR-BA normal da equipe continuam contabilizados normalmente. Não se alteram PDFs/LROs históricos já armazenados.
+
+**Assuntos dos APOCs nos normais:** a coluna OC da tabela de referência determina elegibilidade pelos números 01, 02, 06, 12, 13, 14 e 17, correspondentes a: familiarização com o aeródromo; familiarização com as aeronaves que operam com regularidade no aeródromo; sistemas de comunicação e alarme; emergências com artigos perigosos; PLEM; PCINC; operações em baixa visibilidade, quando aplicável. `NUMEROS_ASSUNTOS_PTRBA_APOC`, `canonicalizarAssuntoPTRBA` e `participanteContaNoAssuntoPTRBA` em `frontend/src/types/ptrb.ts` centralizam títulos e equivalências antigas. A contagem usa o prefixo numérico do assunto; o texto do título não determina elegibilidade. Números 18 a 31 e demais números não autorizados são excluídos para APOC. Equivalências de grafia só são agrupadas quando preservam o mesmo número salvo. Os filtros por pessoa, detalhes, somas e impressões usam a mesma regra. Estatísticas de participações/instrutores também excluem instruções não elegíveis para APOC, mantendo horas da atividade da equipe. Títulos novos foram alinhados à tabela (01, 03, 06, 07, 16, 17); formulários preservam a opção histórica selecionada com `opcoesAssuntoPTRBA`, sem regravar cadastros ou documentos existentes.
+
 ---
 
 ### listarPTRBACompletos
 
 **Método HTTP:** GET
 **REST equivalência:** `GET /rest/v1/ptrba_completo_registros?select=*&order=data.desc&order=created_at.desc` com filtros opcionais `equipe`, `ano`, `dataGte`, `dataLte`, `createdBy`
-**Query Params:** `equipe?: string`, `ano?: string`, `dataGte?: string`, `dataLte?: string`, `createdBy?: string`
+**Query Params:** `equipe?: string`, `ano?: string`, `dataGte?: string`, `dataLte?: string`, `createdBy?: string`, `modalidade?: 'normal' | 'apoc' | 'todos'` (filtragem de modalidade no service; padrão normal)
 **Request Body:** —
 **Response:** `PTRBACompleto[]`
 **Estado:** ✅ OK
@@ -871,6 +877,7 @@ GET com filtro `ativa=true`. ✅ OK
   "data": "string (ISO date)",
   "equipe": "Alfa | Bravo | Charlie | Delta",
   "isExtra": false,
+  "isApoc": false,
   "identificacaoAeroporto": "string",
   "observacoes": "string",
   "chefeEquipe": "string",
@@ -884,10 +891,12 @@ GET com filtro `ativa=true`. ✅ OK
 **Método:** GET / POST / PATCH / DELETE
 **REST equivalência:** `.../ptrba_completo_registros`
 **Estado:** ✅ OK
-**Request Body:** criação recebe `PTRBACompletoInput`, incluindo `isExtra`; atualização recebe `Partial<PTRBACompletoInput>`. O service envia `is_extra` somente quando `isExtra` está definido, preservando o valor nas atualizações parciais que omitem o campo. `true` e `false` são gravados explicitamente quando informados.
+**Request Body:** criação recebe `PTRBACompletoInput`, incluindo `isExtra` e `isApoc`; atualização recebe `Partial<PTRBACompletoInput>`. O service envia `is_extra` e `is_apoc` somente quando os campos correspondentes estão definidos, preservando valores nas atualizações parciais que os omitem. `true` e `false` são gravados explicitamente quando informados. Participantes APOC são normalizados sem acrescentar linhas BA; em PATCH sem modalidade, o array informado é preservado e o backend valida com a modalidade salva dentro de transação.
 **Regras:** a tela aparece para o usuário como `PTR-BA` e permite visualização geral, mas criação/edição/exclusão apenas para quem pode gerenciar o registro diário conforme permissão operacional. Relatórios e estatísticas de PTR-BA usam esta tabela como fonte atual; o módulo antigo `ptrb_registros` fica separado como `PTR-BA por Instrução`. O registro pode ser aberto na própria lista para conferência, e as ações de `Ver documento`, `Download PDF`, edição e exclusão aparecem conforme a permissão do usuário. O download usa `ptrbaCompletoPdfService.ts` e gera PDF client-side com o layout do modelo PTR-BA.
 
 **Nome do PDF:** usa a data e a equipe do registro: `DD-MM-AAAA NVT PTRBA EXTRA EQUIPE.pdf` quando `isExtra` é `true`, ou o nome regular `DD-MM-AAAA NVT PTRBA EQUIPE.pdf` quando é `false`.
+
+**PDF exclusivo APOC:** usa `PTR-BA_APOC_DD-MM-AAAA.pdf` (exemplo `PTR-BA_APOC_13-10-2026.pdf`), independentemente de EXTRA. Cabeçalho `PTR-BA - SOMENTE APOC`, tabela somente com participantes APOC preenchidos e coluna `ASSINATURA DO APOC`. Inclui o aviso: `Registro exclusivo dos participantes APOC. A contabilização desta instrução consta no PTR-BA da equipe.` Mantém evidências/horários, observações e assinatura do chefe.
 
 ---
 

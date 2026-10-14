@@ -23,6 +23,7 @@ export interface PTRBACompleto {
   data: string;
   equipe: Equipe | string;
   isExtra: boolean;
+  isApoc: boolean;
   identificacaoAeroporto: string;
   observacoes: string;
   chefeEquipe: string;
@@ -90,7 +91,8 @@ const HIERARQUIA_PTRBA_COMPLETO = [
   'BA-2',
 ];
 
-export function criarParticipantesPTRBACompletoVazios(): PTRBACompletoParticipante[] {
+export function criarParticipantesPTRBACompletoVazios(isApoc = false): PTRBACompletoParticipante[] {
+  if (isApoc) return [{ funcao: 'APOC', nomeCompleto: '', situacao: 'P' }];
   return HIERARQUIA_PTRBA_COMPLETO.map(funcao => ({
     funcao,
     nomeCompleto: '',
@@ -134,9 +136,12 @@ export function sincronizarParesEvidenciasPTRBACompleto(
 
 export function normalizarParticipantesPTRBACompleto(
   participantes?: PTRBACompletoParticipante[],
+  isApoc = false,
 ): PTRBACompletoParticipante[] {
-  const base = criarParticipantesPTRBACompletoVazios();
   const lista = Array.isArray(participantes) ? participantes : [];
+  const base = isApoc
+    ? Array.from({ length: Math.max(1, Math.min(lista.length, PTRBA_COMPLETO_PARTICIPANTE_SLOTS)) }, () => ({ funcao: 'APOC', nomeCompleto: '', situacao: 'P' }))
+    : criarParticipantesPTRBACompletoVazios();
   return base.map((item, index) => ({
     ...item,
     ...lista[index],

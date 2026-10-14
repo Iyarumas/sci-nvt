@@ -26,6 +26,7 @@ import { listarSubstituicoesTemporarias } from '../../services/substituicaoTempo
 import { formatarSegundosTempo, parseTempoParaSegundos } from '../../types/tpepr';
 import { PTRBA_COMPLETO_EVIDENCIA_PARES } from '../../types/ptrbaCompleto';
 import type { PTRBACompleto } from '../../types/ptrbaCompleto';
+import { canonicalizarAssuntoPTRBA, participanteContaNoAssuntoPTRBA } from '../../types/ptrb';
 import type { TreinamentoTPEPR } from '../../types/tpepr';
 import type { TreinamentoTAF } from '../../types/taf';
 import type { TreinamentoTempoResposta } from '../../types/tempoResposta';
@@ -181,7 +182,13 @@ function instrutoresPtrbaCompleto(c: PTRBACompleto): string[] {
   for (const participante of c.participantes || []) {
     const nome = participante.nomeCompleto?.trim();
     if (!nome) continue;
-    instrucoesDaSituacao(participante.situacao).forEach(() => instrutores.push(nome));
+    instrucoesDaSituacao(participante.situacao).forEach(numero => {
+      const [i, j] = PTRBA_COMPLETO_EVIDENCIA_PARES[numero - 1];
+      const a = c.evidencias?.[i];
+      const b = c.evidencias?.[j];
+      const assunto = (a?.assunto ? a : b)?.assunto || '';
+      if (participanteContaNoAssuntoPTRBA(participante, assunto)) instrutores.push(nome);
+    });
   }
   return instrutores;
 }
@@ -433,12 +440,13 @@ function montarTreinos(
   const itens: TreinoItem[] = [];
 
   for (const c of completos) {
+    if (c.isApoc) continue;
     const assuntos: string[] = [];
     for (const [i, j] of PTRBA_COMPLETO_EVIDENCIA_PARES) {
       const a = c.evidencias?.[i];
       const b = c.evidencias?.[j];
       const ev = a?.assunto ? a : b;
-      if (ev?.assunto) assuntos.push(ev.assunto);
+      if (ev?.assunto) assuntos.push(canonicalizarAssuntoPTRBA(ev.assunto));
     }
     itens.push({
       id: `completo-${c.id}`,
@@ -448,7 +456,9 @@ function montarTreinos(
       horas: horasPtrbaCompleto(c),
       instrutor: '',
       instrutores: instrutoresPtrbaCompleto(c),
-      participantes: (c.participantes || []).map(x => x.nomeCompleto).filter(Boolean),
+      participantes: (c.participantes || [])
+        .filter(p => (p.funcao || '').trim().toUpperCase() !== 'APOC' || assuntos.some(assunto => participanteContaNoAssuntoPTRBA(p, assunto)))
+        .map(x => x.nomeCompleto).filter(Boolean),
       tempos: [],
       assuntos,
     });

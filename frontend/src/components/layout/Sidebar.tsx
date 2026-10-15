@@ -29,7 +29,9 @@ function isVisible(
   canViewCertificacoes: boolean,
   canViewRelatorios: boolean,
   canViewRelatoriosPtrBa: boolean,
+  isDeveloper: boolean,
 ): boolean {
+  if (item.developerOnly && !isDeveloper) return false;
   if (item.adminOnly && !isAdmin) return false;
   if (item.adminOrGsOnly && !canViewCadastroCompleto) return false;
   if (item.arquivoOnly && !canViewArquivo) return false;
@@ -37,11 +39,11 @@ function isVisible(
   if (item.ptrBaRelatoriosOnly && !canViewRelatoriosPtrBa) return false;
   if (item.relatoriosOnly && !canViewRelatorios) {
     if (!item.children) return false;
-    const visibleChildren = item.children.filter(c => isVisible(c, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa));
+    const visibleChildren = item.children.filter(c => isVisible(c, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa, isDeveloper));
     return visibleChildren.length > 0;
   }
   if (item.children) {
-    const visibleChildren = item.children.filter(c => isVisible(c, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa));
+    const visibleChildren = item.children.filter(c => isVisible(c, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa, isDeveloper));
     if (visibleChildren.length === 0) return false;
   }
   return true;
@@ -55,10 +57,11 @@ function filterMenu(
   canViewCertificacoes: boolean,
   canViewRelatorios: boolean,
   canViewRelatoriosPtrBa: boolean,
+  isDeveloper: boolean,
 ): MenuItemType[] {
-  return items.filter(item => isVisible(item, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa)).map(item => {
+  return items.filter(item => isVisible(item, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa, isDeveloper)).map(item => {
     if (item.children) {
-      return { ...item, children: filterMenu(item.children, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa) };
+      return { ...item, children: filterMenu(item.children, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa, isDeveloper) };
     }
     return item;
   });
@@ -179,7 +182,7 @@ export function Sidebar() {
   const [canViewCertificacoes, setCanViewCertificacoes] = useState(() => podeVerCertificacoesBase(user));
   const [canViewRelatorios, setCanViewRelatorios] = useState(() => podeVerRelatoriosBase(user));
   const [canViewRelatoriosPtrBa, setCanViewRelatoriosPtrBa] = useState(() => podeVerRelatoriosPtrBaBase(user));
-  const visibleMenu = filterMenu(menuItems, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa);
+  const visibleMenu = filterMenu(menuItems, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa, user?.role === 'desenvolvedor');
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const asideRef = useRef<HTMLElement>(null);

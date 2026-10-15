@@ -11,7 +11,6 @@ import { formatarDataBR } from '../../utils/datas';
 import { resolverContextoOperacional } from '../../utils/permissoes';
 
 const ESCOPO_AUTORIZACAO = [
-  'Criar e editar PTR-BA por Instrução da equipe autorizada',
   'Criar e editar PTR-BA da equipe autorizada',
   'Criar e editar LRO/Ocorrências da equipe autorizada',
   'Criar e editar rascunhos do Gerar LRO da equipe autorizada',

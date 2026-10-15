@@ -178,7 +178,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | `/cadastro/agentes-extintores` | Agentes Extintores | Estoque de LGE, PQS, nitrogênio e demais agentes extintores |
 | `/cadastro/hidrantes` | Hidrantes | Pontos de água e hidrantes |
 | `/cadastro/documentos` | Gerenciar Documentos | Templates de documentos para preenchimento e assinatura |
-| `/cadastro/ferias` | Férias | Controlo de férias, escala anual e substituições do efetivo; também aparece como item próprio na sidebar |
+| `/cadastro/ferias` | Férias | Controlo de férias, escala anual e substituições do efetivo; botão Gerar Relatório de Férias ao lado de Quadro de Efetivos, com mês/ano, afastados opcionais, prévia, impressão e PDF; também aparece como item próprio na sidebar |
 | `/usuarios` | Usuários | Gestão de utilizadores do sistema |
 
 ### Funcionários
@@ -192,7 +192,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 ### Registos Diários
 | Rota | Tela | Descrição |
 |------|------|-----------|
-| `/registros-diarios/ptr-ba` | PTR-BA por Instrução | Registro de PTR-BA por assunto ministrado |
+| `/registros-diarios/ptr-ba` | PTR-BA por Instrução | Registro de PTR-BA por assunto ministrado; menu e acesso direto exclusivos do desenvolvedor |
 | `/registros-diarios/ptr-ba-completo` | PTR-BA | Abas Normais e APOC, cópia APOC automática ao salvar o normal com APOCs e assuntos permitidos, sem botão de criação manual APOC; pesquisa por nome na aba APOC. A cópia inclui somente APOCs e assinatura do chefe, com assuntos/evidências compactados, sem contabilizar relatórios, estatísticas, LRO ou horas. PTR-BA EXTRA continua disponível nos normais |
 | `/registros-diarios/lro-ocorrencias` | LRO/Ocorrências | Registo de ocorrências do turno |
 | `/registros-diarios/bona-rea` | BONA/REA | Registos de ocorrências operacionais — BONA e REA |
@@ -244,10 +244,10 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | `/relatorios/substituicoes` | Substituições | Relatório mensal de substituições, afastamentos e extras |
 | `/relatorios/trocas` | Trocas | Registos de trocas de serviço |
 
-### Arquivo (Admin/GS gerem; BA-CE/BA-LR visualizam)
+### Arquivo (somente Desenvolvedor)
 | Rota | Tela | Descrição |
 |------|------|-----------|
-| `/arquivo/:tipo?` | Arquivo | Documentos arquivados por categoria (trocas, férias, EPIs, certificações, ocorrências, ordem_servico, lro, ptrba, treinamentos, dds, checklists) |
+| `/arquivo/:tipo?` | Arquivo | Menu e acesso direto exclusivos do desenvolvedor; documentos arquivados por categoria (trocas, férias, EPIs, certificações, ocorrências, ordem_servico, lro, ptrba, treinamentos, dds, checklists) |
 
 ### Configurações / Perfil
 | Rota | Tela | Descrição |
@@ -299,10 +299,11 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   │   ├── hooks/          # Hooks compartilhados
 │   │   ├── lib/            # apiClient.ts + adapter HTTP supabase.ts + pdfjs
 │   │   ├── pages/          # Páginas por domínio
+│   │   │   ├── Ferias/     # Gestão de férias + RelatorioFeriasModal (filtros e prévia PDF)
 │   │   │   └── Tutorial/   # Tutorial animado da rotina do plantão
 │   │   ├── routes/         # React Router
 │   │   ├── services/       # Services do front consumindo o adapter HTTP
-│   │   ├── types/          # Interfaces TypeScript
+│   │   ├── types/          # Interfaces TypeScript (inclui relatorioFerias.ts para férias/coberturas/afastados)
 │   │   └── utils/          # Regras/utilitários de UI/domínio ainda consumidos no front
 │   ├── Dockerfile          # Build Vite + Caddy para produção
 │   └── package.json
@@ -340,6 +341,18 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 ---
 
 ## Padrões de UI
+
+### Relatório mensal de férias
+
+Ao lado de Quadro de Efetivos, `RelatorioFeriasModal` abre filtros de mês, ano e inclusão opcional de afastados (desmarcada por padrão). `feriasRelatorioService.ts` consulta os services existentes e `utils/relatorioFerias.ts` aplica o mesmo recorte do quadro: férias iniciadas no mês, incluindo registros históricos, somente de pessoas ativas e itens vinculados a escalas aprovadas. O PDF mantém o gozo completo e o período aquisitivo identificado pelo número/admissão; mostra ausência de dados quando não houver admissão válida. Por equipe, exibe a cadeia real de vigências, cargo de origem, função/equipe exercida e quem está sendo substituído; a cobertura é limitada ao mês e desconta férias/afastamentos aprovados do substituto. Sem vigência, usa os vínculos salvos do gozo/item aprovado, sem inventar pessoas/funções. A seção opcional de afastados fica ao final, agrupa episódios contínuos de INSS e apresenta tipo de afastamento, motivo (descrição cadastrada), período e retorno. A descrição preserva suas linhas e separa os metadados CID/Prazo/Extras, conforme o campo Descrição do cadastro; sem descrição, exibe Não informado. `feriasRelatorioPdfService.ts` gera A4 paisagem com paginação e cabeçalhos repetidos, logo Med+ sem contorno à esquerda e logo SCI NVT (mesmo `/sci-nvt-logo.png` da sidebar) à direita, preservando as proporções; a mesma Blob alimenta `PdfPreview`, `imprimirPdfBlob` e o download `Relatorio_Ferias_MM-AAAA.pdf`. Não grava dados. Testes: `npm run test:ferias-relatorio --workspace=frontend` e `npm run test:e2e:ferias-relatorio --workspace=frontend`.
+
+### Voltar entre páginas
+
+O `Header` comum do `Layout` inclui um botão de voltar em todas as rotas internas exceto `/` (Dashboard). Usa o histórico do React Router (`window.history.state.idx > 0` e `navigate(-1)`); sem histórico interno, retorna ao Dashboard com `replace`, evitando sair do sistema em acessos diretos. No celular mostra a seta com nome acessível e, em telas maiores, também o texto `Voltar`; fica oculto na impressão. Botões locais que fecham formulários, detalhes ou etapas mantêm seus próprios comportamentos.
+
+### Navegação exclusiva do desenvolvedor
+
+`MenuItem.developerOnly` restringe itens e grupos da sidebar ao usuário com `role === 'desenvolvedor'`. As rotas correspondentes usam `<AuthGuard developerOnly>` e redirecionam outros perfis para `/` antes de montar a página. Aplicado a PTR-BA por Instrução e a todas as categorias de Arquivo; a regra usa o papel da conta, não cargo operacional ou substituição.
 
 ### Layout de Página
 ```

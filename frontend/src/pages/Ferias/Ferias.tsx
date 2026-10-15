@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
+import { RelatorioFeriasModal } from './RelatorioFeriasModal';
 import { AlertModal } from '../../components/ui/AlertModal';
 import { AnimatedPageTour, type AnimatedTourStep } from '../../components/ui/AnimatedPageTour';
 import CardCarousel from '../../components/ui/CardCarousel';
@@ -4108,6 +4109,7 @@ export function Ferias() {
   const [resolving, setResolving] = useState(true);
   const [tab, setTab] = useState<string>('');
   const [showCadastroManual, setShowCadastroManual] = useState(false);
+  const [showRelatorioFerias, setShowRelatorioFerias] = useState(false);
   const [quadroRefreshKey, setQuadroRefreshKey] = useState(0);
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialStepIndex, setTutorialStepIndex] = useState(0);
@@ -4244,6 +4246,10 @@ export function Ferias() {
             {t.label}
           </button>
         ))}
+        <button type="button" onClick={() => setShowRelatorioFerias(true)}
+          className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-medium text-aviation-700 transition-colors hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+          <FileText className="h-4 w-4" /> Gerar Relatório de Férias
+        </button>
       </div>
 
       <div data-ferias-tour="conteudo">
@@ -4261,6 +4267,7 @@ export function Ferias() {
           onSuccess={() => { setShowCadastroManual(false); setQuadroRefreshKey(k => k + 1); }}
         />
       )}
+      {showRelatorioFerias && <RelatorioFeriasModal onClose={() => setShowRelatorioFerias(false)} />}
 
       <button
         type="button"

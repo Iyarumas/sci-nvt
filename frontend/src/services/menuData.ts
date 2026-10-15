@@ -116,6 +116,7 @@ export const menuItems: MenuItem[] = [
   {
     label: 'Arquivo',
     icon: Archive,
+    developerOnly: true,
     arquivoOnly: true,
     children: [
       {
@@ -238,7 +239,7 @@ export const menuItems: MenuItem[] = [
         icon: FileText,
         path: '/registros-diarios/ptr-ba',
         description: 'Plano de Trabalho de Ronda - Bombeiro de Aeródromo.',
-        adminOnly: true,
+        developerOnly: true,
       },
       {
         label: 'PTR-BA',

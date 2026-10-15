@@ -7,6 +7,7 @@ export interface MenuItem {
   description?: string;
   children?: MenuItem[];
   adminOnly?: boolean;
+  developerOnly?: boolean;
   adminOrGsOnly?: boolean;
   arquivoOnly?: boolean;
   certificacoesOnly?: boolean;

@@ -12,6 +12,8 @@
     "test:exercicios": "node scripts/exercicios-service.test.mjs",
     "test:e2e:exercicios": "node scripts/exercicios-ui.test.mjs",
     "test:e2e:ptrba-apoc": "node scripts/ptrba-apoc-ui.test.mjs",
+    "test:ferias-relatorio": "node scripts/ferias-relatorio.test.mjs",
+    "test:e2e:ferias-relatorio": "node scripts/ferias-relatorio-ui.test.mjs",
     "test:e2e:operational": "node scripts/e2e-operational-smoke.mjs",
     "preview": "vite preview"
   },

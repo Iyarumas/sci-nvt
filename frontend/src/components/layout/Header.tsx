@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
+  ArrowLeft,
   Search,
   Bell,
   MessageSquare,
@@ -85,19 +86,41 @@ export function Header() {
     navigate('/login');
   }
 
+  function handleBack() {
+    if (window.history.state?.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/', { replace: true });
+    }
+  }
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-graphite-200/60 bg-white/80 px-3 backdrop-blur-xl dark:border-border-dark dark:bg-surface-dark/80 sm:px-6">
-      <div className="min-w-0 flex flex-col">
-        <h2 className="max-w-[9rem] truncate text-base font-bold text-graphite-900 dark:text-graphite-100 sm:max-w-none sm:text-lg">
-          {pageTitle}
-        </h2>
-        <div className="hidden sm:block">
-          <Breadcrumb />
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+        {pathname !== '/' && (
+          <button
+            type="button"
+            onClick={handleBack}
+            aria-label="Voltar à página anterior"
+            title="Voltar à página anterior"
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-graphite-300/60 bg-white/80 p-2 text-sm font-medium text-graphite-700 transition-colors hover:bg-graphite-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-aviation-500 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200 dark:hover:bg-surface-hover sm:px-3 sm:py-1.5 print:hidden"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Voltar</span>
+          </button>
+        )}
+        <div className="flex min-w-0 flex-col">
+          <h2 className="max-w-[9rem] truncate text-base font-bold text-graphite-900 dark:text-graphite-100 sm:max-w-none sm:text-lg">
+            {pageTitle}
+          </h2>
+          <div className="hidden overflow-hidden whitespace-nowrap lg:block">
+            <Breadcrumb />
+          </div>
         </div>
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <div className="relative hidden md:block">
+        <div className="relative hidden xl:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-graphite-400" />
           <input
             type="text"

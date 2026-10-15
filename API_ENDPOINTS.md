@@ -849,7 +849,9 @@ GET com filtro `ativa=true`. ✅ OK
 
 **PTR-BA EXTRA:** `isExtra: boolean` no TypeScript corresponde a `is_extra BOOLEAN NOT NULL DEFAULT false` no PostgreSQL, adicionada pela migration `backend/database/migrations/067_ptrba_completo_extra.sql`. Registros anteriores permanecem regulares; a leitura assume `false` quando o campo não existe no payload legado. As operações continuam passando pelo adapter HTTP e pelos endpoints NestJS `/data/ptrba_completo_registros/query`, `/insert`, `/update` e `/delete`, sem chamadas diretas ao Supabase.
 
-**PTR-BA somente APOC:** `isApoc: boolean` corresponde a `is_apoc BOOLEAN NOT NULL DEFAULT false`, adicionada pela migration idempotente `backend/database/migrations/070_ptrba_completo_apoc.sql`. Históricos e payloads sem a propriedade permanecem normais. O formulário é compartilhado com o normal, mas seleciona somente pessoas com função cadastrada `APOC`, sem incluir automaticamente o efetivo/instrutores da equipe. Há abas Normais/APOC e pesquisa de participantes por nome na aba APOC. A modalidade é fixada na criação. Backend rejeita mudança de modalidade na edição, participantes de outras funções, ausência de nomes selecionados, duplicatas e mais de 15 participantes, inclusive em atualização parcial sem `is_apoc`. Campos de evidências, horários, aeroporto, equipe responsável e chefe continuam disponíveis.
+**PTR-BA somente APOC:** `isApoc: boolean` corresponde a `is_apoc BOOLEAN NOT NULL DEFAULT false`, adicionada pela migration idempotente `backend/database/migrations/070_ptrba_completo_apoc.sql`. Históricos e payloads sem a propriedade permanecem normais. A tela mantém abas Normais/APOC e pesquisa de participantes por nome na aba APOC, sem botão de criação manual APOC. Ao criar/editar um normal com participantes de função `APOC` e pelo menos um assunto permitido, o backend gera/sincroniza sua cópia documental na mesma transação. Copia data, equipe, aeroporto, observações, chefe para assinatura, auditoria e EXTRA; a tabela de participantes contém somente os APOCs selecionados. Somente pares de evidências dos assuntos 01, 02, 06, 12, 13, 14 e 17 são copiados, com horários, descrições e as duas imagens. Os pares são compactados em ordem, sem lacunas; números dos assuntos são preservados e situações `INSTR. n` são remapeadas para as novas posições (quando não restar instrução ministrada, `P`). Sem APOC ou assunto permitido não há cópia automática.
+
+**Vínculo automático:** migration aditiva/idempotente `071_ptrba_apoc_origem.sql` cria `origem_ptrba_id UUID NULL`, FK para `ptrba_completo_registros(id) ON DELETE CASCADE` e índice único (uma cópia por normal), mapeado como `origemPtrbaId?: string | null` somente na resposta. A API gerencia o vínculo, bloqueia sua alteração via payload e impede editar/excluir diretamente cópias vinculadas; na tela, `Editar PTR-BA de origem` abre o normal conforme suas permissões. Alterações no normal atualizam a mesma cópia; remover todos os APOCs/assuntos elegíveis remove somente essa cópia. Excluir o normal remove sua cópia por FK. A gravação do normal e da cópia é atômica, inclusive em falhas. Nenhum histórico é convertido/recriado em massa; documentos APOC manuais anteriores, sem vínculo, continuam consultáveis/editáveis e não são sincronizados. A modalidade continua imutável e a validação APOC rejeita outras funções, nomes ausentes, duplicatas e mais de 15 participantes, inclusive em PATCH parcial.
 
 **Contabilização:** `listarPTRBACompletos()` e `modalidade: 'normal'` excluem exclusivos APOC; `'apoc'` retorna somente exclusivos e `'todos'` retorna ambos para a gestão. A filtragem ocorre após o mapper, preservando o comportamento com payloads legados sem `is_apoc`. Relatórios (incluindo impressão), totais de horas, participações, estatísticas e Gerar LRO usam a modalidade padrão normal. APOCs incluídos no PTR-BA normal da equipe continuam contabilizados normalmente. Não se alteram PDFs/LROs históricos já armazenados.
 
@@ -878,6 +880,7 @@ GET com filtro `ativa=true`. ✅ OK
   "equipe": "Alfa | Bravo | Charlie | Delta",
   "isExtra": false,
   "isApoc": false,
+  "origemPtrbaId": null,
   "identificacaoAeroporto": "string",
   "observacoes": "string",
   "chefeEquipe": "string",
@@ -896,7 +899,7 @@ GET com filtro `ativa=true`. ✅ OK
 
 **Nome do PDF:** usa a data e a equipe do registro: `DD-MM-AAAA NVT PTRBA EXTRA EQUIPE.pdf` quando `isExtra` é `true`, ou o nome regular `DD-MM-AAAA NVT PTRBA EQUIPE.pdf` quando é `false`.
 
-**PDF exclusivo APOC:** usa `PTR-BA_APOC_DD-MM-AAAA.pdf` (exemplo `PTR-BA_APOC_13-10-2026.pdf`), independentemente de EXTRA. Cabeçalho `PTR-BA - SOMENTE APOC`, tabela somente com participantes APOC preenchidos e coluna `ASSINATURA DO APOC`. Inclui o aviso: `Registro exclusivo dos participantes APOC. A contabilização desta instrução consta no PTR-BA da equipe.` Mantém evidências/horários, observações e assinatura do chefe.
+**PDF exclusivo APOC:** usa `PTR-BA_APOC_DD-MM-AAAA.pdf` (exemplo `PTR-BA_APOC_13-10-2026.pdf`), independentemente de EXTRA. Cabeçalho `PTR-BA - SOMENTE APOC`, tabela somente com participantes APOC preenchidos e coluna `ASSINATURA DO APOC`. Inclui o aviso: `Registro exclusivo dos participantes APOC. A contabilização desta instrução consta no PTR-BA da equipe.` Mantém evidências/horários, observações e campo livre para assinatura do chefe, sem nome impresso acima da linha, igual ao PTR-BA normal. Nas cópias automáticas os assuntos permitidos já chegam compactados pelo backend. PDFs previamente armazenados/assinados não são reescritos.
 
 ---
 

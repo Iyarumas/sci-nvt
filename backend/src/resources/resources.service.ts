@@ -12,6 +12,7 @@ import {
 import { ALLOWED_TABLES } from './resources.config';
 import { DeleteDto, InsertDto, UpdateDto } from './dto/mutation.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
+import { montarCopiaPTRBAApoc } from './ptrba-apoc';
 
 export interface ResourceResult<T = QueryResultRow[] | QueryResultRow | null> {
   data: T;
@@ -50,6 +51,26 @@ export class ResourcesService {
   }
 
   async insert(table: string, dto: InsertDto): Promise<ResourceResult> {
+    if (table === 'ptrba_completo_registros') {
+      return this.database.transaction(async (client) => {
+        const rows = Array.isArray(dto.payload) ? dto.payload : dto.payload ? [dto.payload] : [];
+        if (!rows.length) throw new BadRequestException('Insert payload is required');
+        const created: QueryResultRow[] = [];
+        for (const row of rows) {
+          this.validatePtrbaOrigem(row);
+          this.validatePtrbaApoc(row);
+          const columns = Object.keys(row);
+          if (!columns.length) throw new BadRequestException('Insert payload must contain at least one column');
+          const result = await client.query(
+            `INSERT INTO ${this.tableName(table)} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')}) RETURNING *`,
+            columns.map(column => row[column]),
+          );
+          for (const origem of result.rows) await this.sincronizarPtrbaApoc(client, origem);
+          created.push(...result.rows);
+        }
+        return { data: this.selectPtrbaRows(created, dto.select), error: null };
+      });
+    }
     if (EXERCISE_NUMBER_BASE[table] !== undefined) {
       return this.database.transaction(async (client) => {
         await this.lockExerciseNumbers(client, table);
@@ -80,10 +101,6 @@ export class ResourcesService {
     const rows = Array.isArray(dto.payload) ? dto.payload : dto.payload ? [dto.payload] : [];
     if (!rows.length) throw new BadRequestException('Insert payload is required');
 
-    if (table === 'ptrba_completo_registros') {
-      rows.forEach((row) => this.validatePtrbaApoc(row));
-    }
-
     const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
     if (!columns.length) throw new BadRequestException('Insert payload must contain at least one column');
 
@@ -111,8 +128,12 @@ export class ResourcesService {
         const params: unknown[] = [];
         const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
         if (!whereSql) throw new BadRequestException('Update requires at least one filter');
-        const current = await client.query(`SELECT is_apoc, participantes FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
+        this.validatePtrbaOrigem(dto.payload);
+        const current = await client.query(`SELECT * FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         for (const row of current.rows) {
+          if (row.origem_ptrba_id) {
+            throw new BadRequestException('Edite o PTR-BA normal de origem para atualizar o documento APOC automático.');
+          }
           if (dto.payload.is_apoc !== undefined && dto.payload.is_apoc !== row.is_apoc) {
             throw new BadRequestException('A modalidade do PTR-BA não pode ser alterada na edição.');
           }
@@ -122,12 +143,12 @@ export class ResourcesService {
         if (!columns.length) throw new BadRequestException('Update payload must contain at least one column');
         const values = columns.map((column) => dto.payload[column]);
         const updateWhere = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, values);
-        const returningSql = dto.select !== undefined ? `RETURNING ${selectClause(dto.select)}` : '';
         const result = await client.query(
-          `UPDATE ${this.tableName(table)} SET ${columns.map((column, index) => `${quoteIdentifier(column)} = $${index + 1}`).join(', ')} ${updateWhere} ${returningSql}`,
+          `UPDATE ${this.tableName(table)} SET ${columns.map((column, index) => `${quoteIdentifier(column)} = $${index + 1}`).join(', ')} ${updateWhere} RETURNING *`,
           values,
         );
-        return { data: dto.select !== undefined ? result.rows : null, error: null };
+        for (const origem of result.rows) await this.sincronizarPtrbaApoc(client, origem);
+        return { data: this.selectPtrbaRows(result.rows, dto.select), error: null };
       });
     }
     if (EXERCISE_NUMBER_BASE[table] !== undefined && ['numero', 'ano', 'data'].some((key) => dto.payload[key] !== undefined)) {
@@ -177,6 +198,19 @@ export class ResourcesService {
   }
 
   async delete(table: string, dto: DeleteDto): Promise<ResourceResult> {
+    if (table === 'ptrba_completo_registros') {
+      return this.database.transaction(async client => {
+        const params: unknown[] = [];
+        const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+        if (!whereSql) throw new BadRequestException('Delete requires at least one filter');
+        const current = await client.query(`SELECT * FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
+        if (current.rows.some(row => row.origem_ptrba_id)) {
+          throw new BadRequestException('Exclua ou ajuste o PTR-BA normal de origem para remover o documento APOC automático.');
+        }
+        const result = await client.query(`DELETE FROM ${this.tableName(table)} ${whereSql} RETURNING *`, params);
+        return { data: this.selectPtrbaRows(result.rows, dto.select), error: null };
+      });
+    }
     const safeTable = this.tableName(table);
     const params: unknown[] = [];
     const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
@@ -185,6 +219,34 @@ export class ResourcesService {
     const returningSql = dto.select !== undefined ? `RETURNING ${selectClause(dto.select)}` : '';
     const result = await this.database.query(`DELETE FROM ${safeTable} ${whereSql} ${returningSql}`, params);
     return { data: dto.select !== undefined ? result.rows : null, error: null };
+  }
+
+  private validatePtrbaOrigem(row: Record<string, unknown>): void {
+    if (row.origem_ptrba_id !== undefined) {
+      throw new BadRequestException('O vínculo do documento APOC é gerenciado automaticamente.');
+    }
+  }
+
+  private selectPtrbaRows(rows: QueryResultRow[], selection?: string): QueryResultRow[] | null {
+    if (selection === undefined) return null;
+    if (selectClause(selection) === '*') return rows;
+    return rows.map(row => Object.fromEntries(selection.split(',').map(column => [column.trim(), row[column.trim()]])));
+  }
+
+  private async sincronizarPtrbaApoc(client: PoolClient, origem: QueryResultRow): Promise<void> {
+    if (origem.is_apoc) return;
+    const copia = montarCopiaPTRBAApoc(origem);
+    if (!copia) {
+      await client.query('DELETE FROM "ptrba_completo_registros" WHERE "origem_ptrba_id" = $1', [origem.id]);
+      return;
+    }
+    this.validatePtrbaApoc(copia);
+    const columns = Object.keys(copia);
+    const updates = columns.filter(column => !['origem_ptrba_id', 'created_by'].includes(column));
+    await client.query(
+      `INSERT INTO "ptrba_completo_registros" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')}) ON CONFLICT (origem_ptrba_id) DO UPDATE SET ${updates.map(column => `${quoteIdentifier(column)} = EXCLUDED.${quoteIdentifier(column)}`).join(', ')}`,
+      columns.map(column => copia[column]),
+    );
   }
 
   private validatePtrbaApoc(row: Record<string, unknown>): void {

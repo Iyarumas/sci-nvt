@@ -49,6 +49,7 @@ function rowToPTRBACompleto(row: Record<string, unknown>): PTRBACompleto {
     equipe: (row.equipe as string) || '',
     isExtra: row.is_extra === true,
     isApoc: row.is_apoc === true,
+    origemPtrbaId: (row.origem_ptrba_id as string) || null,
     identificacaoAeroporto: (row.identificacao_aeroporto as string) || '',
     observacoes: (row.observacoes as string) || '',
     chefeEquipe: (row.chefe_equipe as string) || '',

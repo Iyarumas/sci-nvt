@@ -24,6 +24,7 @@ export interface PTRBACompleto {
   equipe: Equipe | string;
   isExtra: boolean;
   isApoc: boolean;
+  origemPtrbaId?: string | null;
   identificacaoAeroporto: string;
   observacoes: string;
   chefeEquipe: string;
@@ -31,7 +32,7 @@ export interface PTRBACompleto {
   evidencias: PTRBACompletoEvidencia[];
 }
 
-export type PTRBACompletoInput = Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt'>;
+export type PTRBACompletoInput = Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'origemPtrbaId'>;
 
 export const PTRBA_COMPLETO_EQUIPES: Equipe[] = ['Alfa', 'Bravo', 'Charlie', 'Delta'];
 

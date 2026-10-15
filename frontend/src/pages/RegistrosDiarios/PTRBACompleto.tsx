@@ -8,7 +8,6 @@ import {
   Image,
   Pencil,
   Plus,
-  Users,
   Save,
   Trash2,
   X,
@@ -639,6 +638,12 @@ function PTRBACompletoForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {!form.isApoc && (
+        <div className="rounded-xl border border-aviation-200 bg-aviation-50 p-4 text-sm text-aviation-800 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-200">
+          <p className="font-semibold">Documento APOC automático</p>
+          <p className="mt-1">Ao incluir um APOC e salvar, uma cópia com os APOCs e a assinatura do chefe será gerada na aba APOC. Somente os assuntos 01, 02, 06, 12, 13, 14 e 17 serão incluídos, em sequência, com seus horários, fotos e descrições. A cópia não soma horas novamente.</p>
+        </div>
+      )}
       {form.isApoc && (
         <div className="rounded-xl border border-aviation-200 bg-aviation-50 p-4 text-sm text-aviation-800 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-200">
           <p className="font-semibold">PTR-BA somente APOC</p>
@@ -874,6 +879,7 @@ function PTRBACompletoCard({
           </p>
           <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
           {registro.isApoc && <p className="mt-1 text-xs font-medium text-aviation-700 dark:text-aviation-300">Documento exclusivo APOC · Não contabilizado nos relatórios</p>}
+          {registro.origemPtrbaId && <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">Gerado automaticamente · Atualizado pelo PTR-BA normal de origem</p>}
           {gruposEvidencias.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {gruposEvidencias.slice(0, 3).map(grupo => {
@@ -992,7 +998,7 @@ function PTRBACompletoCard({
             {canEdit && (
               <>
                 <button type="button" onClick={onEdit} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
-                  <Pencil className="h-4 w-4" /> Editar
+                  <Pencil className="h-4 w-4" /> {registro.origemPtrbaId ? 'Editar PTR-BA de origem' : 'Editar'}
                 </button>
                 {canDelete && (
                   <button type="button" onClick={onDelete} className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
@@ -1210,10 +1216,10 @@ export function PTRBACompletoPage() {
     return () => { cancelado = true; };
   }, []);
 
-  function abrirNovoPTRBA(somenteApoc = false) {
+  function abrirNovoPTRBA() {
     setEditando(null);
-    setNovoSomenteApoc(somenteApoc);
-    setAba(somenteApoc ? 'apoc' : 'normal');
+    setNovoSomenteApoc(false);
+    setAba('normal');
     setMode('form');
   }
 
@@ -1248,7 +1254,7 @@ export function PTRBACompletoPage() {
       setEditando(null);
       await carregar();
       setMode('list');
-      setSuccessMessage(foiEdicao ? 'PTR-BA alterado com sucesso.' : 'PTR-BA criado com sucesso.');
+      setSuccessMessage(`${foiEdicao ? 'PTR-BA alterado' : 'PTR-BA criado'} com sucesso.${!payload.isApoc ? ' Se houver APOCs e assuntos permitidos, o documento exclusivo foi atualizado na aba APOC, sem somar horas novamente.' : ''}`);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao salvar PTR-BA.');
     } finally {
@@ -1350,7 +1356,7 @@ export function PTRBACompletoPage() {
           </button>
         ))}
       </div>
-      {aba === 'apoc' && <p className="mb-4 text-sm text-graphite-500 dark:text-graphite-400">Documentos exclusivos dos APOCs. Não entram nos relatórios, nas estatísticas, no LRO ou no tempo de PTR-BA.</p>}
+      {aba === 'apoc' && <p className="mb-4 text-sm text-graphite-500 dark:text-graphite-400">Documentos gerados ao salvar um PTR-BA normal com APOCs e assuntos permitidos (01, 02, 06, 12, 13, 14 e 17). Incluem somente os APOCs e a assinatura do chefe, sem somar horas nos relatórios, nas estatísticas ou no LRO.</p>}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={inputClass}>
@@ -1368,16 +1374,13 @@ export function PTRBACompletoPage() {
           <p className="text-sm text-graphite-500 dark:text-graphite-400">{registrosFiltrados.length} registro(s)</p>
           {aba === 'apoc' && <input type="search" value={filtroApoc} onChange={e => setFiltroApoc(e.target.value)} placeholder="Pesquisar pelo nome do APOC" aria-label="Pesquisar pelo nome do APOC" className={`${inputClass} w-full sm:w-72`} />}
         </div>
-        {canCreate && (
+        {canCreate && aba === 'normal' && (
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => abrirNovoPTRBA()}
               className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus className="h-4 w-4" /> Novo PTR-BA
-            </button>
-            <button type="button" onClick={() => abrirNovoPTRBA(true)} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2 text-sm font-medium text-aviation-700 transition-colors hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
-              <Users className="h-4 w-4" /> Criar PTR-BA APOC
             </button>
           </div>
         )}
@@ -1387,13 +1390,14 @@ export function PTRBACompletoPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300/60 bg-white/50 p-12 text-center backdrop-blur-sm dark:border-border-dark dark:bg-surface-card">
           <FileText className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhum registro encontrado</h3>
-          <p className="text-sm text-graphite-400">{canCreate ? `Ajuste os filtros ou clique em "${aba === 'apoc' ? 'Criar PTR-BA APOC' : 'Novo PTR-BA'}" para criar um registro.` : 'Nenhum registro disponível.'}</p>
+          <p className="text-sm text-graphite-400">{aba === 'apoc' ? 'Ajuste os filtros. Os documentos são gerados ao salvar um PTR-BA normal com APOCs e assuntos permitidos.' : canCreate ? 'Ajuste os filtros ou clique em "Novo PTR-BA" para criar um registro.' : 'Nenhum registro disponível.'}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {registrosFiltrados.map(registro => {
-            const podeAlterar = canEditarRegistroDiario(contexto, registro, username, bombeiros);
-            const podeExcluir = canExcluirRegistroDiario(contexto, registro, username, bombeiros);
+            const origem = registro.origemPtrbaId ? registrosComEfetivoDoDia.find(item => item.id === registro.origemPtrbaId) : registro;
+            const podeAlterar = !!origem && canEditarRegistroDiario(contexto, origem, username, bombeiros);
+            const podeExcluir = !registro.origemPtrbaId && canExcluirRegistroDiario(contexto, registro, username, bombeiros);
             return (
               <PTRBACompletoCard
                 key={registro.id}
@@ -1404,7 +1408,7 @@ export function PTRBACompletoPage() {
                 previewing={previewingId === registro.id}
                 auditoriaPessoas={montarAuditoriaPessoasDoRegistro(registro)}
                 onPreviewDocument={() => handlePreviewPdf(registro)}
-                onEdit={() => void abrirEdicaoPTRBA(registro)}
+                onEdit={() => { if (origem) abrirEdicaoPTRBA(origem); }}
                 onDelete={() => setConfirmDelete(registro.id)}
                 onDownload={() => handleDownload(registro)}
               />

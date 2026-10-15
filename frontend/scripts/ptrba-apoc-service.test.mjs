@@ -5,6 +5,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import ts from 'typescript';
+import { createPtrbaMemoryDatabase } from './ptrba-memory-database.mjs';
 
 // Service + adapter HTTP + backend reais, com SQL em memória, sem banco externo.
 const require = createRequire(import.meta.url);
@@ -21,34 +22,9 @@ const registro = (overrides = {}) => ({
 
 function harness(initial = []) {
   let rows = structuredClone(initial);
-  const sqlCalls = [];
   let fail = false;
-  const database = {
-    query: async (sql, params = []) => {
-      sqlCalls.push(sql);
-      const conditions = [...sql.matchAll(/"(id|equipe|data|created_by)" (>=|<=|=) \$(\d+)/g)];
-      const selected = rows.filter(row => conditions.every(([, column, op, index]) => {
-        const value = params[Number(index) - 1];
-        return op === '>=' ? row[column] >= value : op === '<=' ? row[column] <= value : row[column] === value;
-      }));
-      if (sql.startsWith('INSERT')) {
-        const columns = sql.match(/\(([^)]+)\) VALUES/)[1].split(', ').map(v => v.replaceAll('"', ''));
-        const row = { id: `novo-${rows.length + 1}`, is_apoc: false, ...Object.fromEntries(columns.map((c, i) => [c, params[i]])) };
-        rows.push(row);
-        return { rows: [structuredClone(row)] };
-      }
-      if (sql.startsWith('UPDATE')) {
-        const columns = sql.match(/SET (.*?) WHERE/)[1].split(', ').map(v => v.match(/"([a-z_]+)"/)[1]);
-        selected.forEach(row => columns.forEach((c, i) => { row[c] = params[i]; }));
-      }
-      if (sql.startsWith('DELETE')) rows = rows.filter(row => !selected.includes(row));
-      return { rows: structuredClone(selected) };
-    },
-    transaction: async run => {
-      const snapshot = structuredClone(rows);
-      try { return await run(database); } catch (error) { rows = snapshot; throw error; }
-    },
-  };
+  const database = createPtrbaMemoryDatabase(() => rows, value => { rows = value; });
+  const sqlCalls = database.sqlCalls;
   const backend = new ResourcesService(database);
   const context = vm.createContext({
     console: { ...console, error() {} }, structuredClone, FormData, Blob,
@@ -74,7 +50,7 @@ function harness(initial = []) {
     modules.set(filename, module.exports);
     return module.exports;
   }
-  return { backend, service: load(path.join(srcRoot, 'services/ptrbaCompletoService.ts')), load, sqlCalls, fail: () => { fail = true; } };
+  return { backend, database, service: load(path.join(srcRoot, 'services/ptrbaCompletoService.ts')), load, sqlCalls, fail: () => { fail = true; } };
 }
 
 test('lista operacional exclui APOC mesmo após cache da gestão e preserva histórico sem modalidade', async () => {
@@ -217,4 +193,101 @@ test('estatísticas preservam horas da equipe e só registram participação/ins
   assert.ok(!itens[1].participantes.includes('Pessoa APOC'));
   assert.ok(itens[1].participantes.includes('Chefe'));
   assert.equal(itens[1].instrutores.length, 0);
+});
+
+const par = (assunto, horaInicio, horaTermino, descricao = assunto) => [
+  { assunto, horaInicio, horaTermino, descricao, imagem: `${assunto}-foto1` },
+  { assunto, horaInicio, horaTermino, descricao, imagem: `${assunto}-foto2` },
+];
+const normalMisto = () => registro({
+  isApoc: false, isExtra: true, observacoes: 'Observação geral',
+  participantes: [participante('Chefe', 'BA-CE'), { ...participante(), situacao: 'INSTR. 2-3' }],
+  evidencias: [
+    ...par('03. CCI', '07:00', '08:00'),
+    ...par('06. SISTEMAS DE COMUNICAÇÃO E ALARME', '08:00', '09:00'),
+    ...par('13. PLEM', '10:00', '11:00'),
+  ],
+});
+
+test('normal gera uma cópia vinculada com chefe, somente APOCs e pares permitidos compactados', async () => {
+  const h = harness();
+  const input = normalMisto();
+  const normal = await h.service.criarPTRBACompleto(input);
+  const copias = await h.service.listarPTRBACompletos({ modalidade: 'apoc' });
+  assert.equal(copias.length, 1);
+  const copia = copias[0];
+  assert.equal(copia.origemPtrbaId, normal.id);
+  for (const key of ['chefeEquipe', 'identificacaoAeroporto', 'data', 'equipe', 'observacoes', 'createdBy', 'isExtra']) assert.equal(copia[key], input[key]);
+  assert.equal(copia.participantes.length, 1);
+  assert.equal(copia.participantes[0].nomeCompleto, 'Pessoa APOC');
+  assert.equal(copia.participantes[0].situacao, 'INSTR. 1-2');
+  assert.deepEqual(JSON.parse(JSON.stringify(copia.evidencias.slice(0, 4))), input.evidencias.slice(2));
+  assert.equal(copia.evidencias[4].assunto, '');
+  assert.equal(copia.evidencias[5].imagem, '');
+  assert.equal(normal.evidencias[0].assunto, '03. CCI');
+  assert.equal((await h.service.listarPTRBACompletos()).length, 1);
+});
+
+test('edição sincroniza a mesma cópia e recompacta blocos e instrutores sem duplicar', async () => {
+  const h = harness();
+  const normal = await h.service.criarPTRBACompleto(normalMisto());
+  const copia = (await h.service.listarPTRBACompletos({ modalidade: 'apoc' }))[0];
+  const input = normalMisto();
+  input.evidencias.splice(2, 2, ...par('07. COMBATE', '08:00', '09:00'));
+  await h.service.atualizarPTRBACompleto(normal.id, { evidencias: input.evidencias, chefeEquipe: 'Novo chefe', updatedBy: 'editor' });
+  await h.service.atualizarPTRBACompleto(normal.id, { observacoes: 'Editado novamente' });
+  const copias = await h.service.listarPTRBACompletos({ modalidade: 'apoc' });
+  assert.equal(copias.length, 1);
+  assert.equal(copias[0].id, copia.id);
+  assert.equal(copias[0].evidencias[0].assunto, '13. PLEM');
+  assert.equal(copias[0].evidencias[0].horaInicio, '10:00');
+  assert.equal(copias[0].evidencias[0].imagem, '13. PLEM-foto1');
+  assert.equal(copias[0].evidencias[1].imagem, '13. PLEM-foto2');
+  assert.equal(copias[0].evidencias[2].assunto, '');
+  assert.equal(copias[0].participantes[0].situacao, 'INSTR. 1');
+  assert.equal(copias[0].chefeEquipe, 'Novo chefe');
+  assert.equal(copias[0].updatedBy, 'editor');
+  assert.equal(copias[0].observacoes, 'Editado novamente');
+  await assert.rejects(h.service.atualizarPTRBACompleto(copia.id, { observacoes: 'Divergente' }), /origem/);
+  await assert.rejects(h.service.excluirPTRBACompleto(copia.id), /origem/);
+});
+
+test('sem APOC ou sem assunto elegível não gera cópia; remoção e exclusão acompanham origem', async () => {
+  const h = harness();
+  const normal = await h.service.criarPTRBACompleto(normalMisto());
+  await h.service.atualizarPTRBACompleto(normal.id, { participantes: [participante('Chefe', 'BA-CE')] });
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'apoc' })).length, 0);
+  await h.service.atualizarPTRBACompleto(normal.id, { participantes: normalMisto().participantes });
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'apoc' })).length, 1);
+  await h.service.atualizarPTRBACompleto(normal.id, { evidencias: par('03. CCI', '08:00', '09:00') });
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'apoc' })).length, 0);
+  await h.service.atualizarPTRBACompleto(normal.id, { evidencias: normalMisto().evidencias });
+  await h.service.excluirPTRBACompleto(normal.id);
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'todos' })).length, 0);
+});
+
+test('falha na cópia desfaz criação e edição do normal na mesma transação', async () => {
+  const h = harness();
+  h.database.failNextCopy();
+  await assert.rejects(h.service.criarPTRBACompleto(normalMisto()), /Falha ao gravar/);
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'todos' })).length, 0);
+  const normal = await h.service.criarPTRBACompleto(normalMisto());
+  h.database.failNextCopy();
+  await assert.rejects(h.service.atualizarPTRBACompleto(normal.id, { chefeEquipe: 'Não persistir' }), /Falha ao gravar/);
+  assert.equal((await h.service.obterPTRBACompleto(normal.id)).chefeEquipe, normal.chefeEquipe);
+});
+
+test('geração usa os mesmos números da contagem e não permite forjar o vínculo', async () => {
+  const h = harness();
+  const { NUMEROS_ASSUNTOS_PTRBA_APOC } = require('../../backend/dist/resources/ptrba-apoc.js');
+  const regras = h.load(path.join(srcRoot, 'types/ptrb.ts'));
+  assert.deepEqual(NUMEROS_ASSUNTOS_PTRBA_APOC, Array.from(regras.NUMEROS_ASSUNTOS_PTRBA_APOC));
+  for (let numero = 1; numero <= 31; numero++) {
+    const normal = await h.service.criarPTRBACompleto(registro({ isApoc: false, evidencias: par(`${String(numero).padStart(2, '0')}. Assunto`, '08:00', '09:00') }));
+    const copias = await h.service.listarPTRBACompletos({ modalidade: 'apoc' });
+    assert.equal(copias.some(copia => copia.origemPtrbaId === normal.id), NUMEROS_ASSUNTOS_PTRBA_APOC.includes(numero), `Assunto ${numero}`);
+  }
+  await assert.rejects(h.backend.insert(table, { payload: { origem_ptrba_id: 'forjado' } }), /gerenciado automaticamente/);
+  const normal = (await h.service.listarPTRBACompletos())[0];
+  await assert.rejects(h.backend.update(table, { payload: { origem_ptrba_id: null }, filters: [{ column: 'id', operator: 'eq', value: normal.id }] }), /gerenciado automaticamente/);
 });

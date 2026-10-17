@@ -12,7 +12,6 @@ import {
 import { ALLOWED_TABLES } from './resources.config';
 import { DeleteDto, InsertDto, UpdateDto } from './dto/mutation.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
-import { montarCopiaPTRBAApoc } from './ptrba-apoc';
 
 export interface ResourceResult<T = QueryResultRow[] | QueryResultRow | null> {
   data: T;
@@ -65,7 +64,6 @@ export class ResourcesService {
             `INSERT INTO ${this.tableName(table)} (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')}) RETURNING *`,
             columns.map(column => row[column]),
           );
-          for (const origem of result.rows) await this.sincronizarPtrbaApoc(client, origem);
           created.push(...result.rows);
         }
         return { data: this.selectPtrbaRows(created, dto.select), error: null };
@@ -132,7 +130,7 @@ export class ResourcesService {
         const current = await client.query(`SELECT * FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         for (const row of current.rows) {
           if (row.origem_ptrba_id) {
-            throw new BadRequestException('Edite o PTR-BA normal de origem para atualizar o documento APOC automático.');
+            throw new BadRequestException('O documento APOC legado é preservado somente para consulta.');
           }
           if (dto.payload.is_apoc !== undefined && dto.payload.is_apoc !== row.is_apoc) {
             throw new BadRequestException('A modalidade do PTR-BA não pode ser alterada na edição.');
@@ -147,7 +145,6 @@ export class ResourcesService {
           `UPDATE ${this.tableName(table)} SET ${columns.map((column, index) => `${quoteIdentifier(column)} = $${index + 1}`).join(', ')} ${updateWhere} RETURNING *`,
           values,
         );
-        for (const origem of result.rows) await this.sincronizarPtrbaApoc(client, origem);
         return { data: this.selectPtrbaRows(result.rows, dto.select), error: null };
       });
     }
@@ -205,7 +202,7 @@ export class ResourcesService {
         if (!whereSql) throw new BadRequestException('Delete requires at least one filter');
         const current = await client.query(`SELECT * FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         if (current.rows.some(row => row.origem_ptrba_id)) {
-          throw new BadRequestException('Exclua ou ajuste o PTR-BA normal de origem para remover o documento APOC automático.');
+          throw new BadRequestException('O documento APOC legado é preservado somente para consulta.');
         }
         const result = await client.query(`DELETE FROM ${this.tableName(table)} ${whereSql} RETURNING *`, params);
         return { data: this.selectPtrbaRows(result.rows, dto.select), error: null };
@@ -223,7 +220,7 @@ export class ResourcesService {
 
   private validatePtrbaOrigem(row: Record<string, unknown>): void {
     if (row.origem_ptrba_id !== undefined) {
-      throw new BadRequestException('O vínculo do documento APOC é gerenciado automaticamente.');
+      throw new BadRequestException('O vínculo legado do documento APOC não pode ser alterado.');
     }
   }
 
@@ -231,22 +228,6 @@ export class ResourcesService {
     if (selection === undefined) return null;
     if (selectClause(selection) === '*') return rows;
     return rows.map(row => Object.fromEntries(selection.split(',').map(column => [column.trim(), row[column.trim()]])));
-  }
-
-  private async sincronizarPtrbaApoc(client: PoolClient, origem: QueryResultRow): Promise<void> {
-    if (origem.is_apoc) return;
-    const copia = montarCopiaPTRBAApoc(origem);
-    if (!copia) {
-      await client.query('DELETE FROM "ptrba_completo_registros" WHERE "origem_ptrba_id" = $1', [origem.id]);
-      return;
-    }
-    this.validatePtrbaApoc(copia);
-    const columns = Object.keys(copia);
-    const updates = columns.filter(column => !['origem_ptrba_id', 'created_by'].includes(column));
-    await client.query(
-      `INSERT INTO "ptrba_completo_registros" (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')}) ON CONFLICT (origem_ptrba_id) DO UPDATE SET ${updates.map(column => `${quoteIdentifier(column)} = EXCLUDED.${quoteIdentifier(column)}`).join(', ')}`,
-      columns.map(column => copia[column]),
-    );
   }
 
   private validatePtrbaApoc(row: Record<string, unknown>): void {

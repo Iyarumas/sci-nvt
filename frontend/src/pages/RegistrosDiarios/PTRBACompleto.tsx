@@ -56,6 +56,7 @@ import {
   criarParticipantesPTRBACompletoVazios,
   normalizarEvidenciasPTRBACompleto,
   normalizarParticipantesPTRBACompleto,
+  possuiParticipacaoAPOCPTRBA,
   PTRBA_COMPLETO_EVIDENCIA_PARES,
   PTRBA_COMPLETO_EQUIPES,
   PTRBA_COMPLETO_FUNCOES,
@@ -640,8 +641,8 @@ function PTRBACompletoForm({
     <form onSubmit={handleSubmit} className="space-y-6">
       {!form.isApoc && (
         <div className="rounded-xl border border-aviation-200 bg-aviation-50 p-4 text-sm text-aviation-800 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-200">
-          <p className="font-semibold">Documento APOC automático</p>
-          <p className="mt-1">Ao incluir um APOC e salvar, uma cópia com os APOCs e a assinatura do chefe será gerada na aba APOC. Somente os assuntos 01, 02, 06, 12, 13, 14 e 17 serão incluídos, em sequência, com seus horários, fotos e descrições. A cópia não soma horas novamente.</p>
+          <p className="font-semibold">Participação de APOC</p>
+          <p className="mt-1">Inclua os APOCs neste PTR-BA. Para eles, somente os assuntos 01, 02, 06, 12, 13, 14 e 17 contabilizam horas.</p>
         </div>
       )}
       {form.isApoc && (
@@ -879,7 +880,7 @@ function PTRBACompletoCard({
           </p>
           <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
           {registro.isApoc && <p className="mt-1 text-xs font-medium text-aviation-700 dark:text-aviation-300">Documento exclusivo APOC · Não contabilizado nos relatórios</p>}
-          {registro.origemPtrbaId && <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">Gerado automaticamente · Atualizado pelo PTR-BA normal de origem</p>}
+          {registro.origemPtrbaId && <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">Documento APOC legado</p>}
           {gruposEvidencias.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {gruposEvidencias.slice(0, 3).map(grupo => {
@@ -1078,8 +1079,7 @@ export function PTRBACompletoPage() {
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroEquipe, setFiltroEquipe] = useState('');
-  const [aba, setAba] = useState<'normal' | 'apoc'>('normal');
-  const [novoSomenteApoc, setNovoSomenteApoc] = useState(false);
+  const [somenteComApoc, setSomenteComApoc] = useState(false);
   const [filtroApoc, setFiltroApoc] = useState('');
   const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 
@@ -1124,8 +1124,8 @@ export function PTRBACompletoPage() {
   }), [registros, bombeiros, apocs, feriasGozo, vigencias, trocaFills, escalasCompletas, substituicoesTemporarias]);
 
   const registrosFiltrados = registrosComEfetivoDoDia.filter(registro => {
-    if (registro.isApoc !== (aba === 'apoc')) return false;
-    if (aba === 'apoc' && filtroApoc && !registro.participantes.some(p => normalizarBusca(p.nomeCompleto).includes(normalizarBusca(filtroApoc)))) return false;
+    if (registro.isApoc) return false;
+    if ((somenteComApoc || filtroApoc.trim()) && !possuiParticipacaoAPOCPTRBA(registro, filtroApoc)) return false;
     if (filtroEquipe && registro.equipe !== filtroEquipe) return false;
     if (filtroAno && !registro.data.startsWith(filtroAno)) return false;
     if (filtroMes) {
@@ -1136,7 +1136,7 @@ export function PTRBACompletoPage() {
   });
 
   async function carregar() {
-    const lista = await listarPTRBACompletos({ modalidade: 'todos' });
+    const lista = await listarPTRBACompletos();
     setRegistros(lista);
   }
 
@@ -1192,7 +1192,7 @@ export function PTRBACompletoPage() {
     async function init() {
       try {
         setLoading(true);
-        const lista = await listarPTRBACompletos({ modalidade: 'todos' });
+        const lista = await listarPTRBACompletos();
         if (cancelado) return;
         setRegistros(lista);
         setLoading(false);
@@ -1218,14 +1218,11 @@ export function PTRBACompletoPage() {
 
   function abrirNovoPTRBA() {
     setEditando(null);
-    setNovoSomenteApoc(false);
-    setAba('normal');
     setMode('form');
   }
 
   function abrirEdicaoPTRBA(registro: PTRBACompleto) {
     setEditando(registro);
-    setNovoSomenteApoc(registro.isApoc);
     setMode('form');
   }
 
@@ -1254,7 +1251,7 @@ export function PTRBACompletoPage() {
       setEditando(null);
       await carregar();
       setMode('list');
-      setSuccessMessage(`${foiEdicao ? 'PTR-BA alterado' : 'PTR-BA criado'} com sucesso.${!payload.isApoc ? ' Se houver APOCs e assuntos permitidos, o documento exclusivo foi atualizado na aba APOC, sem somar horas novamente.' : ''}`);
+      setSuccessMessage(`${foiEdicao ? 'PTR-BA alterado' : 'PTR-BA criado'} com sucesso.`);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao salvar PTR-BA.');
     } finally {
@@ -1311,10 +1308,10 @@ export function PTRBACompletoPage() {
   if (mode === 'form') {
     return (
       <PageContainer>
-        <PageTitle icon={FileText} title={`${novoSomenteApoc ? 'PTR-BA somente APOC' : 'PTR-BA'} - ${editando ? 'Editar' : 'Novo'} Registro`} />
+        <PageTitle icon={FileText} title={`PTR-BA - ${editando ? 'Editar' : 'Novo'} Registro`} />
         <PTRBACompletoForm
           registro={editando || undefined}
-          somenteApoc={novoSomenteApoc}
+          somenteApoc={false}
           onCancel={() => { setMode('list'); setEditando(null); }}
           onSave={handleSave}
           bombeiros={bombeiros}
@@ -1348,33 +1345,28 @@ export function PTRBACompletoPage() {
     <PageContainer>
       <PageTitle icon={FileText} title="PTR-BA" />
 
-      <div className="mb-5 flex flex-wrap gap-2" aria-label="Modalidade de PTR-BA">
-        {(['normal', 'apoc'] as const).map(modalidade => (
-          <button key={modalidade} type="button" aria-pressed={aba === modalidade} onClick={() => setAba(modalidade)}
-            className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${aba === modalidade ? 'border-aviation-600 bg-aviation-600 text-white' : 'border-graphite-200 bg-white text-graphite-600 hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300'}`}>
-            {modalidade === 'normal' ? 'PTR-BA Normais' : 'PTR-BA APOC'}
-          </button>
-        ))}
-      </div>
-      {aba === 'apoc' && <p className="mb-4 text-sm text-graphite-500 dark:text-graphite-400">Documentos gerados ao salvar um PTR-BA normal com APOCs e assuntos permitidos (01, 02, 06, 12, 13, 14 e 17). Incluem somente os APOCs e a assinatura do chefe, sem somar horas nos relatórios, nas estatísticas ou no LRO.</p>}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={inputClass}>
+          <select aria-label="Filtrar por ano" value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={inputClass}>
             <option value="">Todos os anos</option>
             {ANOS.map(ano => <option key={ano} value={ano}>{ano}</option>)}
           </select>
-          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={inputClass}>
+          <select aria-label="Filtrar por mês" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={inputClass}>
             <option value="">Todos os meses</option>
             {MESES.slice(1).map((mes, index) => <option key={index + 1} value={index + 1}>{mes}</option>)}
           </select>
-          <select value={filtroEquipe} onChange={e => setFiltroEquipe(e.target.value)} className={inputClass}>
+          <select aria-label="Filtrar por equipe" value={filtroEquipe} onChange={e => setFiltroEquipe(e.target.value)} className={inputClass}>
             <option value="">Todas as equipes</option>
             {PTRBA_COMPLETO_EQUIPES.map(equipe => <option key={equipe} value={equipe}>{equipe}</option>)}
           </select>
           <p className="text-sm text-graphite-500 dark:text-graphite-400">{registrosFiltrados.length} registro(s)</p>
-          {aba === 'apoc' && <input type="search" value={filtroApoc} onChange={e => setFiltroApoc(e.target.value)} placeholder="Pesquisar pelo nome do APOC" aria-label="Pesquisar pelo nome do APOC" className={`${inputClass} w-full sm:w-72`} />}
+          <select aria-label="Filtrar por participação APOC" value={somenteComApoc ? 'apoc' : 'todos'} onChange={e => setSomenteComApoc(e.target.value === 'apoc')} className={inputClass}>
+            <option value="todos">Todos os PTR-BAs</option>
+            <option value="apoc">Com participação de APOC</option>
+          </select>
+          <input type="search" value={filtroApoc} onChange={e => setFiltroApoc(e.target.value)} placeholder="Pesquisar pelo nome do APOC" aria-label="Pesquisar pelo nome do APOC" className={`${inputClass} w-full sm:w-72`} />
         </div>
-        {canCreate && aba === 'normal' && (
+        {canCreate && (
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => abrirNovoPTRBA()}
@@ -1390,14 +1382,13 @@ export function PTRBACompletoPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300/60 bg-white/50 p-12 text-center backdrop-blur-sm dark:border-border-dark dark:bg-surface-card">
           <FileText className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhum registro encontrado</h3>
-          <p className="text-sm text-graphite-400">{aba === 'apoc' ? 'Ajuste os filtros. Os documentos são gerados ao salvar um PTR-BA normal com APOCs e assuntos permitidos.' : canCreate ? 'Ajuste os filtros ou clique em "Novo PTR-BA" para criar um registro.' : 'Nenhum registro disponível.'}</p>
+          <p className="text-sm text-graphite-400">{canCreate ? 'Ajuste os filtros ou clique em "Novo PTR-BA" para criar um registro.' : 'Nenhum registro disponível.'}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {registrosFiltrados.map(registro => {
-            const origem = registro.origemPtrbaId ? registrosComEfetivoDoDia.find(item => item.id === registro.origemPtrbaId) : registro;
-            const podeAlterar = !!origem && canEditarRegistroDiario(contexto, origem, username, bombeiros);
-            const podeExcluir = !registro.origemPtrbaId && canExcluirRegistroDiario(contexto, registro, username, bombeiros);
+            const podeAlterar = canEditarRegistroDiario(contexto, registro, username, bombeiros);
+            const podeExcluir = canExcluirRegistroDiario(contexto, registro, username, bombeiros);
             return (
               <PTRBACompletoCard
                 key={registro.id}
@@ -1408,7 +1399,7 @@ export function PTRBACompletoPage() {
                 previewing={previewingId === registro.id}
                 auditoriaPessoas={montarAuditoriaPessoasDoRegistro(registro)}
                 onPreviewDocument={() => handlePreviewPdf(registro)}
-                onEdit={() => { if (origem) abrirEdicaoPTRBA(origem); }}
+                onEdit={() => abrirEdicaoPTRBA(registro)}
                 onDelete={() => setConfirmDelete(registro.id)}
                 onDownload={() => handleDownload(registro)}
               />

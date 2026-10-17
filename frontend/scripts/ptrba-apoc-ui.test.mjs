@@ -90,18 +90,19 @@ try {
   await spareParticipant.getByRole('button').filter({ hasText: 'Pessoa Ana APOC' }).click();
   await spareParticipant.getByText('APOC Pessoa Ana APOC', { exact: true }).waitFor();
   await normalForm.getByRole('button', { name: 'Cancelar', exact: true }).click();
-  await main.getByRole('button', { name: 'PTR-BA APOC', exact: true }).click();
-  await main.getByRole('heading', { name: 'PTR-BA APOC - Bravo - 13/10/2026', exact: true }).waitFor();
+  assert.equal(await main.getByRole('button', { name: 'PTR-BA Normais', exact: true }).count(), 0);
+  assert.equal(await main.getByRole('button', { name: 'PTR-BA APOC', exact: true }).count(), 0);
   const search = main.getByRole('searchbox', { name: 'Pesquisar pelo nome do APOC' });
+  const participation = main.getByRole('combobox', { name: 'Filtrar por participação APOC' });
+  await participation.selectOption('apoc');
+  await search.fill('  ana  ');
+  assert.equal(await main.getByRole('heading', { name: /^PTR-BA - Bravo/ }).count(), 1);
+  await search.fill('Chefe');
+  await main.getByText('Nenhum registro encontrado', { exact: true }).waitFor();
   await search.fill('jose');
-  assert.equal(await main.getByRole('heading', { name: /PTR-BA APOC -/ }).count(), 1);
-  await search.fill('Ana');
   await main.getByText('Nenhum registro encontrado', { exact: true }).waitFor();
   await search.fill('');
-  await page.screenshot({ path: path.join(out, 'aba-apoc.png'), fullPage: true, animations: 'disabled' });
-
-  assert.equal(await main.getByRole('button', { name: 'Novo PTR-BA', exact: true }).count(), 0);
-  await main.getByRole('button', { name: 'PTR-BA Normais', exact: true }).click();
+  await participation.selectOption('todos');
   await main.getByRole('button', { name: 'Novo PTR-BA', exact: true }).click();
   const form = main.locator('form');
   await form.locator('select').first().selectOption('Bravo');
@@ -139,44 +140,35 @@ try {
     await form.locator('input[type="file"]').nth(index).setInputFiles({ name: `evidencia-${index + 1}.png`, mimeType: 'image/png', buffer: Buffer.from(imagensTeste[index], 'base64') });
   }
   await form.locator('img').nth(5).waitFor();
-  await form.locator('textarea').last().fill('Observações copiadas do PTR-BA normal.');
+  await form.locator('textarea').last().fill('Observações do PTR-BA normal.');
   await form.locator('input[placeholder="Nome do chefe"]').fill('Pessoa Chefe');
-  await page.screenshot({ path: path.join(out, 'form-normal-automatico.png'), fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: path.join(out, 'form-normal.png'), fullPage: true, animations: 'disabled' });
   await form.getByRole('button', { name: 'Criar PTR-BA', exact: true }).click();
   await page.getByRole('heading', { name: 'PTR-BA salvo', exact: true }).waitFor();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
   assert.equal(writes.at(-1).payload.is_apoc, false);
   const normalCriado = tables.ptrba_completo_registros.find(row => row.id !== 'normal' && !row.is_apoc);
-  const copia = tables.ptrba_completo_registros.find(row => row.origem_ptrba_id === normalCriado.id);
-  assert.ok(copia);
-  assert.equal(JSON.parse(copia.participantes).length, 1);
-  assert.equal(JSON.parse(copia.evidencias)[0].assunto, subjects[1]);
-  assert.equal(JSON.parse(copia.evidencias)[0].imagem, JSON.parse(normalCriado.evidencias)[2].imagem);
-  assert.equal(JSON.parse(copia.evidencias)[1].imagem, JSON.parse(normalCriado.evidencias)[3].imagem);
-  await main.getByRole('button', { name: 'PTR-BA APOC', exact: true }).click();
-  assert.equal(await main.getByRole('heading', { name: /PTR-BA APOC -/ }).count(), 2);
-
-  const createdCard = main.locator('div.overflow-hidden.rounded-2xl').filter({ hasText: 'Gerado automaticamente' });
+  assert.ok(normalCriado);
+  assert.equal(tables.ptrba_completo_registros.length, 3, 'A criação deve gravar apenas um documento');
+  assert.equal(tables.ptrba_completo_registros.filter(row => row.origem_ptrba_id).length, 0);
+  assert.equal(await main.getByRole('heading', { name: /PTR-BA APOC -/ }).count(), 0);
+  const createdCard = main.locator('div.overflow-hidden.rounded-2xl').filter({ hasText: subjects[1] });
   await createdCard.getByRole('button', { name: /Ver detalhes/ }).click();
-  assert.equal(await createdCard.getByText(subjects[0], { exact: true }).count(), 0);
-  await createdCard.getByText('Instrução 1', { exact: true }).waitFor();
-  const firstBlock = createdCard.getByText('Instrução 1', { exact: true }).locator('..');
-  assert.ok((await firstBlock.innerText()).includes(subjects[1]));
-  assert.equal(await createdCard.getByRole('button', { name: 'Excluir', exact: true }).count(), 0);
-  await page.screenshot({ path: path.join(out, 'apoc-automatico-detalhes.png'), fullPage: true, animations: 'disabled' });
-  await createdCard.getByRole('button', { name: 'Editar PTR-BA de origem', exact: true }).click();
+  assert.ok((await createdCard.innerText()).includes(subjects[0]));
+  assert.ok((await createdCard.innerText()).includes(subjects[1]));
+  await createdCard.getByRole('button', { name: 'Editar', exact: true }).click();
   await main.getByRole('heading', { name: 'PTR-BA - Editar Registro' }).waitFor();
   await form.locator('textarea').last().fill('Observação editada');
   await form.getByRole('button', { name: 'Salvar Alterações', exact: true }).click();
   await page.getByRole('heading', { name: 'PTR-BA salvo', exact: true }).waitFor();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
-  assert.equal(tables.ptrba_completo_registros.filter(row => row.origem_ptrba_id === normalCriado.id).length, 1);
-  assert.equal(tables.ptrba_completo_registros.find(row => row.id === copia.id).observacoes, 'Observação editada');
+  assert.equal(tables.ptrba_completo_registros.length, 3, 'A edição também não deve gerar cópia');
+  assert.equal(tables.ptrba_completo_registros.find(row => row.id === normalCriado.id).observacoes, 'Observação editada');
   await createdCard.getByRole('button', { name: /Ver detalhes/ }).click();
   const downloadPromise = page.waitForEvent('download');
   await createdCard.getByRole('button', { name: 'Download PDF', exact: true }).click();
   const download = await downloadPromise;
-  assert.equal(download.suggestedFilename(), 'PTR-BA_APOC_13-10-2026.pdf');
+  assert.equal(download.suggestedFilename(), '13-10-2026 NVT PTRBA BRAVO.pdf');
   await download.saveAs(path.join(out, download.suggestedFilename()));
   const pdfBytes = await fs.readFile(path.join(out, download.suggestedFilename()));
   const rendered = await page.evaluate(async bytes => {
@@ -192,26 +184,24 @@ try {
     return { pages: pdf.numPages, text, png: canvas.toDataURL('image/png').split(',')[1] };
   }, Array.from(pdfBytes));
   assert.equal(rendered.pages, 1);
-  assert.ok(!rendered.text.includes('PESSOA CHEFE'), 'O campo do chefe deve ficar livre para assinatura, como no PTR-BA normal');
+  assert.ok(rendered.text.includes('PESSOA CHEFE'));
   assert.ok(rendered.text.includes('PESSOA ANA APOC'));
-  assert.ok(rendered.text.includes('ASSINATURA DO APOC'));
   assert.ok(rendered.text.includes('ASSINATURA DO CHEFE DE EQUIPE'));
-  assert.ok(!rendered.text.includes('03.'));
+  assert.ok(rendered.text.includes('03.'));
   assert.ok(rendered.text.indexOf('06.') < rendered.text.indexOf('13.'));
-  await fs.writeFile(path.join(out, 'apoc-automatico-pdf.png'), Buffer.from(rendered.png, 'base64'));
+  await fs.writeFile(path.join(out, 'normal-pdf.png'), Buffer.from(rendered.png, 'base64'));
 
-  // Com a cópia automática presente: normal original 1h + novo normal 3h.
-  // Ana participa de 1h original + 2h permitidas no novo; a cópia não soma.
+  // Normal original 1h + novo normal 3h. Ana participa de 1h original + 2h permitidas no novo.
   await page.goto(`${appUrl}/relatorios/ptr-ba`);
   await main.getByRole('heading', { name: /^Relatório PTR-BA/ }).waitFor();
   await page.waitForFunction(() => document.querySelector('main')?.innerText.includes('de atividade'));
   assert.match(await main.innerText(), /4h\s*de atividade · 4 registro\(s\)/);
-  const anaComCopia = main.locator('tr').filter({ hasText: 'Pessoa Ana APOC' });
-  assert.match(await anaComCopia.first().innerText(), /3h/);
+  const anaComParticipacao = main.locator('tr').filter({ hasText: 'Pessoa Ana APOC' });
+  assert.match(await anaComParticipacao.first().innerText(), /3h/);
   await page.goto(`${appUrl}/registros-diarios/ptr-ba-completo`);
   await main.getByRole('heading', { name: 'PTR-BA - Bravo - 13/10/2026', exact: true }).first().waitFor();
 
-  // Exclusão pelo normal remove somente sua cópia vinculada; históricos permanecem.
+  // Exclusão do novo normal mantém os registros anteriores.
   const normalCard = main.locator('div.overflow-hidden.rounded-2xl').filter({ hasText: '06. SISTEMAS DE COMUNICAÇÃO E ALARME' });
   await normalCard.getByRole('button', { name: /Ver detalhes/ }).click();
   await normalCard.getByRole('button', { name: 'Excluir', exact: true }).click();
@@ -219,7 +209,7 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('main h3').length === 1);
   assert.equal(tables.ptrba_completo_registros.length, 2);
 
-  // Verifica os relatórios com o registro normal e dois documentos APOC no mesmo período.
+  // Documento APOC histórico não entra na listagem nem nas horas dos relatórios.
   await page.goto(`${appUrl}/relatorios/ptr-ba-registros`);
   await main.getByRole('heading', { name: 'PTR-BA Registros', exact: true }).waitFor();
   await main.getByText(assuntoNormal, { exact: true }).first().waitFor();
@@ -271,7 +261,7 @@ try {
   tables.ptrba_completo_registros[0] = normalOriginal;
   tables.ptrba_completo_registros = tables.ptrba_completo_registros.filter(r => r.id !== 'normal-sem-apoc');
 
-  // PDFs com 15 APOCs e normal, usando o gerador real para inspecionar o limite da página.
+  // Compatibilidade do gerador com PDFs históricos e normais.
   const pdfs = await page.evaluate(async () => {
     const { gerarPTRBACompletoPdf } = await import('/src/services/ptrbaCompletoPdfService.ts');
     const registro = { id: 'qa', createdBy: 'qa', createdAt: '', updatedAt: '', data: '2026-10-13', equipe: 'Bravo', isApoc: true, isExtra: false, identificacaoAeroporto: 'SBNF - Aeroporto Internacional de Navegantes', observacoes: 'Observações da instrução. Todos os participantes são APOCs.', chefeEquipe: 'Pessoa Chefe', participantes: Array.from({ length: 15 }, (_, i) => ({ funcao: 'APOC', nomeCompleto: `PESSOA APOC PARTICIPANTE ${i + 1}`, situacao: 'P' })), evidencias: [{ horaInicio: '08:00', horaTermino: '09:00', assunto: 'Instrução operacional', descricao: 'Descrição de teste', imagem: '' }] };
@@ -283,16 +273,42 @@ try {
   await fs.writeFile(path.join(out, 'normal.pdf'), Buffer.from(pdfs[1]));
 
   await page.goto(`${appUrl}/registros-diarios/ptr-ba-completo`);
-  await main.getByRole('button', { name: 'PTR-BA APOC', exact: true }).click();
+  await main.getByRole('heading', { name: 'PTR-BA - Bravo - 13/10/2026', exact: true }).waitFor();
   assert.equal(tables.ptrba_completo_registros.length, 2);
+  const fixture = structuredClone(tables.ptrba_completo_registros[0]);
+  tables.ptrba_completo_registros.push(
+    { ...fixture, id: 'sem-apoc', participantes: fixture.participantes.filter(p => p.funcao !== 'APOC') },
+    { ...fixture, id: 'jose-31', data: '2026-09-15', equipe: 'Alfa', participantes: [{ funcao: 'APOC', nomeCompleto: 'Pessoa José APOC', situacao: 'P' }], evidencias: evidence('31. INSTRUÇÃO EXTRA') },
+  );
+  await page.reload();
+  await main.getByRole('heading', { name: 'PTR-BA', exact: true }).waitFor();
+  await main.getByRole('combobox', { name: 'Filtrar por mês' }).selectOption('');
+  await main.getByRole('combobox', { name: 'Filtrar por participação APOC' }).selectOption('apoc');
+  await main.getByText('2 registro(s)', { exact: true }).waitFor();
+  await main.getByRole('searchbox', { name: 'Pesquisar pelo nome do APOC' }).fill(' JOSE ');
+  await main.getByText('1 registro(s)', { exact: true }).waitFor();
+  await main.getByRole('heading', { name: 'PTR-BA - Alfa - 15/09/2026', exact: true }).waitFor();
+  assert.ok((await main.innerText()).includes('31. INSTRUÇÃO EXTRA'));
+  await main.getByRole('combobox', { name: 'Filtrar por equipe' }).selectOption('Bravo');
+  await main.getByText('Nenhum registro encontrado', { exact: true }).waitFor();
+  await main.getByRole('combobox', { name: 'Filtrar por equipe' }).selectOption('');
+  await main.getByRole('combobox', { name: 'Filtrar por mês' }).selectOption('10');
+  await main.getByText('Nenhum registro encontrado', { exact: true }).waitFor();
+  await main.getByRole('combobox', { name: 'Filtrar por mês' }).selectOption('');
+  await main.getByRole('searchbox', { name: 'Pesquisar pelo nome do APOC' }).fill('');
+  await main.getByRole('combobox', { name: 'Filtrar por participação APOC' }).selectOption('todos');
+  await main.getByText('3 registro(s)', { exact: true }).waitFor();
+  await main.getByRole('searchbox', { name: 'Pesquisar pelo nome do APOC' }).fill('Ana');
+  await main.getByText('1 registro(s)', { exact: true }).waitFor();
+  await page.screenshot({ path: path.join(out, 'filtro-apoc.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: path.join(out, 'aba-apoc-mobile.png'), fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: path.join(out, 'filtro-apoc-mobile.png'), fullPage: true, animations: 'disabled' });
   assert.ok(await main.evaluate(el => el.scrollWidth <= el.clientWidth), 'Conteúdo mobile não deve transbordar horizontalmente');
   await page.evaluate(() => document.documentElement.classList.add('dark'));
-  await page.screenshot({ path: path.join(out, 'aba-apoc-dark.png'), fullPage: true, animations: 'disabled' });
+  await page.screenshot({ path: path.join(out, 'filtro-apoc-dark.png'), fullPage: true, animations: 'disabled' });
   assert.deepEqual(dialogs, []);
   assert.deepEqual(errors, []);
-  console.log('PTR-BA APOC: criação automática no backend real, assuntos compactados, chefe, sincronização/exclusão pela origem, abas, pesquisa, relatórios sem duplicação, PDF, mobile e tema escuro passaram.');
+  console.log('PTR-BA: lista única, filtros APOC/nome/equipe/mês, criação e edição sem cópia, horas elegíveis, relatórios, impressão, PDF, mobile e tema escuro passaram.');
 } finally {
   await browser?.close();
   await server.close();

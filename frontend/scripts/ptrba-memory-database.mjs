@@ -2,10 +2,8 @@
 export function createPtrbaMemoryDatabase(readRows, writeRows) {
   const sqlCalls = [];
   let sequence = readRows().length;
-  let failCopy = false;
   const database = {
     sqlCalls,
-    failNextCopy() { failCopy = true; },
     async query(sql, params = []) {
       sqlCalls.push(sql);
       const conditions = [...sql.matchAll(/"(id|equipe|data|created_by|origem_ptrba_id)" (>=|<=|=) \$(\d+)/g)];
@@ -16,16 +14,6 @@ export function createPtrbaMemoryDatabase(readRows, writeRows) {
       if (sql.startsWith('INSERT')) {
         const columns = sql.match(/\(([^)]+)\) VALUES/)[1].split(', ').map(v => v.replaceAll('"', ''));
         const values = Object.fromEntries(columns.map((c, i) => [c, params[i]]));
-        if (values.origem_ptrba_id && failCopy) {
-          failCopy = false;
-          throw new Error('Falha ao gravar cópia APOC');
-        }
-        const existing = sql.includes('ON CONFLICT') && readRows().find(row => row.origem_ptrba_id === values.origem_ptrba_id);
-        if (existing) {
-          const { created_by: _createdBy, ...updates } = values;
-          Object.assign(existing, updates);
-          return { rows: [structuredClone(existing)] };
-        }
         const row = { id: `novo-${++sequence}`, is_apoc: false, created_at: '2026-10-15T10:00:00Z', ...values };
         readRows().push(row);
         return { rows: [structuredClone(row)] };

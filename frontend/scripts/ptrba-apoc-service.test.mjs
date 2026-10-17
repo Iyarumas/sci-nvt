@@ -209,85 +209,65 @@ const normalMisto = () => registro({
   ],
 });
 
-test('normal gera uma cópia vinculada com chefe, somente APOCs e pares permitidos compactados', async () => {
+test('criar e editar normal com APOCs e assuntos elegíveis grava somente o próprio PTR-BA', async () => {
   const h = harness();
   const input = normalMisto();
   const normal = await h.service.criarPTRBACompleto(input);
   const copias = await h.service.listarPTRBACompletos({ modalidade: 'apoc' });
-  assert.equal(copias.length, 1);
-  const copia = copias[0];
-  assert.equal(copia.origemPtrbaId, normal.id);
-  for (const key of ['chefeEquipe', 'identificacaoAeroporto', 'data', 'equipe', 'observacoes', 'createdBy', 'isExtra']) assert.equal(copia[key], input[key]);
-  assert.equal(copia.participantes.length, 1);
-  assert.equal(copia.participantes[0].nomeCompleto, 'Pessoa APOC');
-  assert.equal(copia.participantes[0].situacao, 'INSTR. 1-2');
-  assert.deepEqual(JSON.parse(JSON.stringify(copia.evidencias.slice(0, 4))), input.evidencias.slice(2));
-  assert.equal(copia.evidencias[4].assunto, '');
-  assert.equal(copia.evidencias[5].imagem, '');
-  assert.equal(normal.evidencias[0].assunto, '03. CCI');
+  assert.equal(copias.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(normal.evidencias)), input.evidencias);
+  assert.equal(normal.participantes[1].nomeCompleto, 'Pessoa APOC');
+  assert.equal(normal.participantes[1].situacao, 'INSTR. 2-3');
+  await h.service.atualizarPTRBACompleto(normal.id, { observacoes: 'Editado', chefeEquipe: 'Novo chefe' });
+  assert.equal((await h.service.obterPTRBACompleto(normal.id)).observacoes, 'Editado');
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'todos' })).length, 1);
   assert.equal((await h.service.listarPTRBACompletos()).length, 1);
 });
 
-test('edição sincroniza a mesma cópia e recompacta blocos e instrutores sem duplicar', async () => {
-  const h = harness();
-  const normal = await h.service.criarPTRBACompleto(normalMisto());
-  const copia = (await h.service.listarPTRBACompletos({ modalidade: 'apoc' }))[0];
-  const input = normalMisto();
-  input.evidencias.splice(2, 2, ...par('07. COMBATE', '08:00', '09:00'));
-  await h.service.atualizarPTRBACompleto(normal.id, { evidencias: input.evidencias, chefeEquipe: 'Novo chefe', updatedBy: 'editor' });
-  await h.service.atualizarPTRBACompleto(normal.id, { observacoes: 'Editado novamente' });
-  const copias = await h.service.listarPTRBACompletos({ modalidade: 'apoc' });
-  assert.equal(copias.length, 1);
-  assert.equal(copias[0].id, copia.id);
-  assert.equal(copias[0].evidencias[0].assunto, '13. PLEM');
-  assert.equal(copias[0].evidencias[0].horaInicio, '10:00');
-  assert.equal(copias[0].evidencias[0].imagem, '13. PLEM-foto1');
-  assert.equal(copias[0].evidencias[1].imagem, '13. PLEM-foto2');
-  assert.equal(copias[0].evidencias[2].assunto, '');
-  assert.equal(copias[0].participantes[0].situacao, 'INSTR. 1');
-  assert.equal(copias[0].chefeEquipe, 'Novo chefe');
-  assert.equal(copias[0].updatedBy, 'editor');
-  assert.equal(copias[0].observacoes, 'Editado novamente');
-  await assert.rejects(h.service.atualizarPTRBACompleto(copia.id, { observacoes: 'Divergente' }), /origem/);
-  await assert.rejects(h.service.excluirPTRBACompleto(copia.id), /origem/);
+test('editar origem não atualiza nem remove documento APOC histórico já vinculado', async () => {
+  const copia = { id: 'copia', is_apoc: true, origem_ptrba_id: 'normal', observacoes: 'Histórico', participantes: [participante()] };
+  const h = harness([{ id: 'normal', is_apoc: false, participantes: normalMisto().participantes }, copia]);
+  await h.service.atualizarPTRBACompleto('normal', { observacoes: 'Nova observação', chefeEquipe: 'Novo chefe' });
+  await h.service.atualizarPTRBACompleto('normal', { participantes: [participante('Chefe', 'BA-CE')], evidencias: par('03. CCI', '08:00', '09:00') });
+  const historico = await h.service.obterPTRBACompleto(copia.id);
+  assert.equal(historico.observacoes, 'Histórico');
+  assert.equal(historico.participantes[0].nomeCompleto, 'Pessoa APOC');
+  assert.equal(historico.origemPtrbaId, 'normal');
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'todos' })).length, 2);
+  assert.equal(h.sqlCalls.filter(sql => sql.startsWith('DELETE') || sql.startsWith('INSERT')).length, 0);
+  await assert.rejects(h.service.atualizarPTRBACompleto(copia.id, { observacoes: 'Divergente' }), /legado/);
+  await assert.rejects(h.service.excluirPTRBACompleto(copia.id), /legado/);
 });
 
-test('sem APOC ou sem assunto elegível não gera cópia; remoção e exclusão acompanham origem', async () => {
+test('nenhum assunto de 01 a 31 gera documento adicional ao criar ou editar', async () => {
   const h = harness();
-  const normal = await h.service.criarPTRBACompleto(normalMisto());
-  await h.service.atualizarPTRBACompleto(normal.id, { participantes: [participante('Chefe', 'BA-CE')] });
-  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'apoc' })).length, 0);
-  await h.service.atualizarPTRBACompleto(normal.id, { participantes: normalMisto().participantes });
-  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'apoc' })).length, 1);
-  await h.service.atualizarPTRBACompleto(normal.id, { evidencias: par('03. CCI', '08:00', '09:00') });
-  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'apoc' })).length, 0);
-  await h.service.atualizarPTRBACompleto(normal.id, { evidencias: normalMisto().evidencias });
-  await h.service.excluirPTRBACompleto(normal.id);
-  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'todos' })).length, 0);
-});
-
-test('falha na cópia desfaz criação e edição do normal na mesma transação', async () => {
-  const h = harness();
-  h.database.failNextCopy();
-  await assert.rejects(h.service.criarPTRBACompleto(normalMisto()), /Falha ao gravar/);
-  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'todos' })).length, 0);
-  const normal = await h.service.criarPTRBACompleto(normalMisto());
-  h.database.failNextCopy();
-  await assert.rejects(h.service.atualizarPTRBACompleto(normal.id, { chefeEquipe: 'Não persistir' }), /Falha ao gravar/);
-  assert.equal((await h.service.obterPTRBACompleto(normal.id)).chefeEquipe, normal.chefeEquipe);
-});
-
-test('geração usa os mesmos números da contagem e não permite forjar o vínculo', async () => {
-  const h = harness();
-  const { NUMEROS_ASSUNTOS_PTRBA_APOC } = require('../../backend/dist/resources/ptrba-apoc.js');
-  const regras = h.load(path.join(srcRoot, 'types/ptrb.ts'));
-  assert.deepEqual(NUMEROS_ASSUNTOS_PTRBA_APOC, Array.from(regras.NUMEROS_ASSUNTOS_PTRBA_APOC));
   for (let numero = 1; numero <= 31; numero++) {
-    const normal = await h.service.criarPTRBACompleto(registro({ isApoc: false, evidencias: par(`${String(numero).padStart(2, '0')}. Assunto`, '08:00', '09:00') }));
-    const copias = await h.service.listarPTRBACompletos({ modalidade: 'apoc' });
-    assert.equal(copias.some(copia => copia.origemPtrbaId === normal.id), NUMEROS_ASSUNTOS_PTRBA_APOC.includes(numero), `Assunto ${numero}`);
+    const normal = await h.service.criarPTRBACompleto(registro({ isApoc: false, evidencias: par(`${numero}. Assunto`, '08:00', '09:00') }));
+    await h.service.atualizarPTRBACompleto(normal.id, { participantes: normalMisto().participantes });
   }
-  await assert.rejects(h.backend.insert(table, { payload: { origem_ptrba_id: 'forjado' } }), /gerenciado automaticamente/);
-  const normal = (await h.service.listarPTRBACompletos())[0];
-  await assert.rejects(h.backend.update(table, { payload: { origem_ptrba_id: null }, filters: [{ column: 'id', operator: 'eq', value: normal.id }] }), /gerenciado automaticamente/);
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'todos' })).length, 31);
+  assert.equal((await h.service.listarPTRBACompletos({ modalidade: 'apoc' })).length, 0);
+  assert.ok(!h.sqlCalls.some(sql => sql.includes('ON CONFLICT') || sql.startsWith('DELETE')));
+});
+
+test('filtro busca somente APOCs incluídos, sem distinguir assuntos nem confundir nome do chefe', () => {
+  const h = harness();
+  const { possuiParticipacaoAPOCPTRBA: participa } = h.load(path.join(srcRoot, 'types/ptrbaCompleto.ts'));
+  const normal = normalMisto();
+  normal.participantes = [participante('Ana', 'BA-CE'), participante('José da Silva', 'APOC'), participante('María', ' apoc ')];
+  assert.equal(participa(normal), true);
+  assert.equal(participa(normal, ' JOSE '), true);
+  assert.equal(participa(normal, 'maria'), true);
+  assert.equal(participa(normal, 'Ana'), false);
+  assert.equal(participa(normal, 'Outra pessoa'), false);
+  normal.evidencias = par('31. Assunto sem horas para APOC', '08:00', '09:00');
+  assert.equal(participa(normal, 'silva'), true);
+  assert.equal(participa({ participantes: [participante(' ', 'APOC'), participante('Chefe', 'BA-CE')] }), false);
+});
+
+test('API não permite forjar ou alterar o vínculo legado', async () => {
+  const h = harness();
+  await assert.rejects(h.backend.insert(table, { payload: { origem_ptrba_id: 'forjado' } }), /vínculo legado/);
+  const normal = await h.service.criarPTRBACompleto(normalMisto());
+  await assert.rejects(h.backend.update(table, { payload: { origem_ptrba_id: null }, filters: [{ column: 'id', operator: 'eq', value: normal.id }] }), /vínculo legado/);
 });

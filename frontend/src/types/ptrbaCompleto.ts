@@ -92,6 +92,19 @@ const HIERARQUIA_PTRBA_COMPLETO = [
   'BA-2',
 ];
 
+export function possuiParticipacaoAPOCPTRBA(
+  registro: Pick<PTRBACompleto, 'participantes'>,
+  nome = '',
+): boolean {
+  const normalizar = (valor: string) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('pt-BR');
+  const busca = normalizar(nome);
+  return registro.participantes.some(participante =>
+    participante.funcao.trim().toUpperCase() === 'APOC'
+    && participante.nomeCompleto.trim() !== ''
+    && normalizar(participante.nomeCompleto).includes(busca),
+  );
+}
+
 export function criarParticipantesPTRBACompletoVazios(isApoc = false): PTRBACompletoParticipante[] {
   if (isApoc) return [{ funcao: 'APOC', nomeCompleto: '', situacao: 'P' }];
   return HIERARQUIA_PTRBA_COMPLETO.map(funcao => ({

@@ -17,6 +17,7 @@ import {
 } from '../../services/ordemServicoService';
 import type { OrdemServico } from '../../types/ordemServico';
 import { parseOrdemServicoImagens, serializeOrdemServicoImagens } from '../../utils/ordemServicoImagens';
+import { compararOrdensServicoPorData } from '../../utils/ordemServico';
 
 const PRIORIDADE_CORES: Record<string, string> = {
   'Baixa': 'bg-sky-100 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400',
@@ -183,6 +184,7 @@ export function OrdemServico() {
 
   // Form fields
   const [formNumero, setFormNumero] = useState('');
+  const [formNumeroCliente, setFormNumeroCliente] = useState('');
   const [formData, setFormData] = useState(hojeLocalISO());
   const [formSolicitante, setFormSolicitante] = useState('');
   const [formSolicitanteNome, setFormSolicitanteNome] = useState('');
@@ -235,9 +237,9 @@ export function OrdemServico() {
     }
     if (search) {
       const t = search.toLowerCase();
-      lista = lista.filter(o => o.numero.toLowerCase().includes(t) || o.solicitanteNome.toLowerCase().includes(t) || o.descricao.toLowerCase().includes(t));
+      lista = lista.filter(o => [o.numero, o.numeroCliente, o.solicitanteNome, o.descricao].some(valor => valor.toLowerCase().includes(t)));
     }
-    return lista.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return [...lista].sort(compararOrdensServicoPorData);
   }, [ordens, search, filtroStatus, filtroPrioridade, filterMode, filtroMes, filtroAno, dataInicio, dataFinal]);
 
   function proximoNumero(): string {
@@ -256,6 +258,7 @@ export function OrdemServico() {
 
   function resetForm() {
     setFormNumero(proximoNumero());
+    setFormNumeroCliente('');
     setFormData(hojeLocalISO());
     setFormSolicitante('');
     setFormSolicitanteNome('');
@@ -317,6 +320,7 @@ export function OrdemServico() {
     }
     setEditando(os);
     setFormNumero(os.numero);
+    setFormNumeroCliente(os.numeroCliente);
     setFormData(os.dataEmissao);
     setFormSolicitante(os.solicitanteId);
     setFormSolicitanteNome(os.solicitanteNome);
@@ -334,7 +338,7 @@ export function OrdemServico() {
   }
 
   async function handleSalvar() {
-    if (!formNumero || !formSolicitante || !formDescricao) return;
+    if (!formNumero || (!editando && !formSolicitante) || !formDescricao) return;
     const equipeAlvo = canManageGlobal ? formEquipe : equipeEfetiva || formEquipe;
     if (!canManageEquipe(equipeAlvo)) {
       alert('Você só pode salvar ordens de serviço da sua equipe efetiva.');
@@ -347,13 +351,13 @@ export function OrdemServico() {
           return;
         }
         await atualizarOrdemServico(editando.id, {
-          numero: formNumero, dataEmissao: formData, dataConclusao: formConclusao,
+          numero: formNumero, numeroCliente: formNumeroCliente.trim(), dataEmissao: formData, dataConclusao: formConclusao,
           solicitanteId: formSolicitante, solicitanteNome: formSolicitanteNome, solicitanteCargo: formSolicitanteCargo, equipe: equipeAlvo, local: formLocal,
           descricao: formDescricao, imagem: serializeOrdemServicoImagens(formImagens), prioridade: formPrioridade as any, status: formStatus as any, observacoes: formObservacoes,
         });
       } else {
         await criarOrdemServico({
-          numero: formNumero, dataEmissao: formData, dataConclusao: formConclusao,
+          numero: formNumero, numeroCliente: formNumeroCliente.trim(), dataEmissao: formData, dataConclusao: formConclusao,
           solicitanteId: formSolicitante, solicitanteNome: formSolicitanteNome, solicitanteCargo: formSolicitanteCargo, equipe: equipeAlvo, local: formLocal,
           descricao: formDescricao, imagem: serializeOrdemServicoImagens(formImagens), prioridade: formPrioridade as any, status: 'Aberta',
           motivoManutencao: '', manutencaoPor: '', manutencaoPorCargo: '', manutencaoEmpresa: '', manutencaoEmpresaPessoa: '',
@@ -640,6 +644,7 @@ export function OrdemServico() {
                     </div>
                     <p className="mt-0.5 text-xs text-graphite-500 truncate">{os.descricao}</p>
                     <p className="text-[10px] text-graphite-400">{os.solicitanteNome}{os.solicitanteCargo ? ` · ${os.solicitanteCargo}` : ''} · {fmt(os.dataEmissao)} · {os.equipe}{os.local ? ` · Local: ${os.local}` : ''}</p>
+                    {os.numeroCliente && <p className="text-xs text-graphite-600 dark:text-graphite-300">Nº da ordem do cliente: {os.numeroCliente}</p>}
                     {os.finalizadoPor && (
                       <p className="mt-0.5 text-[10px] text-green-600 dark:text-green-400">Finalizado por {os.finalizadoPor}{os.finalizadoPorCargo ? ` (${os.finalizadoPorCargo})` : ''}{os.finalizacaoEmpresaPessoa ? ` · ${os.finalizacaoEmpresaPessoa}` : ''}{os.empresaFinalizacao ? ` · ${os.empresaFinalizacao}` : ''}{os.dataFinalizacao ? ` · ${fmt(os.dataFinalizacao)}` : ''}</p>
                     )}
@@ -687,7 +692,7 @@ export function OrdemServico() {
             <div className="space-y-5 p-6">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-os-tour="os-form-identificacao">
                 <div>
-                  <label className={labelCls}>Número <span className="text-red-500">*</span></label>
+                  <label className={labelCls}>Número SCI <span className="text-red-500">*</span></label>
                   <input type="text" value={formNumero} readOnly disabled className={inputCls + ' opacity-70'} />
                   <p className="mt-1 text-[11px] text-graphite-400">Numeração automática por ano</p>
                 </div>
@@ -695,6 +700,11 @@ export function OrdemServico() {
                   <label className={labelCls}>Data de Emissão</label>
                   <input type="date" value={formData} onChange={e => setFormData(e.target.value)} className={inputCls} />
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="os-numero-cliente" className={labelCls}>Número da ordem do cliente</label>
+                <input id="os-numero-cliente" type="text" value={formNumeroCliente} onChange={e => setFormNumeroCliente(e.target.value)} className={inputCls} placeholder="Número informado pelo cliente" />
               </div>
 
               <div className="space-y-4" data-os-tour="os-form-responsaveis">
@@ -784,7 +794,7 @@ export function OrdemServico() {
 
               <div className="flex justify-end gap-3 border-t border-graphite-200 pt-4 dark:border-border-dark" data-os-tour="os-form-acoes">
                 <button onClick={() => setFormOpen(false)} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">Cancelar</button>
-                <button onClick={handleSalvar} disabled={!formNumero || !formSolicitante || !formDescricao || !formEquipe}
+                <button onClick={handleSalvar} disabled={!formNumero || (!editando && !formSolicitante) || !formDescricao || !formEquipe}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
                   <Save className="h-4 w-4" /> Salvar
                 </button>
@@ -851,7 +861,8 @@ export function OrdemServico() {
                 <p className="text-sm text-graphite-500 dark:text-graphite-400">{visualizando.numero}</p>
               </div>
               <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm dark:text-graphite-200">
-                <div><span className="font-bold text-graphite-600 dark:text-graphite-300">Número:</span> {visualizando.numero}</div>
+                <div><span className="font-bold text-graphite-600 dark:text-graphite-300">Número SCI:</span> {visualizando.numero}</div>
+                {visualizando.numeroCliente && <div><span className="font-bold text-graphite-600 dark:text-graphite-300">Nº da ordem do cliente:</span> {visualizando.numeroCliente}</div>}
                 <div><span className="font-bold text-graphite-600 dark:text-graphite-300">Solicitante:</span> {visualizando.solicitanteNome}{visualizando.solicitanteCargo ? ` (${visualizando.solicitanteCargo})` : ''}</div>
                 <div><span className="font-bold text-graphite-600 dark:text-graphite-300">Equipe:</span> {visualizando.equipe || 'N/A'}</div>
                 <div><span className="font-bold text-graphite-600 dark:text-graphite-300">Emissão:</span> {fmt(visualizando.dataEmissao)}</div>

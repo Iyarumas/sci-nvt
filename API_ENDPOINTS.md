@@ -2514,7 +2514,7 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Tabela:** `ordens_servico`  
 **Ficheiro:** `src/services/ordemServicoService.ts`  
 **Tipo:** `src/types/ordemServico.ts` — `OrdemServico`, `OrdemServicoInput`  
-**Migration:** `backend/database/migrations/048_ordens_servico.sql` + `backend/database/migrations/049_ordens_servico_empresa_pessoa.sql`
+**Migration:** `backend/database/migrations/048_ordens_servico.sql` + `backend/database/migrations/049_ordens_servico_empresa_pessoa.sql` + `backend/database/migrations/072_ordens_servico_numeros_referencia.sql`
 
 **Funções:** `listarOrdensServico`, `obterOrdemServico`, `criarOrdemServico`, `atualizarOrdemServico`, `excluirOrdemServico` — todas ✅ OK
 
@@ -2526,6 +2526,10 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 - `DELETE /rest/v1/ordens_servico?id=eq.{id}`
 
 **Mapping snake_case ↔ camelCase:** ✅ Completo para emissão, manutenção, cancelamento, finalização e observações.
+
+`numero` identifica a ordem interna da SCI e permanece preservado nas ordens importadas. `numero_cliente` ↔ `numeroCliente` é texto independente, opcional (vazio quando não informado), para o número recebido do cliente, preservando zeros, letras e pontuação. É usado no formulário, pesquisa, lista, detalhes e impressão interna/pública. A migration 072 recupera valores explicitamente identificados como `Número da ordem do cliente:` nas observações, sem remover o histórico nem sobrescrever números já preenchidos. Os CSVs de origem podem ser usados para conferir esses valores; nunca inferir número de cliente a partir do número SCI, equipamento ou códigos de referência.
+
+As telas interna e pública ordenam os resultados por data de emissão decrescente, inclusive em `Todos os meses`; usam a data de cadastro como fallback e desempate. Alterar filtros não modifica a lista de estado nem usa `updated_at` para a cronologia.
 
 ---
 

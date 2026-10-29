@@ -5,6 +5,7 @@ import { listarOrdensServico } from '../../services/ordemServicoService';
 import type { OrdemServico } from '../../types/ordemServico';
 import { formatarDataBR } from '../../utils/datas';
 import { parseOrdemServicoImagens } from '../../utils/ordemServicoImagens';
+import { compararOrdensServicoPorData } from '../../utils/ordemServico';
 
 const PRIORIDADE_CORES: Record<string, string> = {
   'Baixa': 'bg-sky-100 text-sky-700',
@@ -128,7 +129,7 @@ export function OrdemServicoPublica() {
       if (dataInicio) lista = lista.filter(os => dataFiltroOrdem(os) >= dataInicio);
       if (dataFinal) lista = lista.filter(os => dataFiltroOrdem(os) <= dataFinal);
     }
-    return [...lista].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return [...lista].sort(compararOrdensServicoPorData);
   }, [ordens, filtroStatus, filterMode, filtroAno, filtroMes, dataInicio, dataFinal]);
 
   useEffect(() => {
@@ -196,7 +197,8 @@ export function OrdemServicoPublica() {
               <p className="text-sm text-graphite-500 dark:text-graphite-400">{selecionada.numero}</p>
             </div>
             <div className="mt-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-              <div className="dark:text-graphite-200"><span className="font-bold text-graphite-600 dark:text-graphite-300">Número:</span> {selecionada.numero}</div>
+              <div className="dark:text-graphite-200"><span className="font-bold text-graphite-600 dark:text-graphite-300">Número SCI:</span> {selecionada.numero}</div>
+              {selecionada.numeroCliente && <div className="dark:text-graphite-200"><span className="font-bold text-graphite-600 dark:text-graphite-300">Nº da ordem do cliente:</span> {selecionada.numeroCliente}</div>}
               <div className="dark:text-graphite-200"><span className="font-bold text-graphite-600 dark:text-graphite-300">Solicitante:</span> {selecionada.solicitanteNome}{selecionada.solicitanteCargo ? ` (${selecionada.solicitanteCargo})` : ''}</div>
               <div className="dark:text-graphite-200"><span className="font-bold text-graphite-600 dark:text-graphite-300">Equipe:</span> {selecionada.equipe || 'N/A'}</div>
               <div className="dark:text-graphite-200"><span className="font-bold text-graphite-600 dark:text-graphite-300">Emissão:</span> {fmt(selecionada.dataEmissao)}</div>
@@ -332,6 +334,7 @@ export function OrdemServicoPublica() {
                     </div>
                     <p className="mt-0.5 truncate text-xs text-graphite-500 dark:text-graphite-400">{os.descricao}</p>
                     <p className="text-[10px] text-graphite-400 dark:text-graphite-500">{os.solicitanteNome}{os.solicitanteCargo ? ` · ${os.solicitanteCargo}` : ''} · {fmt(os.dataEmissao)} · {os.equipe}</p>
+                    {os.numeroCliente && <p className="text-xs text-graphite-600 dark:text-graphite-300">Nº da ordem do cliente: {os.numeroCliente}</p>}
                   </div>
                 </div>
               </button>

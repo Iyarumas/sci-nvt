@@ -1,6 +1,7 @@
 export interface OrdemServico {
   id: string;
   numero: string;
+  numeroCliente: string;
   dataEmissao: string;
   dataConclusao: string;
   solicitanteId: string;

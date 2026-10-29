@@ -21,6 +21,7 @@ function rowToOrdemServico(row: Record<string, unknown>): OrdemServico {
   return {
     id: row.id as string,
     numero: (row.numero as string) || '',
+    numeroCliente: (row.numero_cliente as string) || '',
     dataEmissao: (row.data_emissao as string) || '',
     dataConclusao: (row.data_conclusao as string) || '',
     solicitanteId: (row.solicitante_id as string) || '',
@@ -58,6 +59,7 @@ function rowToOrdemServico(row: Record<string, unknown>): OrdemServico {
 function inputToRow(input: Partial<OrdemServicoInput>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if (input.numero !== undefined) row.numero = input.numero;
+  if (input.numeroCliente !== undefined) row.numero_cliente = input.numeroCliente;
   if (input.dataEmissao !== undefined) row.data_emissao = input.dataEmissao;
   if (input.dataConclusao !== undefined) row.data_conclusao = input.dataConclusao;
   if (input.solicitanteId !== undefined) row.solicitante_id = input.solicitanteId;

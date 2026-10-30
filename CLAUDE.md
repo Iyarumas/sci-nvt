@@ -5,21 +5,21 @@
 
 No início de CADA tarefa, deves SEMPRE:
 
-1. **Ler `AGENTS.md** — contém regras do sistema, estrutura do projeto, padrões de UI e lista completa de skills
+1. **Ler `AGENTS.md`** — contém regras do sistema, estrutura do projeto, padrões de UI e lista completa de skills
 2. **Identificar o domínio** da tarefa (ex: escalas, férias, bombeiros, LRO, PTR-BA, etc.)
-3. **Carregar a(s) skill(s) relevante(s)** usando `rtk skill <nome>` antes de qualquer alteração:
-   - `rtk skill api-consistency` — se mexer em dados/API (validar com API_ENDPOINTS.md)
-   - `rtk skill api-endpoint` — se criar novo endpoint Supabase
-   - `rtk skill feature` — se for desenvolvimento de funcionalidade
-   - `rtk skill bug-fix` — se for correção de bug (seguir processo: Understand → Check Data Flow → Root Cause → Fix → Verify)
-   - `rtk skill pdf` — se envolver geração de PDF
-   - `rtk skill ui-qa` — se precisar de testes/verificação
-   - `rtk skill escalas` — se for escalas diárias ou mensais
-   - `rtk skill lro` — se for LRO
-   - `rtk skill ptr-ba` — se for PTR-BA
-   - `rtk skill bombeiros-apocs` — se for bombeiros/APOC
-   - `rtk skill filtros-relatorios` — se for filtros/relatórios
-   - `rtk skill release-check` — se for verificação pré-deploy
+3. **Carregar a(s) skill(s) relevante(s)** antes de qualquer alteração. No Claude Code são skills nativas em `.claude/skills/<nome>/SKILL.md` (invocar pela ferramenta Skill); `rtk skill` não existe. A cópia original fica em `.opencode/skills/` — ao alterar uma skill, atualizar as duas:
+   - `api-consistency` — se mexer em dados/API (validar com API_ENDPOINTS.md)
+   - `api-endpoint` — se criar novo endpoint Supabase
+   - `feature` — se for desenvolvimento de funcionalidade
+   - `bug-fix` — se for correção de bug (seguir processo: Understand → Check Data Flow → Root Cause → Fix → Verify)
+   - `pdf` — se envolver geração de PDF
+   - `ui-qa` — se precisar de testes/verificação
+   - `escalas` — se for escalas diárias ou mensais
+   - `lro` — se for LRO
+   - `ptr-ba` — se for PTR-BA
+   - `bombeiros-apocs` — se for bombeiros/APOC
+   - `filtros-relatorios` — se for filtros/relatórios
+   - `release-check` — se for verificação pré-deploy
 
 **Regra**: se a tarefa envolver múltiplos domínios, carrega múltiplas skills em sequência (ex: `bug-fix` + `escalas`). Usa a tabela de combinações no AGENTS.md para referência.
 

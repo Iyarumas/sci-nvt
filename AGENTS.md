@@ -110,28 +110,29 @@ Serviço em `src/services/vigenciaSubstituicaoService.ts`:
 ## Skills Disponíveis
 
 ### Como usar
-Sempre que iniciares uma tarefa, carrega a skill correspondente:
+Sempre que iniciares uma tarefa, carrega a skill correspondente lendo o seu `SKILL.md`:
 
-```
-rtk skill <nome-da-skill>
-```
+- Codex/OpenCode: `.opencode/skills/<nome-da-skill>/SKILL.md`
+- Claude Code: skill nativa em `.claude/skills/<nome-da-skill>/SKILL.md` (mesmo conteúdo)
+
+> `rtk skill` não existe — não usar.
 
 ### Lista de Skills
 
-| Skill | Comando | Quando Usar |
+| Skill | Nome | Quando Usar |
 |-------|---------|-------------|
-| Consistência de API | `rtk skill api-consistency` | Qualquer alteração que afete dados |
-| Novo Endpoint API | `rtk skill api-endpoint` | Criar um novo endpoint Supabase |
-| Desenvolvimento de Feature | `rtk skill feature` | Desenvolvimento completo de funcionalidade |
-| Correção de Bug | `rtk skill bug-fix` | Investigar e corrigir bugs |
-| Geração de PDF | `rtk skill pdf` | Trabalhos com PDF |
-| Testes UI/QA | `rtk skill ui-qa` | Testar funcionalidades |
-| Release Check | `rtk skill release-check` | Verificação pré-deploy |
-| Bombeiros/APOCs | `rtk skill bombeiros-apocs` | CRUD de bombeiros e APOCs |
-| Escalas | `rtk skill escalas` | Escalas diárias e mensais |
-| Filtros/Relatórios | `rtk skill filtros-relatorios` | Padrões de filtro e relatório |
-| LRO | `rtk skill lro` | Módulo LRO |
-| PTR-BA | `rtk skill ptr-ba` | Módulo PTR-BA |
+| Consistência de API | `api-consistency` | Qualquer alteração que afete dados |
+| Novo Endpoint API | `api-endpoint` | Criar um novo endpoint Supabase |
+| Desenvolvimento de Feature | `feature` | Desenvolvimento completo de funcionalidade |
+| Correção de Bug | `bug-fix` | Investigar e corrigir bugs |
+| Geração de PDF | `pdf` | Trabalhos com PDF |
+| Testes UI/QA | `ui-qa` | Testar funcionalidades |
+| Release Check | `release-check` | Verificação pré-deploy |
+| Bombeiros/APOCs | `bombeiros-apocs` | CRUD de bombeiros e APOCs |
+| Escalas | `escalas` | Escalas diárias e mensais |
+| Filtros/Relatórios | `filtros-relatorios` | Padrões de filtro e relatório |
+| LRO | `lro` | Módulo LRO |
+| PTR-BA | `ptr-ba` | Módulo PTR-BA |
 
 ### Regras de Combinação de Skills
 
@@ -322,7 +323,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 ├── package-lock.json       # Lockfile npm dos workspaces frontend/backend
 ├── AGENTS.md               # Este ficheiro — guia do agente
 ├── API_ENDPOINTS.md         # Fonte da verdade para contratos de dados/endpoints
-├── CLAUDE.md               # Instruções RTK (histórico)
+├── CLAUDE.md               # Importa este AGENTS.md + referência RTK (Claude Code)
 └── .opencode/
     └── skills/             # Skills especializadas
         ├── api-consistency/
@@ -480,7 +481,7 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 - [ ] Se houver impacto em VM, Docker, banco, migrations, GitHub Actions, dominio/HTTPS ou dados de producao, confirmei o risco antes de editar
 - [ ] Verifiquei que a mudanca nao abre portas internas (`5432`, `5050`, `3333`, `2375/2376`) nem expoe secrets
 - [ ] Li `API_ENDPOINTS.md` para entender o estado atual
-- [ ] Carreguei a skill adequada (preferir `rtk skill <nome>` quando disponível; se não existir, ler `.opencode/skills/<nome>/SKILL.md`)
+- [ ] Carreguei a skill adequada (ler `.opencode/skills/<nome>/SKILL.md`; no Claude Code, usar a skill nativa de `.claude/skills/`)
 - [ ] Identifiquei os domínios afetados (types, services, pages)
 
 ### Durante a implementação

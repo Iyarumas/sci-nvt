@@ -1,27 +1,13 @@
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands
 
-## Auto-Carregamento Obrigatório
+## Regras do Projeto
 
-No início de CADA tarefa, deves SEMPRE:
+As regras do projeto, a lista de skills e as combinações estão no `AGENTS.md` (mesmo arquivo usado pelo Codex), importado abaixo:
 
-1. **Ler `AGENTS.md`** — contém regras do sistema, estrutura do projeto, padrões de UI e lista completa de skills
-2. **Identificar o domínio** da tarefa (ex: escalas, férias, bombeiros, LRO, PTR-BA, etc.)
-3. **Carregar a(s) skill(s) relevante(s)** antes de qualquer alteração. No Claude Code são skills nativas em `.claude/skills/<nome>/SKILL.md` (invocar pela ferramenta Skill); `rtk skill` não existe. A cópia original fica em `.opencode/skills/` — ao alterar uma skill, atualizar as duas:
-   - `api-consistency` — se mexer em dados/API (validar com API_ENDPOINTS.md)
-   - `api-endpoint` — se criar novo endpoint Supabase
-   - `feature` — se for desenvolvimento de funcionalidade
-   - `bug-fix` — se for correção de bug (seguir processo: Understand → Check Data Flow → Root Cause → Fix → Verify)
-   - `pdf` — se envolver geração de PDF
-   - `ui-qa` — se precisar de testes/verificação
-   - `escalas` — se for escalas diárias ou mensais
-   - `lro` — se for LRO
-   - `ptr-ba` — se for PTR-BA
-   - `bombeiros-apocs` — se for bombeiros/APOC
-   - `filtros-relatorios` — se for filtros/relatórios
-   - `release-check` — se for verificação pré-deploy
+@AGENTS.md
 
-**Regra**: se a tarefa envolver múltiplos domínios, carrega múltiplas skills em sequência (ex: `bug-fix` + `escalas`). Usa a tabela de combinações no AGENTS.md para referência.
+No Claude Code, as skills são nativas em `.claude/skills/<nome>/SKILL.md` (invocar pela ferramenta Skill). A cópia em `.opencode/skills/` é a usada pelo Codex/OpenCode — ao alterar uma skill, atualizar as duas.
 
 ## Golden Rule
 

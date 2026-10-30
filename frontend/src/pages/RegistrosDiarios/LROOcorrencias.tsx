@@ -336,7 +336,7 @@ export function LROOcorrencias() {
         return (d.getMonth() + 1).toString() === filtroMes;
       });
     }
-    return list;
+    return list.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
   }, [ocorrencias, filtroEquipe, filtroStatus, filtroAno, filtroMes]);
 
   async function handleSave(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) {

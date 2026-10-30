@@ -31,7 +31,6 @@ import {
   Radio,
   CalendarDays,
   ArrowLeftRight,
-  Archive,
   Package,
 } from 'lucide-react';
 import type { MenuItem } from '../types/navigation';
@@ -114,86 +113,6 @@ export const menuItems: MenuItem[] = [
     ],
   },
   {
-    label: 'Arquivo',
-    icon: Archive,
-    developerOnly: true,
-    arquivoOnly: true,
-    children: [
-      {
-        label: 'Todos',
-        icon: Archive,
-        path: '/arquivo',
-        description: 'Todos os documentos arquivados.',
-      },
-      {
-        label: 'Trocas de Serviço',
-        icon: RefreshCw,
-        path: '/arquivo/trocas',
-        description: 'Trocas de serviço arquivadas.',
-      },
-      {
-        label: 'Férias',
-        icon: CalendarDays,
-        path: '/arquivo/ferias',
-        description: 'Documentos de férias arquivados.',
-      },
-      {
-        label: 'EPIs',
-        icon: HardHat,
-        path: '/arquivo/epis',
-        description: 'Termos de EPIs arquivados.',
-      },
-      {
-        label: 'Certificações',
-        icon: Award,
-        path: '/arquivo/certificacoes',
-        description: 'Certificações arquivadas.',
-      },
-      {
-        label: 'BONA/REA',
-        icon: AlertTriangle,
-        path: '/arquivo/ocorrencias',
-        description: 'Documentos arquivados de BONA e REA.',
-      },
-      {
-        label: 'Ordens de Serviço',
-        icon: ClipboardList,
-        path: '/arquivo/ordem_servico',
-        description: 'Ordens de serviço arquivadas.',
-      },
-      {
-        label: 'LRO',
-        icon: FileSpreadsheet,
-        path: '/arquivo/lro',
-        description: 'Listas de Ronda arquivadas.',
-      },
-      {
-        label: 'PTR-BA',
-        icon: FileText,
-        path: '/arquivo/ptrba',
-        description: 'Planos de Trabalho arquivados.',
-      },
-      {
-        label: 'Treinamentos',
-        icon: Activity,
-        path: '/arquivo/treinamentos',
-        description: 'Treinamentos arquivados (TAF, TP/EPR, Exercícios).',
-      },
-      {
-        label: 'DDS',
-        icon: FileText,
-        path: '/arquivo/dds',
-        description: 'Diálogos Diários de Segurança arquivados.',
-      },
-      {
-        label: 'Checklists',
-        icon: ClipboardCheck,
-        path: '/arquivo/checklists',
-        description: 'Checklists arquivados.',
-      },
-    ],
-  },
-  {
     label: 'Funcionários',
     icon: Users,
     children: [
@@ -234,13 +153,6 @@ export const menuItems: MenuItem[] = [
     label: 'Registros Diários',
     icon: BookOpen,
     children: [
-      {
-        label: 'PTR-BA por Instrução',
-        icon: FileText,
-        path: '/registros-diarios/ptr-ba',
-        description: 'Plano de Trabalho de Ronda - Bombeiro de Aeródromo.',
-        developerOnly: true,
-      },
       {
         label: 'PTR-BA',
         icon: ClipboardList,

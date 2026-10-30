@@ -192,9 +192,9 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 ### Registos Diários
 | Rota | Tela | Descrição |
 |------|------|-----------|
-| `/registros-diarios/ptr-ba` | PTR-BA por Instrução | Registro de PTR-BA por assunto ministrado; menu e acesso direto exclusivos do desenvolvedor |
+| `/registros-diarios/ptr-ba` | PTR-BA por Instrução | Registro de PTR-BA por assunto ministrado; sem item na sidebar, com acesso direto exclusivo do desenvolvedor preservado |
 | `/registros-diarios/ptr-ba-completo` | PTR-BA | Lista única de PTR-BAs normais/EXTRA, filtro Com participação de APOC e pesquisa pelo nome do APOC combinados com mês/ano/equipe. Sem geração de documento exclusivo; cópias históricas permanecem preservadas e fora da listagem e da contagem. Horas APOC somente nos assuntos da coluna OC |
-| `/registros-diarios/lro-ocorrencias` | LRO/Ocorrências | Registo de ocorrências do turno |
+| `/registros-diarios/lro-ocorrencias` | LRO/Ocorrências | Registo de ocorrências do turno; lista ordenada por criação (`createdAt`), da mais nova para a mais antiga, mantendo os filtros |
 | `/registros-diarios/bona-rea` | BONA/REA | Registos de ocorrências operacionais — BONA e REA |
 | `/registros-diarios/inspecoes` | Inspeções | Registos de inspeções operacionais |
 | `/registros-diarios/solicitacoes` | Solicitações | Registos de solicitações operacionais |
@@ -247,7 +247,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 ### Arquivo (somente Desenvolvedor)
 | Rota | Tela | Descrição |
 |------|------|-----------|
-| `/arquivo/:tipo?` | Arquivo | Menu e acesso direto exclusivos do desenvolvedor; documentos arquivados por categoria (trocas, férias, EPIs, certificações, ocorrências, ordem_servico, lro, ptrba, treinamentos, dds, checklists) |
+| `/arquivo/:tipo?` | Arquivo | Sem item na sidebar; acesso direto exclusivo do desenvolvedor preservado para documentos arquivados por categoria (trocas, férias, EPIs, certificações, ocorrências, ordem_servico, lro, ptrba, treinamentos, dds, checklists) |
 
 ### Configurações / Perfil
 | Rota | Tela | Descrição |
@@ -356,7 +356,7 @@ O `Header` comum do `Layout` inclui um botão de voltar em todas as rotas intern
 
 ### Navegação exclusiva do desenvolvedor
 
-`MenuItem.developerOnly` restringe itens e grupos da sidebar ao usuário com `role === 'desenvolvedor'`. As rotas correspondentes usam `<AuthGuard developerOnly>` e redirecionam outros perfis para `/` antes de montar a página. Aplicado a PTR-BA por Instrução e a todas as categorias de Arquivo; a regra usa o papel da conta, não cargo operacional ou substituição.
+`MenuItem.developerOnly` restringe itens e grupos da sidebar ao usuário com `role === 'desenvolvedor'`. As rotas protegidas usam `<AuthGuard developerOnly>` e redirecionam outros perfis para `/` antes de montar a página. PTR-BA por Instrução e as categorias de Arquivo não aparecem na sidebar e mantêm a proteção de acesso direto. A regra usa o papel da conta, não cargo operacional ou substituição.
 
 ### Layout de Página
 ```

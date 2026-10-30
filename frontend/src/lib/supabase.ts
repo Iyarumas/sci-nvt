@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl } from './apiClient';
+import { apiFetch, apiUrl, authorizedFetch } from './apiClient';
 
 type CompatError = {
   message: string;
@@ -263,7 +263,7 @@ class StorageBucket {
 
   async download(path: string): Promise<CompatResponse<Blob>> {
     try {
-      const response = await fetch(apiUrl(`/storage/${encodeURIComponent(this.bucket)}/file?path=${encodeURIComponent(path)}`));
+      const response = await authorizedFetch(apiUrl(`/storage/${encodeURIComponent(this.bucket)}/file?path=${encodeURIComponent(path)}`));
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return { data: await response.blob(), error: null };
     } catch (error) {

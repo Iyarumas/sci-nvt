@@ -66,6 +66,7 @@ Frontend components → frontend/src/services/*.ts → frontend/src/lib/supabase
 - ✅ Banco local em PostgreSQL via `docker-compose.yml`
 - ✅ DataContext está planeado mas ainda não implementado
 - ✅ Error handling: usar `handleSupabaseError(err)` — **nunca** `console.error` silencioso
+- 🔒 **Autenticacao:** a API exige token (`Authorization: Bearer`) em todas as rotas, exceto as marcadas com `@Public()` em `backend/src/auth/`. Login e cadastro por convite passam pelo servidor (`/auth/*`); a funcao do usuario vem sempre do banco, nunca do navegador. Permissoes do CRUD generico ficam em `backend/src/resources/resources.policy.ts`. Nunca criar usuario/senha padrao em migration; para o primeiro acesso use `npm run create-admin --workspace=backend`. Chamadas `fetch` diretas para a API devem usar `authorizedFetch`/`authHeaders` de `frontend/src/lib/apiClient.ts`.
 
 ### Convenções de Código
 - Front-end: nomes de ficheiros `camelCase.ts` para services/utils, `PascalCase.tsx` para componentes

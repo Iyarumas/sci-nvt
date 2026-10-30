@@ -1,4 +1,4 @@
-import { apiUrl } from '../lib/apiClient';
+import { apiUrl, authHeaders } from '../lib/apiClient';
 
 const API_URL = apiUrl('/autentique/proxy');
 const UPLOAD_API_URL = apiUrl('/autentique/proxy/upload');
@@ -9,6 +9,7 @@ async function graphqlRequest<T>(query: string, variables?: Record<string, unkno
     headers: {
       'Content-Type': 'application/json',
       'x-autentique-sandbox': 'true',
+      ...authHeaders(),
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -29,6 +30,7 @@ async function graphqlUpload<T>(query: string, variables: Record<string, unknown
     method: 'POST',
     headers: {
       'x-autentique-sandbox': String(sandbox),
+      ...authHeaders(),
     },
     body: formData,
   });

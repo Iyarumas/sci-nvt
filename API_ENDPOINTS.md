@@ -20,14 +20,21 @@ Base URL local: `http://localhost:3333/api`
 
 > **Atualizacao de permissoes (2026-08-25):** `bombeiros.autorizado_registros_diarios` libera criar/editar registros diarios somente da equipe definida em `autorizacao_registros_diarios_equipe`, com aprovacao do BA-CE dessa equipe. Essa autorizacao nunca libera exclusao e nao acompanha troca/substituicao. As migrations `backend/database/migrations/060_autorizacao_registros_diarios_bombeiros.sql`, `061_autorizacao_registros_diarios_fluxo.sql` e `062_autorizacao_registros_diarios_equipe.sql` adicionam o fluxo.
 
+> **Atualizacao de seguranca (2026-10-29):** toda a API exige `Authorization: Bearer <token>` (guarda global em `backend/src/auth/`). O token e emitido por `POST /auth/login`, expira em 12h e e assinado com `JWT_SECRET`. O front guarda o token em `localStorage` (`sescinc-auth-token`), envia em toda chamada via `frontend/src/lib/apiClient.ts` e volta ao login ao receber 401. Regras no servidor (`backend/src/resources/resources.policy.ts`): `sem_funcao` nao acessa dados; `convites` e criacao/exclusao de `usuarios` so para `admin`/`desenvolvedor`; usuario comum so edita `name`/`person_id`/`person_type` do proprio cadastro; colunas `password`/`senha_hash` nunca saem da API nem podem ser filtradas. Rotas abertas: `/health`, `/auth/login`, `/auth/convite/:codigo`, `/auth/register-convite`, `/public/ordens-servico` e `/storage/:bucket/file` com link assinado (`exp`+`sig`).
+
 | Endpoint | Metodo | Descricao |
 |---|---|---|
-| `/health` | GET | Health check da API; retorna o commit do build em `commit` |
+| `/health` | GET | Health check da API; retorna o commit do build em `commit` (publico) |
+| `/auth/login` | POST | `{username, password}` → `{token, expiresAt, user}`; bloqueia 15 min apos 5 erros (publico) |
+| `/auth/me` | GET | Dados e funcao atual do usuario do token |
+| `/auth/convite/:codigo` | GET | `{valido, expiresAt}` (publico) |
+| `/auth/register-convite` | POST | `{codigo, username, password}` cria usuario `sem_funcao` e marca o convite como usado (publico) |
+| `/public/ordens-servico` | GET | Lista somente leitura para a pagina `/os/publica` (publico) |
 | `/data/:table/query` | POST | Consulta tabelas permitidas com `select`, filtros, ordenacao, `limit`, `count` e `head` |
 | `/data/:table/insert` | POST | Insere objeto ou lista de objetos em tabela permitida |
 | `/data/:table/update` | POST | Atualiza registros com filtros obrigatorios |
 | `/data/:table/delete` | POST | Exclui registros com filtros obrigatorios |
-| `/rpc/:name` | POST | RPCs expostos: `verificar_senha`, `criar_usuario_com_hash`, `atualizar_senha`, `aprovar_escala_ferias_transacional` |
+| `/rpc/:name` | POST | RPCs expostos: `verificar_senha` (so a propria senha), `criar_usuario_com_hash` (admin), `atualizar_senha` (propria ou admin), `aprovar_escala_ferias_transacional` |
 | `/storage/:bucket/upload` | POST | Upload local de PDFs/arquivos |
 | `/storage/:bucket/list` | GET | Lista arquivos de um bucket/prefixo |
 | `/storage/:bucket/file` | GET | Download/visualizacao de arquivo |

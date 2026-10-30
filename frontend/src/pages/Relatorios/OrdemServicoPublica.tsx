@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Printer, ClipboardList, ArrowLeft } from 'lucide-react';
 import { PageTour } from '../../components/ui/PageTour';
-import { listarOrdensServico } from '../../services/ordemServicoService';
+import { listarOrdensServicoPublicas } from '../../services/ordemServicoService';
 import type { OrdemServico } from '../../types/ordemServico';
 import { formatarDataBR } from '../../utils/datas';
 import { parseOrdemServicoImagens } from '../../utils/ordemServicoImagens';
@@ -134,7 +134,7 @@ export function OrdemServicoPublica() {
 
   useEffect(() => {
     let active = true;
-    listarOrdensServico()
+    listarOrdensServicoPublicas()
       .then(lista => {
         if (active) setOrdens(lista);
       })

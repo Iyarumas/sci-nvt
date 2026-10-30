@@ -1,5 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
+import { AuthService } from '../auth/auth.service';
+import { AuthUser, isAdmin, VALID_ROLES } from '../auth/auth.types';
 import { DatabaseService } from '../database/database.service';
 
 interface UsuarioRow {
@@ -18,50 +20,40 @@ interface UsuarioRow {
 
 @Injectable()
 export class RpcService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly auth: AuthService,
+  ) {}
 
-  async call(name: string, params: Record<string, unknown>): Promise<unknown> {
+  async call(name: string, params: Record<string, unknown>, user: AuthUser): Promise<unknown> {
     switch (name) {
       case 'verificar_senha':
-        return this.verificarSenha(String(params.p_username ?? ''), String(params.p_password ?? ''));
+        return this.verificarSenha(user, String(params.p_username ?? ''), String(params.p_password ?? ''));
       case 'criar_usuario_com_hash':
-        return this.criarUsuarioComHash(params);
+        return this.criarUsuarioComHash(user, params);
       case 'atualizar_senha':
-        return this.atualizarSenha(String(params.p_username ?? ''), String(params.p_password ?? ''));
+        return this.atualizarSenha(user, String(params.p_username ?? ''), String(params.p_password ?? ''));
       case 'aprovar_escala_ferias_transacional':
+        if (user.role === 'sem_funcao') throw new ForbiddenException('Seu usuário ainda aguarda a atribuição de uma função.');
         return this.aprovarEscalaFeriasTransacional(params);
       default:
         throw new NotFoundException(`RPC not exposed: ${name}`);
     }
   }
 
-  private async verificarSenha(username: string, password: string): Promise<Record<string, unknown> | null> {
-    if (!username || !password) return null;
-    const result = await this.database.query<UsuarioRow>('SELECT * FROM usuarios WHERE username = $1 LIMIT 1', [username]);
-    const user = result.rows[0];
-    if (!user) return null;
-
-    if (user.senha_hash) {
-      const ok = await bcrypt.compare(password, user.senha_hash);
-      return ok ? this.toUsuarioPayload(user) : null;
+  /** So confere a senha do proprio usuario (ex.: confirmar senha atual no Perfil). O login usa /auth/login. */
+  private async verificarSenha(user: AuthUser, username: string, password: string): Promise<Record<string, unknown> | null> {
+    if (username !== user.username) {
+      throw new ForbiddenException('Você só pode confirmar a sua própria senha.');
     }
-
-    if (user.password && user.password === password) {
-      const senhaHash = await bcrypt.hash(password, 12);
-      const migrated = await this.database.query<UsuarioRow>(
-        `UPDATE usuarios
-         SET senha_hash = $1, password = '', updated_at = now()
-         WHERE username = $2
-         RETURNING *`,
-        [senhaHash, username],
-      );
-      return this.toUsuarioPayload(migrated.rows[0] ?? user);
-    }
-
-    return null;
+    const row = await this.auth.checkPassword(username, password);
+    return row ? this.auth.toPayload(row) : null;
   }
 
-  private async criarUsuarioComHash(params: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+  private async criarUsuarioComHash(user: AuthUser, params: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    if (!isAdmin(user)) {
+      throw new ForbiddenException('Apenas administradores podem criar usuários.');
+    }
     const username = String(params.p_username ?? '').trim();
     const name = String(params.p_name ?? '').trim();
     const password = String(params.p_password ?? '');
@@ -69,6 +61,16 @@ export class RpcService {
 
     if (!username || !name || !password) {
       throw new BadRequestException('username, name and password are required');
+    }
+    if (!VALID_ROLES.has(role)) {
+      throw new BadRequestException('Função inválida.');
+    }
+    if (role === 'desenvolvedor' && user.role !== 'desenvolvedor') {
+      throw new ForbiddenException('Apenas o desenvolvedor pode criar outro desenvolvedor.');
+    }
+    const exists = await this.database.query('SELECT 1 FROM usuarios WHERE lower(username) = lower($1) LIMIT 1', [username]);
+    if (exists.rowCount) {
+      throw new ConflictException('Nome de usuário já existe.');
     }
 
     const senhaHash = await bcrypt.hash(password, 12);
@@ -88,11 +90,24 @@ export class RpcService {
       ],
     );
 
-    return this.toUsuarioPayload(result.rows[0]);
+    this.auth.invalidateUserCache();
+    return this.auth.toPayload(result.rows[0]);
   }
 
-  private async atualizarSenha(username: string, password: string): Promise<boolean> {
+  private async atualizarSenha(user: AuthUser, username: string, password: string): Promise<boolean> {
     if (!username || !password) return false;
+    if (username !== user.username && !isAdmin(user)) {
+      throw new ForbiddenException('Você só pode alterar a sua própria senha.');
+    }
+    if (password.length < 6) {
+      throw new BadRequestException('A senha deve ter pelo menos 6 caracteres.');
+    }
+    if (username !== user.username && user.role !== 'desenvolvedor') {
+      const target = await this.database.query<{ role: string }>('SELECT role FROM usuarios WHERE username = $1 LIMIT 1', [username]);
+      if (target.rows[0]?.role === 'desenvolvedor') {
+        throw new ForbiddenException('Apenas o desenvolvedor pode alterar a senha de outro desenvolvedor.');
+      }
+    }
     const senhaHash = await bcrypt.hash(password, 12);
     const result = await this.database.query(
       `UPDATE usuarios SET senha_hash = $1, password = '', updated_at = now() WHERE username = $2`,
@@ -112,19 +127,5 @@ export class RpcService {
       ],
     );
     return result.rows[0]?.result ?? true;
-  }
-
-  private toUsuarioPayload(user: UsuarioRow): Record<string, unknown> {
-    return {
-      id: user.id,
-      username: user.username,
-      name: user.name,
-      role: user.role,
-      previousRole: user.previous_role ?? undefined,
-      personId: user.person_id ?? undefined,
-      personType: user.person_type ?? undefined,
-      createdAt: user.created_at,
-      updatedAt: user.updated_at,
-    };
   }
 }

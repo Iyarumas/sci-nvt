@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { PageTour } from '../../components/ui/PageTour';
-import { validarConvite, usarConvite } from '../../services/conviteService';
+import { validarConvite } from '../../services/conviteService';
 
 const BG_IMAGES = [
   '/entradalogin1.png', '/entradalogin2.png', '/entradalogin3.png',
@@ -121,7 +121,7 @@ function Logo() {
 export function ConviteRegister() {
   const { codigo } = useParams<{ codigo: string }>();
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { registerConvite } = useAuth();
 
   const [conviteValido, setConviteValido] = useState<boolean | null>(null);
   const [username, setUsername] = useState('');
@@ -155,10 +155,8 @@ export function ConviteRegister() {
     setError('');
     setLoading(true);
     try {
-      await register(username, username, password, 'sem_funcao');
-      if (codigo) {
-        try { await usarConvite(codigo.toUpperCase(), username); } catch { console.warn('Convite nao foi marcado como usado. Admin pode reutilizar.'); }
-      }
+      if (!codigo) throw new Error('Convite inválido.');
+      await registerConvite(codigo.toUpperCase(), username, password);
       setSuccesso(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao cadastrar.');

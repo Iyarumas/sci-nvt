@@ -30,6 +30,7 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
       PUBLIC_API_URL: ${PUBLIC_API_URL}
       AUTENTIQUE_TOKEN: ${AUTENTIQUE_TOKEN:-}
+      JWT_SECRET: ${JWT_SECRET:-}
       STORAGE_PATH: /app/backend/storage
     volumes:
       - backend_storage:/app/backend/storage

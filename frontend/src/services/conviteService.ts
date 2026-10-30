@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiClient';
 import { supabase } from '../lib/supabase';
 
 const TABLE = 'convites';
@@ -75,54 +76,22 @@ export async function criarConvite(createdBy?: string): Promise<Convite> {
   return convite;
 }
 
-function estaExpirado(expiresAt: string): boolean {
-  return new Date(expiresAt).getTime() < Date.now();
-}
-
+/** Validacao publica (sem login): o servidor so informa se o codigo pode ser usado. */
 export async function validarConvite(codigo: string): Promise<Convite | null> {
   try {
-    const db = getDb();
-    const { data, error } = await db
-      .from(TABLE)
-      .select('*')
-      .eq('codigo', codigo)
-      .single();
-    if (error || !data) return null;
-    if (data.usado) return null;
-    const expiresAt = data.expires_at || new Date(new Date(data.created_at).getTime() + 2 * 60 * 60 * 1000).toISOString();
-    if (estaExpirado(expiresAt)) return null;
+    const result = await apiFetch<{ valido: boolean; expiresAt: string | null }>(
+      `/auth/convite/${encodeURIComponent(codigo)}`,
+      { cache: 'no-store' },
+    );
+    if (!result.valido) return null;
     return {
-      codigo: data.codigo,
-      usado: data.usado,
-      createdAt: data.created_at,
-      expiresAt,
-      usadoEm: data.usado_em,
-      registradoPor: data.registrado_por,
+      codigo,
+      usado: false,
+      createdAt: '',
+      expiresAt: result.expiresAt || '',
     };
   } catch {
-    const convites = fallbackGet();
-    const convite = convites[codigo];
-    if (!convite || convite.usado) return null;
-    if (estaExpirado(convite.expiresAt)) return null;
-    return convite;
-  }
-}
-
-export async function usarConvite(codigo: string, registradoPor: string): Promise<void> {
-  try {
-    const db = getDb();
-    await db
-      .from(TABLE)
-      .update({ usado: true, usado_em: new Date().toISOString(), registrado_por: registradoPor })
-      .eq('codigo', codigo);
-  } catch {
-    const convites = fallbackGet();
-    if (convites[codigo]) {
-      convites[codigo].usado = true;
-      convites[codigo].usadoEm = new Date().toISOString();
-      convites[codigo].registradoPor = registradoPor;
-      fallbackSave(convites);
-    }
+    return null;
   }
 }
 

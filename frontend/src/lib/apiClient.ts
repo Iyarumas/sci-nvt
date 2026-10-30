@@ -17,6 +17,53 @@ export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+// ------------------------------------------------------------------ sessao
+
+const TOKEN_KEY = 'sescinc-auth-token';
+export const UNAUTHORIZED_EVENT = 'sescinc:unauthorized';
+
+let authToken: string | null = (() => {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+})();
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+  queryCache.clear();
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* navegador sem storage: o token fica apenas em memoria */
+  }
+}
+
+/** Cabecalho Authorization para chamadas feitas fora do apiFetch (fetch direto, uploads). */
+export function authHeaders(): Record<string, string> {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
+function handleUnauthorized(): void {
+  if (!authToken) return;
+  setAuthToken(null);
+  window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+}
+
+/** fetch que envia o token quando a URL e da nossa API (ex.: download de arquivos do storage). */
+export async function authorizedFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const isApi = input.startsWith(API_BASE_URL) || input.startsWith('/api/');
+  const response = await fetch(input, isApi ? { ...init, headers: { ...authHeaders(), ...(init.headers || {}) } } : init);
+  if (isApi && response.status === 401) handleUnauthorized();
+  return response;
+}
+
 function isDataQuery(path: string, init: RequestInit): boolean {
   return init.method === 'POST' && /^\/data\/[^/]+\/query(?:\?|$)/.test(path);
 }
@@ -38,9 +85,14 @@ async function requestApi<T>(path: string, init: RequestInit): Promise<T> {
     ...init,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...authHeaders(),
       ...(init.headers || {}),
     },
   });
+
+  if (response.status === 401 && !path.startsWith('/auth/login')) {
+    handleUnauthorized();
+  }
 
   const contentType = response.headers.get('content-type') || '';
   const payload = contentType.includes('application/json') ? await response.json() : await response.text();

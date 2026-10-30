@@ -64,9 +64,12 @@ export class LocalStorageService {
     };
   }
 
-  createSignedUrl(bucket: string, storagePath: string): { signedUrl: string } {
+  createSignedUrl(bucket: string, storagePath: string, signature: { exp: string; sig: string }): { signedUrl: string } {
+    this.safePath(bucket, storagePath);
     const url = new URL(`${this.publicBaseUrl}/storage/${encodeURIComponent(bucket)}/file`);
     url.searchParams.set('path', storagePath);
+    url.searchParams.set('exp', signature.exp);
+    url.searchParams.set('sig', signature.sig);
     return { signedUrl: url.toString() };
   }
 

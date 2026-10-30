@@ -2,11 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { substituicaoPorSubstituto } from '../services/substituicaoService';
 import { listarBombeiros, obterBombeiro } from '../services/bombeiroService';
 import { listarAPOCs } from '../services/apocService';
-import {
-  buscarUsuarioPorUsername,
-  verificarSenha,
-  criarUsuarioComHash,
-} from '../services/usuarioService';
+import { apiFetch, getAuthToken, setAuthToken, UNAUTHORIZED_EVENT } from '../lib/apiClient';
+import type { Usuario } from '../services/usuarioService';
 
 export type UserRole = 'desenvolvedor' | 'admin' | 'gerente' | 'chefe' | 'lider' | 'bombeiro' | 'sem_funcao';
 
@@ -44,7 +41,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   effectiveRole: UserRole;
   login: (username: string, password: string) => Promise<void>;
-  register: (name: string, username: string, password: string, role: UserRole, personId?: string, personType?: 'bombeiro' | 'apoc') => Promise<void>;
+  registerConvite: (codigo: string, username: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -74,18 +71,14 @@ function saveSession(user: User) {
 
 function loadSession(): User | null {
   try {
+    // Sem token valido nao existe sessao: a funcao do usuario vem sempre do servidor.
+    if (!getAuthToken()) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    const session = JSON.parse(raw) as User;
-    if (session.username === 'serra' && session.role !== 'desenvolvedor') {
-      session.role = 'desenvolvedor';
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    }
-    if (session.username === 'admin' && session.role !== 'admin') {
-      session.role = 'admin';
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    }
-    return session;
+    return JSON.parse(raw) as User;
   } catch {
     return null;
   }
@@ -93,6 +86,22 @@ function loadSession(): User | null {
 
 function clearSession() {
   localStorage.removeItem(SESSION_KEY);
+  setAuthToken(null);
+}
+
+/** Mantem o cache local usado por telas antigas (Perfil, LRO) com os dados vindos do servidor. */
+function cacheStoredUser(remote: Usuario) {
+  try {
+    const users = getStoredUsers();
+    users[remote.username] = {
+      name: remote.name,
+      role: remote.role,
+      previousRole: remote.previousRole,
+      personId: remote.personId,
+      personType: remote.personType,
+    };
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  } catch { /* ignore */ }
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -100,47 +109,9 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   effectiveRole: 'sem_funcao',
   login: async () => {},
-  register: async () => {},
+  registerConvite: async () => {},
   logout: () => {},
 });
-
-function seedAdmin() {
-  const users = getStoredUsers();
-  let changed = false;
-
-  if (!users['serra']) {
-    users['serra'] = { name: 'Serra', role: 'desenvolvedor' };
-    changed = true;
-  }
-
-  if (users['admin']) {
-    delete users['admin'];
-    changed = true;
-  }
-
-  if (changed) localStorage.setItem(USERS_KEY, JSON.stringify(users));
-
-  syncSeedsToSupabase(users).catch(() => {});
-}
-
-async function syncSeedsToSupabase(users: Record<string, StoredUser>) {
-  const seeds = ['serra'];
-  for (const uname of seeds) {
-    const local = users[uname];
-    if (!local) continue;
-    try {
-      const existing = await buscarUsuarioPorUsername(uname);
-      if (!existing) {
-        await criarUsuarioComHash({
-          username: uname,
-          name: local.name,
-          password: 'serra',
-          role: 'desenvolvedor',
-        });
-      }
-    } catch { /* ignore - Supabase offline */ }
-  }
-}
 
 const ROLE_HIERARQUIA: UserRole[] = ['desenvolvedor', 'admin', 'gerente', 'chefe', 'lider', 'bombeiro', 'sem_funcao'];
 
@@ -165,13 +136,34 @@ export { apocParaUserRole };
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => loadSession());
 
-  useEffect(() => { seedAdmin(); }, []);
-
+  // Token expirado/invalido em qualquer chamada da API: volta para a tela de login.
   useEffect(() => {
-    if (user?.username === 'serra' && user.role !== 'desenvolvedor') {
-      setUser(prev => prev ? { ...prev, role: 'desenvolvedor' } : prev);
-    }
-  }, [user]);
+    const onUnauthorized = () => {
+      localStorage.removeItem(SESSION_KEY);
+      setUser(null);
+    };
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+  }, []);
+
+  // Ao abrir o sistema com sessao salva, confirma no servidor e atualiza a funcao atual.
+  useEffect(() => {
+    if (!getAuthToken()) return;
+    let cancelled = false;
+    apiFetch<{ user: Usuario }>('/auth/me', { cache: 'no-store' })
+      .then(({ user: remote }) => {
+        if (cancelled || !remote) return;
+        cacheStoredUser(remote);
+        setUser(prev => {
+          if (!prev || (prev.role === remote.role && prev.username === remote.username)) return prev;
+          const next = { ...prev, username: remote.username, role: remote.role || 'sem_funcao' };
+          saveSession(next);
+          return next;
+        });
+      })
+      .catch(() => { /* 401 ja tratado pelo evento; offline mantem a sessao */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -203,72 +195,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const login = useCallback(async (username: string, password: string) => {
-    const ATTEMPTS_KEY = 'sescinc-login-attempts';
-    const MAX_ATTEMPTS = 5;
-    const BLOCK_MINUTES = 15;
+    // Senha conferida no servidor, que tambem limita tentativas e devolve o token da sessao.
+    const session = await apiFetch<{ token: string; user: Usuario }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+      cache: 'no-store',
+    });
+    setAuthToken(session.token);
+    const remote = session.user;
+    cacheStoredUser(remote);
 
-    let attempts: Record<string, { count: number; firstAttempt: string }> = {};
-    try { attempts = JSON.parse(localStorage.getItem(ATTEMPTS_KEY) || '{}'); } catch { /* ignore */ }
-
-    const userAttempts = attempts[username];
-    if (userAttempts && userAttempts.count >= MAX_ATTEMPTS) {
-      const elapsed = Date.now() - new Date(userAttempts.firstAttempt).getTime();
-      const remaining = BLOCK_MINUTES * 60 * 1000 - elapsed;
-      if (remaining > 0) {
-        const mins = Math.ceil(remaining / 60000);
-        throw new Error(`Conta bloqueada por ${mins} minuto(s) devido a múltiplas tentativas inválidas.`);
-      }
-      delete attempts[username];
-    }
-
-    await new Promise(r => setTimeout(r, 600));
-
-    let remote = await verificarSenha(username, password);
-
-    if (!remote) {
-      try {
-        const users = getStoredUsers();
-        const stored = users[username];
-        if (!stored) {
-          const fetched = await buscarUsuarioPorUsername(username);
-          if (fetched) {
-            const usersUpdated = getStoredUsers();
-            usersUpdated[username] = { name: fetched.name, role: fetched.role };
-            localStorage.setItem(USERS_KEY, JSON.stringify(usersUpdated));
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
-    if (!remote) {
-      const now = new Date().toISOString();
-      if (!attempts[username]) attempts[username] = { count: 0, firstAttempt: now };
-      attempts[username].count++;
-      if (attempts[username].count === 1) attempts[username].firstAttempt = now;
-      localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(attempts));
-      const tentativasRestantes = MAX_ATTEMPTS - attempts[username].count;
-      if (tentativasRestantes <= 0) {
-        throw new Error(`Usuário ou senha inválidos. Conta bloqueada por ${BLOCK_MINUTES} minutos.`);
-      }
-
-      const avisoBloqueio = tentativasRestantes === 1
-        ? `Mais uma tentativa inválida bloqueará a conta por ${BLOCK_MINUTES} minutos.`
-        : `Após ${MAX_ATTEMPTS} tentativas inválidas, a conta ficará bloqueada por ${BLOCK_MINUTES} minutos.`;
-      throw new Error(`Usuário ou senha inválidos. ${tentativasRestantes} tentativa(s) restante(s). ${avisoBloqueio}`);
-    }
-
-    delete attempts[username];
-    localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(attempts));
-
-    const roleGarantida: UserRole = username === 'serra'
-      ? 'desenvolvedor'
-      : username === 'admin'
-        ? 'admin'
-        : remote.role || 'sem_funcao';
+    const roleGarantida: UserRole = remote.role || 'sem_funcao';
 
     const userData: User = {
       name: remote.name,
-      username,
+      username: remote.username,
       avatar: remote.name.charAt(0).toUpperCase(),
       role: roleGarantida,
     };
@@ -343,20 +284,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveSession(userData);
   }, []);
 
-  const register = useCallback(async (name: string, username: string, password: string, role: UserRole, personId?: string, personType?: 'bombeiro' | 'apoc') => {
-    await new Promise(r => setTimeout(r, 600));
-
-    const existing = await buscarUsuarioPorUsername(username);
-    if (existing) {
-      throw new Error('Nome de usuário já existe.');
-    }
-
-    const users = getStoredUsers();
-    users[username] = { name, role, personId, personType };
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    try {
-      await criarUsuarioComHash({ username, name, password, role, personId, personType });
-    } catch { /* ignore - Supabase offline */ }
+  const registerConvite = useCallback(async (codigo: string, username: string, password: string) => {
+    // O servidor valida o convite, cria o usuario como "sem funcao" e marca o convite como usado.
+    await apiFetch('/auth/register-convite', {
+      method: 'POST',
+      body: JSON.stringify({ codigo, username, name: username, password }),
+      cache: 'no-store',
+    });
   }, []);
 
   const logout = useCallback(() => {
@@ -389,9 +323,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user,
     effectiveRole,
     login,
-    register,
+    registerConvite,
     logout,
-  }), [user, effectiveRole, login, register, logout]);
+  }), [user, effectiveRole, login, registerConvite, logout]);
 
   return (
     <AuthContext.Provider value={contextValue}>

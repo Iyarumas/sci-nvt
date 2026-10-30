@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiClient';
 import { supabase } from '../lib/supabase';
 import type { OrdemServico, OrdemServicoInput } from '../types/ordemServico';
 
@@ -97,6 +98,12 @@ export async function listarOrdensServico(): Promise<OrdemServico[]> {
   const { data, error } = await db.from(TABLE).select('*').order('created_at', { ascending: false });
   if (error) handleSupabaseError(error);
   return (data || []).map(rowToOrdemServico);
+}
+
+/** Lista aberta (sem login) usada pela pagina publica /os/publica. */
+export async function listarOrdensServicoPublicas(): Promise<OrdemServico[]> {
+  const result = await apiFetch<{ data: Record<string, unknown>[] }>('/public/ordens-servico');
+  return (result.data || []).map(row => rowToOrdemServico(row));
 }
 
 export async function obterOrdemServico(id: string): Promise<OrdemServico | null> {

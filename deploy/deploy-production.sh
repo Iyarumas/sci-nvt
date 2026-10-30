@@ -54,6 +54,11 @@ if [ ! -f .env.production ]; then
   exit 1
 fi
 
+if ! grep -Eq '^JWT_SECRET=.{32,}' .env.production; then
+  log "JWT_SECRET ausente em .env.production; gerando um segredo novo para assinar as sessoes"
+  printf '\n# Segredo das sessoes de login (gerado automaticamente no deploy)\nJWT_SECRET=%s\n' "$(openssl rand -hex 48)" >> .env.production
+fi
+
 log "Building and deploying $DEPLOY_COMMIT"
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d postgres
 docker compose --env-file .env.production -f docker-compose.prod.yml build backend web

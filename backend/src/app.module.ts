@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditoriaModule } from './auditoria/auditoria.module';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { AutentiqueModule } from './autentique/autentique.module';
@@ -14,6 +15,7 @@ import { LocalStorageModule } from './storage/local-storage.module';
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../.env'] }),
     DatabaseModule,
     AuthModule,
+    AuditoriaModule,
     HealthModule,
     PublicModule,
     ResourcesModule,

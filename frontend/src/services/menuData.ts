@@ -43,6 +43,13 @@ export const menuItems: MenuItem[] = [
     description: 'Visão geral do sistema com indicadores e métricas operacionais.',
   },
   {
+    label: 'Auditoria de exclusões',
+    icon: ShieldCheck,
+    path: '/auditoria',
+    description: 'Histórico de exclusões com usuário, data e identificação do registro.',
+    adminOnly: true,
+  },
+  {
     label: 'Férias',
     icon: CalendarDays,
     path: '/cadastro/ferias',

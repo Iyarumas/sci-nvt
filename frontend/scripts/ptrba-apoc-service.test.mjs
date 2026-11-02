@@ -32,7 +32,7 @@ function harness(initial = []) {
       const [, resource, action] = new URL(url).pathname.match(/\/data\/([^/]+)\/([^/]+)$/);
       try {
         if (fail) throw new Error('API indisponível');
-        const result = await backend[action](resource, JSON.parse(init.body));
+        const result = await backend[action](resource, JSON.parse(init.body), { id: 'qa-user', username: 'qa', role: 'admin' });
         return new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json' } });
       } catch (error) {
         return new Response(JSON.stringify({ message: error.message }), { status: 400, headers: { 'content-type': 'application/json' } });

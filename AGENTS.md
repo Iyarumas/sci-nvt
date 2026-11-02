@@ -254,6 +254,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 | Rota | Tela | Descrição |
 |------|------|-----------|
 | `/configuracoes` | Configurações | Definições do sistema |
+| `/auditoria` | Auditoria de exclusões | Histórico de exclusões com conta autenticada, data/hora, módulo e identificação do registro; somente admin/desenvolvedor, com pesquisa, período e paginação |
 | `/perfil` | Perfil | Perfil do utilizador |
 
 ### Autenticação
@@ -280,6 +281,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   │   ├── app.module.ts
 │   │   ├── main.ts
 │   │   ├── autentique/     # Proxy Autentique GraphQL
+│   │   ├── auditoria/      # Consulta administrativa do histórico imutável de exclusões
 │   │   ├── common/         # DTOs/utilitários compartilhados
 │   │   ├── database/       # Pool PostgreSQL
 │   │   ├── health/         # Health check
@@ -301,10 +303,11 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 │   │   ├── lib/            # apiClient.ts + adapter HTTP supabase.ts + pdfjs
 │   │   ├── pages/          # Páginas por domínio
 │   │   │   ├── Ferias/     # Gestão de férias + RelatorioFeriasModal (filtros e prévia PDF)
+│   │   │   ├── Auditoria/  # Histórico de exclusões, restrito a admin/desenvolvedor
 │   │   │   └── Tutorial/   # Tutorial animado da rotina do plantão
 │   │   ├── routes/         # React Router
 │   │   ├── services/       # Services do front consumindo o adapter HTTP
-│   │   ├── types/          # Interfaces TypeScript (inclui relatorioFerias.ts para férias/coberturas/afastados)
+│   │   ├── types/          # Interfaces TypeScript (inclui relatorioFerias.ts e auditoria.ts)
 │   │   └── utils/          # Regras/utilitários de UI/domínio ainda consumidos no front
 │   ├── Dockerfile          # Build Vite + Caddy para produção
 │   └── package.json
@@ -342,6 +345,12 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 ---
 
 ## Padrões de UI
+
+### Auditoria de exclusões
+
+O menu `Auditoria de exclusões` abre `/auditoria`, com `<AuthGuard adminOnly>` e autorização equivalente no backend (`admin`/`desenvolvedor`, pelo papel real da conta). A tela consulta `auditoriaService.ts`, com pesquisa por registro/ID/login, módulo, datas de Brasília e páginas de 50 itens. Mostra data e hora, login e função no momento da ação, módulo e identificação preservada do registro; não permite editar ou apagar eventos. A auditoria começa na migration 074 e não atribui autoria retroativa.
+
+`ResourcesService.delete` usa uma transação com `app.audit_actor` definido exclusivamente por `request.authUser`; triggers `AFTER DELETE` gravam `auditoria_exclusoes` na mesma transação, inclusive em cascatas. Falhar ao registrar impede a exclusão. Sem contexto autenticado (por exemplo SQL direto), o evento fica explicitamente sem usuário identificado. São preservados apenas ID/identificação operacional e autoria, nunca senhas, tokens, CPF, fotos ou payloads completos. O histórico não faz parte do CRUD genérico e tem triggers contra UPDATE/DELETE/TRUNCATE. Ao criar novas tabelas públicas em migrations futuras, instalar também o trigger `auditar_exclusao`. Testes: `npm run test:auditoria`, `npm run test:auditoria:db` (requer `DATABASE_URL`, schema sintético revertido) e `npm run test:auditoria:ui` (pode usar `E2E_BROWSER_EXECUTABLE`).
 
 ### Números e ordenação das ordens de serviço
 

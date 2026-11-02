@@ -44,6 +44,7 @@ export function Breadcrumb() {
     conferencia: 'Conferência',
     estatisticas: 'Estatísticas',
     configuracoes: 'Configurações',
+    auditoria: 'Auditoria de exclusões',
     usuarios: 'Usuários',
     perfil: 'Meu Perfil',
   };

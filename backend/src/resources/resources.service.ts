@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { AuthUser } from '../auth/auth.types';
 import { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service';
 import {
@@ -194,28 +195,30 @@ export class ResourcesService {
     return { data: dto.select !== undefined ? result.rows : null, error: null };
   }
 
-  async delete(table: string, dto: DeleteDto): Promise<ResourceResult> {
-    if (table === 'ptrba_completo_registros') {
-      return this.database.transaction(async client => {
-        const params: unknown[] = [];
-        const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
-        if (!whereSql) throw new BadRequestException('Delete requires at least one filter');
+  async delete(table: string, dto: DeleteDto, actor?: AuthUser): Promise<ResourceResult> {
+    if (!actor) throw new UnauthorizedException('Autenticação necessária para excluir registros.');
+    const safeTable = this.tableName(table);
+    const params: unknown[] = [];
+    const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+    if (!whereSql) throw new BadRequestException('Delete requires at least one filter');
+    // A identidade vem da guarda de autenticação, nunca do payload do navegador.
+    // SET LOCAL é restrito à transação e não vaza para outra sessão do pool.
+    return this.database.transaction(async client => {
+      await client.query("SELECT set_config('app.audit_actor', $1, true)", [JSON.stringify({
+        id: actor.id, username: actor.username, role: actor.role,
+      })]);
+      if (table === 'ptrba_completo_registros') {
         const current = await client.query(`SELECT * FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         if (current.rows.some(row => row.origem_ptrba_id)) {
           throw new BadRequestException('O documento APOC legado é preservado somente para consulta.');
         }
         const result = await client.query(`DELETE FROM ${this.tableName(table)} ${whereSql} RETURNING *`, params);
         return { data: this.selectPtrbaRows(result.rows, dto.select), error: null };
-      });
-    }
-    const safeTable = this.tableName(table);
-    const params: unknown[] = [];
-    const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
-    if (!whereSql) throw new BadRequestException('Delete requires at least one filter');
-
-    const returningSql = dto.select !== undefined ? `RETURNING ${selectClause(dto.select)}` : '';
-    const result = await this.database.query(`DELETE FROM ${safeTable} ${whereSql} ${returningSql}`, params);
-    return { data: dto.select !== undefined ? result.rows : null, error: null };
+      }
+      const returningSql = dto.select !== undefined ? `RETURNING ${selectClause(dto.select)}` : '';
+      const result = await client.query(`DELETE FROM ${safeTable} ${whereSql} ${returningSql}`, params);
+      return { data: dto.select !== undefined ? result.rows : null, error: null };
+    });
   }
 
   private validatePtrbaOrigem(row: Record<string, unknown>): void {

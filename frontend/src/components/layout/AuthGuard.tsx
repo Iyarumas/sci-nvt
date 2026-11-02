@@ -2,7 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import type { ReactNode } from 'react';
 
-export function AuthGuard({ children, developerOnly = false }: { children: ReactNode; developerOnly?: boolean }) {
+export function AuthGuard({ children, developerOnly = false, adminOnly = false }: { children: ReactNode; developerOnly?: boolean; adminOnly?: boolean }) {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
 
@@ -15,6 +15,10 @@ export function AuthGuard({ children, developerOnly = false }: { children: React
   }
 
   if (developerOnly && user?.role !== 'desenvolvedor') {
+    return <Navigate to="/" replace />;
+  }
+
+  if (adminOnly && user?.role !== 'admin' && user?.role !== 'desenvolvedor') {
     return <Navigate to="/" replace />;
   }
 

@@ -12,6 +12,8 @@
 
 ## Transporte NestJS
 
+> **Auditoria de exclusões (2026-11-02):** a migration `074_auditoria_exclusoes.sql` instala triggers `AFTER DELETE` nas tabelas públicas existentes (exceto o histórico e `schema_migrations`). `ResourcesService.delete` define `app.audit_actor` com ID/login/função de `request.authUser` dentro da transação; exclusão e histórico são atômicos. SQL sem contexto autenticado é registrado como `sem_usuario`. A tabela `auditoria_exclusoes` é somente de acréscimo, bloqueia UPDATE/DELETE/TRUNCATE e não está exposta no CRUD genérico. Novas tabelas públicas precisam instalar o trigger em suas migrations. Registros anteriores à ativação não têm autoria recuperada. Não armazena senhas, tokens, CPF, fotos nem snapshots completos.
+
 Base URL local: `http://localhost:3333/api`
 
 > **Atualizacao arquitetural (2026-08-11):** o front-end foi movido para `frontend/` e nao chama mais Supabase diretamente. Os services de `frontend/src/services/` continuam preservando os contratos abaixo, mas passam por `frontend/src/lib/supabase.ts`, um adapter HTTP que envia as operacoes para a API NestJS em `backend/`. O PostgreSQL local roda via `docker-compose.yml`; as migrations SQL foram copiadas para `backend/database/migrations/`.
@@ -25,6 +27,7 @@ Base URL local: `http://localhost:3333/api`
 | Endpoint | Metodo | Descricao |
 |---|---|---|
 | `/health` | GET | Health check da API; retorna o commit do build em `commit` (publico) |
+| `/auditoria/exclusoes` | GET | Histórico somente leitura; exige token e papel admin/desenvolvedor; filtros e payload abaixo |
 | `/auth/login` | POST | `{username, password}` → `{token, expiresAt, user}`; bloqueia 15 min apos 5 erros (publico) |
 | `/auth/me` | GET | Dados e funcao atual do usuario do token |
 | `/auth/convite/:codigo` | GET | `{valido, expiresAt}` (publico) |
@@ -42,6 +45,25 @@ Base URL local: `http://localhost:3333/api`
 | `/storage/:bucket/signed-url` | POST | Gera URL local temporaria compativel com o front |
 | `/autentique/proxy` | POST | Proxy GraphQL Autentique para payload JSON |
 | `/autentique/proxy/upload` | POST | Proxy GraphQL Autentique para upload multipart |
+
+### GET `/auditoria/exclusoes`
+
+Somente `admin`/`desenvolvedor` (demais perfis: 403; sem token: 401). Parâmetros opcionais: `termo` (até 100 caracteres, busca literal por identificação/ID/login), `tabela` (identificador snake_case do módulo, até 80 caracteres; as opções incluem tabelas legadas com eventos), `inicio` e `fim` (datas válidas `YYYY-MM-DD`, inclusivas em `America/Sao_Paulo`), `pagina` (inteiro 1–100000, padrão 1). Datas invertidas são rejeitadas. Retorna 50 itens por página, ordenados por `created_at DESC, id DESC`:
+
+```json
+{
+  "data": [{
+    "id": "uuid", "created_at": "ISO datetime", "tabela": "bombeiros",
+    "registro_id": "uuid", "identificacao": "Nome de guerra",
+    "usuario_id": "uuid ou null", "usuario_login": "login ou null",
+    "usuario_funcao": "admin ou null", "origem": "sistema ou sem_usuario"
+  }],
+  "total": 1, "pagina": 1, "porPagina": 50,
+  "tabelas": ["bombeiros"], "inicioAuditoria": "ISO datetime da migration 074 ou null"
+}
+```
+
+Service: `frontend/src/services/auditoriaService.ts` (HTTP autenticado com `apiFetch`, sem cache; conversão snake_case → camelCase). Tipos: `frontend/src/types/auditoria.ts`. Tela: `/auditoria`, menu `Auditoria de exclusões`; autorização também na rota React. A autoria é preservada mesmo após excluir a conta, pois não existe FK com `usuarios`. Exclusões sem correspondência não geram evento; transações revertidas revertem também os eventos.
 
 ---
 

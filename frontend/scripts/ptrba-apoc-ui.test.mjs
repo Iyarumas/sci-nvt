@@ -50,7 +50,7 @@ try {
     const body = route.request().postDataJSON();
     if (table === 'ptrba_completo_registros') {
       try {
-        const result = await backend[action](table, body);
+        const result = await backend[action](table, body, { id: 'qa-user', username: 'qa', role: 'admin' });
         if (action !== 'query') writes.push({ table, action, payload: body.payload });
         await route.fulfill({ json: result });
       } catch (error) {

@@ -38,7 +38,7 @@ export class ResourcesController {
   @Post('delete')
   async delete(@Param('table') table: string, @Body() dto: DeleteDto, @Req() request: Request) {
     authorizeResource(request.authUser, table, 'delete', dto);
-    const result = sanitizeResourceResult(table, await this.resources.delete(table, dto));
+    const result = sanitizeResourceResult(table, await this.resources.delete(table, dto, request.authUser));
     this.afterMutation(table);
     return result;
   }

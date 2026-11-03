@@ -16,7 +16,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/auth.types';
-import { LocalStorageService } from './local-storage.service';
+import { LocalStorageService, MAX_UPLOAD_BYTES } from './local-storage.service';
 
 @Controller('storage/:bucket')
 export class LocalStorageController {
@@ -26,7 +26,7 @@ export class LocalStorageController {
   ) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 } }))
   upload(
     @Param('bucket') bucket: string,
     @Query('path') path: string,

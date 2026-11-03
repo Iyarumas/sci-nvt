@@ -3,6 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { createReadStream, promises as fs } from 'fs';
 import { basename, dirname, join, normalize, resolve } from 'path';
 
+/** Buckets usados pelo front (documentoService). Novo bucket precisa entrar aqui. */
+export const ALLOWED_BUCKETS: ReadonlySet<string> = new Set(['document-pdfs']);
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const PDF_SIGNATURE = Buffer.from('%PDF-');
+
 @Injectable()
 export class LocalStorageService {
   private readonly rootPath: string;
@@ -18,6 +23,12 @@ export class LocalStorageService {
   async upload(bucket: string, storagePath: string, file: Express.Multer.File): Promise<{ path: string }> {
     if (!file) throw new BadRequestException('File is required');
     const target = this.safePath(bucket, storagePath);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      throw new BadRequestException(`Arquivo maior que ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.`);
+    }
+    if (!file.buffer.subarray(0, 5).equals(PDF_SIGNATURE)) {
+      throw new BadRequestException('Envie um arquivo PDF.');
+    }
     await fs.mkdir(dirname(target), { recursive: true });
     await fs.writeFile(target, file.buffer);
     return { path: storagePath };
@@ -74,7 +85,8 @@ export class LocalStorageService {
   }
 
   private safePath(bucket: string, storagePath: string): string {
-    if (!/^[a-zA-Z0-9._-]+$/.test(bucket)) {
+    // Lista fechada: nomes como "." ou ".." apontariam para fora da pasta de arquivos.
+    if (!ALLOWED_BUCKETS.has(bucket)) {
       throw new BadRequestException('Invalid bucket name');
     }
     const target = resolve(this.rootPath, bucket, normalize(storagePath || '.'));

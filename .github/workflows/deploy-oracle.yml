@@ -20,8 +20,30 @@ env:
   DEPLOY_BRANCH: main
 
 jobs:
+  verify:
+    name: Typecheck, lint, testes e build
+    runs-on: ubuntu-latest
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Se algo quebrar aqui, o deploy nao acontece e producao fica na versao anterior.
+      - name: Verify
+        run: npm run verify
+
   deploy:
     name: Deploy production stack
+    needs: verify
     runs-on: ubuntu-latest
 
     steps:
@@ -65,5 +87,6 @@ jobs:
           EXPECTED_SHA: ${{ github.sha }}
           REPO_URL: https://github.com/${{ github.repository }}.git
         run: |
-          ssh -i ~/.ssh/oracle_key "$ORACLE_USER@$ORACLE_HOST" \
-            "DEPLOY_PATH='$DEPLOY_PATH' REPO_URL='$REPO_URL' DEPLOY_BRANCH='$DEPLOY_BRANCH' EXPECTED_SHA='$EXPECTED_SHA' GITHUB_TOKEN_VALUE='$GITHUB_TOKEN_VALUE' bash /tmp/sci-nvt-deploy-production.sh"
+          # O token vai pela entrada padrao: nao aparece na linha de comando nem na lista de processos da VM.
+          printf '%s' "$GITHUB_TOKEN_VALUE" | ssh -i ~/.ssh/oracle_key "$ORACLE_USER@$ORACLE_HOST" \
+            "GITHUB_TOKEN_VALUE=\$(cat) DEPLOY_PATH='$DEPLOY_PATH' REPO_URL='$REPO_URL' DEPLOY_BRANCH='$DEPLOY_BRANCH' EXPECTED_SHA='$EXPECTED_SHA' bash /tmp/sci-nvt-deploy-production.sh < /dev/null"

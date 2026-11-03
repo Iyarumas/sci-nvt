@@ -35,7 +35,7 @@ export class RpcService {
         return this.atualizarSenha(user, String(params.p_username ?? ''), String(params.p_password ?? ''));
       case 'aprovar_escala_ferias_transacional':
         if (user.role === 'sem_funcao') throw new ForbiddenException('Seu usuário ainda aguarda a atribuição de uma função.');
-        return this.aprovarEscalaFeriasTransacional(params);
+        return this.aprovarEscalaFeriasTransacional(params, user);
       default:
         throw new NotFoundException(`RPC not exposed: ${name}`);
     }
@@ -116,13 +116,15 @@ export class RpcService {
     return (result.rowCount ?? 0) > 0;
   }
 
-  private async aprovarEscalaFeriasTransacional(params: Record<string, unknown>): Promise<unknown> {
+  private async aprovarEscalaFeriasTransacional(params: Record<string, unknown>, user: AuthUser): Promise<unknown> {
+    // Quem aprova é sempre o usuário do token; nome e login enviados pelo navegador são ignorados.
+    const aprovador = await this.database.query<{ name: string | null }>('SELECT name FROM usuarios WHERE id = $1', [user.id]);
     const result = await this.database.query(
       `SELECT public.aprovar_escala_ferias_transacional($1, $2, $3, $4) AS result`,
       [
         params.p_escala_id,
-        params.p_aprovado_por,
-        params.p_aprovado_por_nome,
+        user.username,
+        aprovador.rows[0]?.name || user.username,
         params.p_manter_status ?? false,
       ],
     );

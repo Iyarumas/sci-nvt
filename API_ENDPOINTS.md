@@ -38,7 +38,7 @@ Base URL local: `http://localhost:3333/api`
 | `/data/:table/update` | POST | Atualiza registros com filtros obrigatorios |
 | `/data/:table/delete` | POST | Exclui registros com filtros obrigatorios |
 | `/rpc/:name` | POST | RPCs expostos: `verificar_senha` (so a propria senha), `criar_usuario_com_hash` (admin), `atualizar_senha` (propria ou admin), `aprovar_escala_ferias_transacional` |
-| `/storage/:bucket/upload` | POST | Upload local de PDFs/arquivos |
+| `/storage/:bucket/upload` | POST | Upload local de PDF (so `%PDF-`, ate 25 MB). Buckets aceitos: lista fechada `ALLOWED_BUCKETS` em `backend/src/storage/local-storage.service.ts` (hoje so `document-pdfs`) |
 | `/storage/:bucket/list` | GET | Lista arquivos de um bucket/prefixo |
 | `/storage/:bucket/file` | GET | Download/visualizacao de arquivo |
 | `/storage/:bucket/remove` | POST | Remove arquivos |

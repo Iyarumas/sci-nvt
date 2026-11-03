@@ -860,6 +860,19 @@ function montarAfastamentosResolvidos(params: {
   return afastamentos;
 }
 
+/** Mesma resolução dos extras da diária, disponível também para o quadro de efetivos. */
+export function montarExtrasAfastamentoDoDia(params: {
+  bombeiros: Bombeiro[];
+  substituicoes: SubstituicaoTemporaria[];
+  vigencias: VigenciaSubstituicao[];
+  equipe: string;
+  dataPlantao: string;
+}): ExtraAfastamentoResolvido[] {
+  const porId = new Map(params.bombeiros.filter(b => !b.dataDesligamento).map(b => [b.id, b]));
+  const extras = montarExtrasAfastamentoResolvidos({ ...params, porId });
+  return [...new Map(extras.map(extra => [extra.substituto.id, extra])).values()];
+}
+
 function montarExtrasAfastamentoResolvidos(params: {
   substituicoes: SubstituicaoTemporaria[];
   porId: Map<string, Bombeiro>;

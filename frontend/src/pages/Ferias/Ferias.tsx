@@ -36,7 +36,7 @@ import {
 } from '../../services/feriasService';
 import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
 import type { EloCadeiaInput, VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
-import { filtrarAfastamentosQuadroEfetivosPorMes, filtrarQuadroEfetivosPorMes, resolverPosicoesQuadroEfetivos } from '../../utils/efetivoOperacional';
+import { filtrarAfastamentosQuadroEfetivosPorMes, filtrarQuadroEfetivosPorMes, montarExtrasAfastamentoDoDia, resolverPosicoesQuadroEfetivos } from '../../utils/efetivoOperacional';
 import { agruparAfastamentosIndeterminados, calcularTempoAfastamento } from '../../utils/afastamentos';
 import {
   dataLocalISO,
@@ -65,6 +65,7 @@ const avatarFeriasToneClasses = {
   green: 'bg-gradient-to-br from-green-500 to-green-600 shadow-md shadow-green-500/30',
   red: 'bg-gradient-to-br from-red-500 to-red-600 shadow-md shadow-red-500/30',
   yellow: 'bg-gradient-to-br from-yellow-400 to-yellow-500',
+  purple: 'bg-gradient-to-br from-purple-500 to-purple-600',
 } as const;
 
 function AvatarPessoaFerias({
@@ -2922,6 +2923,8 @@ function TabQuadroEfetivos() {
   const [loading, setLoading] = useState(true);
   const [vigencias, setVigencias] = useState<VigenciaSubstituicao[]>([]);
   const [historicoAfastamentos, setHistoricoAfastamentos] = useState<SubstituicaoTemporaria[]>([]);
+  const [extrasDoDia, setExtrasDoDia] = useState<ReturnType<typeof montarExtrasAfastamentoDoDia>>([]);
+  const [extraDetalheId, setExtraDetalheId] = useState<string | null>(null);
 
   const afastamentos = useMemo(() =>
     filtrarAfastamentosQuadroEfetivosPorMes(historicoAfastamentos, mesSelecionado, ano),
@@ -3014,6 +3017,12 @@ function TabQuadroEfetivos() {
       setFeriasGozo(quadroMensal.feriasGozo);
       setAllItems(quadroMensal.itensEscala);
       setVigencias(quadroMensal.vigencias);
+      const hoje = hojeLocalISO();
+      setExtrasDoDia(estaNoPeriodoISO(hoje, mesInicio, mesFim)
+        ? EQUIPES.flatMap(equipe => montarExtrasAfastamentoDoDia({
+          bombeiros: all, substituicoes, vigencias: v, equipe, dataPlantao: hoje,
+        }))
+        : []);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -3250,8 +3259,16 @@ function TabQuadroEfetivos() {
               addSub(sub, func, (vig.cargoExercido || func.cargo) as Cargo, vig.dataInicio, vig.dataFim);
             }
           }
-          const { posicoes, totalEfetivos } = resolverPosicoesQuadroEfetivos(disponiveis, coberturasPorVaga);
-          const ordenados = [...posicoes].sort((a, b) => {
+          const extrasEquipe = extrasDoDia.filter(extra => extra.equipePlantao === eq);
+          const extrasIds = new Set(extrasEquipe.map(extra => extra.substituto.id));
+          const ausentesExtras = new Set(extrasEquipe.map(extra => extra.ausente.id));
+          const { posicoes } = resolverPosicoesQuadroEfetivos(disponiveis, coberturasPorVaga);
+          const posicoesSemExtras = posicoes.filter(m =>
+            !ausentesExtras.has(m.id) && !extrasIds.has(coberturasPorVaga.get(m.id) || m.id));
+          const totalEfetivos = new Set([
+            ...posicoesSemExtras.map(m => coberturasPorVaga.get(m.id) || m.id), ...extrasIds,
+          ]).size;
+          const ordenados = [...posicoesSemExtras].sort((a, b) => {
             return (CARGO_PRIORITY[a.cargo] ?? 99) - (CARGO_PRIORITY[b.cargo] ?? 99);
           });
           const equipeLogo = EQUIPE_LOGOS[eq];
@@ -3282,7 +3299,7 @@ function TabQuadroEfetivos() {
               </div>
 
               <div className="p-3 space-y-1.5">
-                {membros.length === 0 ? (
+                {membros.length === 0 && extrasEquipe.length === 0 ? (
                   <p className="py-4 text-center text-xs text-graphite-400 dark:text-graphite-500">Nenhum membro</p>
                 ) : (
                   <>
@@ -3442,6 +3459,39 @@ function TabQuadroEfetivos() {
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {extrasEquipe.length > 0 && (
+                      <div className="space-y-1 mt-2">
+                        <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Extras de hoje · {fmt(hoje)}</p>
+                        {extrasEquipe.map(extra => (
+                          <button key={extra.substituto.id} type="button" data-extra-afastamento
+                            aria-label={`Extra de ${extra.substituto.nomeGuerra} no lugar de ${extra.ausente.nomeGuerra} em ${fmt(hoje)}`}
+                            aria-pressed={extraDetalheId === extra.substituto.id}
+                            onClick={() => setExtraDetalheId(atual => atual === extra.substituto.id ? null : extra.substituto.id)}
+                            className="group relative w-full rounded-xl border border-purple-300 bg-purple-50/50 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-purple-500 dark:border-purple-700 dark:bg-purple-900/20">
+                            <div data-extra-cobertura className={`flex items-center gap-2.5 transition-opacity motion-reduce:transition-none group-hover:opacity-0 group-focus-visible:opacity-0 ${extraDetalheId === extra.substituto.id ? 'opacity-0' : ''}`}>
+                              <AvatarPessoaFerias pessoa={extra.substituto} tone="purple" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-bold text-graphite-900 dark:text-graphite-100">
+                                  {ABBR_CARGO[extra.cargoExercido as Cargo] || extra.cargoExercido} {extra.substituto.nomeGuerra}
+                                </p>
+                                <p className="text-[10px] text-purple-700 dark:text-purple-300">Extra · No lugar de {extra.ausente.nomeGuerra}</p>
+                                <p className="text-[10px] text-purple-700 dark:text-purple-300">{fmt(hoje)}</p>
+                              </div>
+                              <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">Extra</span>
+                            </div>
+                            <div data-extra-ausente className={`absolute inset-0 flex items-center gap-2.5 px-3 py-2 transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-focus-visible:opacity-100 ${extraDetalheId === extra.substituto.id ? 'opacity-100' : 'opacity-0'}`}>
+                              <AvatarPessoaFerias pessoa={extra.ausente} tone="red" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-bold text-red-700 dark:text-red-300">{ABBR_CARGO[extra.cargoAusente as Cargo] || extra.cargoAusente} {extra.ausente.nomeGuerra}</p>
+                                <p className="text-[10px] text-red-600 dark:text-red-400">Afastado · Coberto por {extra.substituto.nomeGuerra}</p>
+                                <p className="text-[10px] text-red-600 dark:text-red-400">{fmt(hoje)}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     )}
 

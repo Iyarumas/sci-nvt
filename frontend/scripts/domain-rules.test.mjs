@@ -82,6 +82,7 @@ const {
   montarMembrosEscalaMensalPlantao,
   resolverPessoaNoPlantaoOperacional,
   montarEfetivoOperacional,
+  montarExtrasAfastamentoDoDia,
   montarTrocasServicoDoDia,
 } = efetivoOperacional;
 
@@ -1516,5 +1517,32 @@ const coberturasQuadroAntes = [...coberturaAline];
 resolverPosicoesQuadroEfetivos(membrosQuadroImutaveis, coberturaAline);
 assert.deepEqual(membrosQuadroImutaveis, membrosQuadroAntes);
 assert.deepEqual([...coberturaAline], coberturasQuadroAntes);
+
+// O quadro reaproveita extras da diária, incluindo a função/equipe efetiva de feristas.
+const afastamentoExtraQuadro = {
+  funcionarioId: ferista.id, funcionarioCargo: ferista.cargo,
+  tipo: 'Afastamento', status: 'Aprovada', dataInicio: '2026-07-20', dataFim: '2026-07-25',
+  cadeiaSubstituicao: [
+    { tipo: 'extra', dataPlantao: '2026-07-21', pessoaId: apoio.id },
+    { tipo: 'extra', dataPlantao: '2026-07-23', substitutoId: ba2.id },
+  ],
+};
+const contextoExtrasQuadro = {
+  bombeiros, substituicoes: [afastamentoExtraQuadro],
+  vigencias: [{ ...vigenciaFeristaCobrindoChefe, dataInicio: '2026-06-25', dataFim: '2026-07-24' }],
+  equipe: 'Alfa', dataPlantao: '2026-07-21',
+};
+assert.deepEqual(montarExtrasAfastamentoDoDia(contextoExtrasQuadro), [{
+  ausente: ferista, substituto: apoio, cargoAusente: 'BA-CE', cargoExercido: 'BA-CE', equipePlantao: 'Alfa',
+}]);
+assert.equal(montarExtrasAfastamentoDoDia({ ...contextoExtrasQuadro, dataPlantao: '2026-07-23' })[0].substituto.id, ba2.id);
+for (const status of ['Pendente', 'Rejeitada']) {
+  assert.deepEqual(montarExtrasAfastamentoDoDia({ ...contextoExtrasQuadro, substituicoes: [{ ...afastamentoExtraQuadro, status }] }), []);
+}
+assert.deepEqual(montarExtrasAfastamentoDoDia({ ...contextoExtrasQuadro, equipe: 'Charlie' }), []);
+assert.deepEqual(montarExtrasAfastamentoDoDia({ ...contextoExtrasQuadro, dataPlantao: '2026-07-22' }), []);
+assert.deepEqual(montarExtrasAfastamentoDoDia({ ...contextoExtrasQuadro, substituicoes: [{ ...afastamentoExtraQuadro, dataFim: '2026-07-20' }] }), []);
+assert.deepEqual(montarExtrasAfastamentoDoDia({ ...contextoExtrasQuadro, bombeiros: bombeiros.filter(b => b.id !== apoio.id) }), []);
+assert.equal(montarExtrasAfastamentoDoDia({ ...contextoExtrasQuadro, substituicoes: [afastamentoExtraQuadro, afastamentoExtraQuadro] }).length, 1);
 
 console.log('domain rules ok');

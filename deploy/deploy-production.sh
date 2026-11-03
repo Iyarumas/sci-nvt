@@ -29,13 +29,16 @@ git config --global --add safe.directory "$DEPLOY_PATH" >/dev/null 2>&1 || true
 git remote remove origin >/dev/null 2>&1 || true
 git remote add origin "$REPO_URL"
 
-auth_repo_url="$REPO_URL"
 if [ -n "${GITHUB_TOKEN_VALUE:-}" ]; then
-  auth_repo_url="$(printf '%s' "$REPO_URL" | sed "s#https://github.com/#https://x-access-token:${GITHUB_TOKEN_VALUE}@github.com/#")"
+  # Cabecalho via variaveis de ambiente do git: o token nao entra nos argumentos do processo.
+  export GIT_CONFIG_COUNT=1
+  export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+  GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN_VALUE" | base64 | tr -d '\n')"
+  export GIT_CONFIG_VALUE_0
 fi
 
 log "Fetching $DEPLOY_BRANCH"
-git fetch --prune --force "$auth_repo_url" "+refs/heads/$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+git fetch --prune --force "$REPO_URL" "+refs/heads/$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
 git reset --hard "refs/remotes/origin/$DEPLOY_BRANCH"
 git checkout -B "$DEPLOY_BRANCH" "refs/remotes/origin/$DEPLOY_BRANCH"
 git branch --set-upstream-to="origin/$DEPLOY_BRANCH" "$DEPLOY_BRANCH" >/dev/null 2>&1 || true

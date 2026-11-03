@@ -3467,11 +3467,12 @@ function TabQuadroEfetivos() {
                         <p className="px-1 text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">Extras de hoje · {fmt(hoje)}</p>
                         {extrasEquipe.map(extra => (
                           <button key={extra.substituto.id} type="button" data-extra-afastamento
+                            title={`${ABBR_CARGO[extra.cargoAusente as Cargo] || extra.cargoAusente} ${extra.ausente.nomeGuerra} · Substituído por ${extra.substituto.nomeGuerra}`}
                             aria-label={`Extra de ${extra.substituto.nomeGuerra} no lugar de ${extra.ausente.nomeGuerra} em ${fmt(hoje)}`}
                             aria-pressed={extraDetalheId === extra.substituto.id}
                             onClick={() => setExtraDetalheId(atual => atual === extra.substituto.id ? null : extra.substituto.id)}
                             className="group relative w-full rounded-xl border border-purple-300 bg-purple-50/50 px-3 py-2 text-left focus-visible:outline-2 focus-visible:outline-purple-500 dark:border-purple-700 dark:bg-purple-900/20">
-                            <div data-extra-cobertura className={`flex items-center gap-2.5 transition-opacity motion-reduce:transition-none group-hover:opacity-0 group-focus-visible:opacity-0 ${extraDetalheId === extra.substituto.id ? 'opacity-0' : ''}`}>
+                            <div data-extra-cobertura className={`flex items-center gap-2.5 transition-[opacity,scale,transform] duration-300 motion-reduce:scale-100 motion-reduce:transition-none group-hover:opacity-0 group-hover:scale-95 group-focus-visible:opacity-0 group-focus-visible:scale-95 group-focus-visible:duration-0 ${extraDetalheId === extra.substituto.id ? 'opacity-0 scale-95' : ''}`}>
                               <AvatarPessoaFerias pessoa={extra.substituto} tone="purple" />
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-xs font-bold text-graphite-900 dark:text-graphite-100">
@@ -3482,12 +3483,14 @@ function TabQuadroEfetivos() {
                               </div>
                               <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[9px] font-bold text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">Extra</span>
                             </div>
-                            <div data-extra-ausente className={`absolute inset-0 flex items-center gap-2.5 px-3 py-2 transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-focus-visible:opacity-100 ${extraDetalheId === extra.substituto.id ? 'opacity-100' : 'opacity-0'}`}>
+                            <div data-extra-ausente className={`absolute inset-0 flex items-center gap-2.5 rounded-xl px-3 py-2 transition-[opacity,scale,transform] duration-300 motion-reduce:scale-100 motion-reduce:transition-none group-hover:opacity-100 group-hover:scale-100 group-focus-visible:opacity-100 group-focus-visible:scale-100 group-focus-visible:duration-0 ${extraDetalheId === extra.substituto.id ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`}>
                               <AvatarPessoaFerias pessoa={extra.ausente} tone="red" />
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-xs font-bold text-red-700 dark:text-red-300">{ABBR_CARGO[extra.cargoAusente as Cargo] || extra.cargoAusente} {extra.ausente.nomeGuerra}</p>
-                                <p className="text-[10px] text-red-600 dark:text-red-400">Afastado · Coberto por {extra.substituto.nomeGuerra}</p>
-                                <p className="text-[10px] text-red-600 dark:text-red-400">{fmt(hoje)}</p>
+                                <div className="mt-0.5 flex items-center gap-1">
+                                  <span className="rounded-full bg-red-200 px-1.5 py-0.5 text-[8px] font-bold text-red-800 dark:bg-red-800/40 dark:text-red-300">Afastado</span>
+                                  <span className="text-[10px] text-red-600 dark:text-red-400">{ABBR_CARGO[extra.cargoAusente as Cargo] || extra.cargoAusente}</span>
+                                </div>
                               </div>
                             </div>
                           </button>

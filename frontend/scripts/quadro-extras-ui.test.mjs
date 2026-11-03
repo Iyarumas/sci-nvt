@@ -63,11 +63,18 @@ try {
       assert.ok((await roxos.innerText()).includes(`${dia}/11/2026`));
       assert.ok((await roxos.getAttribute('class')).includes('border-purple-'));
       assert.equal(await equipe.getByText(`BA-2 ${esperado}`, { exact: true }).count(), 1, 'Cobertura não deve repetir na própria equipe');
+      const transicaoAusente = await roxos.locator('[data-extra-ausente]').evaluate(elemento => {
+        const estilo = getComputedStyle(elemento);
+        return { duracao: estilo.transitionDuration, escala: estilo.scale };
+      });
+      assert.equal(transicaoAusente.duracao, '0.3s', 'Hover deve ter a mesma duração dos outros cards');
+      assert.equal(transicaoAusente.escala, '0.9', 'A pessoa afastada deve entrar com a mesma escala dos outros cards');
       await roxos.screenshot({ path: path.join(out, `extra-${dia}.png`), animations: 'disabled' });
       if (mobile) await roxos.tap();
       else await roxos.hover();
       await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-extra-ausente]')).opacity === '1');
       assert.ok((await roxos.locator('[data-extra-ausente]').innerText()).includes('BA-2 Stephanie'));
+      assert.ok(await roxos.locator('[data-extra-ausente]').getByText('Afastado', { exact: true }).isVisible());
       await roxos.screenshot({ path: path.join(out, `afastada-${dia}.png`), animations: 'disabled' });
       if (mobile) {
         assert.equal(await roxos.getAttribute('aria-pressed'), 'true');

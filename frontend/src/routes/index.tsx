@@ -99,6 +99,7 @@ export const router = createBrowserRouter([
       { path: 'arquivo/:tipo?', element: <AuthGuard developerOnly>{lazyPage(() => import('../pages/Arquivo/Arquivo'))}</AuthGuard> },
       { path: 'configuracoes', element: lazyPage(() => import('../pages/Configuracoes/Configuracoes')) },
       { path: 'auditoria', element: <AuthGuard adminOnly>{lazyPage(() => import('../pages/Auditoria/Auditoria'))}</AuthGuard> },
+      { path: 'permissoes', element: <AuthGuard adminOnly>{lazyPage(() => import('../pages/Permissoes/Permissoes'))}</AuthGuard> },
       { path: 'usuarios', element: lazyPage(() => import('../pages/Usuarios/Usuarios')) },
       { path: 'perfil', element: lazyPage(() => import('../pages/Perfil/Perfil')) },
       { path: 'sair', element: <Navigate to="/login" replace /> },

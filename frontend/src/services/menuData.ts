@@ -32,6 +32,7 @@ import {
   CalendarDays,
   ArrowLeftRight,
   Package,
+  KeyRound,
 } from 'lucide-react';
 import type { MenuItem } from '../types/navigation';
 
@@ -47,6 +48,13 @@ export const menuItems: MenuItem[] = [
     icon: ShieldCheck,
     path: '/auditoria',
     description: 'Histórico de exclusões com usuário, data e identificação do registro.',
+    adminOnly: true,
+  },
+  {
+    label: 'Permissões',
+    icon: KeyRound,
+    path: '/permissoes',
+    description: 'O que cada função pode fazer em cada tela do sistema.',
     adminOnly: true,
   },
   {

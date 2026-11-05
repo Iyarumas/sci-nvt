@@ -5,7 +5,7 @@ import { listarAPOCs } from '../services/apocService';
 import { apiFetch, getAuthToken, setAuthToken, UNAUTHORIZED_EVENT } from '../lib/apiClient';
 import type { Usuario } from '../services/usuarioService';
 
-export type UserRole = 'desenvolvedor' | 'admin' | 'gerente' | 'chefe' | 'lider' | 'bombeiro' | 'sem_funcao';
+export type UserRole = 'desenvolvedor' | 'admin' | 'gerente' | 'chefe' | 'lider' | 'bombeiro' | 'comunicante' | 'sem_funcao';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   desenvolvedor: 'Desenvolvedor',
@@ -14,6 +14,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   chefe: 'Chefe de Equipe',
   lider: 'Líder de Resgate',
   bombeiro: 'Bombeiro de Aeródromo',
+  comunicante: 'Comunicante (OC)',
   sem_funcao: 'Sem Função Atribuída',
 };
 
@@ -113,7 +114,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
 });
 
-const ROLE_HIERARQUIA: UserRole[] = ['desenvolvedor', 'admin', 'gerente', 'chefe', 'lider', 'bombeiro', 'sem_funcao'];
+const ROLE_HIERARQUIA: UserRole[] = ['desenvolvedor', 'admin', 'gerente', 'chefe', 'lider', 'bombeiro', 'comunicante', 'sem_funcao'];
 
 function apocParaUserRole(funcao: string): UserRole {
   if (['SUPERVISOR', 'COORDENADOR'].includes(funcao.toUpperCase())) return 'gerente';

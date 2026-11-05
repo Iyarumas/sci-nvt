@@ -2,7 +2,26 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Unauthor
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
-import { ALLOW_PENDING_KEY, IS_PUBLIC_KEY } from './auth.types';
+import { ALLOW_PENDING_KEY, IS_PUBLIC_KEY, isComunicante } from './auth.types';
+
+/**
+ * O comunicante (OC) lê o que as telas da central precisam, mas só grava o início e
+ * o fim de plantão, ocorrências, inspeções e solicitações, a própria senha e o perfil.
+ */
+function acaoPermitidaAoComunicante(request: Request): boolean {
+  if (request.method === 'GET') return true;
+  // Tira o prefixo global da API (API_PREFIX, "api" por padrão).
+  const caminho = request.path.replace(/^\/[^/]+(?=\/)/, '');
+  if (/^\/data\/[^/]+\/query$/.test(caminho)) return true;
+  if ((caminho === '/inicio-plantao' || caminho === '/fim-plantao') && request.method === 'PUT') return true;
+  // Registros que o comunicante lança: ocorrências do LRO, inspeções e solicitações.
+  // A tela limita a edição e a exclusão ao que ele mesmo lançou.
+  if (/^\/data\/(ocorrencias_operacionais|conferencias)\/(insert|update|delete)$/.test(caminho)) return true;
+  if (caminho === '/rpc/verificar_senha' || caminho === '/rpc/atualizar_senha') return true;
+  // Perfil: a política do CRUD já limita o usuário comum ao próprio cadastro.
+  if (caminho === '/data/usuarios/update') return true;
+  return false;
+}
 
 export function extractBearer(request: Request): string | null {
   const header = request.headers.authorization;
@@ -43,6 +62,9 @@ export class AuthGuard implements CanActivate {
           throw new ForbiddenException('Seu usuário ainda aguarda a atribuição de uma função.');
         }
         request.authUser = user;
+        if (isComunicante(user) && !acaoPermitidaAoComunicante(request)) {
+          throw new ForbiddenException('O comunicante só pode lançar os registros da central.');
+        }
         return true;
       }
       if (!isPublic) throw new UnauthorizedException('Sessão expirada. Entre novamente.');

@@ -67,9 +67,9 @@ export function Header() {
   const roleEfetiva = pessoa?.personType === 'bombeiro' && cargoEfetivo
     ? cargoParaUserRole(cargoEfetivo)
     : user?.role || 'chefe';
-  const roleParaExibir = user?.role === 'desenvolvedor' || user?.role === 'admin'
+  const roleParaExibir = user?.role === 'desenvolvedor' || user?.role === 'admin' || user?.role === 'comunicante'
     ? user.role
-    : roleEfetiva;
+    : cargoEfetivo === 'OC' ? 'comunicante' : roleEfetiva;
   const displayRole = ROLE_LABELS[roleParaExibir];
   const cargoLabel = pessoa
     ? (pessoa.personType === 'bombeiro'
@@ -321,7 +321,9 @@ function getPageTitle(pathname: string): string {
     configuracoes: 'Configurações',
     auditoria: 'Auditoria de exclusões',
     permissoes: 'Permissões',
+    central: 'Central',
     'inicio-plantao': 'Início de plantão',
+    'fim-plantao': 'Fim de plantão',
     usuarios: 'Usuários',
     perfil: 'Meu Perfil',
   };

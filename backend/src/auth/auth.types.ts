@@ -1,22 +1,29 @@
 import { SetMetadata } from '@nestjs/common';
 
-export type UserRole = 'desenvolvedor' | 'admin' | 'gerente' | 'chefe' | 'lider' | 'bombeiro' | 'sem_funcao';
+export type UserRole = 'desenvolvedor' | 'admin' | 'gerente' | 'chefe' | 'lider' | 'bombeiro' | 'comunicante' | 'sem_funcao';
 
 export interface AuthUser {
   id: string;
   username: string;
   role: UserRole;
+  /** Função no cadastro de bombeiros (BA-CE, OC...), quando o usuário está vinculado a um bombeiro. */
+  funcao?: string | null;
 }
 
 /** Papeis que administram usuarios, convites e acessos. */
 export const ADMIN_ROLES: ReadonlySet<string> = new Set(['desenvolvedor', 'admin']);
 
 export const VALID_ROLES: ReadonlySet<string> = new Set([
-  'desenvolvedor', 'admin', 'gerente', 'chefe', 'lider', 'bombeiro', 'sem_funcao',
+  'desenvolvedor', 'admin', 'gerente', 'chefe', 'lider', 'bombeiro', 'comunicante', 'sem_funcao',
 ]);
 
 export function isAdmin(user: AuthUser | undefined): boolean {
   return !!user && ADMIN_ROLES.has(user.role);
+}
+
+/** Comunicante: permissão "Comunicante (OC)" dada em Usuários, ou função OC no cadastro. */
+export function isComunicante(user: AuthUser | undefined): boolean {
+  return !!user && !isAdmin(user) && (user.role === 'comunicante' || user.funcao === 'OC');
 }
 
 export const IS_PUBLIC_KEY = 'auth:isPublic';

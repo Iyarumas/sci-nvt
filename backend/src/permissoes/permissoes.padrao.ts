@@ -22,6 +22,7 @@ export interface ModuloPermissao {
 
 export const MODULOS: readonly ModuloPermissao[] = [
   { chave: 'inicio_plantao', nome: 'Início de plantão', descricao: 'Informações do comunicante e mensagem do dia', porEquipe: true },
+  { chave: 'fim_plantao', nome: 'Fim de plantão', descricao: 'Relatório de serviço do comunicante para o chefe', porEquipe: true },
   { chave: 'registros_diarios', nome: 'Registros diários', descricao: 'PTR-BA, LRO e ocorrências do LRO', porEquipe: true },
   { chave: 'escalas', nome: 'Escalas', descricao: 'Escala diária e mensal', porEquipe: true },
   { chave: 'substituicoes', nome: 'Substituições', descricao: 'Substituições e extras', porEquipe: true },
@@ -58,6 +59,13 @@ export const PADRAO: Record<string, Record<Funcao, CelulaPadrao>> = {
     'BA-CE': { nivel: 'equipe' },
     'BA-LR': { nivel: 'equipe' },
     OC: { nivel: 'equipe', observacao: 'O comunicante preenche o início de plantão da equipe dele.' },
+  },
+  fim_plantao: {
+    ...TODOS('ver'),
+    GS: { nivel: 'ver' },
+    'BA-CE': { nivel: 'equipe' },
+    'BA-LR': { nivel: 'equipe' },
+    OC: { nivel: 'equipe', observacao: 'O comunicante preenche o relatório de serviço da equipe dele.' },
   },
   registros_diarios: {
     ...TODOS('ver'),

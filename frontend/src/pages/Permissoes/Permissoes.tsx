@@ -9,6 +9,7 @@ import {
   type GradePermissoes,
   type NivelPermissao,
 } from '../../services/permissoesService';
+import { ComunicantesPermissao } from './ComunicantesPermissao';
 
 const NOME_NIVEL: Record<NivelPermissao, string> = {
   nenhum: 'Sem acesso',
@@ -176,6 +177,8 @@ export default function Permissoes() {
           </div>
         </div>
       )}
+
+      <ComunicantesPermissao />
     </PageContainer>
   );
 }

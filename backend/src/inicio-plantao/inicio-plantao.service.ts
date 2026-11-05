@@ -8,7 +8,11 @@ import { DatabaseService } from '../database/database.service';
 const VALIDADE_LINK_HORAS = 36;
 const MAX_MENSAGEM = 8000;
 
-interface InicioPlantaoRow extends QueryResultRow {
+/** Início e fim de plantão têm o mesmo formato; muda só a tabela. */
+export type TipoPlantao = 'inicio' | 'fim';
+const TABELA: Record<TipoPlantao, string> = { inicio: 'inicio_plantao', fim: 'fim_plantao' };
+
+interface PlantaoRow extends QueryResultRow {
   id: string;
   data: string;
   equipe: string;
@@ -21,7 +25,7 @@ interface InicioPlantaoRow extends QueryResultRow {
   updated_at: Date;
 }
 
-function paraResposta(row: InicioPlantaoRow) {
+function paraResposta(row: PlantaoRow) {
   return {
     id: row.id,
     data: row.data,
@@ -45,26 +49,26 @@ export class InicioPlantaoService {
     if (!equipe || equipe.length > 40) throw new BadRequestException('Equipe inválida.');
   }
 
-  async obter(data: string, equipe: string) {
+  async obter(tipo: TipoPlantao, data: string, equipe: string) {
     this.validarChave(data, equipe);
-    const result = await this.database.query<InicioPlantaoRow>(
-      'SELECT * FROM inicio_plantao WHERE data = $1 AND equipe = $2',
+    const result = await this.database.query<PlantaoRow>(
+      `SELECT * FROM ${TABELA[tipo]} WHERE data = $1 AND equipe = $2`,
       [data, equipe],
     );
     return result.rows[0] ? paraResposta(result.rows[0]) : null;
   }
 
-  /** O último registro antes da data: sugere ramais, SPO, PCM, fiscal e posições das viaturas. */
-  async anterior(data: string) {
+  /** O último registro antes da data: sugere o que costuma se repetir de um plantão para o outro. */
+  async anterior(tipo: TipoPlantao, data: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new BadRequestException('Data inválida.');
-    const result = await this.database.query<InicioPlantaoRow>(
-      'SELECT * FROM inicio_plantao WHERE data < $1 ORDER BY data DESC, updated_at DESC LIMIT 1',
+    const result = await this.database.query<PlantaoRow>(
+      `SELECT * FROM ${TABELA[tipo]} WHERE data < $1 ORDER BY data DESC, updated_at DESC LIMIT 1`,
       [data],
     );
     return result.rows[0] ? paraResposta(result.rows[0]) : null;
   }
 
-  async salvar(user: AuthUser, input: { data?: string; equipe?: string; dados?: unknown; mensagem?: string }) {
+  async salvar(tipo: TipoPlantao, user: AuthUser, input: { data?: string; equipe?: string; dados?: unknown; mensagem?: string }) {
     const data = String(input.data ?? '');
     const equipe = String(input.equipe ?? '');
     this.validarChave(data, equipe);
@@ -73,8 +77,8 @@ export class InicioPlantaoService {
     if (!mensagem.trim() || mensagem.length > MAX_MENSAGEM) throw new BadRequestException('Mensagem inválida.');
 
     const expira = new Date(Date.now() + VALIDADE_LINK_HORAS * 3600 * 1000);
-    const result = await this.database.query<InicioPlantaoRow>(
-      `INSERT INTO inicio_plantao (data, equipe, dados, mensagem, token_publico, token_expira_em, criado_por, atualizado_por)
+    const result = await this.database.query<PlantaoRow>(
+      `INSERT INTO ${TABELA[tipo]} (data, equipe, dados, mensagem, token_publico, token_expira_em, criado_por, atualizado_por)
        VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $7)
        ON CONFLICT (data, equipe) DO UPDATE SET
          dados = EXCLUDED.dados,
@@ -88,17 +92,21 @@ export class InicioPlantaoService {
     return paraResposta(result.rows[0]);
   }
 
-  /** Só o texto da mensagem, para o link do QR Code. Expira para não ficar circulando. */
+  /** Só o texto da mensagem, para o link do QR Code. Procura no início e no fim de plantão. Expira. */
   async mensagemPublica(token: string) {
     if (!/^[0-9a-f]{32}$/.test(token)) throw new NotFoundException('Mensagem não encontrada.');
-    const result = await this.database.query<{ data: string; equipe: string; mensagem: string; token_expira_em: Date }>(
-      'SELECT data, equipe, mensagem, token_expira_em FROM inicio_plantao WHERE token_publico = $1',
-      [token],
-    );
-    const row = result.rows[0];
-    if (!row || row.token_expira_em.getTime() < Date.now()) {
-      throw new NotFoundException('Este link expirou. Gere o QR Code de novo no sistema.');
+    for (const tipo of Object.keys(TABELA) as TipoPlantao[]) {
+      const result = await this.database.query<{ data: string; equipe: string; mensagem: string; token_expira_em: Date }>(
+        `SELECT data, equipe, mensagem, token_expira_em FROM ${TABELA[tipo]} WHERE token_publico = $1`,
+        [token],
+      );
+      const row = result.rows[0];
+      if (!row) continue;
+      if (row.token_expira_em.getTime() < Date.now()) {
+        throw new NotFoundException('Este link expirou. Gere o QR Code de novo no sistema.');
+      }
+      return { tipo, data: row.data, equipe: row.equipe, mensagem: row.mensagem };
     }
-    return { data: row.data, equipe: row.equipe, mensagem: row.mensagem };
+    throw new NotFoundException('Mensagem não encontrada.');
   }
 }

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { NavLink } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Home } from 'lucide-react';
 import { useSidebar } from '../../hooks/useSidebar';
 import { useAuth } from '../../context/AuthContext';
 import { Tooltip } from '../ui/Tooltip';
@@ -13,7 +13,9 @@ import {
   canVisualizarRelatoriosPtrBa,
   canVisualizarRelatorios,
   isAdministradorSistema,
+  isComunicante,
   podeVerCadastroCompletoBase,
+  ROTAS_COMUNICANTE,
   podeVerArquivoBase,
   podeVerCertificacoesBase,
   podeVerRelatoriosPtrBaBase,
@@ -173,6 +175,23 @@ function SidebarGroup({ item, collapsed, onPin, depth = 0 }: { item: MenuItemTyp
   );
 }
 
+/**
+ * Menu do comunicante, na ordem do plantão: Central, Início de plantão,
+ * Registros Diários (só o que ele lança) e Fim de plantão.
+ */
+function menuComunicante(items: MenuItemType[]): MenuItemType[] {
+  const liberada = (path?: string) => !!path && ROTAS_COMUNICANTE.some(rota => rota !== '/perfil' && path === rota);
+  const porPath = (path: string) => items.find(item => item.path === path);
+  const registros = items.find(item => item.children?.some(filho => filho.path === '/registros-diarios/lro-ocorrencias'));
+  const central: MenuItemType = { label: 'Central', icon: Home, path: '/central', description: 'Boas-vindas e o caminho do plantão.' };
+  return [
+    central,
+    porPath('/inicio-plantao'),
+    registros && { ...registros, children: registros.children!.filter(filho => liberada(filho.path)) },
+    porPath('/fim-plantao'),
+  ].filter((item): item is MenuItemType => !!item);
+}
+
 export function Sidebar() {
   const { collapsed, effectiveCollapsed, toggleSidebar, setPeeking, setPinned } = useSidebar();
   const { user } = useAuth();
@@ -182,7 +201,9 @@ export function Sidebar() {
   const [canViewCertificacoes, setCanViewCertificacoes] = useState(() => podeVerCertificacoesBase(user));
   const [canViewRelatorios, setCanViewRelatorios] = useState(() => podeVerRelatoriosBase(user));
   const [canViewRelatoriosPtrBa, setCanViewRelatoriosPtrBa] = useState(() => podeVerRelatoriosPtrBaBase(user));
-  const visibleMenu = filterMenu(menuItems, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa, user?.role === 'desenvolvedor');
+  const visibleMenu = isComunicante(user)
+    ? menuComunicante(menuItems)
+    : filterMenu(menuItems, isAdmin, canViewCadastroCompleto, canViewArquivo, canViewCertificacoes, canViewRelatorios, canViewRelatoriosPtrBa, user?.role === 'desenvolvedor');
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const asideRef = useRef<HTMLElement>(null);
@@ -291,7 +312,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-3 pb-3">
-        <DailyOperationsTutorial collapsed={effectiveCollapsed} />
+        {!isComunicante(user) && <DailyOperationsTutorial collapsed={effectiveCollapsed} />}
       </div>
       <div className="mx-3 mb-3 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
       <div className="px-3 pb-3 text-center text-[10px] font-medium uppercase tracking-widest text-aviation-400">

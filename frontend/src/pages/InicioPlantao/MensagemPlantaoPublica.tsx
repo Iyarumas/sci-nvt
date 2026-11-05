@@ -30,7 +30,7 @@ export default function MensagemPlantaoPublica() {
   return (
     <main className="min-h-dvh bg-graphite-50 px-4 py-6 text-graphite-900 dark:bg-surface-dark dark:text-graphite-100">
       <div className="mx-auto max-w-lg">
-        <h1 className="mb-4 text-lg font-bold">Mensagem do início de plantão</h1>
+        <h1 className="mb-4 text-lg font-bold">Mensagem do plantão</h1>
         {erro ? (
           <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">{erro}</p>
         ) : !mensagem ? (

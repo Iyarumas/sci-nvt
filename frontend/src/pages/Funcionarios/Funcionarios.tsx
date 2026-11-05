@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Search, AlertCircle, X, Calendar, Shield, Droplets, User, Hash, IdCard, Car, Briefcase, Clock, FileText, Radio, Mail, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Users, Search, AlertCircle, X, Calendar, Shield, Droplets, User, Hash, IdCard, Car, Briefcase, Clock, FileText, Radio, Mail, Phone, ArrowUpDown, ChevronDown, ChevronUp } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import {
@@ -86,6 +86,14 @@ function capitalize(str: string) {
 function labelCargo(valor: string) {
   const found = CARGO_OPTIONS.find(o => o.value === valor);
   return found ? found.label : valor;
+}
+
+/** Celular guardado só com dígitos → (47) 99999-9999. */
+function formatarCelular(valor?: string | null): string {
+  const d = String(valor ?? '').replace(/\D/g, '');
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return d;
 }
 
 function formatDate(d: string) {
@@ -217,7 +225,7 @@ function BombeiroDetailModal({
                 <>
                   <InfoRow icon={Mail} label="E-mail" value={bombeiro.email} />
                   <InfoRow icon={IdCard} label="CPF" value={bombeiro.cpf} />
-                  <InfoRow icon={IdCard} label="RG" value={bombeiro.rg} />
+                  <InfoRow icon={Phone} label="Celular" value={formatarCelular(bombeiro.celular)} />
                   <InfoRow icon={Car} label="Número da CNH" value={bombeiro.cnhNumero} />
                 </>
               )}

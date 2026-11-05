@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { AutentiqueModule } from './autentique/autentique.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { PermissoesModule } from './permissoes/permissoes.module';
 import { PublicModule } from './public/public.module';
 import { ResourcesModule } from './resources/resources.module';
 import { RpcModule } from './rpc/rpc.module';
@@ -17,6 +18,7 @@ import { LocalStorageModule } from './storage/local-storage.module';
     AuthModule,
     AuditoriaModule,
     HealthModule,
+    PermissoesModule,
     PublicModule,
     ResourcesModule,
     RpcModule,

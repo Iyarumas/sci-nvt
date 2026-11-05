@@ -10,6 +10,7 @@ import {
   ResourceOrder,
   selectClause,
 } from '../common/utils/sql';
+import { documentosComEnvioAtivo } from '../autentique/envios.service';
 import { ALLOWED_TABLES } from './resources.config';
 import { DeleteDto, InsertDto, UpdateDto } from './dto/mutation.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
@@ -129,6 +130,7 @@ export class ResourcesService {
         if (!whereSql) throw new BadRequestException('Update requires at least one filter');
         this.validatePtrbaOrigem(dto.payload);
         const current = await client.query(`SELECT * FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
+        await this.bloquearPtrbaEnviado(client, current.rows, 'editado');
         for (const row of current.rows) {
           if (row.origem_ptrba_id) {
             throw new BadRequestException('O documento APOC legado é preservado somente para consulta.');
@@ -212,6 +214,7 @@ export class ResourcesService {
         if (current.rows.some(row => row.origem_ptrba_id)) {
           throw new BadRequestException('O documento APOC legado é preservado somente para consulta.');
         }
+        await this.bloquearPtrbaEnviado(client, current.rows, 'excluído');
         const result = await client.query(`DELETE FROM ${this.tableName(table)} ${whereSql} RETURNING *`, params);
         return { data: this.selectPtrbaRows(result.rows, dto.select), error: null };
       }
@@ -219,6 +222,14 @@ export class ResourcesService {
       const result = await client.query(`DELETE FROM ${safeTable} ${whereSql} ${returningSql}`, params);
       return { data: dto.select !== undefined ? result.rows : null, error: null };
     });
+  }
+
+  /** Depois de enviado para assinatura, o PTR-BA deixa de ser rascunho e não muda mais. */
+  private async bloquearPtrbaEnviado(client: PoolClient, rows: QueryResultRow[], acao: 'editado' | 'excluído'): Promise<void> {
+    const enviados = await documentosComEnvioAtivo(client, 'ptrba', rows.map(row => String(row.id)));
+    if (enviados.size) {
+      throw new BadRequestException(`Este PTR-BA já foi enviado para assinatura e não pode mais ser ${acao}.`);
+    }
   }
 
   private validatePtrbaOrigem(row: Record<string, unknown>): void {

@@ -1,17 +1,40 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Ban,
   ChevronDown,
   ChevronUp,
   Download,
   Eye,
   FileText,
   Image,
+  Mail,
   Pencil,
   Plus,
   Save,
+  Signature,
   Trash2,
   X,
 } from 'lucide-react';
+import {
+  cancelarEnvioAssinatura,
+  enviarParaAssinatura,
+  listarEnviosAssinatura,
+  previaEnvioAssinatura,
+  quemAssinaPTRBA,
+  reenviarAvisosAssinatura,
+  type EnvioAssinatura,
+  type PreviaSignatario,
+} from '../../services/autentiqueEnviosService';
+import {
+  bordaAssinatura,
+  CelulaAssinatura,
+  chaveNome,
+  ConfirmarEnvioModal,
+  EtiquetasAssinantes,
+  SeloAssinatura,
+  signatarioDoNome,
+  situacaoAssinatura,
+} from './PTRBAAssinaturas';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { SearchSelect, type AtivoItem } from '../../components/ui/SearchSelect';
@@ -29,6 +52,7 @@ import { listarEscalas } from '../../services/escalaService';
 import { listarCompletas } from '../../services/escalaMensalService';
 import { listarFeriasGozo } from '../../services/feriasService';
 import { baixarPTRBACompletoPdf, gerarPTRBACompletoPdf } from '../../services/ptrbaCompletoPdfService';
+import { nomeArquivoPTRBACompleto } from '../../utils/documentFileNames';
 import {
   atualizarPTRBACompleto,
   criarPTRBACompleto,
@@ -819,34 +843,57 @@ function PTRBACompletoForm({
   );
 }
 
+function tituloPTRBA(registro: PTRBACompleto): string {
+  return `${registro.isApoc ? 'PTR-BA APOC' : registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - ${registro.equipe} - ${formatDate(registro.data)}`;
+}
+
 function PTRBACompletoCard({
   registro,
+  envio,
+  nomesGuerra,
   canEdit,
   canDelete,
+  podeCancelarEnvio,
   downloading,
   previewing,
+  reenviando,
   auditoriaPessoas,
   onPreviewDocument,
   onEdit,
   onDelete,
   onDownload,
+  onEnviar,
+  onReenviar,
+  onCancelarEnvio,
 }: {
   registro: PTRBACompleto;
+  envio?: EnvioAssinatura;
+  nomesGuerra: Map<string, string>;
   canEdit: boolean;
   canDelete: boolean;
+  podeCancelarEnvio: boolean;
   downloading: boolean;
   previewing: boolean;
+  reenviando: boolean;
   auditoriaPessoas: PessoaAuditoria[];
   onPreviewDocument: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onDownload: () => void;
+  onEnviar: () => void;
+  onReenviar: () => void;
+  onCancelarEnvio: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const gruposEvidencias = evidenciasEmPares(registro.evidencias);
   const evidenciasPreenchidas = registro.evidencias.filter(ev => ev.imagem);
   const participantesPreenchidos = registro.participantes.filter(p => p.nomeCompleto);
   const auditoria = resumoAuditoria(registro, auditoriaPessoas);
+  const situacao = situacaoAssinatura(envio);
+  const rascunho = situacao === 'rascunho';
+  const bordaStatus = bordaAssinatura(situacao);
+  const assinantesRascunho = rascunho ? quemAssinaPTRBA(participantesPreenchidos, registro.chefeEquipe) : [];
+  const documento = `PTR-BA da equipe ${registro.equipe} de ${formatDate(registro.data)}`;
   const infoCards = [
     { label: 'Data do plantão', value: formatDate(registro.data) },
     { label: 'Equipe', value: registro.equipe },
@@ -856,9 +903,11 @@ function PTRBACompletoCard({
 
   return (
     <div className={`overflow-hidden rounded-2xl border bg-white/80 shadow-sm backdrop-blur-sm transition-all dark:bg-surface-card/80 ${
-      expanded
-        ? 'border-aviation-400/70 shadow-lg shadow-aviation-500/10 dark:border-aviation-500/50'
-        : 'border-graphite-200/60 hover:border-aviation-300/60 dark:border-border-dark'
+      bordaStatus
+        ? `${bordaStatus} ${expanded ? 'shadow-lg' : ''}`
+        : expanded
+          ? 'border-aviation-400/70 shadow-lg shadow-aviation-500/10 dark:border-aviation-500/50'
+          : 'border-graphite-200/60 hover:border-aviation-300/60 dark:border-border-dark'
     }`}>
       <button
         type="button"
@@ -873,6 +922,7 @@ function PTRBACompletoCard({
             <span className="rounded-full bg-aviation-50 px-2.5 py-1 text-xs font-semibold text-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               {evidenciasPreenchidas.length} evidência(s)
             </span>
+            {!registro.isApoc && <SeloAssinatura envio={envio} />}
           </div>
           <p className="text-sm text-graphite-500 dark:text-graphite-400">
             {participantesPreenchidos.length} participante(s) preenchido(s)
@@ -899,6 +949,12 @@ function PTRBACompletoCard({
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
       </button>
+      {/* Fora da coluna do título para usar toda a largura do card, inclusive embaixo do botão. */}
+      {!registro.isApoc && (
+        <div className="-mt-5 px-5 pb-5">
+          <EtiquetasAssinantes envio={envio} rascunho={assinantesRascunho} nomesGuerra={nomesGuerra} />
+        </div>
+      )}
 
       {expanded && (
         <div className="border-t border-graphite-200/70 px-5 pb-5 pt-4 dark:border-border-dark">
@@ -924,6 +980,7 @@ function PTRBACompletoCard({
                       <th className="px-3 py-2">Função</th>
                       <th className="px-3 py-2">Nome</th>
                       <th className="px-3 py-2">Situação</th>
+                      {envio && <th className="px-3 py-2">Assinatura</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -933,6 +990,11 @@ function PTRBACompletoCard({
                         <td className="px-3 py-2 text-graphite-700 dark:text-graphite-200">{participante.funcao || '-'}</td>
                         <td className="px-3 py-2 font-semibold text-graphite-900 dark:text-graphite-100">{participante.nomeCompleto || '-'}</td>
                         <td className="px-3 py-2 text-graphite-700 dark:text-graphite-200">{participante.situacao || '-'}</td>
+                        {envio && (
+                          <td className="px-3 py-2">
+                            <CelulaAssinatura signatario={signatarioDoNome(envio, participante.nomeCompleto)} documento={documento} />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -996,7 +1058,7 @@ function PTRBACompletoCard({
             <button type="button" onClick={onDownload} disabled={downloading} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60">
               <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : 'Download PDF'}
             </button>
-            {canEdit && (
+            {canEdit && rascunho && (
               <>
                 <button type="button" onClick={onEdit} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                   <Pencil className="h-4 w-4" /> {registro.origemPtrbaId ? 'Editar PTR-BA de origem' : 'Editar'}
@@ -1006,9 +1068,29 @@ function PTRBACompletoCard({
                     <Trash2 className="h-4 w-4" /> Excluir
                   </button>
                 )}
+                {!registro.isApoc && !registro.origemPtrbaId && (
+                  <button type="button" onClick={onEnviar} className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
+                    <Signature className="h-4 w-4" /> Enviar para assinatura
+                  </button>
+                )}
               </>
             )}
+            {situacao === 'aguardando' && envio?.podeGerir && (
+              <button type="button" onClick={onReenviar} disabled={reenviando} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                <Mail className="h-4 w-4" /> {reenviando ? 'Reenviando...' : 'Reenviar aviso por e-mail'}
+              </button>
+            )}
+            {!rascunho && podeCancelarEnvio && (
+              <button type="button" onClick={onCancelarEnvio} className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                <Ban className="h-4 w-4" /> Cancelar envio
+              </button>
+            )}
           </div>
+          {!rascunho && envio && (
+            <p className="mt-3 text-xs text-graphite-500 dark:text-graphite-400">
+              Enviado para assinatura por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Depois de enviado, o PTR-BA não pode mais ser editado nem excluído.
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -1079,8 +1161,16 @@ export function PTRBACompletoPage() {
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
   const [filtroMes, setFiltroMes] = useState((new Date().getMonth() + 1).toString());
   const [filtroEquipe, setFiltroEquipe] = useState('');
-  const [somenteComApoc, setSomenteComApoc] = useState(false);
+  const [filtroLista, setFiltroLista] = useState<'todos' | 'apoc' | 'pendentes' | 'rascunho'>('todos');
+  const somenteComApoc = filtroLista === 'apoc';
   const [filtroApoc, setFiltroApoc] = useState('');
+  const [envios, setEnvios] = useState<Record<string, EnvioAssinatura>>({});
+  const [enviandoRegistro, setEnviandoRegistro] = useState<PTRBACompleto | null>(null);
+  const [previaEnvio, setPreviaEnvio] = useState<PreviaSignatario[] | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  const [reenviandoId, setReenviandoId] = useState<string | null>(null);
+  const [confirmCancelarEnvio, setConfirmCancelarEnvio] = useState<EnvioAssinatura | null>(null);
   const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 
   function montarAuditoriaPessoasDoRegistro(registro: Pick<PTRBACompleto, 'data' | 'equipe'>): PessoaAuditoria[] {
@@ -1090,6 +1180,14 @@ export function PTRBACompletoPage() {
       equipeReferencia: registro.equipe,
     });
   }
+
+  const nomesGuerra = useMemo(() => {
+    const mapa = new Map<string, string>();
+    [...bombeiros, ...apocs].forEach(pessoa => {
+      if (pessoa.nomeGuerra?.trim()) mapa.set(chaveNome(pessoa.nomeCompleto), pessoa.nomeGuerra.trim());
+    });
+    return mapa;
+  }, [bombeiros, apocs]);
 
   const registrosComEfetivoDoDia = useMemo(() => registros.map(registro => {
     if (registro.isApoc) return registro;
@@ -1126,6 +1224,8 @@ export function PTRBACompletoPage() {
   const registrosFiltrados = registrosComEfetivoDoDia.filter(registro => {
     if (registro.isApoc) return false;
     if ((somenteComApoc || filtroApoc.trim()) && !possuiParticipacaoAPOCPTRBA(registro, filtroApoc)) return false;
+    if (filtroLista === 'pendentes' && !['aguardando', 'recusado'].includes(situacaoAssinatura(envios[registro.id]))) return false;
+    if (filtroLista === 'rascunho' && envios[registro.id]) return false;
     if (filtroEquipe && registro.equipe !== filtroEquipe) return false;
     if (filtroAno && !registro.data.startsWith(filtroAno)) return false;
     if (filtroMes) {
@@ -1135,9 +1235,84 @@ export function PTRBACompletoPage() {
     return true;
   });
 
+  async function carregarEnvios() {
+    try {
+      const lista = await listarEnviosAssinatura('ptrba');
+      setEnvios(Object.fromEntries(lista.map(envio => [envio.referenciaId, envio])));
+    } catch {
+      // Sem o status das assinaturas, a lista continua funcionando como rascunho.
+    }
+  }
+
   async function carregar() {
     const lista = await listarPTRBACompletos();
     setRegistros(lista);
+    await carregarEnvios();
+  }
+
+  async function abrirEnvio(registro: PTRBACompleto) {
+    setErroEnvio(null);
+    setPreviaEnvio(null);
+    setEnviandoRegistro(registro);
+    try {
+      setPreviaEnvio(await previaEnvioAssinatura({
+        tipo: 'ptrba',
+        referenciaId: registro.id,
+        participantes: registro.participantes.filter(p => p.nomeCompleto.trim()),
+        chefeEquipe: registro.chefeEquipe,
+      }));
+    } catch (err) {
+      setPreviaEnvio([]);
+      setErroEnvio(err instanceof Error ? err.message : 'Não foi possível conferir os e-mails.');
+    }
+  }
+
+  async function confirmarEnvio() {
+    if (!enviandoRegistro) return;
+    setEnviando(true);
+    setErroEnvio(null);
+    try {
+      const registro = enviandoRegistro;
+      const participantes = registro.participantes.filter(p => p.nomeCompleto.trim());
+      const pdf = await gerarPTRBACompletoPdf(registro);
+      await enviarParaAssinatura({
+        tipo: 'ptrba',
+        referenciaId: registro.id,
+        pdf,
+        nomeArquivo: nomeArquivoPTRBACompleto(registro),
+        participantes,
+        chefeEquipe: registro.chefeEquipe,
+      });
+      setEnviandoRegistro(null);
+      await carregarEnvios();
+      setSuccessMessage('PTR-BA enviado para assinatura. Cada pessoa vai receber o link por e-mail.');
+    } catch (err) {
+      setErroEnvio(err instanceof Error ? err.message : 'Não foi possível enviar para assinatura.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function handleReenviar(envio: EnvioAssinatura) {
+    setReenviandoId(envio.id);
+    try {
+      const { reenviados } = await reenviarAvisosAssinatura(envio.id);
+      setSuccessMessage(`Aviso reenviado por e-mail para ${reenviados} pessoa(s) que ainda não assinaram.`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível reenviar os avisos.');
+    } finally {
+      setReenviandoId(null);
+    }
+  }
+
+  async function handleCancelarEnvio(envio: EnvioAssinatura) {
+    try {
+      await cancelarEnvioAssinatura(envio.id);
+      setConfirmCancelarEnvio(null);
+      await carregarEnvios();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível cancelar o envio.');
+    }
   }
 
   async function buscarDadosApoio() {
@@ -1196,6 +1371,7 @@ export function PTRBACompletoPage() {
         if (cancelado) return;
         setRegistros(lista);
         setLoading(false);
+        void carregarEnvios();
 
         // Os dados auxiliares enriquecem o efetivo, mas não precisam atrasar
         // a abertura da lista de PTR-BAs.
@@ -1360,8 +1536,10 @@ export function PTRBACompletoPage() {
             {PTRBA_COMPLETO_EQUIPES.map(equipe => <option key={equipe} value={equipe}>{equipe}</option>)}
           </select>
           <p className="text-sm text-graphite-500 dark:text-graphite-400">{registrosFiltrados.length} registro(s)</p>
-          <select aria-label="Filtrar por participação APOC" value={somenteComApoc ? 'apoc' : 'todos'} onChange={e => setSomenteComApoc(e.target.value === 'apoc')} className={inputClass}>
+          <select aria-label="Filtrar PTR-BAs" value={filtroLista} onChange={e => setFiltroLista(e.target.value as typeof filtroLista)} className={inputClass}>
             <option value="todos">Todos os PTR-BAs</option>
+            <option value="pendentes">Pendentes de assinatura</option>
+            <option value="rascunho">Rascunhos</option>
             <option value="apoc">Com participação de APOC</option>
           </select>
           <input type="search" value={filtroApoc} onChange={e => setFiltroApoc(e.target.value)} placeholder="Pesquisar pelo nome do APOC" aria-label="Pesquisar pelo nome do APOC" className={`${inputClass} w-full sm:w-72`} />
@@ -1393,15 +1571,22 @@ export function PTRBACompletoPage() {
               <PTRBACompletoCard
                 key={registro.id}
                 registro={registro}
+                envio={envios[registro.id]}
+                nomesGuerra={nomesGuerra}
                 canEdit={podeAlterar}
                 canDelete={podeExcluir}
+                podeCancelarEnvio={contexto.isAdministradorSistema}
                 downloading={downloadingId === registro.id}
                 previewing={previewingId === registro.id}
+                reenviando={reenviandoId === envios[registro.id]?.id}
                 auditoriaPessoas={montarAuditoriaPessoasDoRegistro(registro)}
                 onPreviewDocument={() => handlePreviewPdf(registro)}
                 onEdit={() => abrirEdicaoPTRBA(registro)}
                 onDelete={() => setConfirmDelete(registro.id)}
                 onDownload={() => handleDownload(registro)}
+                onEnviar={() => abrirEnvio(registro)}
+                onReenviar={() => envios[registro.id] && handleReenviar(envios[registro.id])}
+                onCancelarEnvio={() => setConfirmCancelarEnvio(envios[registro.id] ?? null)}
               />
             );
           })}
@@ -1424,10 +1609,42 @@ export function PTRBACompletoPage() {
           </div>
         </div>
       )}
+      {enviandoRegistro && (
+        <ConfirmarEnvioModal
+          titulo={tituloPTRBA(enviandoRegistro)}
+          assinantes={previaEnvio}
+          enviando={enviando}
+          erro={erroEnvio}
+          onCancelar={() => setEnviandoRegistro(null)}
+          onConfirmar={confirmarEnvio}
+        />
+      )}
+      {confirmCancelarEnvio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white/95 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:bg-surface-elevated/95">
+            <h3 className="mb-2 flex items-center gap-2 text-lg font-bold text-graphite-900 dark:text-graphite-100">
+              <Ban className="h-5 w-5 text-alert-red" /> Tem certeza que deseja cancelar o envio?
+            </h3>
+            <ul className="mb-6 list-disc space-y-1 pl-5 text-sm text-graphite-500 dark:text-graphite-400">
+              <li>Ninguém mais conseguirá assinar pelos links já enviados.</li>
+              <li>As assinaturas já feitas deixam de valer.</li>
+              <li>O PTR-BA volta a ser rascunho, para corrigir e enviar de novo.</li>
+            </ul>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setConfirmCancelarEnvio(null)} className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2 text-sm font-medium text-graphite-700 shadow-sm transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card/80 dark:text-graphite-200">
+                Não, voltar
+              </button>
+              <button onClick={() => handleCancelarEnvio(confirmCancelarEnvio)} className="rounded-xl bg-gradient-to-r from-alert-red to-red-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-red-500/20 transition-all active:scale-[0.98]">
+                Sim, cancelar envio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {successMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-white/95 p-6 shadow-xl shadow-black/5 backdrop-blur-sm dark:bg-surface-elevated/95">
-            <h3 className="mb-2 text-lg font-bold text-graphite-900 dark:text-graphite-100">PTR-BA salvo</h3>
+            <h3 className="mb-2 text-lg font-bold text-graphite-900 dark:text-graphite-100">PTR-BA</h3>
             <p className="mb-6 text-sm text-graphite-500 dark:text-graphite-400">{successMessage}</p>
             <div className="flex justify-end">
               <button onClick={() => setSuccessMessage(null)} className="rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">

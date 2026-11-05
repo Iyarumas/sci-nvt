@@ -193,13 +193,21 @@ export class AuthService implements OnApplicationBootstrap {
   async loadUser(id: string): Promise<AuthUser | null> {
     const cached = this.userCache.get(id);
     if (cached && Date.now() - cached.at < USER_CACHE_MS) return cached.user;
-    const result = await this.database.query<{ id: string; username: string; role: string }>(
-      'SELECT id, username, role FROM usuarios WHERE id = $1 LIMIT 1',
+    const result = await this.database.query<{ id: string; username: string; role: string; funcao: string | null }>(
+      `SELECT u.id, u.username, u.role, b.cargo AS funcao
+         FROM usuarios u
+         LEFT JOIN bombeiros b ON u.person_type = 'bombeiro' AND b.id::text = u.person_id
+        WHERE u.id = $1 LIMIT 1`,
       [id],
     );
     const row = result.rows[0];
     const user = row
-      ? { id: row.id, username: row.username, role: (VALID_ROLES.has(row.role) ? row.role : 'sem_funcao') as UserRole }
+      ? {
+        id: row.id,
+        username: row.username,
+        role: (VALID_ROLES.has(row.role) ? row.role : 'sem_funcao') as UserRole,
+        funcao: row.funcao ?? null,
+      }
       : null;
     this.userCache.set(id, { user, at: Date.now() });
     return user;

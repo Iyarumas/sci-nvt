@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { AuthUser } from '../auth/auth.types';
 import { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service';
@@ -20,6 +20,9 @@ const TABELAS_TREINAMENTO_ASSINADO: Record<string, { tipo: string; nome: string 
   treinamentos_tempo_resposta: { tipo: 'temporesposta', nome: 'Tempo Resposta' },
 };
 import { ALLOWED_TABLES } from './resources.config';
+
+/** Tabelas em que o comunicante lança registros: ocorrências do LRO, inspeções e solicitações. */
+const TABELAS_DO_COMUNICANTE = new Set(['ocorrencias_operacionais', 'conferencias']);
 import { DeleteDto, InsertDto, UpdateDto } from './dto/mutation.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
 
@@ -337,6 +340,35 @@ export class ResourcesService {
       if (!nome) continue;
       if (nomes.has(nome)) throw new BadRequestException('O mesmo APOC não pode ser selecionado mais de uma vez.');
       nomes.add(nome);
+    }
+  }
+
+  /**
+   * O comunicante só edita ou exclui ocorrências, inspeções e solicitações que ele mesmo lançou.
+   * Na criação, o autor é sempre ele, nunca o que vier do navegador.
+   */
+  async conferirAutoriaComunicante(
+    table: string,
+    action: 'insert' | 'update' | 'delete',
+    dto: { filters?: unknown[]; or?: string[]; payload?: unknown },
+    user: AuthUser,
+  ): Promise<void> {
+    if (!TABELAS_DO_COMUNICANTE.has(table)) return;
+    if (action === 'insert') {
+      const linhas = Array.isArray(dto.payload) ? dto.payload : dto.payload ? [dto.payload] : [];
+      for (const linha of linhas as Record<string, unknown>[]) linha.created_by = user.username;
+      return;
+    }
+    const params: unknown[] = [];
+    const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+    if (!whereSql) throw new BadRequestException('Informe qual registro alterar.');
+    const result = await this.database.query<{ created_by: string | null }>(
+      `SELECT created_by FROM ${this.tableName(table)} ${whereSql}`,
+      params,
+    );
+    const meu = (autor: string | null) => String(autor ?? '').trim().toLowerCase() === user.username.trim().toLowerCase();
+    if (result.rows.some(row => !meu(row.created_by))) {
+      throw new ForbiddenException('O comunicante só pode alterar o que ele mesmo lançou.');
     }
   }
 

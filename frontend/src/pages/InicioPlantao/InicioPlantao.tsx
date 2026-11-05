@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import QRCode from 'qrcode';
-import { Check, Copy, MessageCircle, Plus, Radio, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { Plus, Radio, RefreshCw, Trash2 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
@@ -25,9 +24,12 @@ import type { APOC } from '../../types/apoc';
 import type { Bombeiro } from '../../types/bombeiro';
 import type { EscalaDiaria } from '../../types/escala';
 import { opcoesAssuntoPTRBA } from '../../types/ptrb';
+import { isComunicante } from '../../utils/permissoes';
+import { dataDoPlantaoAtual } from '../../utils/plantaoRegistros';
 import { NUMEROS_CCI, type DadosInicioPlantao, type InicioPlantaoSalvo, type ViaturaPlantao } from '../../types/inicioPlantao';
 import { hojeLocalISO } from '../../utils/datas';
-import { linkWhatsAppMensagem, montarMensagemInicioPlantao } from '../../utils/mensagemInicioPlantao';
+import { montarMensagemInicioPlantao } from '../../utils/mensagemInicioPlantao';
+import { PainelMensagemPlantao } from './PainelMensagemPlantao';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const STATUS = ['OK', 'COM ALTERAÇÃO'] as const;
@@ -109,14 +111,42 @@ function sugerirDoAnterior(base: DadosInicioPlantao, anterior: DadosInicioPlanta
   };
 }
 
-function Campo({ rotulo, valor, onChange, placeholder, tipo = 'text' }: {
+function Campo({ rotulo, valor, onChange, placeholder, tipo = 'text', sugestoes }: {
   rotulo: string; valor: string; onChange: (v: string) => void; placeholder?: string; tipo?: string;
+  /** id de um <datalist>: o navegador sugere nomes enquanto a pessoa digita. */
+  sugestoes?: string;
 }) {
   return (
     <label className="block">
       <span className={label}>{rotulo}</span>
-      <input type={tipo} inputMode={tipo === 'number' ? 'decimal' : undefined} value={valor} placeholder={placeholder} onChange={e => onChange(e.target.value)} className={input} />
+      <input type={tipo} list={sugestoes} autoComplete={sugestoes ? 'off' : undefined} inputMode={tipo === 'number' ? 'decimal' : undefined} value={valor} placeholder={placeholder} onChange={e => onChange(e.target.value)} className={input} />
     </label>
+  );
+}
+
+/**
+ * Escolha da pessoa na viatura: primeiro quem está no plantão; depois os demais bombeiros
+ * ativos, para trocas e extras que não vieram sozinhos.
+ */
+function SeletorPessoa({ rotulo, valor, efetivoDoDia, todos, onChange }: {
+  rotulo: string; valor: string; efetivoDoDia: string[]; todos: Bombeiro[]; onChange: (nome: string) => void;
+}) {
+  const doDia = [...new Set(efetivoDoDia)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const outros = [...new Set(todos.map(b => b.nomeGuerra).filter(n => n && !doDia.includes(n)))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const fora = valor && !doDia.includes(valor) && !outros.includes(valor);
+  return (
+    <select aria-label={rotulo} value={valor} onChange={e => onChange(e.target.value)} className={input}>
+      <option value="">Selecione</option>
+      {fora && <option value={valor}>{valor}</option>}
+      {doDia.length > 0 && (
+        <optgroup label="Efetivo do dia">
+          {doDia.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+        </optgroup>
+      )}
+      <optgroup label="Outros bombeiros">
+        {outros.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+      </optgroup>
+    </select>
   );
 }
 
@@ -152,24 +182,34 @@ function Status({ rotulo, valor, onChange }: { rotulo: string; valor: string; on
 }
 
 export default function InicioPlantao() {
-  const { equipeEfetiva } = useContextoOperacional();
+  const { equipeEfetiva, user } = useContextoOperacional();
+  // O comunicante preenche só o início de plantão da equipe dele.
+  const equipeTravada = isComunicante(user) && !!equipeEfetiva;
   const [data, setData] = useState(hojeLocalISO());
   const [equipe, setEquipe] = useState<string>('');
   const [dados, setDados] = useState<DadosInicioPlantao>(vazio);
   const [salvo, setSalvo] = useState<InicioPlantaoSalvo | null>(null);
   const [apocs, setApocs] = useState<APOC[]>([]);
+  const [bombeirosAtivos, setBombeirosAtivos] = useState<Bombeiro[]>([]);
+  /** Nomes de guerra de quem está no plantão (escala mensal com férias, extras e trocas). */
+  const [efetivoDoDiaNomes, setEfetivoDoDiaNomes] = useState<string[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
-  const [qr, setQr] = useState('');
-  const [copiado, setCopiado] = useState(false);
   const [recarregar, setRecarregar] = useState(0);
 
   useEffect(() => {
-    if (!equipe && equipeEfetiva && (EQUIPES as readonly string[]).includes(equipeEfetiva)) setEquipe(equipeEfetiva);
+    if (!equipe && equipeEfetiva && (EQUIPES as readonly string[]).includes(equipeEfetiva)) {
+      setEquipe(equipeEfetiva);
+      // De madrugada, quem é da noite ainda está no plantão do dia anterior.
+      setData(dataDoPlantaoAtual(equipeEfetiva));
+    }
   }, [equipeEfetiva, equipe]);
 
-  useEffect(() => { listarAPOCs().then(setApocs).catch(() => setApocs([])); }, []);
+  useEffect(() => {
+    listarAPOCs().then(setApocs).catch(() => setApocs([]));
+    listarBombeiros().then(lista => setBombeirosAtivos(lista.filter(b => !b.dataDesligamento))).catch(() => setBombeirosAtivos([]));
+  }, []);
 
   // Carrega o que já foi salvo; se ainda não existe, monta a partir da escala e do plantão anterior.
   useEffect(() => {
@@ -177,7 +217,6 @@ export default function InicioPlantao() {
     let cancelado = false;
     setCarregando(true);
     setErro('');
-    setQr('');
     (async () => {
       try {
         const existente = await obterInicioPlantao(data, equipe);
@@ -204,6 +243,7 @@ export default function InicioPlantao() {
           bombeiros, feriasGozo: gozos, vigencias, trocaFills, escalasCompletas: completas,
           substituicoesTemporarias: substituicoes, equipe, dataPlantao: data,
         });
+        setEfetivoDoDiaNomes(efetivoDoDia.map(entry => entry.bombeiro.nomeGuerra).filter(Boolean));
         const { guarnicoes } = montarGuarnicoesExercicio({
           efetivo: efetivoDoDia, bombeiros, escalasCompletas: completas, equipe, dataPlantao: data, hora: '08:00',
         });
@@ -233,12 +273,6 @@ export default function InicioPlantao() {
   }, [data, equipe, recarregar]);
 
   const mensagem = useMemo(() => montarMensagemInicioPlantao(data, equipe || '-', dados), [data, equipe, dados]);
-  const linkPublico = salvo ? `${window.location.origin}/plantao/m/${salvo.token}` : '';
-
-  useEffect(() => {
-    if (!linkPublico) { setQr(''); return; }
-    QRCode.toDataURL(linkPublico, { margin: 1, width: 220 }).then(setQr).catch(() => setQr(''));
-  }, [linkPublico]);
 
   const set = <K extends keyof DadosInicioPlantao>(chave: K, valor: DadosInicioPlantao[K]) => setDados(atual => ({ ...atual, [chave]: valor }));
   const setViatura = (chave: ViaturaPlantao['chave'], parcial: Partial<ViaturaPlantao>) =>
@@ -272,16 +306,6 @@ export default function InicioPlantao() {
     }
   }
 
-  async function copiar() {
-    try {
-      await navigator.clipboard.writeText(mensagem);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
-    } catch {
-      setErro('Não foi possível copiar. Selecione o texto e copie manualmente.');
-    }
-  }
-
   const listaTexto = (valor: string[]) => valor.join('\n');
   const textoLista = (texto: string) => texto.split('\n').map(l => l.trim()).filter(Boolean);
 
@@ -292,7 +316,7 @@ export default function InicioPlantao() {
       <div className={`${card} mb-4 flex flex-wrap items-end gap-3`}>
         <label className="w-44"><span className={label}>Data do plantão</span><input type="date" value={data} onChange={e => setData(e.target.value)} className={input} /></label>
         <label className="w-44"><span className={label}>Equipe</span>
-          <select value={equipe} onChange={e => setEquipe(e.target.value)} className={input}>
+          <select value={equipe} onChange={e => setEquipe(e.target.value)} disabled={equipeTravada} className={`${input} disabled:cursor-not-allowed disabled:opacity-70`}>
             <option value="">Selecione</option>
             {EQUIPES.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
@@ -327,9 +351,9 @@ export default function InicioPlantao() {
                   <input list="apocs-plantao" value={dados.apoc} onChange={e => set('apoc', e.target.value)} className={input} />
                   <datalist id="apocs-plantao">{apocs.map(a => <option key={a.id} value={a.nomeGuerra} />)}</datalist>
                 </label>
-                <Campo rotulo="SPO" valor={dados.spo} onChange={v => set('spo', v)} />
-                <Campo rotulo="Supervisão/PCM" valor={dados.supervisao} onChange={v => set('supervisao', v)} />
-                <Campo rotulo="Fiscal" valor={dados.fiscal} onChange={v => set('fiscal', v)} />
+                <Campo rotulo="SPO" valor={dados.spo} sugestoes="apocs-plantao" onChange={v => set('spo', v)} />
+                <Campo rotulo="Supervisão/PCM" valor={dados.supervisao} sugestoes="apocs-plantao" onChange={v => set('supervisao', v)} />
+                <Campo rotulo="Fiscal" valor={dados.fiscal} sugestoes="apocs-plantao" onChange={v => set('fiscal', v)} />
                 <Campo rotulo="Cabeceira" valor={dados.cabeceira} placeholder="08" onChange={v => set('cabeceira', v)} />
                 <Status rotulo="Testes de hotline e rádio operacional" valor={dados.testesOperacional} onChange={v => set('testesOperacional', v)} />
               </div>
@@ -364,7 +388,13 @@ export default function InicioPlantao() {
                         {v.equipagem.map((t, i) => (
                           <div key={i} className="flex items-center gap-2">
                             <span className="w-14 shrink-0 text-xs font-bold text-graphite-500">{t.funcao}</span>
-                            <input aria-label={`${t.funcao} da ${v.posicao}`} value={t.nome} onChange={e => setViatura(v.chave, { equipagem: v.equipagem.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)) })} className={input} />
+                            <SeletorPessoa
+                              rotulo={`${t.funcao} da ${v.posicao}`}
+                              valor={t.nome}
+                              efetivoDoDia={efetivoDoDiaNomes}
+                              todos={bombeirosAtivos}
+                              onChange={nome => setViatura(v.chave, { equipagem: v.equipagem.map((x, j) => (j === i ? { ...x, nome } : x)) })}
+                            />
                           </div>
                         ))}
                       </div>
@@ -442,33 +472,7 @@ export default function InicioPlantao() {
             </section>
           </div>
 
-          <aside className="space-y-4 xl:sticky xl:top-4 xl:self-start">
-            <section className={card}>
-              <h2 className={tituloCard}>Mensagem do dia</h2>
-              <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-xl bg-graphite-50 p-3 font-sans text-xs leading-relaxed text-graphite-800 dark:bg-surface-hover dark:text-graphite-200">{mensagem}</pre>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={salvar} disabled={salvando} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60">
-                  <Save className="h-4 w-4" /> {salvando ? 'Salvando...' : salvo ? 'Salvar alterações' : 'Salvar e gerar QR Code'}
-                </button>
-                <button type="button" onClick={copiar} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 px-3 py-2.5 text-sm font-medium text-graphite-700 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-200 dark:hover:bg-surface-hover">
-                  {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copiado ? 'Copiada' : 'Copiar'}
-                </button>
-              </div>
-            </section>
-
-            {salvo && (
-              <section className={`${card} text-center`}>
-                <h2 className={tituloCard}>Enviar pelo celular</h2>
-                {qr ? <img src={qr} alt="QR Code da mensagem do dia" className="mx-auto h-52 w-52 rounded-xl bg-white p-2" /> : <p className="py-10 text-sm text-graphite-500">Gerando QR Code...</p>}
-                <p className="mt-2 text-xs text-graphite-500 dark:text-graphite-400">
-                  Aponte a câmera do celular. Abre a mensagem pronta para mandar no grupo do WhatsApp. Vale até {new Date(salvo.tokenExpiraEm).toLocaleString('pt-BR')}.
-                </p>
-                <a href={linkWhatsAppMensagem(mensagem)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10">
-                  <MessageCircle className="h-4 w-4" /> Abrir no WhatsApp deste computador
-                </a>
-              </section>
-            )}
-          </aside>
+          <PainelMensagemPlantao titulo="Mensagem do dia" mensagem={mensagem} salvo={salvo} salvando={salvando} onSalvar={salvar} onErro={setErro} />
         </div>
       )}
     </PageContainer>

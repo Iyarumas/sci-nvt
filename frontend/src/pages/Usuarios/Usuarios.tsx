@@ -76,6 +76,7 @@ const ROLE_BADGE: Record<string, string> = {
   chefe: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
   lider: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400',
   bombeiro: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+  comunicante: 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-400',
 };
 
 function CountdownTimer({ expiresAt }: { expiresAt: string }) {

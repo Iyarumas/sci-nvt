@@ -205,7 +205,7 @@ function pessoaCorrespondeReferencia(pessoa: Bombeiro, id?: unknown, ...nomes: u
     .some(nome => nomesPessoa.includes(nome));
 }
 
-function escalaMensalDoPlantao(
+export function escalaMensalDoPlantao(
   escalasCompletas: EscalaMensalCompleta[] | undefined,
   equipe: string,
   dataPlantao: string,

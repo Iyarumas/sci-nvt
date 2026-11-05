@@ -32,6 +32,8 @@ export interface ContextoOperacionalPermissao {
   cargoFixo: string | null;
   canManageGlobal: boolean;
   isAdministradorSistema: boolean;
+  /** Permissão "Comunicante (OC)" ou função OC: só as telas da central. */
+  isComunicante: boolean;
   bombeiroId: string | null;
   autorizadoRegistrosDiarios: boolean;
   autorizacaoRegistrosDiariosEquipe: Equipe | null;
@@ -40,6 +42,25 @@ export interface ContextoOperacionalPermissao {
 export function isAdministradorSistema(user: AuthUserPermissao): boolean {
   return user?.role === 'desenvolvedor' || user?.role === 'admin';
 }
+
+/**
+ * Comunicante: permissão "Comunicante (OC)" dada em Usuários, ou função OC no cadastro.
+ * Entra no sistema e vê só as telas da central.
+ */
+export function isComunicante(user: AuthUserPermissao): boolean {
+  if (isAdministradorSistema(user)) return false;
+  return user?.role === 'comunicante' || (user?.pessoa?.personType === 'bombeiro' && user.pessoa.funcao === 'OC');
+}
+
+export const ROTAS_COMUNICANTE = [
+  '/central',
+  '/inicio-plantao',
+  '/fim-plantao',
+  '/registros-diarios/lro-ocorrencias',
+  '/registros-diarios/inspecoes',
+  '/registros-diarios/solicitacoes',
+  '/perfil',
+] as const;
 
 export function isGSBase(user: AuthUserPermissao): boolean {
   return user?.pessoa?.personType === 'bombeiro' && user.pessoa.funcao === 'GS';
@@ -78,6 +99,7 @@ function contextoBase(user: AuthUserPermissao): ContextoOperacionalPermissao {
     cargoFixo: user?.pessoa?.funcao || null,
     canManageGlobal: admin || isGSBase(user),
     isAdministradorSistema: admin,
+    isComunicante: isComunicante(user),
     bombeiroId: user?.pessoa?.personType === 'bombeiro' ? user.pessoa.id || null : null,
     autorizadoRegistrosDiarios: false,
     autorizacaoRegistrosDiariosEquipe: null,
@@ -143,8 +165,9 @@ export async function resolverContextoOperacional(user: AuthUserPermissao): Prom
       equipeFixa: bombeiro.equipe,
       cargo: cargoEfetivo,
       cargoFixo: bombeiro.cargo,
-      canManageGlobal: base.isAdministradorSistema || cargoEfetivo === 'GS',
+      canManageGlobal: !base.isComunicante && (base.isAdministradorSistema || cargoEfetivo === 'GS'),
       isAdministradorSistema: base.isAdministradorSistema,
+      isComunicante: base.isComunicante,
       bombeiroId: bombeiro.id,
       autorizadoRegistrosDiarios: bombeiro.autorizadoRegistrosDiarios,
       autorizacaoRegistrosDiariosEquipe: equipeAutorizadaRegistros,
@@ -158,8 +181,9 @@ export async function resolverContextoOperacional(user: AuthUserPermissao): Prom
       equipeFixa: bombeiro.equipe,
       cargo: bombeiro.cargo,
       cargoFixo: bombeiro.cargo,
-      canManageGlobal: base.isAdministradorSistema || bombeiro.cargo === 'GS',
+      canManageGlobal: !base.isComunicante && (base.isAdministradorSistema || bombeiro.cargo === 'GS'),
       isAdministradorSistema: base.isAdministradorSistema,
+      isComunicante: base.isComunicante,
       bombeiroId: bombeiro.id,
       autorizadoRegistrosDiarios: bombeiro.autorizadoRegistrosDiarios,
       autorizacaoRegistrosDiariosEquipe: equipeAutorizadaRegistros,
@@ -270,6 +294,8 @@ export function equipeEscopoCertificacoes(contexto: ContextoOperacionalPermissao
 export function canCriarRegistrosDiarios(contexto: ContextoOperacionalPermissao): boolean {
   if (contexto.isAdministradorSistema) return true;
   if (contexto.cargo === 'GS') return false;
+  // O comunicante lança ocorrências, inspeções e solicitações da equipe dele.
+  if (contexto.isComunicante) return !!contexto.equipe;
   return contexto.cargo === 'BA-CE' ||
     contexto.cargo === 'BA-LR' ||
     (contexto.autorizadoRegistrosDiarios && !!contexto.autorizacaoRegistrosDiariosEquipe);
@@ -333,6 +359,9 @@ export function canGerenciarRegistroDiario(
 
   if (canEditarRegistroDaEquipeAutorizada(contexto, registro)) return true;
 
+  // O comunicante só mexe no que ele mesmo lançou.
+  if (contexto.isComunicante) return nomeIgual(username, registro.createdBy);
+
   if (contexto.cargo !== 'BA-CE' && contexto.cargo !== 'BA-LR') return false;
 
   if (nomeIgual(username, registro.createdBy)) return true;
@@ -365,6 +394,7 @@ export function canExcluirRegistroDiario(
 ): boolean {
   if (contexto.isAdministradorSistema) return true;
   if (contexto.cargo === 'GS') return false;
+  if (contexto.isComunicante) return nomeIgual(username, registro.createdBy);
   if (contexto.cargo !== 'BA-CE' && contexto.cargo !== 'BA-LR') return false;
   if (nomeIgual(username, registro.createdBy)) return true;
 

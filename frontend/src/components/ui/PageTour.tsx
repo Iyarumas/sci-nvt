@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { AnimatedPageTour, type AnimatedTourStep } from './AnimatedPageTour';
+import { useAuth } from '../../context/AuthContext';
+import { isComunicante } from '../../utils/permissoes';
 
 export function PageTour({
   steps,
@@ -15,6 +17,7 @@ export function PageTour({
 }) {
   const origemRef = useRef<{ scrollY: number } | null>(null);
   const [open, setOpen] = useState(false);
+  const { user } = useAuth();
   const [stepIndex, setStepIndex] = useState(0);
 
   function openTour() {
@@ -46,6 +49,9 @@ export function PageTour({
   }
 
   if (steps.length === 0) return null;
+
+  // A tela do comunicante fica sem tutorial.
+  if (isComunicante(user)) return null;
 
   return (
     <>

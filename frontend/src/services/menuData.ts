@@ -57,6 +57,12 @@ export const menuItems: MenuItem[] = [
     description: 'Informações do comunicante e mensagem do dia.',
   },
   {
+    label: 'Fim de plantão',
+    icon: ClipboardCheck,
+    path: '/fim-plantao',
+    description: 'Relatório de serviço do comunicante para o chefe.',
+  },
+  {
     label: 'Permissões',
     icon: KeyRound,
     path: '/permissoes',

@@ -9,6 +9,17 @@ function linha(rotulo: string, valor: string): string {
   return `${rotulo}: ${valor.trim() || '-'}`;
 }
 
+/**
+ * Campos OK/COM ALTERAÇÃO: na mensagem vai só o que foi digitado na alteração
+ * com o ❌ no final (ex.: "rádio com chiado ❌"). Sem texto, fica só ❌.
+ */
+function status(valor: string): string {
+  const v = valor.trim();
+  if (!v.startsWith('COM ALTERAÇÃO')) return v || '-';
+  const texto = v.slice('COM ALTERAÇÃO'.length).replace(/^\s*-\s*/, '').trim();
+  return texto ? `${texto} ❌` : '❌';
+}
+
 function blocoViatura(v: ViaturaPlantao): string[] {
   const titulo = v.chave === 'crs' ? '⛑️ CRS' : `🚒 ${v.posicao}${v.numero ? ` - ${v.numero}` : ''}`;
   const linhas = [titulo, ''];
@@ -20,7 +31,7 @@ function blocoViatura(v: ViaturaPlantao): string[] {
   linhas.push(`Km : ${v.km.trim() || '-'}`);
   if (v.chave === 'crs') linhas.push(`TAC : ${v.tac.trim() || '-'}`);
   else linhas.push(`N2 : ${v.n2.trim() || '-'}`);
-  linhas.push(`EPR's : ${v.epr.trim() || '-'}`);
+  linhas.push(`EPR's : ${status(v.epr)}`);
   return linhas;
 }
 
@@ -38,10 +49,10 @@ export function montarMensagemInicioPlantao(data: string, equipe: string, d: Dad
     `Equipe ${equipe.toLocaleUpperCase('pt-BR')}`,
     '',
     `Efetivo: ${d.efetivo.trim() || '-'} bombeiros`,
-    linha('TWR', d.twr),
+    linha('TWR', status(d.twr)),
     linha('Ramal', d.ramaisTwr),
     '',
-    `Testes de rádio e hotline : ${d.testesRadioHotline.trim() || '-'}`,
+    `Testes de rádio e hotline : ${status(d.testesRadioHotline)}`,
     '',
     linha('APOC', d.apoc),
     '',
@@ -53,7 +64,7 @@ export function montarMensagemInicioPlantao(data: string, equipe: string, d: Dad
     '',
     linha('Cabeceira', d.cabeceira),
     '',
-    `Testes de hotline e rádio operacional : ${d.testesOperacional.trim() || '-'}`,
+    `Testes de hotline e rádio operacional : ${status(d.testesOperacional)}`,
     '',
     'SME🚑',
     `Ramal : ${d.smeRamal.trim() || '-'}`,
@@ -61,7 +72,7 @@ export function montarMensagemInicioPlantao(data: string, equipe: string, d: Dad
     `Motorista : ${d.smeMotorista.trim() || '-'}`,
     `Tec de enfermagem : ${d.smeTecEnfermagem.trim() || '-'}`,
     '',
-    `Testes de ramal e rádio : ${d.smeTestes.trim() || '-'}`,
+    `Testes de ramal e rádio : ${status(d.smeTestes)}`,
     '',
     'SCI⛑️',
     `Ramal : ${d.sciRamal.trim() || '-'}`,
@@ -75,8 +86,8 @@ export function montarMensagemInicioPlantao(data: string, equipe: string, d: Dad
     '',
     '🪣Caixas d’água :',
     '',
-    `Interno - ${d.caixaInterna.trim() || '-'}`,
-    `Externo - ${d.caixaExterna.trim() || '-'}`,
+    `Interno - ${status(d.caixaInterna)}`,
+    `Externo - ${status(d.caixaExterna)}`,
     '',
     `⏱️ Hidrômetro do Reúso : ${d.hidrometro.trim() ? `${d.hidrometro.trim()}m3` : '-'}${d.hidrometroSituacao.trim() ? ` (${d.hidrometroSituacao.trim()})` : ''}`,
     '',

@@ -35,6 +35,11 @@ export const router = createBrowserRouter([
     element: lazyPage(() => import('../pages/Relatorios/OrdemServicoPublica')),
   },
   {
+    // Aberta sem login pelo QR Code do início de plantão.
+    path: '/plantao/m/:token',
+    element: lazyPage(() => import('../pages/InicioPlantao/MensagemPlantaoPublica')),
+  },
+  {
     path: '/',
     element: (
       <AuthGuard>
@@ -98,6 +103,7 @@ export const router = createBrowserRouter([
       { path: 'arquivo/:tipo?', element: <AuthGuard developerOnly>{lazyPage(() => import('../pages/Arquivo/Arquivo'))}</AuthGuard> },
       { path: 'configuracoes', element: lazyPage(() => import('../pages/Configuracoes/Configuracoes')) },
       { path: 'auditoria', element: <AuthGuard adminOnly>{lazyPage(() => import('../pages/Auditoria/Auditoria'))}</AuthGuard> },
+      { path: 'inicio-plantao', element: lazyPage(() => import('../pages/InicioPlantao/InicioPlantao')) },
       { path: 'permissoes', element: <AuthGuard adminOnly>{lazyPage(() => import('../pages/Permissoes/Permissoes'))}</AuthGuard> },
       { path: 'usuarios', element: lazyPage(() => import('../pages/Usuarios/Usuarios')) },
       { path: 'perfil', element: lazyPage(() => import('../pages/Perfil/Perfil')) },

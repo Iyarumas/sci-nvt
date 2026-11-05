@@ -51,6 +51,12 @@ export const menuItems: MenuItem[] = [
     adminOnly: true,
   },
   {
+    label: 'Início de plantão',
+    icon: Radio,
+    path: '/inicio-plantao',
+    description: 'Informações do comunicante e mensagem do dia.',
+  },
+  {
     label: 'Permissões',
     icon: KeyRound,
     path: '/permissoes',

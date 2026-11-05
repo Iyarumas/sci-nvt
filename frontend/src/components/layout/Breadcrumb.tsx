@@ -46,6 +46,7 @@ export function Breadcrumb() {
     configuracoes: 'Configurações',
     auditoria: 'Auditoria de exclusões',
     permissoes: 'Permissões',
+    'inicio-plantao': 'Início de plantão',
     usuarios: 'Usuários',
     perfil: 'Meu Perfil',
   };

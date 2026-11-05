@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { DriveModule } from './drive/drive.module';
 import { HealthModule } from './health/health.module';
 import { PermissoesModule } from './permissoes/permissoes.module';
+import { InicioPlantaoModule } from './inicio-plantao/inicio-plantao.module';
 import { PublicModule } from './public/public.module';
 import { ResourcesModule } from './resources/resources.module';
 import { RpcModule } from './rpc/rpc.module';
@@ -20,6 +21,7 @@ import { LocalStorageModule } from './storage/local-storage.module';
     AuditoriaModule,
     HealthModule,
     PermissoesModule,
+    InicioPlantaoModule,
     PublicModule,
     ResourcesModule,
     RpcModule,

@@ -321,6 +321,7 @@ function getPageTitle(pathname: string): string {
     configuracoes: 'Configurações',
     auditoria: 'Auditoria de exclusões',
     permissoes: 'Permissões',
+    'inicio-plantao': 'Início de plantão',
     usuarios: 'Usuários',
     perfil: 'Meu Perfil',
   };

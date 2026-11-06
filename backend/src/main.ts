@@ -11,7 +11,13 @@ async function bootstrap() {
   const prefix = config.get<string>('API_PREFIX', 'api');
   const frontendOrigin = config.get<string>('FRONTEND_ORIGIN', 'http://localhost:5173');
 
-  app.use(json({ limit: '25mb' }));
+  app.use(json({
+    limit: '25mb',
+    // O webhook do Autentique confere a assinatura HMAC sobre o corpo exato que chegou.
+    verify: (req, _res, buf) => {
+      if ((req as { url?: string }).url?.includes('/autentique/webhook')) (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    },
+  }));
   app.use(urlencoded({ extended: true, limit: '25mb' }));
   app.setGlobalPrefix(prefix);
   app.enableCors({

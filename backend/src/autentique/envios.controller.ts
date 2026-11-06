@@ -7,12 +7,13 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UnauthorizedException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { AuthUser } from '../auth/auth.types';
 import { EnviosService, ParticipanteEnvio } from './envios.service';
 
@@ -35,7 +36,7 @@ export class EnviosController {
   @Post()
   @UseInterceptors(FileInterceptor('pdf', { limits: { fileSize: MAX_PDF_BYTES } }))
   enviar(
-    @Body() body: { tipo?: string; referenciaId?: string; participantes?: string; chefeEquipe?: string },
+    @Body() body: { tipo?: string; referenciaId?: string; participantes?: string; chefeEquipe?: string; nomeArquivo?: string },
     @UploadedFile() pdf: Express.Multer.File | undefined,
     @Req() request: Request,
   ) {
@@ -51,6 +52,7 @@ export class EnviosController {
       participantes,
       chefeEquipe: body.chefeEquipe,
       pdf: pdf?.buffer,
+      nomeArquivo: body.nomeArquivo || pdf?.originalname,
     });
   }
 
@@ -70,6 +72,25 @@ export class EnviosController {
   @Post(':id/reenviar')
   reenviar(@Param('id') id: string, @Req() request: Request) {
     return this.envios.reenviar(usuario(request), id);
+  }
+
+  @Post(':id/atualizar')
+  atualizar(@Param('id') id: string, @Req() request: Request) {
+    return this.envios.atualizar(usuario(request), id);
+  }
+
+  @Post(':id/signatarios/:signatarioId/link')
+  link(@Param('id') id: string, @Param('signatarioId') signatarioId: string, @Req() request: Request) {
+    return this.envios.linkDeAssinatura(usuario(request), id, signatarioId);
+  }
+
+  @Get(':id/pdf')
+  async pdf(@Param('id') id: string, @Req() request: Request, @Res() response: Response) {
+    usuario(request);
+    const arquivo = await this.envios.pdfAssinado(id);
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${arquivo.filename}"`);
+    arquivo.stream.pipe(response);
   }
 
   @Post(':id/cancelar')

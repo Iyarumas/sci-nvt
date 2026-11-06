@@ -1,4 +1,4 @@
-import { apiFetch } from '../lib/apiClient';
+import { apiFetch, apiUrl, authorizedFetch } from '../lib/apiClient';
 
 export type TipoEnvioAssinatura = 'ptrba';
 export type StatusEnvioAssinatura = 'aguardando' | 'assinado' | 'recusado';
@@ -12,8 +12,7 @@ export interface SignatarioEnvio {
   status: StatusSignatario;
   assinadoEm: string | null;
   recusadoEm: string | null;
-  /** Link pessoal de assinatura. Só vem para quem pode cobrar a assinatura. */
-  link: string | null;
+  /** Só vem para quem pode cobrar a assinatura. */
   celular: string | null;
 }
 
@@ -25,6 +24,9 @@ export interface EnvioAssinatura {
   enviadoPorNome: string;
   enviadoEm: string;
   concluidoEm: string | null;
+  /** Documento de teste do Autentique (não vale como assinatura oficial). */
+  sandbox: boolean;
+  temPdfAssinado: boolean;
   podeGerir: boolean;
   signatarios: SignatarioEnvio[];
 }
@@ -55,6 +57,7 @@ export async function enviarParaAssinatura(input: {
   body.append('referenciaId', input.referenciaId);
   body.append('participantes', JSON.stringify(input.participantes));
   body.append('chefeEquipe', input.chefeEquipe);
+  body.append('nomeArquivo', input.nomeArquivo);
   body.append('pdf', input.pdf, input.nomeArquivo);
   return apiFetch<{ id: string }>('/autentique/envios', { method: 'POST', body });
 }
@@ -64,7 +67,7 @@ export interface PreviaSignatario {
   funcoes: string[];
   /** E-mail do cadastro de bombeiros/APOCs. */
   email: string;
-  problema: 'sem_cadastro' | 'sem_email' | null;
+  problema: 'sem_cadastro' | 'sem_email' | 'email_repetido' | null;
 }
 
 /** Quem vai assinar e o e-mail de cada um no cadastro, para conferir antes de enviar. */
@@ -82,6 +85,32 @@ export async function previaEnvioAssinatura(input: {
 
 export async function reenviarAvisosAssinatura(envioId: string): Promise<{ reenviados: number }> {
   return apiFetch<{ reenviados: number }>(`/autentique/envios/${envioId}/reenviar`, { method: 'POST' });
+}
+
+/** Consulta o Autentique agora (para quando o aviso automático ainda não chegou). */
+export async function atualizarEnvioAssinatura(envioId: string): Promise<{ status: StatusEnvioAssinatura }> {
+  return apiFetch<{ status: StatusEnvioAssinatura }>(`/autentique/envios/${envioId}/atualizar`, { method: 'POST' });
+}
+
+/** Link pessoal de assinatura de uma pessoa (gerado na hora, só para quem pode cobrar). */
+export async function linkDeAssinatura(envioId: string, signatarioId: string): Promise<string> {
+  const { link } = await apiFetch<{ link: string }>(`/autentique/envios/${envioId}/signatarios/${signatarioId}/link`, { method: 'POST' });
+  return link;
+}
+
+/** Baixa o PDF com as assinaturas, guardado no servidor. */
+export async function baixarPdfAssinado(envioId: string, nomeArquivo: string): Promise<void> {
+  const resposta = await authorizedFetch(apiUrl(`/autentique/envios/${envioId}/pdf`));
+  if (!resposta.ok) {
+    const corpo = await resposta.json().catch(() => null) as { message?: string } | null;
+    throw new Error(corpo?.message || 'Não foi possível baixar o PDF assinado.');
+  }
+  const url = URL.createObjectURL(await resposta.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomeArquivo;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export async function cancelarEnvioAssinatura(envioId: string): Promise<void> {

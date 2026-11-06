@@ -14,6 +14,7 @@ import {
   Signature,
   Trash2,
   X,
+  RefreshCw,
 } from 'lucide-react';
 import {
   cancelarEnvioAssinatura,
@@ -22,6 +23,8 @@ import {
   previaEnvioAssinatura,
   quemAssinaPTRBA,
   reenviarAvisosAssinatura,
+  atualizarEnvioAssinatura,
+  baixarPdfAssinado,
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
@@ -864,6 +867,8 @@ function PTRBACompletoCard({
   onDownload,
   onEnviar,
   onReenviar,
+  atualizando,
+  onAtualizar,
   onCancelarEnvio,
 }: {
   registro: PTRBACompleto;
@@ -882,6 +887,8 @@ function PTRBACompletoCard({
   onDownload: () => void;
   onEnviar: () => void;
   onReenviar: () => void;
+  atualizando: boolean;
+  onAtualizar: () => void;
   onCancelarEnvio: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -992,7 +999,7 @@ function PTRBACompletoCard({
                         <td className="px-3 py-2 text-graphite-700 dark:text-graphite-200">{participante.situacao || '-'}</td>
                         {envio && (
                           <td className="px-3 py-2">
-                            <CelulaAssinatura signatario={signatarioDoNome(envio, participante.nomeCompleto)} documento={documento} />
+                            <CelulaAssinatura envioId={envio.id} signatario={signatarioDoNome(envio, participante.nomeCompleto)} documento={documento} />
                           </td>
                         )}
                       </tr>
@@ -1056,7 +1063,7 @@ function PTRBACompletoCard({
               <Eye className="h-4 w-4" /> {previewing ? 'Abrindo documento' : 'Ver documento'}
             </button>
             <button type="button" onClick={onDownload} disabled={downloading} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60">
-              <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : 'Download PDF'}
+              <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : envio?.status === 'assinado' && envio.temPdfAssinado ? 'Download PDF assinado' : 'Download PDF'}
             </button>
             {canEdit && rascunho && (
               <>
@@ -1078,6 +1085,11 @@ function PTRBACompletoCard({
             {situacao === 'aguardando' && envio?.podeGerir && (
               <button type="button" onClick={onReenviar} disabled={reenviando} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                 <Mail className="h-4 w-4" /> {reenviando ? 'Reenviando...' : 'Reenviar aviso por e-mail'}
+              </button>
+            )}
+            {situacao === 'aguardando' && (
+              <button type="button" onClick={onAtualizar} disabled={atualizando} title="Consulta agora no Autentique quem já assinou" className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                <RefreshCw className={`h-4 w-4 ${atualizando ? 'animate-spin' : ''}`} /> {atualizando ? 'Atualizando...' : 'Atualizar assinaturas'}
               </button>
             )}
             {!rascunho && podeCancelarEnvio && (
@@ -1170,6 +1182,7 @@ export function PTRBACompletoPage() {
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [reenviandoId, setReenviandoId] = useState<string | null>(null);
+  const [atualizandoId, setAtualizandoId] = useState<string | null>(null);
   const [confirmCancelarEnvio, setConfirmCancelarEnvio] = useState<EnvioAssinatura | null>(null);
   const inputClass = 'rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated';
 
@@ -1273,7 +1286,8 @@ export function PTRBACompletoPage() {
     setErroEnvio(null);
     try {
       const registro = enviandoRegistro;
-      const participantes = registro.participantes.filter(p => p.nomeCompleto.trim());
+      // Lista completa (com as vagas vazias): o servidor calcula a linha de cada assinatura igual ao PDF.
+      const participantes = registro.participantes;
       const pdf = await gerarPTRBACompletoPdf(registro);
       await enviarParaAssinatura({
         tipo: 'ptrba',
@@ -1302,6 +1316,19 @@ export function PTRBACompletoPage() {
       alert(err instanceof Error ? err.message : 'Não foi possível reenviar os avisos.');
     } finally {
       setReenviandoId(null);
+    }
+  }
+
+  async function handleAtualizarEnvio(envio: EnvioAssinatura) {
+    setAtualizandoId(envio.id);
+    try {
+      const { status } = await atualizarEnvioAssinatura(envio.id);
+      await carregarEnvios();
+      if (status === 'assinado') setSuccessMessage('Todos assinaram. O PDF assinado já pode ser baixado.');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível atualizar a situação das assinaturas.');
+    } finally {
+      setAtualizandoId(null);
     }
   }
 
@@ -1455,7 +1482,12 @@ export function PTRBACompletoPage() {
   async function handleDownload(registro: PTRBACompleto) {
     try {
       setDownloadingId(registro.id);
-      await baixarPTRBACompletoPdf(registro);
+      const envio = envios[registro.id];
+      if (envio?.status === 'assinado' && envio.temPdfAssinado) {
+        await baixarPdfAssinado(envio.id, nomeArquivoPTRBACompleto(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'));
+      } else {
+        await baixarPTRBACompletoPdf(registro);
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao gerar PDF.');
     } finally {
@@ -1586,6 +1618,8 @@ export function PTRBACompletoPage() {
                 onDownload={() => handleDownload(registro)}
                 onEnviar={() => abrirEnvio(registro)}
                 onReenviar={() => envios[registro.id] && handleReenviar(envios[registro.id])}
+                atualizando={atualizandoId === envios[registro.id]?.id}
+                onAtualizar={() => envios[registro.id] && handleAtualizarEnvio(envios[registro.id])}
                 onCancelarEnvio={() => setConfirmCancelarEnvio(envios[registro.id] ?? null)}
               />
             );

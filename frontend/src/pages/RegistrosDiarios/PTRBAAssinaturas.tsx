@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Check, Clock, MessageCircle, Signature, X } from 'lucide-react';
 import {
+  linkDeAssinatura,
   linkWhatsAppAssinatura,
   type EnvioAssinatura,
   type PreviaSignatario,
@@ -117,12 +119,15 @@ export function signatarioDoNome(envio: EnvioAssinatura | undefined, nome: strin
 
 /** Célula da coluna "Assinatura" na tabela de efetivo dos detalhes. */
 export function CelulaAssinatura({
+  envioId,
   signatario,
   documento,
 }: {
+  envioId: string;
   signatario?: SignatarioEnvio;
   documento: string;
 }) {
+  const [abrindo, setAbrindo] = useState(false);
   if (!signatario) return <span className="text-xs text-graphite-400">Não assina</span>;
   if (signatario.status === 'assinado') {
     return <span className={`${CHIP} ${CHIP_COR.assinado}`}><Check className="h-3 w-3" /> {dataHora(signatario.assinadoEm)}</span>;
@@ -130,22 +135,40 @@ export function CelulaAssinatura({
   if (signatario.status === 'recusado') {
     return <span className={`${CHIP} ${CHIP_COR.recusado}`}><X className="h-3 w-3" /> Recusou</span>;
   }
-  const whatsapp = signatario.link && signatario.celular
-    ? linkWhatsAppAssinatura(signatario.celular, signatario.nome, documento, signatario.link)
-    : null;
+  const celular = signatario.celular && signatario.celular.replace(/\D/g, '').length >= 10 ? signatario.celular : null;
+  const pessoa = signatario;
+
+  // A janela abre já no clique (senão o navegador bloqueia) e recebe o endereço quando o link chega.
+  async function abrirWhatsApp() {
+    if (!celular) return;
+    const janela = window.open('', '_blank');
+    setAbrindo(true);
+    try {
+      const link = await linkDeAssinatura(envioId, pessoa.id);
+      const whatsapp = linkWhatsAppAssinatura(celular, pessoa.nome, documento, link);
+      if (janela && whatsapp) janela.location.href = whatsapp;
+      else if (whatsapp) window.location.href = whatsapp;
+    } catch (err) {
+      janela?.close();
+      alert(err instanceof Error ? err.message : 'Não foi possível gerar o link de assinatura.');
+    } finally {
+      setAbrindo(false);
+    }
+  }
+
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       <span className={`${CHIP} ${CHIP_COR.pendente}`}><Clock className="h-3 w-3" /> Pendente</span>
-      {whatsapp && (
-        <a
-          href={whatsapp}
-          target="_blank"
-          rel="noreferrer"
+      {celular && (
+        <button
+          type="button"
+          onClick={abrirWhatsApp}
+          disabled={abrindo}
           title={`Enviar o link de assinatura para ${signatario.nome} pelo WhatsApp`}
-          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 px-2 py-0.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 px-2 py-0.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-60 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
         >
-          <MessageCircle className="h-3 w-3" /> WhatsApp
-        </a>
+          <MessageCircle className="h-3 w-3" /> {abrindo ? 'Gerando link...' : 'WhatsApp'}
+        </button>
       )}
     </span>
   );
@@ -200,6 +223,7 @@ export function ConfirmarEnvioModal({
                     <td className="px-3 py-2">
                       {pessoa.problema === 'sem_cadastro' && <span className="text-xs font-semibold text-alert-red">Não encontrado no cadastro</span>}
                       {pessoa.problema === 'sem_email' && <span className="text-xs font-semibold text-alert-red">Sem e-mail válido no cadastro</span>}
+                      {pessoa.problema === 'email_repetido' && <span className="text-xs font-semibold text-alert-red">E-mail {pessoa.email} usado por outra pessoa no cadastro</span>}
                       {!pessoa.problema && <span className="break-all text-graphite-700 dark:text-graphite-200">{pessoa.email}</span>}
                     </td>
                   </tr>

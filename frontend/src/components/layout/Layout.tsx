@@ -9,7 +9,7 @@ export function Layout() {
   const { effectiveCollapsed } = useSidebar();
 
   return (
-    <div className="min-h-screen bg-white dark:bg-graphite-950">
+    <div className="min-h-screen bg-page-light dark:bg-graphite-950">
       <Sidebar />
       <div
         className={`flex min-h-screen flex-col will-change-[margin] transition-all duration-300 ease-out-expo ${

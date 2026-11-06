@@ -913,7 +913,7 @@ function PTRBACompletoCard({
   ];
 
   return (
-    <div className={`overflow-hidden rounded-2xl border bg-white/80 shadow-sm backdrop-blur-sm transition-all dark:bg-surface-card/80 ${
+    <div className={`overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition-all hover:shadow-md dark:border dark:bg-surface-card/80 ${
       bordaStatus
         ? `${bordaStatus} ${expanded ? 'shadow-lg' : ''}`
         : expanded
@@ -923,7 +923,7 @@ function PTRBACompletoCard({
       <button
         type="button"
         onClick={() => setExpanded(value => !value)}
-        className="flex w-full flex-col gap-4 p-5 text-left transition-all hover:bg-aviation-500/[0.03] lg:flex-row lg:items-start lg:justify-between"
+        className="flex w-full flex-col gap-4 p-5 text-left transition-all lg:flex-row lg:items-start lg:justify-between"
       >
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">

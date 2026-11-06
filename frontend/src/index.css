@@ -16,7 +16,7 @@
 
   --color-graphite-50: #f8f9fa;
   --color-graphite-100: #f0f2f5;
-  --color-graphite-200: #d4d6db;
+  --color-graphite-200: #c8ccd3;
   --color-graphite-300: #bcc0c7;
   --color-graphite-400: #9ca3af;
   --color-graphite-500: #6b7280;
@@ -25,6 +25,9 @@
   --color-graphite-800: #1a1f2e;
   --color-graphite-900: #111520;
   --color-graphite-950: #0b0e14;
+
+  /* Fundo das páginas no modo claro: um cinza leve para os cards brancos se destacarem. */
+  --color-page-light: #eceef2;
 
   --color-surface-dark: #0f1219;
   --color-surface-card: #161b26;

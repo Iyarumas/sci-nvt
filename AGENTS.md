@@ -528,6 +528,18 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 
 **Coordenador do LRO:** a assinatura "COORD DE PREV E EMERG" usa o cadastro com função `COORDENADOR`, pelo helper `assinaturaCoordenadorLRO` em `frontend/src/types/lro.ts`, priorizando Rinaldo ou o único coordenador cadastrado. Não selecionar supervisores APOC. Snapshots incluem `coordenadorAssinatura` e `coordenadorFuncao`; drafts legados sem função ou cadastro indisponível/ambíguo usam a alternativa `RINALDO SANTOS RACHADEL`. A regra vale para prévia, impressão e PDF; PDFs já armazenados ou assinados não são reescritos.
 
+### Autentique (assinatura eletrônica) — em teste só no PTR-BA
+
+A API do Autentique foi integrada **somente no PTR-BA** (main, 06/11/2026) para testar o sistema e ver como se desempenha em produção. LRO, TAF, Posicionamento, Tempo Resposta, BONA e DDS continuam sendo assinados à mão pelo painel do Autentique até o teste ser aprovado.
+
+- Fluxo: PTR-BA salvo como rascunho; "Enviar para assinatura" fica em Ver detalhes, com confirmação dos e-mails do cadastro. Depois de enviado, o PTR-BA não pode ser editado nem excluído (tela e servidor). Só administrador cancela o envio.
+- Código: `backend/src/autentique/` (`autentique-api.service.ts`, `envios.service.ts`, `posicoes-ptrba.ts`), migration `075_autentique_envios.sql`; tela em `frontend/src/pages/RegistrosDiarios/PTRBAAssinaturas.tsx` e `PTRBACompleto.tsx`.
+- Posições calibradas no sandbox: linha da tabela x 142,5 mm, y = 43,5 + 6,7·i − 4,95 mm, escala 0,75; linha do chefe x 79,9 mm, y 276,35 mm, escala 1,0. Nome do documento = nome do arquivo do sistema; pasta NAVEGANTES/{ano}/PTRBA/{MÊS aa}.
+- Regra: o PTR-BA fica assinado quando todos os BA (CE, LR, MC, BA-2) assinaram; APOC não segura. O PDF assinado é guardado no servidor; Ver documento mostra o PDF completo e o Download traz só a 1ª página (relatório da empresa).
+- PTR-BA com plantão antes de 06/11/2026 não são enviados pelo sistema. Os de 01 a 05/11 foram vinculados aos documentos já existentes no Autentique.
+- Env: `AUTENTIQUE_TOKEN`, `AUTENTIQUE_MODO` (`simulado` | `sandbox` | vazio = produção), `AUTENTIQUE_WEBHOOK_SECRET` (webhook em `/api/autentique/webhook`, ainda a cadastrar no painel).
+- Próximos documentos a integrar depois do teste: LRO (2 assinaturas), TAF, Posicionamento e Tempo Resposta (rubricas), BONA e DDS. Cada um precisa calibrar as posições no sandbox e definir quem assina.
+
 ### Tempo Resposta e Posicionamento
 
 A numeração é anual e independente por modelo, com referência histórica somente em 2026: Tempo Resposta nº 24 → próximo 025; Posicionamento nº 42 → próximo 043. Números maiores salvos prevalecem; nos demais anos começa em 001. Quem cria/edita pode ajustar o número manualmente, respeitando as permissões de equipe/aprovação. O backend reserva o modo automático (`numero: 0` na criação) em transação com advisory lock e bloqueia duplicatas manuais/edições no modelo/ano, sem migrations ou renumeração de históricos. `npm run test:exercicios` verifica frontend/adapter e backend com HTTP/pool em memória.

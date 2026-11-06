@@ -27,6 +27,15 @@ const PAPEIS_GESTAO = new Set(['gerente', 'chefe', 'lider']);
 /** PTR-BA com plantão antes deste dia foram assinados fora do sistema e não são enviados por aqui. */
 export const INICIO_ASSINATURA_PTRBA = '2026-11-06';
 
+/**
+ * Regra do PTR-BA: o documento está assinado quando todos os BA assinaram (CE, LR, MC, BA-2...).
+ * APOC raramente assina, então não segura o documento; se assinar depois, o PDF é atualizado.
+ */
+function ehSoApoc(funcoes: string): boolean {
+  const lista = String(funcoes ?? '').split(',').map(f => f.trim().toUpperCase()).filter(Boolean);
+  return lista.length > 0 && lista.every(f => f === 'APOC');
+}
+
 /** Onde ficam os PDFs assinados baixados do Autentique. */
 const BUCKET_ASSINADOS = 'autentique-assinados';
 
@@ -370,8 +379,13 @@ export class EnviosService {
   /** Botão "Atualizar": consulta o Autentique (R$ 0,001) quando o aviso automático não chegou. */
   async atualizar(user: AuthUser, envioId: string) {
     const envio = await this.obterEnvio(envioId);
-    if (envio.status !== 'aguardando' && envio.pdf_assinado_url) return { status: envio.status };
-    if (this.ehSimulado(envio)) return { status: envio.status };
+    if (this.ehSimulado(envio) || envio.status === 'cancelado') return { status: envio.status };
+    // Nada mais a buscar: todo mundo já respondeu e o PDF está guardado.
+    const pendentes = await this.database.query(
+      `SELECT 1 FROM autentique_signatarios WHERE envio_id = $1 AND status = 'pendente' LIMIT 1`,
+      [envio.id],
+    );
+    if (!pendentes.rowCount && envio.pdf_assinado_url) return { status: envio.status };
     return { status: await this.sincronizar(envio) };
   }
 
@@ -406,7 +420,7 @@ export class EnviosService {
     coletar(payload, 0);
     if (!textos.size) return { ok: true };
     const envios = await this.database.query<EnvioRow>(
-      `SELECT * FROM autentique_envios WHERE status = 'aguardando' AND autentique_document_id = ANY($1::text[])`,
+      `SELECT * FROM autentique_envios WHERE status <> 'cancelado' AND autentique_document_id = ANY($1::text[])`,
       [[...textos]],
     );
     for (const envio of envios.rows) {
@@ -415,7 +429,10 @@ export class EnviosService {
     return { ok: true };
   }
 
-  /** Lê a situação no Autentique e grava quem assinou; com todos assinados, guarda o PDF assinado. */
+  /**
+   * Lê a situação no Autentique e grava quem assinou. Com todos os BA assinados, o documento fica
+   * assinado e o PDF é guardado; cada nova assinatura (ex.: um APOC depois) atualiza o PDF.
+   */
   private async sincronizar(envio: EnvioRow): Promise<string> {
     const documento = await this.api.situacao(envio.autentique_document_id);
     const signatarios = await this.database.query<SignatarioRow>(
@@ -425,15 +442,18 @@ export class EnviosService {
     const porId = new Map(documento.signatures.map(s => [s.public_id, s]));
     const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s]));
 
-    let todosAssinaram = signatarios.rows.length > 0;
+    let baAssinaram = signatarios.rows.some(s => !ehSoApoc(s.funcoes));
     let alguemRecusou = false;
+    let mudou = false;
     for (const signatario of signatarios.rows) {
       const lido = (signatario.autentique_signature_id && porId.get(signatario.autentique_signature_id))
         || porEmail.get(String(signatario.email ?? '').toLowerCase());
       const status = lido?.rejected ? 'recusado' : lido?.signed ? 'assinado' : 'pendente';
-      if (status !== 'assinado') todosAssinaram = false;
-      if (status === 'recusado') alguemRecusou = true;
+      const apoc = ehSoApoc(signatario.funcoes);
+      if (!apoc && status !== 'assinado') baAssinaram = false;
+      if (!apoc && status === 'recusado') alguemRecusou = true;
       if (status !== signatario.status) {
+        mudou = true;
         await this.database.query(
           `UPDATE autentique_signatarios SET status = $2, assinado_em = $3, recusado_em = $4 WHERE id = $1`,
           [signatario.id, status, lido?.signed?.created_at ?? null, lido?.rejected?.created_at ?? null],
@@ -441,15 +461,15 @@ export class EnviosService {
       }
     }
 
-    const novoStatus = alguemRecusou ? 'recusado' : todosAssinaram ? 'assinado' : 'aguardando';
+    const novoStatus = alguemRecusou ? 'recusado' : baAssinaram ? 'assinado' : 'aguardando';
     let pdfPath: string | null = envio.pdf_assinado_url;
-    if (novoStatus === 'assinado' && !pdfPath && documento.files?.signed) {
+    if (novoStatus === 'assinado' && (!pdfPath || mudou) && documento.files?.signed) {
       try {
         const pdf = await this.api.baixarPdfAssinado(documento.files.signed);
-        pdfPath = `${envio.tipo}/${envio.referencia_id}/${envio.id}.pdf`;
-        await this.storage.upload(BUCKET_ASSINADOS, pdfPath, { buffer: pdf } as Express.Multer.File);
+        const caminho = `${envio.tipo}/${envio.referencia_id}/${envio.id}.pdf`;
+        await this.storage.upload(BUCKET_ASSINADOS, caminho, { buffer: pdf } as Express.Multer.File);
+        pdfPath = caminho;
       } catch (erro) {
-        pdfPath = null;
         this.logger.warn(`Não foi possível guardar o PDF assinado do envio ${envio.id}: ${(erro as Error).message}`);
       }
     }

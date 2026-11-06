@@ -98,14 +98,28 @@ export async function linkDeAssinatura(envioId: string, signatarioId: string): P
   return link;
 }
 
-/** Baixa o PDF com as assinaturas, guardado no servidor. */
-export async function baixarPdfAssinado(envioId: string, nomeArquivo: string): Promise<void> {
+/** O PDF com as assinaturas, guardado no servidor (todas as páginas e a auditoria do Autentique). */
+export async function obterPdfAssinado(envioId: string): Promise<Blob> {
   const resposta = await authorizedFetch(apiUrl(`/autentique/envios/${envioId}/pdf`));
   if (!resposta.ok) {
     const corpo = await resposta.json().catch(() => null) as { message?: string } | null;
-    throw new Error(corpo?.message || 'Não foi possível baixar o PDF assinado.');
+    throw new Error(corpo?.message || 'Não foi possível abrir o PDF assinado.');
   }
-  const url = URL.createObjectURL(await resposta.blob());
+  return resposta.blob();
+}
+
+/**
+ * Baixa só a 1ª página do PDF assinado (a tabela com as assinaturas), que é o que vai para o
+ * relatório da empresa. As fotos e a auditoria do Autentique ficam no PDF completo guardado no sistema.
+ */
+export async function baixarPdfAssinado(envioId: string, nomeArquivo: string): Promise<void> {
+  const { PDFDocument } = await import('pdf-lib');
+  const completo = await PDFDocument.load(await (await obterPdfAssinado(envioId)).arrayBuffer());
+  const primeira = await PDFDocument.create();
+  const [pagina] = await primeira.copyPages(completo, [0]);
+  primeira.addPage(pagina);
+  const bytes = await primeira.save();
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = nomeArquivo;

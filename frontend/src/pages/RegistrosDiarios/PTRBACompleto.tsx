@@ -25,6 +25,7 @@ import {
   reenviarAvisosAssinatura,
   atualizarEnvioAssinatura,
   baixarPdfAssinado,
+  obterPdfAssinado,
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
@@ -1527,7 +1528,11 @@ export function PTRBACompletoPage() {
   async function handlePreviewPdf(registro: PTRBACompleto) {
     try {
       setPreviewingId(registro.id);
-      const blob = await gerarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
+      // Assinado no Autentique: mostra o PDF com as assinaturas; senão, o PDF gerado pelo sistema.
+      const envio = envios[registro.id];
+      const blob = envio?.status === 'assinado' && envio.temPdfAssinado
+        ? await obterPdfAssinado(envio.id)
+        : await gerarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
       setPreviewPdfData(await blob.arrayBuffer());
       setPreviewPdfTitle(`${registro.isApoc ? 'PTR-BA APOC' : registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - ${registro.equipe} - ${formatDate(registro.data)}`);
     } catch (err) {

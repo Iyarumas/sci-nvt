@@ -1024,13 +1024,14 @@ export function Trocas() {
 
   const HIDDEN_AUTENTIQUE_FIELDS = ['data_autentique_1', 'data_autentique_2', 'data_autentique_3', 'check_troca_sim', 'check_troca_nao', 'check_deferido', 'check_indeferido', 'deferido_indeferido'];
 
-  function getAllFuncionarios() {
+  /** Troca de serviço é só entre bombeiros: APOC não aparece para escolher (só para reconhecer trocas antigas). */
+  function getAllFuncionarios(incluirApoc = false) {
     return [
       ...bombeirosList.map(b => {
         const cargoLabel = CARGO_OPTIONS.find(c => c.value === b.cargo)?.label || b.cargo;
         return { label: b.nomeCompleto, sublabel: `${cargoLabel} - ${b.email}`, _type: 'bombeiro' as const, _raw: b };
       }),
-      ...apocsList.map(a => {
+      ...(incluirApoc ? apocsList : []).map(a => {
         const funcaoLabel = FUNCAO_APOC_OPTIONS.find(f => f.value === a.funcao)?.label || a.funcao;
         return { label: a.nomeCompleto, sublabel: `${funcaoLabel} - ${a.email}`, _type: 'apoc' as const, _raw: a };
       }),
@@ -1083,7 +1084,7 @@ export function Trocas() {
 
   function getPessoaByNome(nome: string): PessoaTroca | null {
     if (!nome) return null;
-    const all = getAllFuncionarios();
+    const all = getAllFuncionarios(true);
     const lower = nome.toLowerCase().trim();
     const primeiroNome = lower.split(' ')[0];
     const match = all.find(f => {

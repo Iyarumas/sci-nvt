@@ -10,6 +10,13 @@ import {
 
 export type SituacaoAssinatura = 'rascunho' | 'aguardando' | 'assinado' | 'recusado';
 
+/** PTR-BA com plantão antes deste dia foram assinados fora do sistema: sem envio pelo Autentique daqui. */
+export const INICIO_ASSINATURA_PTRBA = '2026-11-06';
+
+export function anteriorAssinaturaPeloSistema(data: string): boolean {
+  return !!data && data.slice(0, 10) < INICIO_ASSINATURA_PTRBA;
+}
+
 export function situacaoAssinatura(envio?: EnvioAssinatura): SituacaoAssinatura {
   return envio?.status ?? 'rascunho';
 }

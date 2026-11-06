@@ -12,6 +12,8 @@ export interface PTRBACompletoEvidencia {
   assunto: string;
   imagem: string;
   descricao: string;
+  /** Na lista resumida a foto não vem; isto diz se ela existe. */
+  temImagem?: boolean;
 }
 
 export interface PTRBACompleto {
@@ -30,6 +32,8 @@ export interface PTRBACompleto {
   chefeEquipe: string;
   participantes: PTRBACompletoParticipante[];
   evidencias: PTRBACompletoEvidencia[];
+  /** Veio da lista resumida: as fotos precisam ser buscadas antes de abrir o documento ou editar. */
+  semFotos?: boolean;
 }
 
 export type PTRBACompletoInput = Omit<PTRBACompleto, 'id' | 'createdAt' | 'updatedAt' | 'origemPtrbaId'>;

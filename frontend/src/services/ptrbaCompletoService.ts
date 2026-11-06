@@ -1,3 +1,4 @@
+import { apiFetch } from '../lib/apiClient';
 import { supabase } from '../lib/supabase';
 import {
   normalizarEvidenciasPTRBACompleto,
@@ -81,7 +82,13 @@ function inputToRow(input: Partial<PTRBACompletoInput>): Record<string, unknown>
       : normalizarParticipantesPTRBACompleto(input.participantes, input.isApoc));
   }
   if (input.evidencias !== undefined) {
-    row.evidencias = JSON.stringify(normalizarEvidenciasPTRBACompleto(input.evidencias));
+    // Sem as fotos carregadas, salvar apagaria as imagens: bloqueia.
+    if (input.evidencias.some(ev => ev.temImagem && !ev.imagem)) {
+      throw new Error('As fotos deste PTR-BA não foram carregadas. Feche e abra a edição novamente.');
+    }
+    row.evidencias = JSON.stringify(
+      normalizarEvidenciasPTRBACompleto(input.evidencias).map(({ temImagem: _temImagem, ...ev }) => ev),
+    );
   }
   return row;
 }
@@ -94,20 +101,20 @@ export async function listarPTRBACompletos(params?: {
   createdBy?: string;
   modalidade?: 'normal' | 'apoc' | 'todos';
 }): Promise<PTRBACompleto[]> {
-  const db = getDb();
-  let query = db.from(TABLE).select('*').order('data', { ascending: false }).order('created_at', { ascending: false });
-  if (params?.equipe) query = query.eq('equipe', params.equipe);
+  // Lista sem as fotos (cada PTR-BA tem ~1 MB de imagens). Para abrir o documento use comFotosPTRBACompleto.
+  const busca = new URLSearchParams();
+  if (params?.equipe) busca.set('equipe', params.equipe);
   if (params?.ano) {
-    query = query.gte('data', `${params.ano}-01-01`).lte('data', `${params.ano}-12-31`);
+    busca.set('dataGte', `${params.ano}-01-01`);
+    busca.set('dataLte', `${params.ano}-12-31`);
   }
-  if (params?.dataGte) query = query.gte('data', params.dataGte);
-  if (params?.dataLte) query = query.lte('data', params.dataLte);
-  if (params?.createdBy) query = query.eq('created_by', params.createdBy);
-  const { data, error } = await query;
-  if (error) handleSupabaseError(error);
+  if (params?.dataGte) busca.set('dataGte', params.dataGte);
+  if (params?.dataLte) busca.set('dataLte', params.dataLte);
+  if (params?.createdBy) busca.set('createdBy', params.createdBy);
+  const data = await apiFetch<Record<string, unknown>[]>(`/ptrba/resumo?${busca.toString()}`);
   // Filtrar depois do mapper preserva registros legados sem is_apoc e garante
   // que todos os consumidores operacionais excluam APOCs por padrão.
-  const registros = (data || []).map(rowToPTRBACompleto);
+  const registros = (data || []).map(row => ({ ...rowToPTRBACompleto(row), semFotos: true }));
   const modalidade = params?.modalidade ?? 'normal';
   return registros.filter(registro => modalidade === 'todos' || registro.isApoc === (modalidade === 'apoc'));
 }
@@ -117,6 +124,14 @@ export async function obterPTRBACompleto(id: string): Promise<PTRBACompleto | nu
   const { data, error } = await db.from(TABLE).select('*').eq('id', id).maybeSingle();
   if (error) handleSupabaseError(error);
   return data ? rowToPTRBACompleto(data) : null;
+}
+
+/** O PTR-BA completo, com as fotos (para ver o documento, baixar, enviar ou editar). */
+export async function comFotosPTRBACompleto(registro: PTRBACompleto): Promise<PTRBACompleto> {
+  if (!registro.semFotos) return registro;
+  const completo = await obterPTRBACompleto(registro.id);
+  if (!completo) throw new Error('PTR-BA não encontrado.');
+  return completo;
 }
 
 export async function criarPTRBACompleto(input: PTRBACompletoInput): Promise<PTRBACompleto> {

@@ -24,6 +24,9 @@ const SITUACOES_SEM_ASSINATURA = new Set(['A']);
 /** Papeis que podem enviar, reenviar e ver os links de assinatura. */
 const PAPEIS_GESTAO = new Set(['gerente', 'chefe', 'lider']);
 
+/** PTR-BA com plantão antes deste dia foram assinados fora do sistema e não são enviados por aqui. */
+export const INICIO_ASSINATURA_PTRBA = '2026-11-06';
+
 /** Onde ficam os PDFs assinados baixados do Autentique. */
 const BUCKET_ASSINADOS = 'autentique-assinados';
 
@@ -221,6 +224,9 @@ export class EnviosService {
     const ptrba = registro.rows[0];
     if (!ptrba) throw new NotFoundException('PTR-BA não encontrado.');
     if (ptrba.origem_ptrba_id) throw new BadRequestException('O documento APOC legado é preservado somente para consulta.');
+    if (dataISO(ptrba.data) < INICIO_ASSINATURA_PTRBA) {
+      throw new BadRequestException('PTR-BA de plantões antes de 06/11/2026 não são enviados para assinatura pelo sistema.');
+    }
     const ativos = await documentosComEnvioAtivo(this.database, input.tipo, [input.referenciaId]);
     if (ativos.size) throw new ConflictException('Este PTR-BA já foi enviado para assinatura.');
 

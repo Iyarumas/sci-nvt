@@ -35,6 +35,7 @@ import {
   ConfirmarEnvioModal,
   EtiquetasAssinantes,
   SeloAssinatura,
+  anteriorAssinaturaPeloSistema,
   signatarioDoNome,
   situacaoAssinatura,
 } from './PTRBAAssinaturas';
@@ -61,6 +62,7 @@ import {
   criarPTRBACompleto,
   excluirPTRBACompleto,
   listarPTRBACompletos,
+  comFotosPTRBACompleto,
 } from '../../services/ptrbaCompletoService';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
 import { listarVigencias, type VigenciaSubstituicao } from '../../services/vigenciaSubstituicaoService';
@@ -193,7 +195,7 @@ function evidenciaResumo(ev: PTRBACompletoEvidencia): string {
 }
 
 function evidenciaPreenchida(ev: PTRBACompletoEvidencia): boolean {
-  return !!(ev.assunto || ev.imagem || ev.horaInicio || ev.horaTermino || ev.descricao);
+  return !!(ev.assunto || ev.imagem || ev.temImagem || ev.horaInicio || ev.horaTermino || ev.descricao);
 }
 
 function evidenciasEmPares(evidencias: PTRBACompletoEvidencia[]) {
@@ -893,12 +895,14 @@ function PTRBACompletoCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const gruposEvidencias = evidenciasEmPares(registro.evidencias);
-  const evidenciasPreenchidas = registro.evidencias.filter(ev => ev.imagem);
+  const evidenciasPreenchidas = registro.evidencias.filter(ev => ev.imagem || ev.temImagem);
   const participantesPreenchidos = registro.participantes.filter(p => p.nomeCompleto);
   const auditoria = resumoAuditoria(registro, auditoriaPessoas);
   const situacao = situacaoAssinatura(envio);
   const rascunho = situacao === 'rascunho';
   const bordaStatus = bordaAssinatura(situacao);
+  // Antes de 06/11 a assinatura era feita fora do sistema: nada de selo, etiquetas ou botão de envio.
+  const anterior = rascunho && anteriorAssinaturaPeloSistema(registro.data);
   const assinantesRascunho = rascunho ? quemAssinaPTRBA(participantesPreenchidos, registro.chefeEquipe) : [];
   const documento = `PTR-BA da equipe ${registro.equipe} de ${formatDate(registro.data)}`;
   const infoCards = [
@@ -929,7 +933,7 @@ function PTRBACompletoCard({
             <span className="rounded-full bg-aviation-50 px-2.5 py-1 text-xs font-semibold text-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               {evidenciasPreenchidas.length} evidência(s)
             </span>
-            {!registro.isApoc && <SeloAssinatura envio={envio} />}
+            {!registro.isApoc && !anterior && <SeloAssinatura envio={envio} />}
           </div>
           <p className="text-sm text-graphite-500 dark:text-graphite-400">
             {participantesPreenchidos.length} participante(s) preenchido(s)
@@ -957,7 +961,7 @@ function PTRBACompletoCard({
         </div>
       </button>
       {/* Fora da coluna do título para usar toda a largura do card, inclusive embaixo do botão. */}
-      {!registro.isApoc && (
+      {!registro.isApoc && !anterior && (
         <div className="-mt-5 px-5 pb-5">
           <EtiquetasAssinantes envio={envio} rascunho={assinantesRascunho} nomesGuerra={nomesGuerra} />
         </div>
@@ -1022,7 +1026,7 @@ function PTRBACompletoCard({
                 const fotos = [
                   { evidencia: grupo.primeira, index: grupo.primeiroIndex },
                   { evidencia: grupo.segunda, index: grupo.segundoIndex },
-                ].filter(item => item.evidencia.imagem);
+                ].filter(item => item.evidencia.imagem || item.evidencia.temImagem);
 
                 return (
                   <div key={grupo.grupoIndex} className="rounded-xl border border-graphite-200/70 bg-white/60 p-4 dark:border-border-dark dark:bg-surface-card/60">
@@ -1038,7 +1042,10 @@ function PTRBACompletoCard({
                     {descricoes.length > 0 && (
                       <p className="mb-3 whitespace-pre-wrap text-sm text-graphite-600 dark:text-graphite-300">{descricoes.join('\n\n')}</p>
                     )}
-                    {fotos.length > 0 && (
+                    {fotos.length > 0 && registro.semFotos && (
+                      <p className="text-xs text-graphite-500 dark:text-graphite-400">As fotos aparecem em "Ver documento".</p>
+                    )}
+                    {fotos.length > 0 && !registro.semFotos && (
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                         {fotos.map(({ evidencia, index }) => (
                           <img key={index} src={evidencia.imagem} alt={`Evidencia ${index + 1}`} className="max-h-64 w-full rounded-xl border border-graphite-200/70 bg-graphite-50 object-contain dark:border-border-dark dark:bg-surface-hover" />
@@ -1075,7 +1082,7 @@ function PTRBACompletoCard({
                     <Trash2 className="h-4 w-4" /> Excluir
                   </button>
                 )}
-                {!registro.isApoc && !registro.origemPtrbaId && (
+                {!registro.isApoc && !registro.origemPtrbaId && !anterior && (
                   <button type="button" onClick={onEnviar} className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
                     <Signature className="h-4 w-4" /> Enviar para assinatura
                   </button>
@@ -1238,7 +1245,7 @@ export function PTRBACompletoPage() {
     if (registro.isApoc) return false;
     if ((somenteComApoc || filtroApoc.trim()) && !possuiParticipacaoAPOCPTRBA(registro, filtroApoc)) return false;
     if (filtroLista === 'pendentes' && !['aguardando', 'recusado'].includes(situacaoAssinatura(envios[registro.id]))) return false;
-    if (filtroLista === 'rascunho' && envios[registro.id]) return false;
+    if (filtroLista === 'rascunho' && (envios[registro.id] || anteriorAssinaturaPeloSistema(registro.data))) return false;
     if (filtroEquipe && registro.equipe !== filtroEquipe) return false;
     if (filtroAno && !registro.data.startsWith(filtroAno)) return false;
     if (filtroMes) {
@@ -1257,8 +1264,20 @@ export function PTRBACompletoPage() {
     }
   }
 
+  /** Busca só o período e a equipe escolhidos nos filtros (sem as fotos). */
+  function filtrosDaBusca() {
+    const params: { dataGte?: string; dataLte?: string; equipe?: string } = {};
+    if (filtroAno) {
+      const mes = filtroMes ? filtroMes.padStart(2, '0') : '';
+      params.dataGte = mes ? `${filtroAno}-${mes}-01` : `${filtroAno}-01-01`;
+      params.dataLte = mes ? `${filtroAno}-${mes}-31` : `${filtroAno}-12-31`;
+    }
+    if (filtroEquipe) params.equipe = filtroEquipe;
+    return params;
+  }
+
   async function carregar() {
-    const lista = await listarPTRBACompletos();
+    const lista = await listarPTRBACompletos(filtrosDaBusca());
     setRegistros(lista);
     await carregarEnvios();
   }
@@ -1288,7 +1307,7 @@ export function PTRBACompletoPage() {
       const registro = enviandoRegistro;
       // Lista completa (com as vagas vazias): o servidor calcula a linha de cada assinatura igual ao PDF.
       const participantes = registro.participantes;
-      const pdf = await gerarPTRBACompletoPdf(registro);
+      const pdf = await gerarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
       await enviarParaAssinatura({
         tipo: 'ptrba',
         referenciaId: registro.id,
@@ -1393,11 +1412,6 @@ export function PTRBACompletoPage() {
     let cancelado = false;
     async function init() {
       try {
-        setLoading(true);
-        const lista = await listarPTRBACompletos();
-        if (cancelado) return;
-        setRegistros(lista);
-        setLoading(false);
         void carregarEnvios();
 
         // Os dados auxiliares enriquecem o efetivo, mas não precisam atrasar
@@ -1409,24 +1423,39 @@ export function PTRBACompletoPage() {
           .catch(() => {
             // A lista continua disponível mesmo se algum dado auxiliar falhar.
           });
-      } catch (err) {
-        alert(err instanceof Error ? err.message : 'Erro ao carregar PTR-BA.');
-      } finally {
-        if (!cancelado) setLoading(false);
+      } catch {
+        // Os dados auxiliares são opcionais.
       }
     }
     init();
     return () => { cancelado = true; };
   }, []);
 
+  // A lista acompanha os filtros: troca de mês, ano ou equipe busca de novo, só o necessário.
+  useEffect(() => {
+    let cancelado = false;
+    setLoading(true);
+    listarPTRBACompletos(filtrosDaBusca())
+      .then(lista => { if (!cancelado) setRegistros(lista); })
+      .catch(err => { if (!cancelado) alert(err instanceof Error ? err.message : 'Erro ao carregar PTR-BA.'); })
+      .finally(() => { if (!cancelado) setLoading(false); });
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroAno, filtroMes, filtroEquipe]);
+
   function abrirNovoPTRBA() {
     setEditando(null);
     setMode('form');
   }
 
-  function abrirEdicaoPTRBA(registro: PTRBACompleto) {
-    setEditando(registro);
-    setMode('form');
+  async function abrirEdicaoPTRBA(registro: PTRBACompleto) {
+    try {
+      // A edição precisa das fotos; sem elas, salvar apagaria as imagens.
+      setEditando(await comFotosPTRBACompleto(registro));
+      setMode('form');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível abrir o PTR-BA para edição.');
+    }
   }
 
   async function handleSave(input: Omit<PTRBACompletoInput, 'createdBy' | 'updatedBy'>) {
@@ -1486,7 +1515,7 @@ export function PTRBACompletoPage() {
       if (envio?.status === 'assinado' && envio.temPdfAssinado) {
         await baixarPdfAssinado(envio.id, nomeArquivoPTRBACompleto(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'));
       } else {
-        await baixarPTRBACompletoPdf(registro);
+        await baixarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao gerar PDF.');
@@ -1498,7 +1527,7 @@ export function PTRBACompletoPage() {
   async function handlePreviewPdf(registro: PTRBACompleto) {
     try {
       setPreviewingId(registro.id);
-      const blob = await gerarPTRBACompletoPdf(registro);
+      const blob = await gerarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
       setPreviewPdfData(await blob.arrayBuffer());
       setPreviewPdfTitle(`${registro.isApoc ? 'PTR-BA APOC' : registro.isExtra ? 'PTR-BA EXTRA' : 'PTR-BA'} - ${registro.equipe} - ${formatDate(registro.data)}`);
     } catch (err) {

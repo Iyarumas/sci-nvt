@@ -31,9 +31,8 @@ export class PtrbaResumoController {
     if (createdBy) { params.push(String(createdBy)); where.push(`created_by = $${params.length}`); }
 
     const result = await this.database.query(
-      `SELECT id, created_by, created_at, updated_at, updated_by, data, equipe, identificacao_aeroporto, observacoes,
-              chefe_equipe, participantes, status, concluido_por, concluido_por_nome, concluido_em,
-              is_extra, is_apoc, origem_ptrba_id,
+      // Todas as colunas que existirem (o banco de produção não tem todas as do local), menos as fotos.
+      `SELECT (to_jsonb(r) - 'evidencias') || jsonb_build_object('evidencias',
               CASE WHEN jsonb_typeof(r.evidencias) = 'array' THEN (
                 SELECT coalesce(jsonb_agg(
                   CASE WHEN jsonb_typeof(e) = 'object'
@@ -41,12 +40,12 @@ export class PtrbaResumoController {
                     ELSE e END
                   ORDER BY ordem), '[]'::jsonb)
                 FROM jsonb_array_elements(r.evidencias) WITH ORDINALITY AS t(e, ordem)
-              ) ELSE '[]'::jsonb END AS evidencias
+              ) ELSE '[]'::jsonb END) AS registro
          FROM ptrba_completo_registros r
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY data DESC, created_at DESC`,
       params,
     );
-    return result.rows;
+    return result.rows.map(row => row.registro);
   }
 }

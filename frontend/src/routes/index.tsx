@@ -7,9 +7,10 @@ import { ConviteRegister } from '../pages/Login/ConviteRegister';
 import { AguardandoFuncao } from '../pages/AguardandoFuncao/AguardandoFuncao';
 import { AuthGuard } from '../components/layout/AuthGuard';
 import { Loading } from '../components/ui/Loading';
+import { importarComRecarga } from '../lib/recarregarNovaVersao';
 
 function lazyPage(factory: () => Promise<{ default: React.ComponentType }>) {
-  const Lazy = lazy(factory);
+  const Lazy = lazy(importarComRecarga(factory));
   return (
     <Suspense fallback={<Loading />}>
       <Lazy />

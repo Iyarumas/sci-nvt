@@ -584,7 +584,7 @@ const STATUS_LRO_TRAVAM_OCORRENCIAS = new Set<LRODraftStatus>(['assinado', 'fina
  * no envio as ocorrências são finalizadas e, com as duas assinaturas, o LRO fica "Assinado" sozinho.
  * Os anteriores seguem o fluxo antigo, com o Finalizar manual.
  */
-const INICIO_ASSINATURA_LRO = '2026-11-07';
+const INICIO_ASSINATURA_LRO = '2026-11-06';
 const lroPeloAutentique = (draft: LRODraft) => String(draft.data_plantao || '').slice(0, 10) >= INICIO_ASSINATURA_LRO;
 const STATUS_LRO_EDITAVEIS_POR_ADMIN = new Set<LRODraftStatus>(['aguardando', 'assinado', 'finalizado']);
 const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);

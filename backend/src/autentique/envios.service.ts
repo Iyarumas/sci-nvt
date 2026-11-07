@@ -26,7 +26,7 @@ const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string }
 };
 
 /** LRO com plantão antes deste dia seguem o fluxo antigo (Finalizar manual). */
-export const INICIO_ASSINATURA_LRO = '2026-11-07';
+export const INICIO_ASSINATURA_LRO = '2026-11-06';
 
 /** Situacoes do PTR-BA que nao assinam (ausente). */
 const SITUACOES_SEM_ASSINATURA = new Set(['A']);
@@ -394,7 +394,7 @@ export class EnviosService {
       throw new BadRequestException('Este LRO não está mais esperando o envio para assinatura.');
     }
     if (dataISO(lro.data_plantao) < INICIO_ASSINATURA_LRO) {
-      throw new BadRequestException('LRO de plantões antes de 07/11/2026 não são enviados para assinatura pelo sistema.');
+      throw new BadRequestException('LRO de plantões antes de 06/11/2026 não são enviados para assinatura pelo sistema.');
     }
     const ativos = await documentosComEnvioAtivo(this.database, 'lro', [input.referenciaId]);
     if (ativos.size) throw new ConflictException('Este LRO já foi enviado para assinatura.');

@@ -528,17 +528,19 @@ Usar `<SearchSelect>` de `src/components/ui/SearchSelect` para seleção com pes
 
 **Coordenador do LRO:** a assinatura "COORD DE PREV E EMERG" usa o cadastro com função `COORDENADOR`, pelo helper `assinaturaCoordenadorLRO` em `frontend/src/types/lro.ts`, priorizando Rinaldo ou o único coordenador cadastrado. Não selecionar supervisores APOC. Snapshots incluem `coordenadorAssinatura` e `coordenadorFuncao`; drafts legados sem função ou cadastro indisponível/ambíguo usam a alternativa `RINALDO SANTOS RACHADEL`. A regra vale para prévia, impressão e PDF; PDFs já armazenados ou assinados não são reescritos.
 
-### Autentique (assinatura eletrônica) — em teste só no PTR-BA
+### Autentique (assinatura eletrônica) — PTR-BA e LRO
 
-A API do Autentique foi integrada **somente no PTR-BA** (main, 06/11/2026) para testar o sistema e ver como se desempenha em produção. LRO, TAF, Posicionamento, Tempo Resposta, BONA e DDS continuam sendo assinados à mão pelo painel do Autentique até o teste ser aprovado.
+A API do Autentique está integrada no **PTR-BA** (desde 06/11/2026) e no **LRO** (desde 07/11/2026). TAF, TP/EPR, Posicionamento, Tempo Resposta e BONA continuam sendo assinados à mão pelo painel do Autentique. O DDS não vai para o Autentique.
 
 - Fluxo: PTR-BA salvo como rascunho; "Enviar para assinatura" fica em Ver detalhes, com confirmação dos e-mails do cadastro. Depois de enviado, o PTR-BA não pode ser editado nem excluído (tela e servidor). Só administrador cancela o envio.
 - Código: `backend/src/autentique/` (`autentique-api.service.ts`, `envios.service.ts`, `posicoes-ptrba.ts`), migration `075_autentique_envios.sql`; tela em `frontend/src/pages/RegistrosDiarios/PTRBAAssinaturas.tsx` e `PTRBACompleto.tsx`.
 - Posições calibradas no sandbox: linha da tabela x 142,5 mm, y = 43,5 + 6,7·i − 4,95 mm, escala 0,75; linha do chefe x 79,9 mm, y 276,35 mm, escala 1,0. Nome do documento = nome do arquivo do sistema; pasta NAVEGANTES/{ano}/PTRBA/{MÊS aa}.
 - Regra: o PTR-BA fica assinado quando todos os BA (CE, LR, MC, BA-2) assinaram; APOC não segura. O PDF assinado é guardado no servidor; Ver documento mostra o PDF completo e o Download traz só a 1ª página (relatório da empresa).
 - PTR-BA com plantão antes de 06/11/2026 não são enviados pelo sistema. Os de 01 a 05/11 foram vinculados aos documentos já existentes no Autentique.
-- Env: `AUTENTIQUE_TOKEN`, `AUTENTIQUE_MODO` (`simulado` | `sandbox` | vazio = produção), `AUTENTIQUE_WEBHOOK_SECRET` (webhook em `/api/autentique/webhook`, ainda a cadastrar no painel).
-- Próximos documentos a integrar depois do teste: LRO (2 assinaturas), TAF, Posicionamento e Tempo Resposta (rubricas), BONA e DDS. Cada um precisa calibrar as posições no sandbox e definir quem assina.
+- LRO: o assistente termina em "Salvar" (fica rascunho); "Enviar para assinatura" nos detalhes; assinam o chefe de equipe e o gerente (cargo GS no cadastro). O gerador (`lroGenerator.gerarPDFComAssinaturas`) mede a página e a altura das linhas CHEFE DE EQUIPE e GERENTE DO SESCINC SBNF e o servidor (`posicoes-lro.ts`, escala 0,8) marca ali — funciona com qualquer número de páginas (testado com 2 e 5). No envio as ocorrências do LRO são finalizadas e ele fica Aguardando; com as duas assinaturas fica Assinado sozinho (sem Finalizar). Cancelar volta para rascunho. LRO antes de 07/11/2026 segue o fluxo antigo. Migration `076_autentique_envios_lro.sql`. Pasta NAVEGANTES/{ano}/LRO/{MÊS aa}; download do LRO assinado = documento inteiro.
+- O PDF assinado é atualizado a cada assinatura nova (Ver documento mostra as assinaturas já feitas). A tela atualiza sozinha a cada 30 s enquanto houver documento aguardando; o webhook só "cutuca" uma consulta segura no Autentique.
+- Env: `AUTENTIQUE_TOKEN`, `AUTENTIQUE_MODO` (`simulado` | `sandbox` | vazio = produção), `AUTENTIQUE_WEBHOOK_SECRET` (webhook em `/api/autentique/webhook`, cadastrado no painel com document.updated e document.finished).
+- Próximos documentos: TAF e TP/EPR (2 assinam + 9 reconhecem), Posicionamento e Tempo Resposta (rubricas e assinaturas), BONA (quem participou). Cada um precisa calibrar as posições no sandbox e definir quem assina.
 
 ### Tempo Resposta e Posicionamento
 

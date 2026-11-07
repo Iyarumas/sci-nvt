@@ -3,6 +3,7 @@ import {
   RefreshCw, Plus, ArrowLeft, FileText, Loader2,
   Save, ChevronDown, ChevronUp, Filter, Printer,
   AlertTriangle, AlertCircle, Edit, Trash2, Eye, CheckCircle, X, Archive, Lock, HelpCircle, MousePointer2,
+  Gauge, Siren, Clock, ArrowLeftRight, Signature, Mail, Ban, Download,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -36,6 +37,27 @@ import { FUNCAO_APOC_OPTIONS } from '../../types/apoc';
 import { estaNoPeriodoISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, normalizarDataISO } from '../../utils/datas';
 import { nomeArquivoTrocaServicoPdf } from '../../utils/documentFileNames';
 import { resolverPessoaNoPlantaoOperacional } from '../../utils/efetivoOperacional';
+import {
+  atualizarEnvioAssinatura,
+  baixarPdfAssinado,
+  cancelarEnvioAssinatura,
+  enviarParaAssinatura,
+  listarEnviosAssinatura,
+  obterPdfAssinado,
+  previaEnvioAssinatura,
+  reenviarAvisosAssinatura,
+  type EnvioAssinatura,
+  type ParticipanteParaAssinar,
+  type PreviaSignatario,
+} from '../../services/autentiqueEnviosService';
+import {
+  CelulaAssinatura,
+  ConfirmarEnvioModal,
+  SeloAssinatura,
+  bordaAssinatura,
+  funcoesVisiveis,
+  situacaoAssinatura,
+} from '../RegistrosDiarios/PTRBAAssinaturas';
 type SubView = 'list' | 'form';
 type ViewMode = 'list' | 'report';
 type PessoaTroca = { id: string; tipo: 'bombeiro' | 'apoc'; cargo: string; nomeGuerra: string; nomeCompleto: string; equipe: string; turno: string };
@@ -573,6 +595,36 @@ export function Trocas() {
   const [templateDoc, setTemplateDoc] = useState<DocumentWithFields | null>(null);
   const [fills, setFills] = useState<DocumentFill[]>([]);
   const [expandedFill, setExpandedFill] = useState<string | null>(null);
+  const [enviosTroca, setEnviosTroca] = useState<Record<string, EnvioAssinatura>>({});
+  const [envioTrocaFill, setEnvioTrocaFill] = useState<DocumentFill | null>(null);
+  const [participantesEnvioTroca, setParticipantesEnvioTroca] = useState<ParticipanteParaAssinar[]>([]);
+  const [previaEnvioTroca, setPreviaEnvioTroca] = useState<PreviaSignatario[] | null>(null);
+  const [erroEnvioTroca, setErroEnvioTroca] = useState<string | null>(null);
+  const [enviandoTroca, setEnviandoTroca] = useState(false);
+  const [acaoEnvioTrocaId, setAcaoEnvioTrocaId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void carregarEnviosTroca();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Assinaturas aparecendo sozinhas: com troca aguardando, confere a cada 30 s no nosso servidor (sem custo).
+  const trocaAguardandoAssinatura = Object.values(enviosTroca).some(envio => envio.status === 'aguardando');
+  useEffect(() => {
+    if (!trocaAguardandoAssinatura) return;
+    const conferir = () => {
+      if (document.visibilityState !== 'visible') return;
+      void carregarEnviosTroca();
+      void recarregarPreenchimentosTroca(true);
+    };
+    const intervalo = window.setInterval(conferir, 30_000);
+    document.addEventListener('visibilitychange', conferir);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', conferir);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trocaAguardandoAssinatura]);
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [showConfirmPdf, setShowConfirmPdf] = useState(false);
@@ -963,6 +1015,149 @@ export function Trocas() {
       setShowNotifPopup({ msg: 'Erro ao carregar trocas. Contate o administrador.', type: 'error' });
     } finally {
       setLoading(false);
+    }
+  }
+
+  // ===== Assinatura eletrônica da troca (Autentique) =====
+
+  async function carregarEnviosTroca() {
+    try {
+      const lista = await listarEnviosAssinatura('troca');
+      setEnviosTroca(Object.fromEntries(lista.map(envio => [envio.referenciaId, envio])));
+    } catch {
+      // Sem o status das assinaturas, a lista continua funcionando.
+    }
+  }
+
+  /** Quem está como BA-CE na equipe naquela data (considera ferista, férias e substituições). */
+  function chefeDaEquipeNaData(equipe: string, data: string): string {
+    if (!equipe || !data) return '';
+    const chefe = (bombeirosList as Bombeiro[]).find(bombeiro => {
+      const noPlantao = resolverPessoaNoPlantaoOperacional({
+        pessoa: bombeiro,
+        bombeiros: bombeirosList,
+        vigencias: vigenciasList,
+        escalasCompletas: escalasCompletasList,
+        equipe,
+        dataPlantao: data,
+      });
+      return noPlantao.pertence && (noPlantao.cargoExercido || bombeiro.cargo) === 'BA-CE';
+    });
+    return chefe?.nomeCompleto || '';
+  }
+
+  /** Solicitante, solicitado e o chefe de cada um, cada chefe na data em que a pessoa folga. */
+  function participantesDaTroca(fill: DocumentFill): ParticipanteParaAssinar[] {
+    const data = (fill.filled_data as Record<string, string>) || {};
+    const pessoaSol = getPessoaByNome(data.nome_solicitante || '');
+    const pessoaSolic = getPessoaByNome(data.nome_solicitado || '');
+    const chefeSol = chefeDaEquipeNaData(getEquipeEfetivaNaData(pessoaSol, data.data_solicitada || ''), data.data_solicitada || '');
+    const chefeSolic = chefeDaEquipeNaData(getEquipeEfetivaNaData(pessoaSolic, data.data_folga_solicitado || ''), data.data_folga_solicitado || '');
+    return [
+      { funcao: 'Solicitante', nomeCompleto: data.nome_solicitante || '', situacao: '' },
+      { funcao: 'Solicitado', nomeCompleto: data.nome_solicitado || '', situacao: '' },
+      { funcao: 'Chefe do solicitante', nomeCompleto: chefeSol, situacao: '' },
+      { funcao: 'Chefe do solicitado', nomeCompleto: chefeSolic, situacao: '' },
+    ];
+  }
+
+  async function abrirEnvioTroca(fill: DocumentFill) {
+    const participantes = participantesDaTroca(fill);
+    setErroEnvioTroca(null);
+    setPreviaEnvioTroca(null);
+    setParticipantesEnvioTroca(participantes);
+    setEnvioTrocaFill(fill);
+    try {
+      setPreviaEnvioTroca(await previaEnvioAssinatura({ tipo: 'troca', referenciaId: fill.id, participantes }));
+    } catch (err) {
+      setErroEnvioTroca(err instanceof Error ? err.message : 'Não foi possível buscar quem assina.');
+      setPreviaEnvioTroca([]);
+    }
+  }
+
+  /** Gera o PDF já deferido (como no Aprovar), guarda os dados e envia para todos assinarem juntos. */
+  async function confirmarEnvioTroca() {
+    const fill = envioTrocaFill;
+    if (!fill) return;
+    setEnviandoTroca(true);
+    setErroEnvioTroca(null);
+    try {
+      const doc = await ensureDocumentExists();
+      if (!doc) throw new Error('Modelo da troca não encontrado.');
+      const dados = (fill.filled_data as Record<string, string>) || {};
+      const formDataToSave = prepareFormDataWithAuth({ ...dados, deferido_indeferido: 'DEFERIDO', data_autorizacao: hojeLocalISO() });
+      const blob = await getTrocaPdfBlob(doc);
+      if (!blob) throw new Error('PDF modelo da troca não encontrado.');
+      const pdf = await preencherPdf(await blob.arrayBuffer(), buildPdfData(formDataToSave), fieldPositionsFromDoc(doc));
+      await atualizarPreenchimento(fill.id, { filled_data: formDataToSave });
+      await enviarParaAssinatura({
+        tipo: 'troca',
+        referenciaId: fill.id,
+        pdf,
+        nomeArquivo: nomeArquivoTroca(formDataToSave),
+        participantes: participantesEnvioTroca,
+      });
+      setEnvioTrocaFill(null);
+      await carregarEnviosTroca();
+      await recarregarPreenchimentosTroca(true);
+      setShowNotifPopup({ msg: 'Troca enviada para assinatura. Cada pessoa vai receber o link por e-mail.', type: 'success' });
+    } catch (err) {
+      setErroEnvioTroca(err instanceof Error ? err.message : 'Não foi possível enviar para assinatura.');
+    } finally {
+      setEnviandoTroca(false);
+    }
+  }
+
+  async function atualizarEnvioTroca(envio: EnvioAssinatura) {
+    setAcaoEnvioTrocaId(envio.id);
+    try {
+      await atualizarEnvioAssinatura(envio.id);
+      await carregarEnviosTroca();
+      await recarregarPreenchimentosTroca(true);
+    } catch (err) {
+      setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível atualizar as assinaturas.', type: 'error' });
+    } finally {
+      setAcaoEnvioTrocaId(null);
+    }
+  }
+
+  async function reenviarEnvioTroca(envio: EnvioAssinatura) {
+    setAcaoEnvioTrocaId(envio.id);
+    try {
+      const { reenviados } = await reenviarAvisosAssinatura(envio.id);
+      setShowNotifPopup({ msg: `Aviso reenviado por e-mail para ${reenviados} pessoa(s) que ainda não assinaram.`, type: 'success' });
+    } catch (err) {
+      setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível reenviar os avisos.', type: 'error' });
+    } finally {
+      setAcaoEnvioTrocaId(null);
+    }
+  }
+
+  async function cancelarEnvioTroca(envio: EnvioAssinatura) {
+    const ok = window.confirm(
+      'Tem certeza que deseja cancelar o envio desta troca?\n\n'
+      + '• Ninguém mais conseguirá assinar pelos links já enviados.\n'
+      + '• As assinaturas já feitas deixam de valer.\n'
+      + '• A troca volta a ficar aguardando, para corrigir e enviar de novo.',
+    );
+    if (!ok) return;
+    try {
+      await cancelarEnvioAssinatura(envio.id);
+      await carregarEnviosTroca();
+      await recarregarPreenchimentosTroca(true);
+    } catch (err) {
+      setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível cancelar o envio.', type: 'error' });
+    }
+  }
+
+  async function verTrocaAssinada(envio: EnvioAssinatura) {
+    const janela = window.open('', '_blank');
+    try {
+      const url = URL.createObjectURL(await obterPdfAssinado(envio.id));
+      if (janela) janela.location.href = url; else window.location.href = url;
+    } catch (err) {
+      janela?.close();
+      setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível abrir o PDF assinado.', type: 'error' });
     }
   }
 
@@ -2552,13 +2747,18 @@ export function Trocas() {
             const turnosDiferentes = !isFerista && turnoSol && turnoSolic && turnoSol !== turnoSolic;
             const funcoesDiferentes = cargoSolAbr && cargoSolicAbr && cargoSolAbr !== cargoSolicAbr;
 
-            const cardClass = isExcessoLimite || data.troca_emergencial === 'SIM'
-              ? 'rounded-xl border border-red-500 bg-white ring-1 ring-red-300 dark:border-red-500 dark:bg-graphite-800 dark:ring-red-600'
-              : turnosDiferentes
-                ? 'rounded-xl border border-orange-400 bg-white ring-1 ring-orange-200 dark:border-orange-500 dark:bg-graphite-800 dark:ring-orange-800/40'
-                : funcoesDiferentes
-                  ? 'rounded-xl border border-amber-400 bg-white ring-1 ring-amber-200 dark:border-amber-500 dark:bg-graphite-800 dark:ring-amber-800/40'
-                  : 'rounded-xl border border-graphite-200 bg-white dark:border-graphite-600 dark:bg-graphite-800';
+            // Borda = situação da assinatura (igual PTR-BA e LRO). Os alertas ficam nas etiquetas.
+            const envio = enviosTroca[fill.id];
+            const bordaEnvio = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
+            const bordaStatus = bordaEnvio
+              || (fill.status === 'signed' ? 'border-emerald-500/70 dark:border-emerald-500/60'
+                : fill.status === 'pending' ? 'border-amber-500/70 dark:border-amber-500/60'
+                  : fill.status === 'cancelled' ? 'border-red-500/70 dark:border-red-500/60'
+                    : null);
+            const cardClass = bordaStatus
+              ? `rounded-xl border-2 ${bordaStatus} bg-white dark:bg-graphite-800`
+              : 'rounded-xl border border-graphite-200 bg-white dark:border-graphite-600 dark:bg-graphite-800';
+            const documentoTroca = `troca de serviço de ${displaySol || 'solicitante'} com ${displaySolic || 'solicitado'}`;
 
             return (
               <div key={fill.id} className={cardClass}>
@@ -2572,10 +2772,10 @@ export function Trocas() {
                         <span className="text-graphite-400 text-xs">{'\u2192'}</span>
                         <span className="rounded-md bg-aviation-100 px-1.5 py-0.5 text-[9px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">{cargoSolicAbr || '—'}</span>
                         <span>{displaySolic}</span>
-                        {isExcessoLimite && <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400"><AlertTriangle className="h-2.5 w-2.5" /> LIMITE</span>}
-                        {data.troca_emergencial === 'SIM' && <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400"><AlertTriangle className="h-2.5 w-2.5" /> EMERG.</span>}
-                        {turnosDiferentes && <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"><AlertTriangle className="h-2.5 w-2.5" /> TURNOS</span>}
-                        {funcoesDiferentes && <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"><AlertTriangle className="h-2.5 w-2.5" /> FUNÇÕES</span>}
+                        {isExcessoLimite && <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400"><Gauge className="h-2.5 w-2.5" /> LIMITE</span>}
+                        {data.troca_emergencial === 'SIM' && <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400"><Siren className="h-2.5 w-2.5" /> EMERG.</span>}
+                        {turnosDiferentes && <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"><Clock className="h-2.5 w-2.5" /> TURNOS</span>}
+                        {funcoesDiferentes && <span className="inline-flex items-center gap-0.5 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"><ArrowLeftRight className="h-2.5 w-2.5" /> FUNÇÕES</span>}
                       </div>
                       <div className="text-xs text-graphite-500 dark:text-graphite-400 mt-0.5">
                         Plantão: {formatarDataBR(dataPlantaoTroca)}
@@ -2586,6 +2786,7 @@ export function Trocas() {
                     </div>
                   </button>
                   <div className="flex items-center gap-2">
+                    {envio && <SeloAssinatura envio={envio} />}
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       fill.status === 'draft' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' :
                       fill.status === 'signed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
@@ -2603,13 +2804,13 @@ export function Trocas() {
                     <button onClick={(event) => { event.stopPropagation(); setExpandedFill(isExpanded ? null : fill.id); }} className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-graphite-700">
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
-                    {canManageFill(fill) && fill.status === 'draft' && (
+                    {canManageFill(fill) && fill.status === 'draft' && !envio && (
                       <button onClick={(event) => { event.stopPropagation(); handleEditFill(fill); }} title="Editar" className="rounded p-1 text-graphite-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
                         <Edit className="h-4 w-4" />
                       </button>
                     )}
                     <button
-                      onClick={(event) => { event.stopPropagation(); handleVisualizarPdf(fill); }}
+                      onClick={(event) => { event.stopPropagation(); if (envio?.temPdfAssinado) void verTrocaAssinada(envio); else handleVisualizarPdf(fill); }}
                       disabled={saving}
                       title="Visualizar PDF"
                       className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-aviation-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-graphite-700 dark:hover:text-aviation-400"
@@ -2621,7 +2822,7 @@ export function Trocas() {
                         <Archive className="h-4 w-4" />
                       </button>
                     )}
-                    {canManageFill(fill) && (
+                    {canManageFill(fill) && !envio && (
                       <button onClick={(event) => { event.stopPropagation(); handleDeleteFill(fill.id); }} title="Excluir" className="rounded p-1 text-graphite-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400">
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -2634,7 +2835,7 @@ export function Trocas() {
                     {isExcessoLimite && (
                       <div className="mb-4 flex items-center gap-3 rounded-lg border border-red-400 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-900/20 shadow-sm">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-200 dark:bg-red-800/50">
-                          <AlertTriangle className="h-4 w-4 text-red-700 dark:text-red-300" />
+                          <Gauge className="h-4 w-4 text-red-700 dark:text-red-300" />
                         </div>
                         <div>
                           <p className="text-xs font-bold text-red-800 dark:text-red-200 uppercase tracking-wider">Limite Excedido</p>
@@ -2645,7 +2846,7 @@ export function Trocas() {
                     {turnosDiferentes && (
                       <div className="mb-4 flex items-center gap-3 rounded-lg border border-orange-400 bg-orange-50 px-4 py-3 dark:border-orange-800 dark:bg-orange-900/20 shadow-sm">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-200 dark:bg-orange-800/50">
-                          <AlertTriangle className="h-4 w-4 text-orange-700 dark:text-orange-300" />
+                          <Clock className="h-4 w-4 text-orange-700 dark:text-orange-300" />
                         </div>
                         <div>
                           <p className="text-xs font-bold text-orange-800 dark:text-orange-200 uppercase tracking-wider">Turnos Diferentes</p>
@@ -2656,7 +2857,7 @@ export function Trocas() {
                     {funcoesDiferentes && (
                       <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-400 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/20 shadow-sm">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 dark:bg-amber-800/50">
-                          <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+                          <ArrowLeftRight className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                         </div>
                         <div>
                           <p className="text-xs font-bold text-amber-800 dark:text-amber-200 uppercase tracking-wider">Funções Diferentes</p>
@@ -2704,7 +2905,7 @@ export function Trocas() {
                           </span>
                           {data.troca_emergencial === 'SIM' && (
                             <button onClick={() => setShowJustificativaPopup(fill.id)} className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400">
-                              <AlertTriangle className="h-3 w-3" /> Emergencial
+                              <Siren className="h-3 w-3" /> Emergencial
                             </button>
                           )}
                         </div>
@@ -2740,6 +2941,56 @@ export function Trocas() {
                         <p className="mt-1 text-sm text-graphite-900 dark:text-graphite-100">{data.motivo_troca}</p>
                       </div>
                     )}
+                    {envio && (
+                      <div className="mt-3 rounded-lg border border-graphite-200 bg-white p-3 dark:border-graphite-600 dark:bg-graphite-800">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Assinaturas</span>
+                        <div className="mt-1 divide-y divide-graphite-100 dark:divide-graphite-700">
+                          {envio.signatarios.map(signatario => (
+                            <div key={signatario.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                              <span className="text-graphite-800 dark:text-graphite-100">
+                                <span className="font-semibold">{funcoesVisiveis(signatario.funcoes)}</span> · {signatario.nome}
+                              </span>
+                              <CelulaAssinatura envioId={envio.id} signatario={signatario} documento={documentoTroca} />
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
+                          Enviada por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Depois de enviada, a troca não pode mais ser editada nem excluída.
+                        </p>
+                      </div>
+                    )}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {!envio && fill.status === 'pending' && canManageFill(fill) && (
+                        <button onClick={() => void abrirEnvioTroca(fill)}
+                          className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
+                          <Signature className="h-4 w-4" /> Enviar para assinatura
+                        </button>
+                      )}
+                      {envio?.temPdfAssinado && (
+                        <button onClick={() => void baixarPdfAssinado(envio.id, nomeArquivoTroca(data).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina').catch(err => setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.', type: 'error' }))}
+                          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all">
+                          <Download className="h-4 w-4" /> Baixar PDF assinado
+                        </button>
+                      )}
+                      {envio?.status === 'aguardando' && (
+                        <button onClick={() => void atualizarEnvioTroca(envio)} disabled={acaoEnvioTrocaId === envio.id}
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-graphite-700 dark:text-graphite-200">
+                          <RefreshCw className={`h-4 w-4 ${acaoEnvioTrocaId === envio.id ? 'animate-spin' : ''}`} /> Atualizar assinaturas
+                        </button>
+                      )}
+                      {envio?.status === 'aguardando' && envio.podeGerir && (
+                        <button onClick={() => void reenviarEnvioTroca(envio)} disabled={acaoEnvioTrocaId === envio.id}
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-graphite-700 dark:text-graphite-200">
+                          <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
+                        </button>
+                      )}
+                      {envio && contexto.isAdministradorSistema && (
+                        <button onClick={() => void cancelarEnvioTroca(envio)}
+                          className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                          <Ban className="h-4 w-4" /> Cancelar envio
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2750,6 +3001,17 @@ export function Trocas() {
 
       {renderPdfPreviewModal()}
       {renderConflitoTrocaModal()}
+      {envioTrocaFill && (
+        <ConfirmarEnvioModal
+          titulo="Troca de serviço"
+          documento="troca"
+          assinantes={previaEnvioTroca}
+          enviando={enviandoTroca}
+          erro={erroEnvioTroca}
+          onCancelar={() => { if (!enviandoTroca) setEnvioTrocaFill(null); }}
+          onConfirmar={() => void confirmarEnvioTroca()}
+        />
+      )}
 
       {showRelatorioMensalModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !gerandoRelatorioMensal && setShowRelatorioMensalModal(false)}>

@@ -16,13 +16,15 @@ import { LocalStorageService } from '../storage/local-storage.service';
 import { AutentiqueApiService, SignatarioAutentique } from './autentique-api.service';
 import { posicaoNaLinhaLro, validarLinhasLro } from './posicoes-lro';
 import { linhasDaTabela, posicoesDaPessoa } from './posicoes-ptrba';
+import { PAPEIS_TROCA, posicoesTroca } from './posicoes-troca';
 
-export const TIPOS_ENVIO = new Set(['ptrba', 'lro']);
+export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca']);
 
 /** Tabela, nome e regras de cada tipo de documento enviado para assinatura. */
-const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string }> = {
-  ptrba: { tabela: 'ptrba_completo_registros', nome: 'PTR-BA', pasta: 'PTRBA' },
-  lro: { tabela: 'lro_drafts', nome: 'LRO', pasta: 'LRO' },
+const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string; criador: string }> = {
+  ptrba: { tabela: 'ptrba_completo_registros', nome: 'PTR-BA', pasta: 'PTRBA', criador: 'created_by' },
+  lro: { tabela: 'lro_drafts', nome: 'LRO', pasta: 'LRO', criador: 'created_by' },
+  troca: { tabela: 'document_fills', nome: 'troca', pasta: 'TROCAS', criador: 'filled_by' },
 };
 
 /** LRO com plantão antes deste dia seguem o fluxo antigo (Finalizar manual). */
@@ -217,11 +219,11 @@ export class EnviosService {
     if (this.podeGerir(user)) return;
     if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('Documento não encontrado.');
     const doc = DOCUMENTOS[tipo];
-    const registro = await this.database.query<{ created_by: string }>(
-      `SELECT created_by FROM ${doc.tabela} WHERE id = $1`,
+    const registro = await this.database.query<{ criador: string }>(
+      `SELECT ${doc.criador} AS criador FROM ${doc.tabela} WHERE id = $1`,
       [referenciaId],
     );
-    if (normalizarNome(registro.rows[0]?.created_by) !== normalizarNome(user.username)) {
+    if (normalizarNome(registro.rows[0]?.criador) !== normalizarNome(user.username)) {
       throw new ForbiddenException(`Só quem criou o ${doc.nome}, a chefia ou um administrador pode enviar para assinatura.`);
     }
   }
@@ -302,13 +304,61 @@ export class EnviosService {
     return titular.nome_completo;
   }
 
+  /**
+   * Troca: assinam o solicitante, o solicitado, o chefe de cada um (calculados pela tela com a mesma
+   * regra do quadro de efetivos: equipe e função na data, considerando ferista, férias e substituições)
+   * e o gerente do dia. Solicitante e solicitado são conferidos com o que está salvo na troca.
+   */
+  private async participantesTroca(referenciaId: string, informados: ParticipanteEnvio[]) {
+    if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('Troca não encontrada.');
+    const result = await this.database.query<{ filled_data: Record<string, string> | null; status: string }>(
+      'SELECT filled_data, status FROM document_fills WHERE id = $1',
+      [referenciaId],
+    );
+    if (!result.rows.length) throw new NotFoundException('Troca não encontrada.');
+    const dados = result.rows[0].filled_data ?? {};
+    const lista = Array.isArray(informados) ? informados : [];
+    const doPapel = (papel: string) => String(lista.find(p => p.funcao === papel)?.nomeCompleto ?? '').trim();
+    const confere = (papel: string, salvo: unknown) => {
+      const nome = doPapel(papel);
+      if (!nome) throw new BadRequestException(`Falta o ${papel.toLowerCase()} da troca.`);
+      if (normalizarNome(nome) !== normalizarNome(salvo)) {
+        throw new BadRequestException(`O ${papel.toLowerCase()} não confere com a troca salva.`);
+      }
+      return nome;
+    };
+    const solicitante = confere('Solicitante', dados.nome_solicitante);
+    const solicitado = confere('Solicitado', dados.nome_solicitado);
+    const chefeSolicitante = doPapel('Chefe do solicitante');
+    const chefeSolicitado = doPapel('Chefe do solicitado');
+    if (!chefeSolicitante) throw new BadRequestException('Não foi possível achar o chefe de equipe do solicitante nessa data.');
+    if (!chefeSolicitado) throw new BadRequestException('Não foi possível achar o chefe de equipe do solicitado nessa data.');
+    const cadastro = await this.database.query<{ id: string; nome_completo: string; nome_guerra: string; cargo: string }>(
+      `SELECT id::text AS id, nome_completo, nome_guerra, cargo FROM bombeiros`,
+    );
+    const gerente = await this.gerenteDoDia(dataISO(dados.data_solicitada), cadastro.rows);
+    return {
+      status: result.rows[0].status,
+      dataSolicitada: dataISO(dados.data_solicitada),
+      participantes: [
+        { funcao: 'Solicitante', nomeCompleto: solicitante },
+        { funcao: 'Solicitado', nomeCompleto: solicitado },
+        { funcao: 'Chefe do solicitante', nomeCompleto: chefeSolicitante },
+        { funcao: 'Chefe do solicitado', nomeCompleto: chefeSolicitado },
+        { funcao: 'Gerente', nomeCompleto: gerente },
+      ] as ParticipanteEnvio[],
+    };
+  }
+
   /** Quem vai assinar, com o e-mail do cadastro, para conferir antes de enviar. */
   async previa(user: AuthUser, input: Omit<EnviarInput, 'pdf'>) {
     this.validarTipo(input.tipo);
     await this.verificarPermissaoEnvio(user, input.tipo, input.referenciaId);
     const pessoas = input.tipo === 'lro'
       ? await this.resolverSignatarios(await this.participantesLro(input.referenciaId))
-      : await this.resolverSignatarios(input.participantes, input.chefeEquipe);
+      : input.tipo === 'troca'
+        ? await this.resolverSignatarios((await this.participantesTroca(input.referenciaId, input.participantes)).participantes)
+        : await this.resolverSignatarios(input.participantes, input.chefeEquipe);
     return pessoas.map(({ nome, funcoes, email, problema }) => ({ nome, funcoes, email, problema }));
   }
 
@@ -318,6 +368,7 @@ export class EnviosService {
     if (!input.pdf?.length) throw new BadRequestException('Envie o PDF do documento.');
     if (input.pdf.subarray(0, 5).toString('latin1') !== '%PDF-') throw new BadRequestException('O arquivo enviado não é um PDF.');
     if (input.tipo === 'lro') return this.enviarLro(user, input, input.pdf);
+    if (input.tipo === 'troca') return this.enviarTroca(user, input, input.pdf);
 
     const registro = await this.database.query<{ data: unknown; is_apoc: boolean; origem_ptrba_id: string | null; equipe: string }>(
       'SELECT data, is_apoc, origem_ptrba_id, equipe FROM ptrba_completo_registros WHERE id = $1',
@@ -377,6 +428,52 @@ export class EnviosService {
       });
     } catch (erro) {
       // Se não deu para gravar aqui (ex.: alguém enviou ao mesmo tempo), não deixa o documento vivo lá.
+      await this.api.cancelar(documento.id).catch(e => this.logger.error(`Documento ${documento.id} ficou no Autentique: ${(e as Error).message}`));
+      throw erro;
+    }
+  }
+
+  /** Troca: todos recebem juntos (sem fila); cada um assina na sua linha e a data entra nos campos de data. */
+  private async enviarTroca(user: AuthUser, input: EnviarInput, pdf: Buffer) {
+    const { status, dataSolicitada, participantes } = await this.participantesTroca(input.referenciaId, input.participantes);
+    if (status !== 'pending' && status !== 'draft') {
+      throw new BadRequestException('Esta troca não está mais esperando o envio para assinatura.');
+    }
+    const ativos = await documentosComEnvioAtivo(this.database, 'troca', [input.referenciaId]);
+    if (ativos.size) throw new ConflictException('Esta troca já foi enviada para assinatura.');
+
+    const signatarios = await this.montarSignatarios(participantes);
+    const dadosEnvio = { ...input, participantes };
+    if (this.modoSimulado) {
+      return this.gravarEnvio(user, dadosEnvio, {
+        documentoId: `simulado-${randomUUID()}`,
+        sandbox: true,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: `simulado-${randomUUID()}` })),
+      });
+    }
+
+    const paraAutentique: SignatarioAutentique[] = signatarios.map(s => ({
+      email: s.email,
+      action: 'SIGN',
+      positions: posicoesTroca(s.funcoes.filter(f => (PAPEIS_TROCA as string[]).includes(f))),
+    }));
+    const nomeArquivo = this.nomeArquivo(input.nomeArquivo, dataSolicitada, '', 'TROCA DE SERVICO');
+    const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS.troca.pasta, dataSolicitada);
+    const documento = await this.api.criarDocumento({
+      nome: nomeArquivo.replace(/\.pdf$/i, ''),
+      nomeArquivo,
+      pdf,
+      signatarios: paraAutentique,
+      pastaId,
+    });
+    const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s.public_id]));
+    try {
+      return await this.gravarEnvio(user, dadosEnvio, {
+        documentoId: documento.id,
+        sandbox: this.api.sandbox,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: porEmail.get(s.email.toLowerCase()) ?? null })),
+      });
+    } catch (erro) {
       await this.api.cancelar(documento.id).catch(e => this.logger.error(`Documento ${documento.id} ficou no Autentique: ${(e as Error).message}`));
       throw erro;
     }
@@ -674,6 +771,13 @@ export class EnviosService {
       [envio.id, novoStatus, pdfPath],
     );
     // LRO: com o chefe e o gerente assinados, o livro fica "Assinado" sozinho (é a etapa final).
+    // Troca: com todas as assinaturas (gerente incluído) fica Aprovada sozinha.
+    if (envio.tipo === 'troca' && novoStatus === 'assinado') {
+      await this.database.query(
+        `UPDATE document_fills SET status = 'signed', updated_at = now() WHERE id = $1 AND status IN ('pending', 'draft')`,
+        [envio.referencia_id],
+      );
+    }
     if (envio.tipo === 'lro' && novoStatus === 'assinado') {
       await this.database.query(
         `UPDATE lro_drafts SET status = 'assinado', updated_at = now() WHERE id = $1 AND status = 'aguardando'`,

@@ -126,6 +126,16 @@ export class ResourcesService {
     // LRO enviado para assinatura: o conteúdo não muda mais (status, como arquivar, continua livre).
     const mudaConteudoLro = table === 'lro_drafts'
       && (['dados', 'equipe', 'data_plantao'].some(key => dto.payload[key] !== undefined) || dto.payload.status === 'rascunho');
+    // Troca enviada para assinatura: os dados não mudam mais (arquivar continua livre).
+    if (table === 'document_fills' && dto.payload.filled_data !== undefined) {
+      const params: unknown[] = [];
+      const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+      if (whereSql) {
+        const alvo = await this.database.query(`SELECT id FROM ${this.tableName(table)} ${whereSql}`, params);
+        const enviados = await documentosComEnvioAtivo(this.database, 'troca', alvo.rows.map(row => String(row.id)));
+        if (enviados.size) throw new BadRequestException('Esta troca já foi enviada para assinatura e não pode mais ser editada.');
+      }
+    }
     if (mudaConteudoLro) {
       const params: unknown[] = [];
       const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
@@ -220,6 +230,11 @@ export class ResourcesService {
       await client.query("SELECT set_config('app.audit_actor', $1, true)", [JSON.stringify({
         id: actor.id, username: actor.username, role: actor.role,
       })]);
+      if (table === 'document_fills') {
+        const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
+        const enviados = await documentosComEnvioAtivo(client, 'troca', alvo.rows.map(row => String(row.id)));
+        if (enviados.size) throw new BadRequestException('Esta troca já foi enviada para assinatura e não pode mais ser excluída.');
+      }
       if (table === 'lro_drafts') {
         const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         const enviados = await documentosComEnvioAtivo(client, 'lro', alvo.rows.map(row => String(row.id)));

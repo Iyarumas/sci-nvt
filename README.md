@@ -2,254 +2,385 @@
 
 # Sistema de Controle Operacional — SESCINC
 
-Plataforma web completa para a gestão operacional de um **Serviço de Salvamento e Combate a Incêndio em aeródromo**: escalas, efetivo, registros diários, livro de ocorrências, treinamentos, relatórios e **assinatura eletrônica integrada** — tudo num só lugar, substituindo papel, planilhas e mensagens soltas.
+**Um sistema feito para quem está de plantão.**
+
+Plataforma web que organiza toda a rotina de um Serviço de Salvamento e Combate a Incêndio em aeródromo: quem está de serviço hoje, quem cobre quem, o que foi treinado, o que aconteceu no turno, o livro de ocorrências, os documentos para assinar e os relatórios que a empresa pede no fim do mês.
+
+> 📄 Visão de produto e estudos de caso técnicos: **[PORTFOLIO.md](PORTFOLIO.md)**
 
 ---
 
-## Sobre o projeto
+## Sumário
 
-A rotina de um plantão envolve muitos documentos e controles: escala, efetivo do dia, treinamento recorrente, ocorrências do turno, trocas de serviço, livro de registro e relatórios. Feito em papel e planilhas, isso gera retrabalho, erro de digitação, documento perdido e muito tempo gasto com burocracia em vez de operação.
-
-O sistema cobre o ciclo inteiro do plantão:
-
-> **Escala mensal → Escala diária → Treinamento (PTR-BA) → Registros do turno → Livro de Registro de Ocorrências (LRO) → Assinatura eletrônica → Relatórios**
-
-Ele está em produção, com deploy contínuo a cada atualização.
-
-**Atuação no projeto:** idealização, produto, UX/UI, front-end, back-end, banco de dados, infraestrutura e deploy.
-
----
-
-## Destaques
-
-- **Assinatura eletrônica integrada** — o documento gerado pelo sistema vai direto para assinatura, cada pessoa assina **na própria linha** do formulário e o status volta sozinho para o sistema.
-- **Fluxo do plantão de ponta a ponta** — o que é registrado durante o turno vira, automaticamente, o conteúdo do livro de ocorrências e do registro de treinamento.
-- **PDFs fiéis aos formulários oficiais**, gerados no navegador.
-- **Regras operacionais no código** — substituições, férias, trocas de serviço, cadeia de substituição, validação de cursos por função e horas de instrução por assunto.
-- **Segurança** — login com token, permissões verificadas no servidor (não só na tela), auditoria de exclusões e bloqueio de documento já enviado para assinatura.
-- **Desempenho medido e corrigido em produção** — a tela mais pesada caiu de **~169 MB para ~26 KB** por carregamento.
-- **Deploy automático** — push na branch principal → pipeline de CI → build e migrations no servidor → verificação de saúde pelo commit publicado.
+- [Por que o sistema existe](#por-que-o-sistema-existe)
+- [Um plantão dentro do sistema](#um-plantão-dentro-do-sistema)
+- [O que cada área faz](#o-que-cada-área-faz)
+- [Regras que o sistema cuida sozinho](#regras-que-o-sistema-cuida-sozinho)
+- [Assinatura eletrônica](#assinatura-eletrônica)
+- [Quem usa e o que cada um vê](#quem-usa-e-o-que-cada-um-vê)
+- [Cuidados com os dados](#cuidados-com-os-dados)
+- [Parte técnica](#parte-técnica)
 
 ---
 
-## Módulos
+## Por que o sistema existe
 
-### Escalas e efetivo
-- **Escala mensal** por equipe e regime de plantões.
-- **Escala diária** derivada da mensal, já resolvendo coberturas.
-- **Quadro de efetivos** com férias, afastamentos, extras e substituições do dia.
+Um plantão de bombeiros de aeródromo gera muita papelada: escala, efetivo do dia, trocas de serviço, férias, substituições, treinamento recorrente com lista de presença e fotos, ocorrências, inspeções, livro de registro, testes físicos, exercícios e relatórios mensais. Tudo isso precisa estar correto, assinado e entregue no prazo.
+
+Feito em papel, planilhas e mensagens, isso significa:
+
+- o chefe de equipe gastando o plantão com burocracia em vez de operação;
+- a mesma informação digitada várias vezes, em lugares diferentes;
+- documento perdido, assinatura faltando e relatório fechado no último dia;
+- ninguém sabendo ao certo quem está cobrindo quem.
+
+O sistema junta tudo isso num só lugar. **A informação é registrada uma vez, no momento em que acontece, e reaproveitada em todos os documentos que dependem dela.**
+
+---
+
+## Um plantão dentro do sistema
+
+Assim é o dia a dia de uma equipe usando o sistema:
+
+**1. A escala já está pronta.**
+A escala mensal é gerada por equipe, seguindo o regime de plantões. A escala diária nasce dela, já considerando férias, afastamentos, trocas e substituições aprovadas. O chefe abre o sistema e vê quem está de serviço e em qual função.
+
+**2. O efetivo do dia aparece no quadro.**
+O quadro de efetivos mostra a equipe completa, quem está de férias, quem foi substituído e por quem, e quem está fazendo extra — com o motivo de cada mudança.
+
+**3. O treinamento é registrado com presença e evidências.**
+No PTR-BA (treinamento recorrente), a lista de participantes já vem montada a partir da equipe do dia. O instrutor marca a situação de cada um, escolhe os assuntos ministrados, anexa as fotos e salva. As horas de cada pessoa por assunto são contadas automaticamente para os relatórios.
+
+**4. O que acontece no turno é anotado na hora.**
+Ocorrências, BONA/REA, inspeções e solicitações são registradas durante o plantão, cada uma com seu horário.
+
+**5. O livro de ocorrências se monta sozinho.**
+Ao gerar o LRO, o assistente puxa a equipagem das viaturas, a frota, as instruções, as trocas de serviço e tudo o que foi registrado no turno. O chefe revisa, complementa e salva.
+
+**6. Os documentos vão para assinatura com um clique.**
+PTR-BA e LRO são enviados para assinatura eletrônica direto do sistema. Cada pessoa recebe o pedido por e-mail (ou por um link enviado no WhatsApp), assina no celular, e a assinatura aparece na linha certa do documento. O card do documento muda de cor sozinho conforme as pessoas assinam.
+
+**7. No fim do mês, os relatórios já estão prontos.**
+Relatórios de treinamento, ocorrências, exercícios, substituições, trocas e férias saem filtrados por mês e equipe, prontos para imprimir ou baixar em PDF.
+
+---
+
+## O que cada área faz
+
+### 🏠 Dashboard
+A visão geral do plantão: indicadores operacionais, alertas de vencimento (cursos, certificações) e atalhos para o que precisa de atenção.
+
+### 📅 Escalas
+- **Escala mensal** gerada por equipe, respeitando o regime de plantões.
+- **Escala diária** derivada da mensal, com coberturas resolvidas.
+- **Quadro de efetivos** com a equipe do dia, extras, férias e substituições.
+
+### 👥 Funcionários
+- **Cadastro do efetivo** com função, equipe, turno, contatos, cursos e documentos de habilitação.
+- **Substituições temporárias** com pedido, aprovação, cadeia de substituição (quem cobre quem cobre) e vigência por função.
 - **Férias** com escala anual, substitutos e relatório mensal em PDF.
-- **Substituições temporárias** com aprovação, cadeia de substituição e vigência por função.
-- **Trocas de serviço** com formulário, validação e registro automático no livro de ocorrências.
+- **EPIs** e **certificações/cursos**, com validade e alerta antes de vencer.
+- **Validação de cursos por função**: o sistema avisa quando alguém é colocado numa função para a qual não tem o curso exigido.
 
-### Registros diários e livro de ocorrências
-- **Registro de treinamento recorrente (PTR-BA)** com participantes, situação, instruções, evidências fotográficas e regras de horas por assunto.
-- **Ocorrências, inspeções e solicitações** registradas durante o turno.
-- **Gerador do livro de ocorrências (LRO)** — assistente que monta o livro com equipagem das viaturas, frota, instruções, trocas, ocorrências e solicitações, puxando o que já foi registrado no plantão.
-- **Tela do comunicante** para início e fim de plantão, com mensagem pronta e QR Code.
+### 📝 Registros diários
+- **PTR-BA** — treinamento recorrente com participantes, situação (presente, ausente, instrutor...), assuntos, horários e evidências fotográficas. A tela abre leve: as fotos só carregam quando o documento é aberto.
+- **Ocorrências**, **BONA/REA**, **inspeções** e **solicitações** do turno.
+- **Checklists** operacionais, incluindo modelos personalizáveis com linhas e colunas editáveis.
 
-### Treinamentos e exercícios
-- Teste de aptidão física, testes de proficiência e exercícios operacionais, com numeração anual automática e relatórios.
-- Certificações e cursos com validade por função e alertas de vencimento.
+### 📖 Livro de Registro de Ocorrências (LRO)
+- Assistente em etapas que monta o livro a partir do que já foi registrado no plantão.
+- Salvo como **rascunho** até ser enviado para assinatura.
+- Ao ser enviado, as ocorrências que entraram no livro são fechadas e o livro fica protegido contra alterações.
 
-### Cadastros e materiais
-- Pessoal, viaturas, equipamentos, extintores, hidrantes e agentes extintores, com movimentações e relatório mensal.
-- Controle de EPIs e checklists operacionais, incluindo modelos personalizáveis.
+### 🎓 Treinamentos e exercícios
+- **TAF** (teste de aptidão física), **TP/EPR**, **Exercício de Posicionamento** e **Tempo Resposta**.
+- Numeração anual automática, sem números repetidos.
+- Equipagem das viaturas e comunicante já preenchidos a partir da escala.
 
-### Relatórios, estatísticas e auditoria
-- Relatórios por módulo, com filtros e impressão.
-- Estatísticas operacionais com gráficos.
-- Auditoria de exclusões: o que foi excluído, quando e por qual conta.
+### 📂 Documentos
+- **Trocas de serviço (permuta)** com formulário, validação e registro no livro de ocorrências. A troca é entre bombeiros; APOC não aparece na lista.
+- **Ordens de serviço**, com número interno e número do cliente, e consulta pública.
+- **Agentes extintores** com movimentações, testes e relatório mensal.
+- **Modelos de documentos** para preenchimento.
 
----
+### 🚒 Cadastros
+Pessoal, viaturas (com histórico de panes), equipamentos, extintores, hidrantes e agentes extintores.
 
-## Estudo de caso: assinatura eletrônica integrada
+### 📊 Relatórios e estatísticas
+- Relatórios de LRO, PTR-BA, BONA/REA, exercícios, substituições, trocas e férias, com filtros por mês, ano e equipe.
+- Estatísticas com gráficos de treinamento e operação.
 
-Os documentos do plantão precisam ser assinados por várias pessoas. Antes, o arquivo era baixado, enviado manualmente para uma plataforma de assinatura e as posições das assinaturas eram arrastadas uma a uma. A integração com uma **API GraphQL de assinatura eletrônica** fez isso virar um clique.
+### 🔎 Auditoria
+Toda exclusão fica registrada: o que foi excluído, quando e por qual conta. Só administradores consultam.
 
-```mermaid
-sequenceDiagram
-    participant U as Usuário
-    participant F as Front-end
-    participant B as API
-    participant P as Plataforma de assinatura
-    participant S as Signatários
-
-    U->>F: Salvar documento (rascunho)
-    U->>F: Enviar para assinatura
-    F->>B: confere quem assina (e-mails do cadastro)
-    F->>F: gera o PDF e mede onde ficou cada linha de assinatura
-    F->>B: PDF + posições
-    B->>P: cria o documento com cada assinatura na linha certa
-    P-->>S: convite por e-mail ou link
-    S->>P: assinam
-    P-->>B: webhook (aviso)
-    B->>P: consulta segura do status
-    B->>B: grava quem assinou e guarda o PDF assinado
-    F-->>U: o status atualiza sozinho na tela
-```
-
-**Problemas resolvidos:**
-
-- **Posição exata da assinatura em documentos de tamanho variável.** O livro de ocorrências pode ter 2 ou 6 páginas. Como o PDF é montado a partir de HTML, o gerador **mede em que página e em que altura** caiu cada linha de assinatura e envia junto; o servidor converte isso nas coordenadas da plataforma. Os deslocamentos foram calibrados em ambiente de testes até a assinatura cair exatamente sobre o traço.
-- **Uma assinatura, vários lugares.** Quem aparece em mais de um campo assina uma vez e a assinatura é aplicada em todas as posições.
-- **Regras de negócio.** Um documento conta como concluído conforme regras próprias de cada formulário (por exemplo, quando todos os participantes de uma função assinaram), e o responsável que assina é **quem estiver no cargo na data do documento**, considerando férias e substituições.
-- **Atualização automática e segura.** O webhook não é tratado como verdade: ele só dispara uma consulta controlada à plataforma, limitada a documentos do próprio sistema, com verificação **HMAC-SHA256**.
-- **Imutabilidade.** Documento enviado não pode mais ser editado nem excluído — a regra vale na tela **e** no servidor.
-- **Download pronto para entrega.** O PDF completo, com o relatório de auditoria da plataforma, fica guardado e visível no sistema; o download entrega só as páginas do documento.
-- **Custo sob controle.** Visualizações e downloads usam o PDF guardado e não consultam a API.
-- **Migração do histórico.** Documentos já assinados manualmente foram vinculados automaticamente, casados pelo nome do arquivo e pelos signatários.
+### 🎬 Tutorial
+Um tutorial animado mostra a rotina do plantão dentro do sistema, e cada tela tem um guia passo a passo para quem está começando.
 
 ---
 
-## Desempenho: de ~169 MB para ~26 KB
+## Regras que o sistema cuida sozinho
 
-Diante de reclamações de lentidão, o caminho foi medir antes de mexer:
+São as regras que antes dependiam da memória de alguém:
 
-1. **Servidor:** CPU e memória ociosos — o gargalo não era a máquina.
-2. **Banco:** uma tabela com poucos registros ocupava quase 180 MB — as fotos das evidências estavam dentro do próprio registro.
-3. **Tela:** ao abrir, o sistema baixava **todos os registros já feitos, com todas as fotos**.
-
-**Correção:** um endpoint de listagem que devolve os registros **sem as imagens** (com um indicador de foto) e busca **só o período filtrado**. As fotos são carregadas apenas ao abrir o documento, e uma trava impede salvar uma edição sem as fotos carregadas.
-
-| | Antes | Depois |
-|---|---|---|
-| Abrir a tela de registros | ~169 MB | ~26 KB |
-| Estatísticas e relatórios | baixavam todas as fotos | só dados |
-
-Outro ajuste: depois de cada atualização, abas abertas pediam arquivos da versão anterior e mostravam erro. Agora a página **recarrega sozinha** e abre a versão nova.
+| Situação | O que o sistema faz |
+|---|---|
+| **Regime de plantões** | Sabe quais equipes estão de serviço em cada dia e o horário de entrada e saída de cada turno |
+| **Férias e substituições** | Mostra quem está cobrindo quem, em qual função e por quanto tempo |
+| **Cadeia de substituição** | Quando o substituto também é substituído, a cadeia é acompanhada até o fim |
+| **Curso exigido por função** | Avisa quando a pessoa não tem o curso necessário para a função em que foi colocada |
+| **Horas de treinamento** | Conta as horas de cada pessoa por assunto, inclusive as regras específicas de quem é de apoio |
+| **Numeração de exercícios** | Gera o próximo número do ano sem repetir, mesmo com duas pessoas salvando ao mesmo tempo |
+| **Responsável que assina** | Para o livro de ocorrências, quem assina como gerente é quem estava no cargo **na data do plantão**, considerando férias e substituições |
+| **Documento enviado** | Depois de ir para assinatura, não pode mais ser editado nem excluído |
+| **Vencimentos** | Avisa antes de cursos, certificações e documentos vencerem |
 
 ---
 
-## Arquitetura
+## Assinatura eletrônica
+
+O PTR-BA e o LRO são assinados eletronicamente, sem imprimir nada.
+
+**Para quem envia**
+1. Salva o documento (ele fica como rascunho).
+2. Em *Ver detalhes*, clica em **Enviar para assinatura**.
+3. Confere a lista de quem vai assinar, com o e-mail do cadastro de cada um, e confirma.
+
+**Para quem assina**
+- Recebe um e-mail (ou um link pelo WhatsApp, enviado por quem está cobrando a assinatura).
+- Abre no celular ou no computador e assina.
+- A assinatura aparece **na própria linha** do formulário — inclusive quando a mesma pessoa precisa assinar em dois lugares.
+
+**No sistema**
+
+| Cor do card | Situação |
+|---|---|
+| sem cor | Rascunho, ainda não enviado |
+| 🟠 laranja | Aguardando assinaturas |
+| 🟢 verde | Assinado |
+| 🔴 vermelho | Alguém recusou |
+
+- O card muda sozinho conforme as pessoas assinam; não é preciso recarregar a página.
+- **Ver documento** mostra o PDF assinado completo, com o relatório de auditoria da assinatura.
+- **Baixar** entrega o documento pronto para o relatório da empresa, **sem** o relatório de auditoria: o PTR-BA sai só com a 1ª página, e o LRO com todas as páginas do livro.
+- Quem cobra a assinatura pode **reenviar o aviso** por e-mail ou mandar o **link pelo WhatsApp**.
+- Só administradores podem cancelar um envio; o documento volta a ser rascunho para corrigir e enviar de novo.
+
+---
+
+## Quem usa e o que cada um vê
+
+| Perfil | O que faz no sistema |
+|---|---|
+| **Desenvolvedor / Administrador** | Tudo: cadastros, usuários, permissões, auditoria, cancelamento de envios e arquivamento |
+| **Gerente** | Acompanha a operação, aprova e assina documentos |
+| **Chefe de equipe** | Conduz o plantão: escala do dia, PTR-BA, LRO, envio para assinatura |
+| **Líder** | Apoia o chefe nos registros do plantão |
+| **Bombeiro** | Consulta escalas e registros, participa e assina os documentos |
+| **Sem função** | Conta recém-criada aguardando a liberação de um administrador |
+
+Novas contas entram por **convite**. As permissões são conferidas no servidor — esconder um botão na tela não é a única barreira.
+
+---
+
+## Cuidados com os dados
+
+- Login com senha protegida e sessão com prazo de validade.
+- Cada perfil só acessa o que precisa; regras importantes valem também no servidor.
+- Toda exclusão fica registrada na auditoria.
+- Documentos assinados ficam guardados no servidor, com o registro de quem assinou e quando.
+- O banco de dados não fica exposto na internet; todo acesso passa por HTTPS.
+
+---
+
+## Parte técnica
+
+<details open>
+<summary><b>Arquitetura</b></summary>
 
 ```mermaid
 flowchart LR
-    U[Navegador] -->|HTTPS| C[Proxy reverso<br/>TLS + arquivos estáticos]
-    C -->|/api| N[API NestJS]
-    N --> DB[(PostgreSQL)]
-    N --> S[(Armazenamento de PDFs)]
-    N <-->|GraphQL + webhook| P[Plataforma de assinatura]
-    CI[Pipeline de CI/CD] -->|build, migrations, health check| VM
-    subgraph VM[Servidor - Docker Compose]
-        C
-        N
-        DB
-        S
+    subgraph Navegador
+        UI[Telas React] --> SV[services/*.ts]
+        SV --> AD[lib/supabase.ts<br/>adaptador HTTP]
     end
+    AD -->|HTTPS /api| PX[Proxy reverso<br/>Caddy]
+    PX --> API[API NestJS]
+    API --> DB[(PostgreSQL)]
+    API --> ST[(Storage local<br/>PDFs e anexos)]
+    API <-->|GraphQL + webhook| AS[Plataforma de<br/>assinatura eletrônica]
 ```
 
-- **Front-end:** React + TypeScript + Vite + Tailwind CSS, rotas carregadas sob demanda e camada de serviços por domínio.
-- **Back-end:** NestJS com CRUD genérico protegido por política de acesso, endpoints específicos para regras de negócio e guarda global de autenticação.
-- **Banco:** PostgreSQL com mais de 70 migrations versionadas, progressivas e sem perda de dados.
-- **Infra:** Docker Compose com proxy reverso e HTTPS automático; API e banco em rede interna — o banco nunca fica exposto.
-- **CI/CD:** cada push na branch principal dispara o deploy; o script confere que o back-end e o front-end publicados estão **no mesmo commit** antes de considerar o deploy concluído.
+- **Monorepo** com dois *workspaces*: `frontend/` (React + Vite) e `backend/` (NestJS).
+- O front fala com a API por um adaptador no estilo *query builder* (`lib/supabase.ts`); as telas nunca acessam o banco direto.
+- A API tem **guarda global de autenticação**, um **CRUD genérico** em `/api/data/:table` limitado a tabelas permitidas e protegido por política de acesso, e **endpoints específicos** para as regras de negócio.
+- Arquivos (PDFs, anexos) ficam num volume local, com links assinados para download.
 
----
+</details>
 
-## Stack
+<details>
+<summary><b>Stack</b></summary>
 
 | Camada | Tecnologias |
 |---|---|
-| Front-end | React, TypeScript, Vite, Tailwind CSS, React Router, Recharts |
+| Front-end | React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 7, Recharts, Lucide |
 | Documentos | jsPDF, pdf-lib, pdf.js, html-to-image |
-| Back-end | NestJS, Node.js, Express, Multer, class-validator, bcrypt |
-| Banco de dados | PostgreSQL |
-| Integrações | API GraphQL de assinatura eletrônica com webhooks (HMAC) |
-| Infra / DevOps | Docker, Docker Compose, proxy reverso com HTTPS, CI/CD |
-| Qualidade | TypeScript estrito, lint, testes de regras de negócio |
+| Back-end | NestJS 11, Express, Multer, class-validator, bcryptjs |
+| Banco | PostgreSQL 16 |
+| Infra | Docker, Docker Compose, Caddy (HTTPS automático) |
+| CI/CD | GitHub Actions (deploy por SSH a cada push na `main`) |
 
----
+</details>
 
-## Segurança
+<details>
+<summary><b>Instalação e execução local</b></summary>
 
-- Autenticação por token e **permissões verificadas no servidor**, por função.
-- Política de acesso no CRUD genérico: colunas sensíveis nunca saem da API e tabelas restritas exigem perfil administrativo.
-- Auditoria de exclusões com a conta autenticada gravada pelo próprio banco, não pelo navegador.
-- Segredos apenas em variáveis de ambiente; nada sensível versionado.
-- Webhook com verificação HMAC-SHA256 e comparação em tempo constante.
-- Banco, API e armazenamento acessíveis apenas pela rede interna dos containers.
-
----
-
-## Em números
-
-| | |
-|---|---|
-| ~80 mil linhas | de TypeScript no front-end |
-| 30+ telas | cobrindo a operação inteira |
-| 70+ migrations | de banco versionadas |
-| 2 documentos | com assinatura eletrônica integrada, com os próximos já planejados |
-
----
-
-## Como rodar localmente
-
-**Pré-requisitos:** Node.js 20+ e Docker.
+**Requisitos:** Node.js 20+ e Docker.
 
 ```bash
-# 1. Variáveis de ambiente
-cp .env.example .env
-
-# 2. Banco de dados
-npm run db:up
-
-# 3. Dependências e migrations
+cp .env.example .env        # configure as variáveis
+npm run db:up               # PostgreSQL + pgAdmin
 npm install
-npm run db:migrate
+npm run db:migrate          # aplica as migrations
+npm run create-admin --workspace=backend   # primeiro administrador
 
-# 4. Em terminais separados
+# em terminais separados
 npm run dev:backend
 npm run dev:frontend
 ```
 
+| Serviço | Endereço padrão |
+|---|---|
+| Front-end | `http://localhost:5173` |
+| API | `http://localhost:3333/api` (`/api/health` para checar) |
+| pgAdmin | `http://localhost:5050` |
+
 > No PowerShell do Windows, use `npm.cmd` se `npm` apontar para um `npm.ps1` quebrado.
 
-O front usa `VITE_API_BASE_URL` para falar com a API.
+</details>
 
-A integração de assinatura eletrônica tem modo de testes (documentos sem valor jurídico e sem custo) e modo simulado (sem chamar a API externa), configurados por variável de ambiente.
+<details>
+<summary><b>Variáveis de ambiente</b></summary>
 
-### Comandos úteis
+Modelos em `.env.example` (local) e `.env.production.example` (produção). Nunca commite os arquivos `.env` reais.
 
-| Comando | O que faz |
+| Variável | Para que serve |
 |---|---|
-| `npm run build` | Build do back-end e do front-end |
-| `npm run typecheck` | Checagem de tipos dos dois lados |
-| `npm run lint` | Lint dos dois lados |
-| `npm run test:exercicios` | Testes da numeração de exercícios |
-| `npm run test:ptrba-apoc` | Testes de regras do registro de treinamento |
-| `npm run test:auditoria` | Testes da auditoria de exclusões |
-| `npm run prod:up` | Sobe a stack de produção com Docker Compose |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PORT` | Banco de dados |
+| `DATABASE_URL` | Conexão da API com o banco |
+| `NODE_ENV`, `PORT`, `API_PREFIX` | Execução da API |
+| `FRONTEND_ORIGIN` | Origens permitidas no CORS |
+| `PUBLIC_API_URL` | URL pública da API (links de arquivos) |
+| `STORAGE_PATH` | Pasta dos PDFs e anexos |
+| `JWT_SECRET` | Segredo das sessões (mínimo 32 caracteres) |
+| `VITE_API_BASE_URL` | Endereço da API visto pelo navegador |
+| `AUTENTIQUE_TOKEN` | Chave da API de assinatura eletrônica |
+| `AUTENTIQUE_MODO` | `simulado` (sem chamar a API), `sandbox` (testes sem custo) ou vazio (produção) |
+| `AUTENTIQUE_WEBHOOK_SECRET` | Segredo do webhook de assinatura |
+| `APP_SITE_ADDRESS` | Domínio para o HTTPS em produção |
+| `PGADMIN_*` | Acesso ao pgAdmin local |
 
----
+</details>
 
-## Estrutura
+<details>
+<summary><b>Scripts</b></summary>
+
+| Script | O que faz |
+|---|---|
+| `npm run dev:frontend` / `dev:backend` | Desenvolvimento |
+| `npm run build` | Build da API e do front |
+| `npm run typecheck` / `lint` | Tipos e lint dos dois lados |
+| `npm run db:up` / `db:down` / `db:migrate` | Banco local e migrations |
+| `npm run test:exercicios` | Numeração de exercícios |
+| `npm run test:ptrba-apoc` | Regras de horas no PTR-BA |
+| `npm run test:auditoria` | Auditoria de exclusões |
+| `npm run prod:up` / `prod:down` / `prod:migrate` / `prod:logs` | Stack de produção |
+
+</details>
+
+<details>
+<summary><b>API</b></summary>
+
+Rotas sob `/api`, com `Authorization: Bearer <token>` (exceto as públicas).
+
+| Rota | Descrição |
+|---|---|
+| `GET /health` | Saúde da API e commit publicado *(pública)* |
+| `POST /auth/login`, `GET /auth/me` | Login e sessão |
+| `GET /auth/convite/:codigo`, `POST /auth/register-convite` | Cadastro por convite *(públicas)* |
+| `POST /data/:table/{query,insert,update,delete}` | CRUD genérico protegido por política |
+| `POST /rpc/:name` | Operações transacionais |
+| `GET /ptrba/resumo` | PTR-BA sem fotos, filtrado por período e equipe |
+| `GET /auditoria/exclusoes` | Histórico de exclusões *(admin)* |
+| `/storage/:bucket/{upload,list,remove,signed-url,file}` | Arquivos |
+| `GET /public/ordens-servico` | Consulta pública *(pública)* |
+| `/autentique/envios` (+ `previa`, `:id/atualizar`, `:id/reenviar`, `:id/pdf`, `:id/cancelar`, `:id/signatarios/:sid/link`) | Envio e acompanhamento de assinaturas |
+| `POST /autentique/webhook` | Aviso da plataforma de assinatura *(pública, verificada por HMAC)* |
+
+Contrato completo entre front e API: [`API_ENDPOINTS.md`](API_ENDPOINTS.md).
+
+</details>
+
+<details>
+<summary><b>Banco de dados e migrations</b></summary>
+
+- Migrations SQL numeradas em `backend/database/migrations/`, aplicadas por `npm run db:migrate` (controle em `schema_migrations`).
+- O deploy aplica as migrations automaticamente.
+- Mudanças devem ser **progressivas e sem perda de dados**; nunca edite uma migration que já rodou em produção.
+
+</details>
+
+<details>
+<summary><b>Deploy</b></summary>
+
+Produção em Docker Compose (`docker-compose.prod.yml`): **Caddy** (HTTPS e front-end), **API** e **PostgreSQL** em rede interna, com volumes persistentes para o banco, os arquivos e os certificados.
+
+A cada push na `main`, o GitHub Actions (`.github/workflows/deploy-oracle.yml`) conecta na VM, atualiza o código para o commit do push, faz o build, aplica as migrations, recria os containers e **confere que a API e o front publicados estão no mesmo commit** — senão o deploy falha. O `.env.production` fica só na VM. Primeira instalação: [`DEPLOY_ORACLE.md`](DEPLOY_ORACLE.md).
+
+Nunca exponha o PostgreSQL, o pgAdmin, a API direta ou o Docker daemon; todo acesso externo passa pelo Caddy em `80/443`.
+
+</details>
+
+<details>
+<summary><b>Estrutura de pastas</b></summary>
 
 ```
 .
-├── frontend/              # React + Vite
-│   └── src/
-│       ├── pages/         # telas por domínio
-│       ├── components/    # layout, UI e componentes compartilhados
-│       ├── services/      # acesso à API e geração de PDFs
-│       └── hooks/ types/ utils/ lib/
-├── backend/               # NestJS
-│   ├── src/
-│   │   ├── auth/          # login, tokens e permissões
-│   │   ├── resources/     # CRUD protegido por política + endpoints específicos
-│   │   ├── (assinatura)/  # integração de assinatura eletrônica
-│   │   └── storage/       # armazenamento de arquivos
-│   └── database/migrations/
-├── deploy/                # script de deploy e configuração do proxy
-├── .github/workflows/     # deploy automático
-└── docker-compose*.yml
+├── frontend/src/
+│   ├── pages/         # telas por área
+│   ├── components/    # layout, UI e componentes compartilhados
+│   ├── services/      # acesso à API e geração de PDFs
+│   ├── hooks/ types/ utils/ lib/ routes/
+├── backend/
+│   ├── database/migrations/
+│   ├── scripts/       # migrate, create-admin, testes
+│   └── src/           # auth, resources, autentique, auditoria, storage, rpc, public, health
+├── deploy/            # script de deploy e Caddyfile
+├── .github/workflows/ # deploy automático
+├── API_ENDPOINTS.md   # contrato front ↔ API
+├── AGENTS.md          # regras do sistema e do domínio
+└── PORTFOLIO.md       # visão de produto e estudos de caso
 ```
+
+</details>
+
+<details>
+<summary><b>Solução de problemas</b></summary>
+
+| Sintoma | Solução |
+|---|---|
+| `npm` não roda no PowerShell | Use `npm.cmd` |
+| Login cai a cada reinício da API | Defina um `JWT_SECRET` com 32+ caracteres |
+| `ECONNREFUSED` na porta 5432 | Abra o Docker e rode `npm run db:up` |
+| "Failed to fetch dynamically imported module" | Aba aberta antes de uma atualização; a página recarrega sozinha |
+| Assinatura não atualiza no ambiente local | O webhook aponta para produção; use **Atualizar assinaturas** |
+| LRO não envia por férias do gerente | Cadastre o substituto nas férias |
+
+</details>
 
 ---
 
-## O que aprendi
+## Licença
 
-- **Medir antes de otimizar.** A lentidão não estava no servidor, e sim em centenas de megabytes de imagens trafegando a cada clique.
-- **Regra de negócio mora no servidor.** Esconder um botão não é segurança; toda trava importante foi replicada na API.
-- **Integrar com terceiros exige desconfiança saudável.** O webhook é só um aviso — a verdade vem de uma consulta controlada.
-- **Software para operação precisa falar a língua da operação.** Muitas decisões vieram de conversar com quem usa o sistema no dia a dia.
+**© 2026 — Todos os direitos reservados.**
+
+Este projeto é proprietário. **Não é permitido copiar, modificar, distribuir, hospedar ou usar este código, no todo ou em parte, sem autorização prévia e por escrito do autor.** Veja o arquivo [LICENSE](LICENSE).

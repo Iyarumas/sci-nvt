@@ -112,24 +112,49 @@ export async function obterPdfAssinado(envioId: string): Promise<Blob> {
   return resposta.blob();
 }
 
-/**
- * Baixa só a 1ª página do PDF assinado (a tabela com as assinaturas), que é o que vai para o
- * relatório da empresa. As fotos e a auditoria do Autentique ficam no PDF completo guardado no sistema.
- */
-export async function baixarPdfAssinado(envioId: string, nomeArquivo: string, documentoInteiro = false): Promise<void> {
-  const assinado = await obterPdfAssinado(envioId);
-  let url: string;
-  if (documentoInteiro) {
-    url = URL.createObjectURL(assinado);
-  } else {
-    const { PDFDocument } = await import('pdf-lib');
-    const completo = await PDFDocument.load(await assinado.arrayBuffer());
-    const primeira = await PDFDocument.create();
-    const [pagina] = await primeira.copyPages(completo, [0]);
-    primeira.addPage(pagina);
-    const bytes = await primeira.save();
-    url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+/** Páginas do PDF antes do relatório de auditoria do Autentique (que vem sempre no fim). */
+async function paginasAntesDaAuditoria(pdf: ArrayBuffer): Promise<number | null> {
+  const { default: pdfjsLib } = await import('../lib/pdfjs-setup');
+  const tarefa = pdfjsLib.getDocument({ data: new Uint8Array(pdf.slice(0)) });
+  const documento = await tarefa.promise;
+  try {
+    for (let numero = 1; numero <= documento.numPages; numero += 1) {
+      const pagina = await documento.getPage(numero);
+      const conteudo = await pagina.getTextContent();
+      const texto = conteudo.items.map(item => ('str' in item ? item.str : '')).join(' ')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+      if (texto.includes('relatorio de auditoria')) return numero - 1;
+    }
+    return null;
+  } finally {
+    await tarefa.destroy();
   }
+}
+
+/**
+ * Baixa o PDF assinado do jeito que vai para o relatório da empresa:
+ * - PTR-BA: só a 1ª página (a tabela com as assinaturas);
+ * - LRO: todas as páginas do livro, sem o relatório de auditoria do Autentique no fim.
+ * O PDF completo, com a auditoria, continua guardado no sistema (Ver documento).
+ */
+export async function baixarPdfAssinado(
+  envioId: string,
+  nomeArquivo: string,
+  modo: 'primeiraPagina' | 'semAuditoria' = 'primeiraPagina',
+): Promise<void> {
+  const assinado = await (await obterPdfAssinado(envioId)).arrayBuffer();
+  const { PDFDocument } = await import('pdf-lib');
+  const completo = await PDFDocument.load(assinado);
+  let quantas = 1;
+  if (modo === 'semAuditoria') {
+    const antes = await paginasAntesDaAuditoria(assinado).catch(() => null);
+    quantas = antes && antes > 0 ? antes : completo.getPageCount();
+  }
+  const recorte = await PDFDocument.create();
+  const paginas = await recorte.copyPages(completo, Array.from({ length: quantas }, (_, i) => i));
+  paginas.forEach(pagina => recorte.addPage(pagina));
+  const bytes = await recorte.save();
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = nomeArquivo;

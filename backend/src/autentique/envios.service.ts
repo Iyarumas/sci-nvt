@@ -389,18 +389,26 @@ export class EnviosService {
     return { status: await this.sincronizar(envio) };
   }
 
+  /** Última conferência de cada envio pelo webhook (evita consultas repetidas e avisos falsos em série). */
+  private readonly ultimaConferencia = new Map<string, number>();
+
   /**
-   * Aviso do Autentique (webhook). Confere a assinatura HMAC do corpo e, em vez de confiar no conteúdo,
-   * consulta o documento no Autentique para saber quem assinou.
+   * Aviso do Autentique (webhook). O conteúdo nunca é usado como verdade: o aviso só "cutuca" o sistema
+   * a consultar no Autentique documentos que nós enviamos e que ainda têm algo pendente, no máximo
+   * uma vez por minuto cada. Assim um aviso falso não muda nada nem gera gasto relevante.
+   * Se houver segredo configurado e o Autentique mandar o cabeçalho, a assinatura HMAC é conferida.
    */
   async receberWebhook(corpo: Buffer | undefined, assinatura: string | undefined) {
+    if (!corpo?.length) return { ok: true };
     const segredo = this.config.get<string>('AUTENTIQUE_WEBHOOK_SECRET')?.trim();
-    if (!segredo) throw new ServiceUnavailableException('Webhook do Autentique não configurado.');
-    if (!corpo?.length || !assinatura) throw new ForbiddenException('Assinatura do aviso ausente.');
-    const esperado = Buffer.from(createHmac('sha256', segredo).update(corpo).digest('hex'));
-    const recebido = Buffer.from(assinatura.trim().toLowerCase());
-    if (esperado.length !== recebido.length || !timingSafeEqual(esperado, recebido)) {
-      throw new ForbiddenException('Assinatura do aviso inválida.');
+    if (segredo && assinatura) {
+      const esperado = Buffer.from(createHmac('sha256', segredo).update(corpo).digest('hex'));
+      const recebido = Buffer.from(assinatura.trim().toLowerCase());
+      const confere = esperado.length === recebido.length && timingSafeEqual(esperado, recebido);
+      // Mesmo sem conferir, segue: o aviso só leva a uma consulta segura no Autentique.
+      this.logger.log(`Webhook do Autentique recebido: assinatura ${confere ? 'confere' : 'NÃO confere com o segredo configurado'}.`);
+    } else {
+      this.logger.log(`Webhook do Autentique recebido ${assinatura ? 'com' : 'sem'} cabeçalho de assinatura${segredo ? '' : ' (sem segredo configurado)'}.`);
     }
 
     let payload: unknown;
@@ -419,11 +427,18 @@ export class EnviosService {
     };
     coletar(payload, 0);
     if (!textos.size) return { ok: true };
+    // Só documentos nossos com alguém pendente ou sem o PDF assinado guardado.
     const envios = await this.database.query<EnvioRow>(
-      `SELECT * FROM autentique_envios WHERE status <> 'cancelado' AND autentique_document_id = ANY($1::text[])`,
+      `SELECT e.* FROM autentique_envios e
+        WHERE e.status <> 'cancelado' AND e.autentique_document_id = ANY($1::text[])
+          AND (e.pdf_assinado_url IS NULL OR EXISTS (
+            SELECT 1 FROM autentique_signatarios s WHERE s.envio_id = e.id AND s.status = 'pendente'))`,
       [[...textos]],
     );
+    const agora = Date.now();
     for (const envio of envios.rows) {
+      if (agora - (this.ultimaConferencia.get(envio.id) ?? 0) < 60_000) continue;
+      this.ultimaConferencia.set(envio.id, agora);
       await this.sincronizar(envio).catch(e => this.logger.warn(`Falha ao atualizar envio ${envio.id}: ${(e as Error).message}`));
     }
     return { ok: true };

@@ -1444,6 +1444,22 @@ export function PTRBACompletoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroAno, filtroMes, filtroEquipe]);
 
+  // Assinaturas aparecendo sozinhas: com algum PTR-BA aguardando, confere a cada 30 s no nosso
+  // servidor (que recebe o aviso do Autentique pelo webhook) e ao voltar para a aba.
+  // Não consulta o Autentique, então não custa nada; com a aba escondida ou tudo assinado, para.
+  const temAguardando = Object.values(envios).some(envio => envio.status === 'aguardando');
+  useEffect(() => {
+    if (!temAguardando) return;
+    const conferir = () => { if (document.visibilityState === 'visible') void carregarEnvios(); };
+    const intervalo = window.setInterval(conferir, 30_000);
+    document.addEventListener('visibilitychange', conferir);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', conferir);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [temAguardando]);
+
   function abrirNovoPTRBA() {
     setEditando(null);
     setMode('form');

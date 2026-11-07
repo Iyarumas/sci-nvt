@@ -120,6 +120,25 @@ function naoSeguraDocumento(funcoes: string): boolean {
 /** Onde ficam os PDFs assinados baixados do Autentique. */
 const BUCKET_ASSINADOS = 'autentique-assinados';
 
+/**
+ * PTR-BA assinado com o PDF guardado: as fotos já estão dentro do PDF e o registro não pode mais ser
+ * editado, então saem do banco (cada PTR-BA tem ~1 MB de fotos). A evidência guarda
+ * `fotoNoPdfAssinado` para a tela continuar contando a foto. Mesma regra da migração 078.
+ */
+const SQL_TIRAR_FOTOS_PTRBA = `
+  UPDATE ptrba_completo_registros r
+     SET evidencias = (
+       SELECT coalesce(jsonb_agg(
+         CASE WHEN jsonb_typeof(e) = 'object' AND coalesce(e->>'imagem', '') <> ''
+           THEN (e - 'imagem') || jsonb_build_object('imagem', '', 'fotoNoPdfAssinado', true)
+           ELSE e END
+         ORDER BY ordem), '[]'::jsonb)
+       FROM jsonb_array_elements(r.evidencias) WITH ORDINALITY AS t(e, ordem))
+   WHERE r.id = $1
+     AND jsonb_typeof(r.evidencias) = 'array'
+     AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.evidencias) e
+                  WHERE jsonb_typeof(e) = 'object' AND coalesce(e->>'imagem', '') <> '')`;
+
 export interface ParticipanteEnvio {
   funcao?: string;
   nomeCompleto?: string;
@@ -1210,6 +1229,10 @@ export class EnviosService {
     if (!isAdmin(user)) throw new ForbiddenException('Só um administrador pode cancelar o envio.');
     const envio = await this.obterEnvio(envioId);
     if (envio.status === 'cancelado') return { id: envio.id };
+    // Depois de assinado as fotos do PTR-BA ficam só no PDF; voltar a editar perderia as imagens.
+    if (envio.tipo === 'ptrba' && envio.status === 'assinado') {
+      throw new BadRequestException('PTR-BA já assinado não pode ser cancelado: as fotos estão só no PDF assinado.');
+    }
     if (!this.ehSimulado(envio)) await this.api.cancelar(envio.autentique_document_id);
     await this.database.query(
       `UPDATE autentique_envios SET status = 'cancelado', cancelado_em = now(), cancelado_por_nome = $2 WHERE id = $1`,
@@ -1385,6 +1408,10 @@ export class EnviosService {
         `UPDATE lro_drafts SET status = 'assinado', updated_at = now() WHERE id = $1 AND status = 'aguardando'`,
         [envio.referencia_id],
       );
+    }
+    // PTR-BA assinado e com o PDF guardado: as fotos ficam só no PDF.
+    if (envio.tipo === 'ptrba' && novoStatus === 'assinado' && pdfPath) {
+      await this.database.query(SQL_TIRAR_FOTOS_PTRBA, [envio.referencia_id]);
     }
     return novoStatus;
   }

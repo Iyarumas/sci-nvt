@@ -14,6 +14,8 @@ export interface PTRBACompletoEvidencia {
   descricao: string;
   /** Na lista resumida a foto não vem; isto diz se ela existe. */
   temImagem?: boolean;
+  /** PTR-BA assinado: a foto saiu do banco e fica só no PDF assinado. */
+  fotoNoPdfAssinado?: boolean;
 }
 
 export interface PTRBACompleto {

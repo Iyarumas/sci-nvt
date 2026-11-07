@@ -1104,7 +1104,7 @@ function PTRBACompletoCard({
                 <RefreshCw className={`h-4 w-4 ${atualizando ? 'animate-spin' : ''}`} /> {atualizando ? 'Atualizando...' : 'Atualizar assinaturas'}
               </button>
             )}
-            {!rascunho && podeCancelarEnvio && (
+            {!rascunho && situacao !== 'assinado' && podeCancelarEnvio && (
               <button type="button" onClick={onCancelarEnvio} className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
                 <Ban className="h-4 w-4" /> Cancelar envio
               </button>

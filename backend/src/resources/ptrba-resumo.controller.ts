@@ -36,7 +36,7 @@ export class PtrbaResumoController {
               CASE WHEN jsonb_typeof(r.evidencias) = 'array' THEN (
                 SELECT coalesce(jsonb_agg(
                   CASE WHEN jsonb_typeof(e) = 'object'
-                    THEN (e - 'imagem') || jsonb_build_object('temImagem', coalesce(e->>'imagem', '') <> '')
+                    THEN (e - 'imagem') || jsonb_build_object('temImagem', coalesce(e->>'imagem', '') <> '' OR coalesce((e->>'fotoNoPdfAssinado')::boolean, false))
                     ELSE e END
                   ORDER BY ordem), '[]'::jsonb)
                 FROM jsonb_array_elements(r.evidencias) WITH ORDINALITY AS t(e, ordem)

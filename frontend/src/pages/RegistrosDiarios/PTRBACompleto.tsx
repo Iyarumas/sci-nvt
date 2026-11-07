@@ -1544,9 +1544,10 @@ export function PTRBACompletoPage() {
   async function handlePreviewPdf(registro: PTRBACompleto) {
     try {
       setPreviewingId(registro.id);
-      // Assinado no Autentique: mostra o PDF com as assinaturas; senão, o PDF gerado pelo sistema.
+      // Com alguém já assinado mostra o PDF do Autentique (com as assinaturas feitas até agora), igual LRO e troca;
+      // senão, o PDF gerado pelo sistema.
       const envio = envios[registro.id];
-      const blob = envio?.status === 'assinado' && envio.temPdfAssinado
+      const blob = envio?.temPdfAssinado
         ? await obterPdfAssinado(envio.id)
         : await gerarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
       setPreviewPdfData(await blob.arrayBuffer());

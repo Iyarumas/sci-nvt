@@ -2583,7 +2583,10 @@ export function GerarLRO() {
       }
       if (filtroEquipeLista && d.equipe !== filtroEquipeLista) return false;
       return true;
-    });
+    })
+      // Ordem fixa pela data do plantão (mais recente primeiro); editar ou enviar não muda a posição.
+      .sort((a, b) => String(b.data_plantao || '').localeCompare(String(a.data_plantao || ''))
+        || String(b.created_at || '').localeCompare(String(a.created_at || '')));
 
     return (
       <PageContainer>
@@ -2809,7 +2812,7 @@ export function GerarLRO() {
                           <FileText className="h-4 w-4" /> {d.status === 'rascunho' ? 'Continuar' : 'Editar'}
                         </button>
                       )}
-                      {contexto.isAdministradorSistema && d.status === 'aguardando' && !lroNovo && (
+                      {contexto.isAdministradorSistema && d.status === 'aguardando' && !lroNovo && !envio && (
                         <button onClick={async () => {
                           try {
                             await finalizarDraftComOcorrencias(d);

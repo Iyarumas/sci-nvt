@@ -2434,7 +2434,15 @@ export function GerarLRO() {
     setEnviandoLro(true);
     setErroEnvioLro(null);
     try {
-      const dados = (draft.dados as Record<string, unknown>) || {};
+      const salvos = (draft.dados as Record<string, unknown>) || {};
+      // Nome impresso embaixo das linhas = quem vai assinar (ex.: o substituto do gerente nas férias dele).
+      const gerenteDoDia = previaEnvioLro?.find(p => p.funcoes.includes('Gerente'))?.nome;
+      const chefeDoDia = previaEnvioLro?.find(p => p.funcoes.includes('Chefe de equipe'))?.nome;
+      const dados: Record<string, unknown> = {
+        ...salvos,
+        ...(gerenteDoDia ? { gerenteAssinatura: gerenteDoDia } : {}),
+        ...(chefeDoDia ? { chefeAssinatura: chefeDoDia } : {}),
+      };
       const { blob, assinaturas } = await gerarPDFComAssinaturas(dados);
       const nomeArquivo = nomeDocumentoOperacional(
         String(dados.dataInicio || draft.data_plantao || ''), 'LRO', String(dados.equipeNome || draft.equipe || ''),

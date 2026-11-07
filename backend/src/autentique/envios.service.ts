@@ -229,26 +229,77 @@ export class EnviosService {
   /** LRO: quem assina é o chefe de equipe do plantão e o gerente do SESCINC (cargo GS no cadastro). */
   private async participantesLro(referenciaId: string): Promise<ParticipanteEnvio[]> {
     if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('LRO não encontrado.');
-    const result = await this.database.query<{ dados: Record<string, unknown> | null }>(
-      'SELECT dados FROM lro_drafts WHERE id = $1',
+    const result = await this.database.query<{ dados: Record<string, unknown> | null; data_plantao: string }>(
+      'SELECT dados, data_plantao FROM lro_drafts WHERE id = $1',
       [referenciaId],
     );
     if (!result.rows.length) throw new NotFoundException('LRO não encontrado.');
     const dados = result.rows[0].dados ?? {};
     const chefeInformado = String(dados.chefeAssinatura || dados.chefeEquipe || '').trim();
-    const cadastro = await this.database.query<{ nome_completo: string; nome_guerra: string; cargo: string }>(
-      `SELECT nome_completo, nome_guerra, cargo FROM bombeiros`,
+    const cadastro = await this.database.query<{ id: string; nome_completo: string; nome_guerra: string; cargo: string }>(
+      `SELECT id::text AS id, nome_completo, nome_guerra, cargo FROM bombeiros`,
     );
     const chefe = cadastro.rows.find(b => normalizarNome(b.nome_completo) === normalizarNome(chefeInformado))
       ?? cadastro.rows.find(b => normalizarNome(b.nome_guerra) === normalizarNome(chefeInformado));
-    const gerentes = cadastro.rows.filter(b => String(b.cargo).toUpperCase() === 'GS');
     if (!chefeInformado) throw new BadRequestException('O LRO não tem chefe de equipe.');
-    if (!gerentes.length) throw new BadRequestException('Nenhum gerente (cargo GS) no cadastro de bombeiros.');
-    if (gerentes.length > 1) throw new BadRequestException('Há mais de um gerente (cargo GS) no cadastro de bombeiros.');
+    const gerente = await this.gerenteDoDia(dataISO(result.rows[0].data_plantao), cadastro.rows);
     return [
       { funcao: 'Chefe de equipe', nomeCompleto: chefe?.nome_completo ?? chefeInformado },
-      { funcao: 'Gerente', nomeCompleto: gerentes[0].nome_completo },
+      { funcao: 'Gerente', nomeCompleto: gerente },
     ];
+  }
+
+  /**
+   * Gerente que assina o LRO no dia do plantão: o titular (cargo GS) ou quem estiver no lugar dele,
+   * pela mesma ordem do sistema — substituição aprovada, férias com substituto, vigência ativa.
+   * De férias ou afastado sem substituto cadastrado, não deixa enviar.
+   */
+  private async gerenteDoDia(
+    data: string,
+    cadastro: { id: string; nome_completo: string; nome_guerra: string; cargo: string }[],
+  ): Promise<string> {
+    const titulares = cadastro.filter(b => String(b.cargo).toUpperCase() === 'GS');
+    if (!titulares.length) throw new BadRequestException('Nenhum gerente (cargo GS) no cadastro de bombeiros.');
+    if (titulares.length > 1) throw new BadRequestException('Há mais de um gerente (cargo GS) no cadastro de bombeiros.');
+    const titular = titulares[0];
+    const nomeDe = (id: string | null, nome: string | null) =>
+      cadastro.find(b => b.id === String(id ?? ''))?.nome_completo || String(nome ?? '').trim();
+    const noPeriodo = `left(data_inicio, 10) <= $2 AND left(coalesce(nullif(data_fim, ''), data_inicio), 10) >= $2`;
+
+    const substituicao = await this.database.query<{ substituto_id: string | null; substituto_nome: string | null }>(
+      `SELECT substituto_id, substituto_nome FROM substituicoes_temporarias
+        WHERE funcionario_id = $1 AND status = 'Aprovada' AND ${noPeriodo}
+          AND coalesce(substituto_id, substituto_nome, '') <> ''
+        ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
+      [titular.id, data],
+    );
+    if (substituicao.rows.length) return nomeDe(substituicao.rows[0].substituto_id, substituicao.rows[0].substituto_nome);
+
+    const ferias = await this.database.query<{ substituto_id: string | null; substituto_nome: string | null }>(
+      `SELECT substituto_id, substituto_nome FROM ferias
+        WHERE funcionario_id = $1 AND status IN ('Programadas', 'Gozadas') AND ${noPeriodo}
+        ORDER BY updated_at DESC NULLS LAST LIMIT 1`,
+      [titular.id, data],
+    );
+    if (ferias.rows.length) {
+      const nome = nomeDe(ferias.rows[0].substituto_id, ferias.rows[0].substituto_nome);
+      if (!nome) {
+        throw new BadRequestException(`O gerente ${titular.nome_completo} está de férias neste plantão e não tem substituto cadastrado. Cadastre o substituto nas férias antes de enviar.`);
+      }
+      return nome;
+    }
+
+    const vigencia = await this.database.query<{ substituto_id: string | null; substituto_nome: string | null }>(
+      `SELECT substituto_id, substituto_nome FROM vigencia_substituicoes
+        WHERE funcionario_original_id = $1 AND ativa = true AND ${noPeriodo}
+        ORDER BY nivel_cascata DESC NULLS LAST LIMIT 1`,
+      [titular.id, data],
+    );
+    if (vigencia.rows.length) {
+      const nome = nomeDe(vigencia.rows[0].substituto_id, vigencia.rows[0].substituto_nome);
+      if (nome) return nome;
+    }
+    return titular.nome_completo;
   }
 
   /** Quem vai assinar, com o e-mail do cadastro, para conferir antes de enviar. */

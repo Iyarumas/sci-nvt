@@ -452,11 +452,16 @@ export class EnviosService {
       });
     }
 
-    const paraAutentique: SignatarioAutentique[] = signatarios.map(s => ({
-      email: s.email,
-      action: 'SIGN',
-      positions: posicoesTroca(s.funcoes.filter(f => (PAPEIS_TROCA as string[]).includes(f))),
-    }));
+    // Mesmo e-mail em mais de uma pessoa só passa no sandbox; aí vira um pedido só com todas as marcações.
+    const porEmailAutentique = new Map<string, SignatarioAutentique>();
+    for (const s of signatarios) {
+      const chave = s.email.toLowerCase();
+      const posicoes = posicoesTroca(s.funcoes.filter(f => (PAPEIS_TROCA as string[]).includes(f)));
+      const existente = porEmailAutentique.get(chave);
+      if (existente) existente.positions.push(...posicoes);
+      else porEmailAutentique.set(chave, { email: s.email, action: 'SIGN', positions: posicoes });
+    }
+    const paraAutentique = [...porEmailAutentique.values()];
     const nomeArquivo = this.nomeArquivo(input.nomeArquivo, dataSolicitada, '', 'TROCA DE SERVICO');
     const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS.troca.pasta, dataSolicitada);
     const documento = await this.api.criarDocumento({
@@ -872,7 +877,8 @@ export class EnviosService {
       const email = dados?.email ?? '';
       const problema: Problema | null = !dados ? 'sem_cadastro'
         : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? 'sem_email'
-          : (usoDoEmail.get(email.toLowerCase()) ?? 0) > 1 ? 'email_repetido'
+          // No sandbox (testes) várias pessoas podem usar o mesmo e-mail: viram um só pedido de assinatura.
+          : (usoDoEmail.get(email.toLowerCase()) ?? 0) > 1 && !this.api.sandbox ? 'email_repetido'
             : null;
       return { ordem, chave, funcoes: pessoa.funcoes, nome: pessoa.nome, email, celular: dados?.celular ?? '', problema };
     });

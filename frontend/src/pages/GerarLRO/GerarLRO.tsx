@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw, ChevronDown, ChevronUp, HelpCircle, MousePointer2 } from 'lucide-react';
+import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw, ChevronDown, ChevronUp, HelpCircle, MousePointer2, Signature, Mail, Ban, Download } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { AlertModal } from '../../components/ui/AlertModal';
@@ -23,7 +23,21 @@ import { listarReas } from '../../services/reaService';
 import { listarUsuarios } from '../../services/usuarioService';
 import type { Usuario } from '../../services/usuarioService';
 import { salvarDraft, listarDrafts, excluirDraft, atualizarStatus, type LRODraft, type LRODraftStatus } from '../../services/lroDraftService';
-import { gerarPDF, dividirEmLancamentos } from '../../services/lroGenerator';
+import { gerarPDF, gerarPDFComAssinaturas, dividirEmLancamentos } from '../../services/lroGenerator';
+import {
+  atualizarEnvioAssinatura,
+  baixarPdfAssinado,
+  cancelarEnvioAssinatura,
+  enviarParaAssinatura,
+  listarEnviosAssinatura,
+  obterPdfAssinado,
+  previaEnvioAssinatura,
+  reenviarAvisosAssinatura,
+  type EnvioAssinatura,
+  type PreviaSignatario,
+} from '../../services/autentiqueEnviosService';
+import { ConfirmarEnvioModal, bordaAssinatura, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { nomeDocumentoOperacional } from '../../utils/documentFileNames';
 import { assinaturaCoordenadorLRO } from '../../types/lro';
 import type { Bombeiro } from '../../types/bombeiro';
 import type { Conferencia } from '../../types/conferencia';
@@ -564,6 +578,14 @@ const STATUS_LABELS: Record<LRODraftStatus, string> = {
 };
 
 const STATUS_LRO_TRAVAM_OCORRENCIAS = new Set<LRODraftStatus>(['assinado', 'finalizado', 'arquivado']);
+
+/**
+ * LRO a partir deste plantão vai para assinatura pelo Autentique (chefe de equipe + gerente):
+ * no envio as ocorrências são finalizadas e, com as duas assinaturas, o LRO fica "Assinado" sozinho.
+ * Os anteriores seguem o fluxo antigo, com o Finalizar manual.
+ */
+const INICIO_ASSINATURA_LRO = '2026-11-07';
+const lroPeloAutentique = (draft: LRODraft) => String(draft.data_plantao || '').slice(0, 10) >= INICIO_ASSINATURA_LRO;
 const STATUS_LRO_EDITAVEIS_POR_ADMIN = new Set<LRODraftStatus>(['aguardando', 'assinado', 'finalizado']);
 const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);
 
@@ -675,7 +697,32 @@ export function GerarLRO() {
   const [cloneOrigem, setCloneOrigem] = useState<LRODraft | null>(null);
   const [draftCountdowns, setDraftCountdowns] = useState<Record<string, string>>({});
   const [lroExpandidoId, setLroExpandidoId] = useState<string | null>(null);
+  const [enviosLro, setEnviosLro] = useState<Record<string, EnvioAssinatura>>({});
+  const [envioLroDraft, setEnvioLroDraft] = useState<LRODraft | null>(null);
+  const [previaEnvioLro, setPreviaEnvioLro] = useState<PreviaSignatario[] | null>(null);
+  const [erroEnvioLro, setErroEnvioLro] = useState<string | null>(null);
+  const [enviandoLro, setEnviandoLro] = useState(false);
+  const [acaoEnvioLroId, setAcaoEnvioLroId] = useState<string | null>(null);
   const camposEquipeEditadosRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    void carregarEnviosLro();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Assinaturas aparecendo sozinhas: com LRO aguardando assinatura, confere a cada 30 s no nosso servidor.
+  const lroAguardandoAssinatura = Object.values(enviosLro).some(envio => envio.status === 'aguardando');
+  useEffect(() => {
+    if (!lroAguardandoAssinatura) return;
+    const conferir = () => { if (document.visibilityState === 'visible') void recarregarLrosEEnvios(); };
+    const intervalo = window.setInterval(conferir, 30_000);
+    document.addEventListener('visibilitychange', conferir);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', conferir);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lroAguardandoAssinatura]);
   const tutorialOrigemRef = useRef<{ view: 'lista' | 'wizard'; step: Step } | null>(null);
 
   function campoEquipeKey(grupo: string, key?: string): string {
@@ -2034,13 +2081,13 @@ export function GerarLRO() {
         _substituicoesDetectadas: trocasServicoLRO,
         _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
       };
+      // Salvo fica como rascunho até alguém enviar para assinatura (chefe de equipe + gerente).
       const saved = await salvarDraft(dados, equipe, dataInicio, username, draftId || undefined);
       setDraftId(saved.id);
-      await atualizarStatus(saved.id, 'aguardando', undefined, username);
-      setDraftEmEdicaoStatus('aguardando');
       const updated = await listarDrafts('').catch(() => []);
       setDrafts(updated);
-      navigate('/registros-diarios/preview-lro', { state: { ...dados, draftId: saved.id, status: 'aguardando', _lroFinalizado: false, _lroExportavel: true } });
+      setLroExpandidoId(saved.id);
+      setView('lista');
     } catch (err) {
       console.error('Erro ao finalizar LRO:', err);
       setErroValidacao(`Erro ao finalizar LRO: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
@@ -2354,6 +2401,106 @@ export function GerarLRO() {
     setDrafts(prev => prev.filter(x => x.id !== draft.id));
   }
 
+  async function carregarEnviosLro() {
+    try {
+      const lista = await listarEnviosAssinatura('lro');
+      setEnviosLro(Object.fromEntries(lista.map(envio => [envio.referenciaId, envio])));
+    } catch {
+      // Sem o status das assinaturas, a lista continua funcionando.
+    }
+  }
+
+  async function recarregarLrosEEnvios() {
+    await carregarEnviosLro();
+    setDrafts(await listarDrafts('').catch(() => drafts));
+  }
+
+  async function abrirEnvioLro(draft: LRODraft) {
+    setErroEnvioLro(null);
+    setPreviaEnvioLro(null);
+    setEnvioLroDraft(draft);
+    try {
+      setPreviaEnvioLro(await previaEnvioAssinatura({ tipo: 'lro', referenciaId: draft.id }));
+    } catch (err) {
+      setErroEnvioLro(err instanceof Error ? err.message : 'Não foi possível buscar quem assina.');
+      setPreviaEnvioLro([]);
+    }
+  }
+
+  /** Gera o PDF medindo as linhas de assinatura, envia e finaliza as ocorrências do LRO. */
+  async function confirmarEnvioLro() {
+    const draft = envioLroDraft;
+    if (!draft) return;
+    setEnviandoLro(true);
+    setErroEnvioLro(null);
+    try {
+      const dados = (draft.dados as Record<string, unknown>) || {};
+      const { blob, assinaturas } = await gerarPDFComAssinaturas(dados);
+      const nomeArquivo = nomeDocumentoOperacional(
+        String(dados.dataInicio || draft.data_plantao || ''), 'LRO', String(dados.equipeNome || draft.equipe || ''),
+      );
+      await enviarParaAssinatura({ tipo: 'lro', referenciaId: draft.id, pdf: blob, nomeArquivo, linhasAssinatura: assinaturas });
+      await fecharOcorrenciasIncluidasNoDraft(draft).catch(() => 0);
+      setEnvioLroDraft(null);
+      await recarregarLrosEEnvios();
+    } catch (err) {
+      setErroEnvioLro(err instanceof Error ? err.message : 'Não foi possível enviar para assinatura.');
+    } finally {
+      setEnviandoLro(false);
+    }
+  }
+
+  async function atualizarEnvioLro(envio: EnvioAssinatura) {
+    setAcaoEnvioLroId(envio.id);
+    try {
+      await atualizarEnvioAssinatura(envio.id);
+      await recarregarLrosEEnvios();
+    } catch (err) {
+      setErroValidacao(err instanceof Error ? err.message : 'Não foi possível atualizar as assinaturas.');
+    } finally {
+      setAcaoEnvioLroId(null);
+    }
+  }
+
+  async function reenviarEnvioLro(envio: EnvioAssinatura) {
+    setAcaoEnvioLroId(envio.id);
+    try {
+      const { reenviados } = await reenviarAvisosAssinatura(envio.id);
+      alert(`Aviso reenviado por e-mail para ${reenviados} pessoa(s) que ainda não assinaram.`);
+    } catch (err) {
+      setErroValidacao(err instanceof Error ? err.message : 'Não foi possível reenviar os avisos.');
+    } finally {
+      setAcaoEnvioLroId(null);
+    }
+  }
+
+  async function cancelarEnvioLro(envio: EnvioAssinatura) {
+    const ok = window.confirm(
+      'Tem certeza que deseja cancelar o envio deste LRO?\n\n'
+      + '• Ninguém mais conseguirá assinar pelos links já enviados.\n'
+      + '• As assinaturas já feitas deixam de valer.\n'
+      + '• O LRO volta a ficar aguardando, para corrigir e enviar de novo.',
+    );
+    if (!ok) return;
+    try {
+      await cancelarEnvioAssinatura(envio.id);
+      await recarregarLrosEEnvios();
+    } catch (err) {
+      setErroValidacao(err instanceof Error ? err.message : 'Não foi possível cancelar o envio.');
+    }
+  }
+
+  async function verLroAssinado(envio: EnvioAssinatura) {
+    const janela = window.open('', '_blank');
+    try {
+      const url = URL.createObjectURL(await obterPdfAssinado(envio.id));
+      if (janela) janela.location.href = url; else window.location.href = url;
+    } catch (err) {
+      janela?.close();
+      setErroValidacao(err instanceof Error ? err.message : 'Não foi possível abrir o PDF assinado.');
+    }
+  }
+
   async function arquivarDraftComoDocumento(draft: LRODraft) {
     const dados = (draft.dados as Record<string, any>) || {};
     const docs = await listarDocumentos().catch(() => []);
@@ -2471,6 +2618,18 @@ export function GerarLRO() {
           </div>
         </div>
 
+        {envioLroDraft && (
+          <ConfirmarEnvioModal
+            titulo={`LRO - Equipe ${envioLroDraft.equipe} - ${formatarDataBR(envioLroDraft.data_plantao)}`}
+            documento="LRO"
+            assinantes={previaEnvioLro}
+            enviando={enviandoLro}
+            erro={erroEnvioLro}
+            onCancelar={() => { if (!enviandoLro) setEnvioLroDraft(null); }}
+            onConfirmar={() => void confirmarEnvioLro()}
+          />
+        )}
+
         {filtradas.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300 bg-white p-16 text-center dark:border-border-dark dark:bg-surface-card">
             <FileText className="mb-4 h-12 w-12 text-graphite-300 dark:text-graphite-600" />
@@ -2483,10 +2642,13 @@ export function GerarLRO() {
               const dotColor = d.status === 'assinado' ? 'bg-green-500' : d.status === 'aguardando' ? 'bg-blue-500' : d.status === 'cancelado' ? 'bg-red-500' : d.status === 'finalizado' ? 'bg-green-500' : d.status === 'arquivado' ? 'bg-graphite-400' : 'bg-yellow-500';
               const dd = d.dados as Record<string, any> || {};
               const expanded = lroExpandidoId === d.id;
-              const podeEditarDraft = canManageDraft(d) &&
+              const envio = enviosLro[d.id];
+              const lroNovo = lroPeloAutentique(d);
+              const bordaEnvio = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
+              const podeEditarDraft = canManageDraft(d) && !envio &&
                 (d.status === 'rascunho' || (contexto.isAdministradorSistema && STATUS_LRO_EDITAVEIS_POR_ADMIN.has(d.status)));
               return (
-              <div key={d.id} className="rounded-xl border border-graphite-200 bg-white transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+              <div key={d.id} className={`rounded-xl bg-white transition-all hover:shadow-md dark:bg-surface-card ${bordaEnvio ? `border-2 ${bordaEnvio}` : 'border border-graphite-200 dark:border-border-dark'}`}>
                 <div className="flex items-center justify-between gap-3 p-4">
                   <button
                     type="button"
@@ -2513,11 +2675,6 @@ export function GerarLRO() {
                     <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${STATUS_CORES[d.status] || STATUS_CORES.rascunho}`}>
                       {STATUS_LABELS[d.status] || d.status}
                     </span>
-                    {d.status === 'rascunho' && draftCountdowns[d.id] && (
-                      <span className="text-[10px] text-yellow-600 dark:text-yellow-400" title="Tempo até exclusão automática">
-                        Exclui em: {draftCountdowns[d.id]}
-                      </span>
-                    )}
                   </div>
                 </div>
                 {expanded && (
@@ -2528,6 +2685,13 @@ export function GerarLRO() {
                       {draftTemEdicao(d) && lroDetailCard('Editado por', `${draftEditadoPor(d)} em ${dataHoraAuditoria(draftEditadoEm(d))}`)}
                       {lroDetailCard('Status', STATUS_LABELS[d.status] || d.status)}
                     </div>
+
+                    {envio && (
+                      <p className="text-xs text-graphite-500 dark:text-graphite-400">
+                        {envio.status === 'assinado' ? 'Assinado pelo chefe de equipe e pelo gerente.' : 'Enviado para assinatura do chefe de equipe e do gerente.'}
+                        {' '}Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Depois de enviado, o LRO não pode mais ser editado nem excluído.
+                      </p>
+                    )}
 
                     <div className="grid grid-cols-1 gap-3 text-xs md:grid-cols-4">
                       {lroDetailCard('Data do plantão', formatarDataBR(d.data_plantao))}
@@ -2591,10 +2755,40 @@ export function GerarLRO() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
-                      <button onClick={() => handleVerDocumentoLRO(d)}
+                      <button onClick={() => (envio?.temPdfAssinado ? void verLroAssinado(envio) : handleVerDocumentoLRO(d))}
                         className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
                         <Eye className="h-4 w-4" /> Ver documento
                       </button>
+                      {envio?.temPdfAssinado && (
+                        <button onClick={() => void baixarPdfAssinado(envio.id, nomeDocumentoOperacional(d.data_plantao, 'LRO', d.equipe).replace(/\.pdf$/i, ' ASSINADO.pdf'), true).catch(err => setErroValidacao(err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.'))}
+                          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all">
+                          <Download className="h-4 w-4" /> Baixar PDF assinado
+                        </button>
+                      )}
+                      {lroNovo && !envio && (d.status === 'rascunho' || d.status === 'aguardando') && canManageDraft(d) && (
+                        <button onClick={() => void abrirEnvioLro(d)}
+                          className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
+                          <Signature className="h-4 w-4" /> Enviar para assinatura
+                        </button>
+                      )}
+                      {envio?.status === 'aguardando' && (
+                        <button onClick={() => void atualizarEnvioLro(envio)} disabled={acaoEnvioLroId === envio.id}
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300">
+                          <RefreshCw className={`h-4 w-4 ${acaoEnvioLroId === envio.id ? 'animate-spin' : ''}`} /> Atualizar assinaturas
+                        </button>
+                      )}
+                      {envio?.status === 'aguardando' && envio.podeGerir && (
+                        <button onClick={() => void reenviarEnvioLro(envio)} disabled={acaoEnvioLroId === envio.id}
+                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300">
+                          <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
+                        </button>
+                      )}
+                      {envio && contexto.isAdministradorSistema && (
+                        <button onClick={() => void cancelarEnvioLro(envio)}
+                          className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                          <Ban className="h-4 w-4" /> Cancelar envio
+                        </button>
+                      )}
                       {canCreate && (
                         <button onClick={() => setCloneOrigem(d)} title="Clonar LRO"
                           className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300">
@@ -2607,7 +2801,7 @@ export function GerarLRO() {
                           <FileText className="h-4 w-4" /> {d.status === 'rascunho' ? 'Continuar' : 'Editar'}
                         </button>
                       )}
-                      {contexto.isAdministradorSistema && d.status === 'aguardando' && (
+                      {contexto.isAdministradorSistema && d.status === 'aguardando' && !lroNovo && (
                         <button onClick={async () => {
                           try {
                             await finalizarDraftComOcorrencias(d);
@@ -2641,7 +2835,7 @@ export function GerarLRO() {
                           <RefreshCw className="h-4 w-4" /> Desarquivar
                         </button>
                       )}
-                      {canDeleteDraft(d) && (d.status === 'rascunho' || contexto.isAdministradorSistema) && (
+                      {canDeleteDraft(d) && !envio && (d.status === 'rascunho' || contexto.isAdministradorSistema) && (
                         <button onClick={async () => {
                           try {
                             await excluirDraftComOcorrencias(d);
@@ -3655,18 +3849,15 @@ export function GerarLRO() {
               <button onClick={handlePreview} data-lro-tour="visualizar-pdf" className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-violet-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-500/20 transition-all hover:from-violet-500 hover:to-violet-600 disabled:opacity-50">
                 <Eye className="h-4 w-4" /> Visualizar
               </button>
-              <button onClick={handleSalvarRascunho} disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-amber-500/20 transition-all hover:from-amber-400 hover:to-amber-500 disabled:opacity-50">
-                <Save className="h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar Rascunho'}
-              </button>
               <button onClick={() => {
                 if (!chefeEquipe) { setErroValidacao('Selecione o Chefe de Equipe (campo 1.1).'); return; }
                 if (!comunicacao) { setErroValidacao('Selecione a Comunicação BA-OC (campo 1.2).'); return; }
                 if (!dataInicio) { setErroValidacao('Data de início do plantão é obrigatória.'); return; }
                 if (bloquearEquipeAtual('revisar')) return;
                 setErroValidacao('');
-                setStep('revisar');
-              }} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">
-                Revisar <ArrowRight className="h-4 w-4" />
+                void handleFinalizarLRO();
+              }} disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-green-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-green-500/20 transition-all hover:from-green-500 hover:to-green-600 active:scale-[0.98] disabled:opacity-50">
+                <Save className="h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>
@@ -3694,7 +3885,7 @@ export function GerarLRO() {
             </button>
             <div className="flex gap-3">
               <button onClick={() => setShowConfirm(true)} data-lro-tour="finalizar-lro" disabled={saving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-green-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-green-500/20 transition-all hover:from-green-500 hover:to-green-600 active:scale-[0.98] disabled:opacity-50">
-                <Check className="h-4 w-4" /> {saving ? 'Finalizando...' : 'Finalizar LRO'}
+                <Save className="h-4 w-4" /> {saving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>
@@ -3755,15 +3946,15 @@ export function GerarLRO() {
 
       <AlertModal
         open={showConfirm}
-        title="Finalizar LRO"
+        title="Salvar LRO"
         message={(
           <>
-            Ao finalizar, o LRO ficará <strong>aguardando aprovação</strong>. Depois de aprovado/finalizado, apenas administrador ou desenvolvedor poderá editar; qualquer edição voltará para aprovação.
+            Ao salvar, o LRO fica <strong>aguardando o envio para assinatura</strong> do chefe de equipe e do gerente. Ainda dá para corrigir antes de enviar; depois de enviado, o LRO não pode mais ser editado.
           </>
         )}
         variant="success"
-        confirmLabel="Sim, finalizar"
-        loadingLabel="Finalizando..."
+        confirmLabel="Sim, salvar"
+        loadingLabel="Salvando..."
         onClose={() => setShowConfirm(false)}
         onConfirm={handleFinalizarLRO}
       />

@@ -36,7 +36,7 @@ export class EnviosController {
   @Post()
   @UseInterceptors(FileInterceptor('pdf', { limits: { fileSize: MAX_PDF_BYTES } }))
   enviar(
-    @Body() body: { tipo?: string; referenciaId?: string; participantes?: string; chefeEquipe?: string; nomeArquivo?: string },
+    @Body() body: { tipo?: string; referenciaId?: string; participantes?: string; chefeEquipe?: string; nomeArquivo?: string; linhasAssinatura?: string },
     @UploadedFile() pdf: Express.Multer.File | undefined,
     @Req() request: Request,
   ) {
@@ -53,6 +53,9 @@ export class EnviosController {
       chefeEquipe: body.chefeEquipe,
       pdf: pdf?.buffer,
       nomeArquivo: body.nomeArquivo || pdf?.originalname,
+      linhasAssinatura: (() => {
+        try { return JSON.parse(body.linhasAssinatura ?? '[]'); } catch { return []; }
+      })(),
     });
   }
 

@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl, authorizedFetch } from '../lib/apiClient';
 
-export type TipoEnvioAssinatura = 'ptrba';
+export type TipoEnvioAssinatura = 'ptrba' | 'lro';
 export type StatusEnvioAssinatura = 'aguardando' | 'assinado' | 'recusado';
 export type StatusSignatario = 'pendente' | 'assinado' | 'recusado';
 
@@ -49,14 +49,18 @@ export async function enviarParaAssinatura(input: {
   referenciaId: string;
   pdf: Blob;
   nomeArquivo: string;
-  participantes: ParticipanteParaAssinar[];
-  chefeEquipe: string;
+  /** PTR-BA: lista completa de participantes. O LRO usa o chefe e o gerente do próprio registro. */
+  participantes?: ParticipanteParaAssinar[];
+  chefeEquipe?: string;
+  /** LRO: onde caíram as linhas de assinatura no PDF. */
+  linhasAssinatura?: unknown[];
 }): Promise<{ id: string }> {
   const body = new FormData();
   body.append('tipo', input.tipo);
   body.append('referenciaId', input.referenciaId);
-  body.append('participantes', JSON.stringify(input.participantes));
-  body.append('chefeEquipe', input.chefeEquipe);
+  body.append('participantes', JSON.stringify(input.participantes ?? []));
+  body.append('chefeEquipe', input.chefeEquipe ?? '');
+  if (input.linhasAssinatura) body.append('linhasAssinatura', JSON.stringify(input.linhasAssinatura));
   body.append('nomeArquivo', input.nomeArquivo);
   body.append('pdf', input.pdf, input.nomeArquivo);
   return apiFetch<{ id: string }>('/autentique/envios', { method: 'POST', body });
@@ -74,8 +78,8 @@ export interface PreviaSignatario {
 export async function previaEnvioAssinatura(input: {
   tipo: TipoEnvioAssinatura;
   referenciaId: string;
-  participantes: ParticipanteParaAssinar[];
-  chefeEquipe: string;
+  participantes?: ParticipanteParaAssinar[];
+  chefeEquipe?: string;
 }): Promise<PreviaSignatario[]> {
   return apiFetch<PreviaSignatario[]>('/autentique/envios/previa', {
     method: 'POST',
@@ -112,14 +116,20 @@ export async function obterPdfAssinado(envioId: string): Promise<Blob> {
  * Baixa só a 1ª página do PDF assinado (a tabela com as assinaturas), que é o que vai para o
  * relatório da empresa. As fotos e a auditoria do Autentique ficam no PDF completo guardado no sistema.
  */
-export async function baixarPdfAssinado(envioId: string, nomeArquivo: string): Promise<void> {
-  const { PDFDocument } = await import('pdf-lib');
-  const completo = await PDFDocument.load(await (await obterPdfAssinado(envioId)).arrayBuffer());
-  const primeira = await PDFDocument.create();
-  const [pagina] = await primeira.copyPages(completo, [0]);
-  primeira.addPage(pagina);
-  const bytes = await primeira.save();
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+export async function baixarPdfAssinado(envioId: string, nomeArquivo: string, documentoInteiro = false): Promise<void> {
+  const assinado = await obterPdfAssinado(envioId);
+  let url: string;
+  if (documentoInteiro) {
+    url = URL.createObjectURL(assinado);
+  } else {
+    const { PDFDocument } = await import('pdf-lib');
+    const completo = await PDFDocument.load(await assinado.arrayBuffer());
+    const primeira = await PDFDocument.create();
+    const [pagina] = await primeira.copyPages(completo, [0]);
+    primeira.addPage(pagina);
+    const bytes = await primeira.save();
+    url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
+  }
   const a = document.createElement('a');
   a.href = url;
   a.download = nomeArquivo;

@@ -309,12 +309,12 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
     <tr>
       <td style="width:33%; border:none; text-align:center; padding:0 16px;">
         ${showMarkers ? '<div class="marker-assinatura" style="font-size:7px; color:#2196F3; font-weight:bold; margin-bottom:1px;">▼ ASSINATURA DO BA-CE</div>' : ''}
-        <div style="border-top:1px solid #000; padding-top:6px; font-size:9px; font-weight:bold;">CHEFE DE EQUIPE:</div>
+        <div data-assinatura="chefe" style="border-top:1px solid #000; padding-top:6px; font-size:9px; font-weight:bold;">CHEFE DE EQUIPE:</div>
         <div style="font-size:9px; margin-top:8px; min-height:24px; text-transform:uppercase;">${chefeAss}</div>
       </td>
       <td style="width:33%; border:none; text-align:center; padding:0 16px;">
         ${showMarkers ? '<div class="marker-assinatura" style="font-size:7px; color:#4CAF50; font-weight:bold; margin-bottom:1px;">▼ ASSINATURA DO EMBAIXADOR</div>' : ''}
-        <div style="border-top:1px solid #000; padding-top:6px; font-size:9px; font-weight:bold;">GERENTE DO SESCINC SBNF:</div>
+        <div data-assinatura="gerente" style="border-top:1px solid #000; padding-top:6px; font-size:9px; font-weight:bold;">GERENTE DO SESCINC SBNF:</div>
         <div style="font-size:9px; margin-top:8px; min-height:24px; text-transform:uppercase;">${gerenteAss}</div>
       </td>
       <td style="width:33%; border:none; text-align:center; padding:0 16px;">
@@ -349,7 +349,30 @@ export function montarHTML(dados: Record<string, unknown>, showMarkers = false, 
 </body></html>`);
 }
 
+/** Onde ficou cada linha de assinatura no PDF (para o Autentique carimbar no lugar certo). */
+export interface LinhaAssinaturaLRO {
+  papel: 'chefe' | 'gerente';
+  /** Página (1 = primeira). */
+  pagina: number;
+  /** Altura da linha, em mm a partir do topo da página. */
+  linhaYMm: number;
+  /** Centro da linha na horizontal, em mm. */
+  centroXMm: number;
+  /** Largura da linha, em mm. */
+  larguraMm: number;
+}
+
 export async function gerarPDF(dados: Record<string, unknown>): Promise<Blob> {
+  return (await gerarPDFComAssinaturas(dados)).blob;
+}
+
+/**
+ * Gera o PDF do LRO e informa em que página e altura caíram as linhas de assinatura do chefe e do
+ * gerente. O LRO muda de tamanho todo dia, então a posição é medida no próprio corte em páginas.
+ */
+export async function gerarPDFComAssinaturas(
+  dados: Record<string, unknown>,
+): Promise<{ blob: Blob; assinaturas: LinhaAssinaturaLRO[] }> {
   const A4_W = 794;
   const PAGE_MARGIN_MM = 10;
   const PAGE_CONTENT_MM = 297 - (PAGE_MARGIN_MM * 2);
@@ -418,6 +441,22 @@ export async function gerarPDF(dados: Record<string, unknown>): Promise<Blob> {
     idoc.querySelectorAll<HTMLElement>('.page-num').forEach(element => { element.textContent = '1'; });
     idoc.querySelectorAll<HTMLElement>('.page-total').forEach(element => { element.textContent = String(pages); });
 
+    // Mede as linhas de assinatura já na posição final (depois dos espaçadores de quebra de página).
+    const mmPorPx = 210 / A4_W;
+    const corpo = idocBody.getBoundingClientRect();
+    const assinaturas: LinhaAssinaturaLRO[] = Array.from(idoc.querySelectorAll<HTMLElement>('[data-assinatura]')).map(el => {
+      const r = el.getBoundingClientRect();
+      const y = r.top - corpo.top;
+      const pagina = Math.floor(y / PAGE_CONTENT_H);
+      return {
+        papel: el.dataset.assinatura as LinhaAssinaturaLRO['papel'],
+        pagina: pagina + 1,
+        linhaYMm: Math.round((PAGE_MARGIN_MM + (y - pagina * PAGE_CONTENT_H) * mmPorPx) * 100) / 100,
+        centroXMm: Math.round(((r.left - corpo.left) + r.width / 2) * mmPorPx * 100) / 100,
+        larguraMm: Math.round(r.width * mmPorPx * 100) / 100,
+      };
+    });
+
     const sourceCanvas = await toCanvas(idocBody, {
       width: A4_W,
       height: totalHeight,
@@ -469,7 +508,7 @@ export async function gerarPDF(dados: Record<string, unknown>): Promise<Blob> {
       );
     }
 
-    return doc.output('blob');
+    return { blob: doc.output('blob'), assinaturas };
   } finally {
     document.body.removeChild(iframe);
   }

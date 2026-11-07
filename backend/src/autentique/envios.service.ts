@@ -14,9 +14,19 @@ import { AuthUser, isAdmin } from '../auth/auth.types';
 import { DatabaseService } from '../database/database.service';
 import { LocalStorageService } from '../storage/local-storage.service';
 import { AutentiqueApiService, SignatarioAutentique } from './autentique-api.service';
+import { posicaoNaLinhaLro, validarLinhasLro } from './posicoes-lro';
 import { linhasDaTabela, posicoesDaPessoa } from './posicoes-ptrba';
 
-export const TIPOS_ENVIO = new Set(['ptrba']);
+export const TIPOS_ENVIO = new Set(['ptrba', 'lro']);
+
+/** Tabela, nome e regras de cada tipo de documento enviado para assinatura. */
+const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string }> = {
+  ptrba: { tabela: 'ptrba_completo_registros', nome: 'PTR-BA', pasta: 'PTRBA' },
+  lro: { tabela: 'lro_drafts', nome: 'LRO', pasta: 'LRO' },
+};
+
+/** LRO com plantão antes deste dia seguem o fluxo antigo (Finalizar manual). */
+export const INICIO_ASSINATURA_LRO = '2026-11-07';
 
 /** Situacoes do PTR-BA que nao assinam (ausente). */
 const SITUACOES_SEM_ASSINATURA = new Set(['A']);
@@ -53,6 +63,8 @@ export interface EnviarInput {
   pdf?: Buffer;
   /** Nome do arquivo gerado no sistema (ex.: "03-11-2026 NVT PTRBA DELTA.pdf"). */
   nomeArquivo?: string;
+  /** LRO: página e altura de cada linha de assinatura, medidas ao gerar o PDF. */
+  linhasAssinatura?: unknown;
 }
 
 type Problema = 'sem_cadastro' | 'sem_email' | 'email_repetido';
@@ -201,30 +213,60 @@ export class EnviosService {
     });
   }
 
-  private async verificarPermissaoEnvio(user: AuthUser, referenciaId: string) {
+  private async verificarPermissaoEnvio(user: AuthUser, tipo: string, referenciaId: string) {
     if (this.podeGerir(user)) return;
+    if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('Documento não encontrado.');
+    const doc = DOCUMENTOS[tipo];
     const registro = await this.database.query<{ created_by: string }>(
-      'SELECT created_by FROM ptrba_completo_registros WHERE id = $1',
+      `SELECT created_by FROM ${doc.tabela} WHERE id = $1`,
       [referenciaId],
     );
     if (normalizarNome(registro.rows[0]?.created_by) !== normalizarNome(user.username)) {
-      throw new ForbiddenException('Só quem criou o PTR-BA, a chefia ou um administrador pode enviar para assinatura.');
+      throw new ForbiddenException(`Só quem criou o ${doc.nome}, a chefia ou um administrador pode enviar para assinatura.`);
     }
+  }
+
+  /** LRO: quem assina é o chefe de equipe do plantão e o gerente do SESCINC (cargo GS no cadastro). */
+  private async participantesLro(referenciaId: string): Promise<ParticipanteEnvio[]> {
+    if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('LRO não encontrado.');
+    const result = await this.database.query<{ dados: Record<string, unknown> | null }>(
+      'SELECT dados FROM lro_drafts WHERE id = $1',
+      [referenciaId],
+    );
+    if (!result.rows.length) throw new NotFoundException('LRO não encontrado.');
+    const dados = result.rows[0].dados ?? {};
+    const chefeInformado = String(dados.chefeAssinatura || dados.chefeEquipe || '').trim();
+    const cadastro = await this.database.query<{ nome_completo: string; nome_guerra: string; cargo: string }>(
+      `SELECT nome_completo, nome_guerra, cargo FROM bombeiros`,
+    );
+    const chefe = cadastro.rows.find(b => normalizarNome(b.nome_completo) === normalizarNome(chefeInformado))
+      ?? cadastro.rows.find(b => normalizarNome(b.nome_guerra) === normalizarNome(chefeInformado));
+    const gerentes = cadastro.rows.filter(b => String(b.cargo).toUpperCase() === 'GS');
+    if (!chefeInformado) throw new BadRequestException('O LRO não tem chefe de equipe.');
+    if (!gerentes.length) throw new BadRequestException('Nenhum gerente (cargo GS) no cadastro de bombeiros.');
+    if (gerentes.length > 1) throw new BadRequestException('Há mais de um gerente (cargo GS) no cadastro de bombeiros.');
+    return [
+      { funcao: 'Chefe de equipe', nomeCompleto: chefe?.nome_completo ?? chefeInformado },
+      { funcao: 'Gerente', nomeCompleto: gerentes[0].nome_completo },
+    ];
   }
 
   /** Quem vai assinar, com o e-mail do cadastro, para conferir antes de enviar. */
   async previa(user: AuthUser, input: Omit<EnviarInput, 'pdf'>) {
     this.validarTipo(input.tipo);
-    await this.verificarPermissaoEnvio(user, input.referenciaId);
-    const pessoas = await this.resolverSignatarios(input.participantes, input.chefeEquipe);
+    await this.verificarPermissaoEnvio(user, input.tipo, input.referenciaId);
+    const pessoas = input.tipo === 'lro'
+      ? await this.resolverSignatarios(await this.participantesLro(input.referenciaId))
+      : await this.resolverSignatarios(input.participantes, input.chefeEquipe);
     return pessoas.map(({ nome, funcoes, email, problema }) => ({ nome, funcoes, email, problema }));
   }
 
   async enviar(user: AuthUser, input: EnviarInput) {
     this.validarTipo(input.tipo);
-    await this.verificarPermissaoEnvio(user, input.referenciaId);
+    await this.verificarPermissaoEnvio(user, input.tipo, input.referenciaId);
     if (!input.pdf?.length) throw new BadRequestException('Envie o PDF do documento.');
     if (input.pdf.subarray(0, 5).toString('latin1') !== '%PDF-') throw new BadRequestException('O arquivo enviado não é um PDF.');
+    if (input.tipo === 'lro') return this.enviarLro(user, input, input.pdf);
 
     const registro = await this.database.query<{ data: unknown; is_apoc: boolean; origem_ptrba_id: string | null; equipe: string }>(
       'SELECT data, is_apoc, origem_ptrba_id, equipe FROM ptrba_completo_registros WHERE id = $1',
@@ -289,11 +331,78 @@ export class EnviosService {
     }
   }
 
-  private nomeArquivo(informado: string | undefined, data: string, equipe: string): string {
+  /** LRO: chefe e gerente assinam nas linhas medidas pelo gerador do PDF, na página onde caíram. */
+  private async enviarLro(user: AuthUser, input: EnviarInput, pdf: Buffer) {
+    const registro = await this.database.query<{ data_plantao: string; equipe: string; status: string }>(
+      'SELECT data_plantao, equipe, status FROM lro_drafts WHERE id = $1',
+      [input.referenciaId],
+    );
+    const lro = registro.rows[0];
+    if (!lro) throw new NotFoundException('LRO não encontrado.');
+    if (lro.status !== 'rascunho' && lro.status !== 'aguardando') {
+      throw new BadRequestException('Este LRO não está mais esperando o envio para assinatura.');
+    }
+    if (dataISO(lro.data_plantao) < INICIO_ASSINATURA_LRO) {
+      throw new BadRequestException('LRO de plantões antes de 07/11/2026 não são enviados para assinatura pelo sistema.');
+    }
+    const ativos = await documentosComEnvioAtivo(this.database, 'lro', [input.referenciaId]);
+    if (ativos.size) throw new ConflictException('Este LRO já foi enviado para assinatura.');
+
+    const participantes = await this.participantesLro(input.referenciaId);
+    const signatarios = await this.montarSignatarios(participantes);
+    const linhas = validarLinhasLro(input.linhasAssinatura);
+    if (!linhas.some(l => l.papel === 'chefe') || !linhas.some(l => l.papel === 'gerente')) {
+      throw new BadRequestException('Não foi possível localizar as linhas de assinatura no PDF do LRO.');
+    }
+    const papelDe = (s: SignatarioMontado): 'chefe' | 'gerente' => (s.funcoes.includes('Gerente') ? 'gerente' : 'chefe');
+    const dadosEnvio = { ...input, participantes };
+
+    if (this.modoSimulado) {
+      return this.gravarEnvio(user, dadosEnvio, {
+        documentoId: `simulado-${randomUUID()}`,
+        sandbox: true,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: `simulado-${randomUUID()}` })),
+      });
+    }
+
+    const paraAutentique: SignatarioAutentique[] = signatarios.map(s => ({
+      email: s.email,
+      action: 'SIGN',
+      // Se o chefe também for o gerente (mesma pessoa), assina nas duas linhas.
+      positions: linhas
+        .filter(l => l.papel === papelDe(s) || (s.funcoes.includes('Gerente') && s.funcoes.includes('Chefe de equipe')))
+        .map(posicaoNaLinhaLro),
+    }));
+    const data = dataISO(lro.data_plantao);
+    const [ano, mes, dia] = data.split('-');
+    const nomeArquivo = this.nomeArquivo(input.nomeArquivo, data, lro.equipe, `${dia}-${mes}-${ano} NVT LRO`);
+    const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS.lro.pasta, data);
+    const documento = await this.api.criarDocumento({
+      nome: nomeArquivo.replace(/\.pdf$/i, ''),
+      nomeArquivo,
+      pdf,
+      signatarios: paraAutentique,
+      pastaId,
+    });
+    const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s.public_id]));
+    try {
+      return await this.gravarEnvio(user, dadosEnvio, {
+        documentoId: documento.id,
+        sandbox: this.api.sandbox,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: porEmail.get(s.email.toLowerCase()) ?? null })),
+      });
+    } catch (erro) {
+      await this.api.cancelar(documento.id).catch(e => this.logger.error(`Documento ${documento.id} ficou no Autentique: ${(e as Error).message}`));
+      throw erro;
+    }
+  }
+
+  private nomeArquivo(informado: string | undefined, data: string, equipe: string, prefixoPadrao?: string): string {
     const limpo = String(informado ?? '').replace(/[\\/:*?"<>|\r\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 150);
     if (limpo) return /\.pdf$/i.test(limpo) ? limpo : `${limpo}.pdf`;
     const [ano, mes, dia] = data.split('-');
-    return `${dia}-${mes}-${ano} NVT PTRBA ${String(equipe ?? '').toUpperCase()}.pdf`.replace(/\s+/g, ' ');
+    const prefixo = prefixoPadrao ?? `${dia}-${mes}-${ano} NVT PTRBA`;
+    return `${prefixo} ${String(equipe ?? '').toUpperCase()}.pdf`.replace(/\s+/g, ' ');
   }
 
   private gravarEnvio(
@@ -301,17 +410,24 @@ export class EnviosService {
     input: EnviarInput,
     dados: { documentoId: string; sandbox: boolean; signatarios: (SignatarioMontado & { signatureId: string | null })[] },
   ) {
+    const doc = DOCUMENTOS[input.tipo];
     return this.database.transaction(async client => {
-      const registro = await client.query('SELECT id FROM ptrba_completo_registros WHERE id = $1 FOR UPDATE', [input.referenciaId]);
-      if (!registro.rows.length) throw new NotFoundException('PTR-BA não encontrado.');
+      const registro = await client.query(`SELECT id FROM ${doc.tabela} WHERE id = $1 FOR UPDATE`, [input.referenciaId]);
+      if (!registro.rows.length) throw new NotFoundException(`${doc.nome} não encontrado.`);
       const ativos = await documentosComEnvioAtivo(client, input.tipo, [input.referenciaId]);
-      if (ativos.size) throw new ConflictException('Este PTR-BA já foi enviado para assinatura.');
+      if (ativos.size) throw new ConflictException(`Este ${doc.nome} já foi enviado para assinatura.`);
 
-      // O que foi enviado vira o conteudo oficial do registro.
-      await client.query(
-        'UPDATE ptrba_completo_registros SET participantes = $2::jsonb, chefe_equipe = $3 WHERE id = $1',
-        [input.referenciaId, JSON.stringify(input.participantes), input.chefeEquipe ?? ''],
-      );
+      if (input.tipo === 'lro') {
+        // Enviado: sai de rascunho e fica aguardando as assinaturas.
+        await client.query(`UPDATE lro_drafts SET status = 'aguardando', updated_at = now() WHERE id = $1`, [input.referenciaId]);
+      }
+      if (input.tipo === 'ptrba') {
+        // O que foi enviado vira o conteudo oficial do registro.
+        await client.query(
+          'UPDATE ptrba_completo_registros SET participantes = $2::jsonb, chefe_equipe = $3 WHERE id = $1',
+          [input.referenciaId, JSON.stringify(input.participantes), input.chefeEquipe ?? ''],
+        );
+      }
       const envio = await client.query<{ id: string }>(
         `INSERT INTO autentique_envios (tipo, referencia_id, autentique_document_id, sandbox, enviado_por_id, enviado_por_nome)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
@@ -373,6 +489,13 @@ export class EnviosService {
       `UPDATE autentique_envios SET status = 'cancelado', cancelado_em = now(), cancelado_por_nome = $2 WHERE id = $1`,
       [envioId, user.username],
     );
+    // LRO cancelado volta a ser rascunho, para corrigir e enviar de novo.
+    if (envio.tipo === 'lro') {
+      await this.database.query(
+        `UPDATE lro_drafts SET status = 'rascunho', updated_at = now() WHERE id = $1 AND status IN ('aguardando', 'assinado')`,
+        [envio.referencia_id],
+      );
+    }
     return { id: envio.id };
   }
 
@@ -460,11 +583,13 @@ export class EnviosService {
     let baAssinaram = signatarios.rows.some(s => !ehSoApoc(s.funcoes));
     let alguemRecusou = false;
     let mudou = false;
+    let alguemAssinou = false;
     for (const signatario of signatarios.rows) {
       const lido = (signatario.autentique_signature_id && porId.get(signatario.autentique_signature_id))
         || porEmail.get(String(signatario.email ?? '').toLowerCase());
       const status = lido?.rejected ? 'recusado' : lido?.signed ? 'assinado' : 'pendente';
       const apoc = ehSoApoc(signatario.funcoes);
+      if (status === 'assinado') alguemAssinou = true;
       if (!apoc && status !== 'assinado') baAssinaram = false;
       if (!apoc && status === 'recusado') alguemRecusou = true;
       if (status !== signatario.status) {
@@ -478,7 +603,8 @@ export class EnviosService {
 
     const novoStatus = alguemRecusou ? 'recusado' : baAssinaram ? 'assinado' : 'aguardando';
     let pdfPath: string | null = envio.pdf_assinado_url;
-    if (novoStatus === 'assinado' && (!pdfPath || mudou) && documento.files?.signed) {
+    // Guarda o PDF com as assinaturas já feitas a cada assinatura nova (para o Ver documento mostrar).
+    if (alguemAssinou && (!pdfPath || mudou) && documento.files?.signed) {
       try {
         const pdf = await this.api.baixarPdfAssinado(documento.files.signed);
         const caminho = `${envio.tipo}/${envio.referencia_id}/${envio.id}.pdf`;
@@ -496,18 +622,25 @@ export class EnviosService {
         WHERE id = $1 AND status <> 'cancelado'`,
       [envio.id, novoStatus, pdfPath],
     );
+    // LRO: com o chefe e o gerente assinados, o livro fica "Assinado" sozinho (é a etapa final).
+    if (envio.tipo === 'lro' && novoStatus === 'assinado') {
+      await this.database.query(
+        `UPDATE lro_drafts SET status = 'assinado', updated_at = now() WHERE id = $1 AND status = 'aguardando'`,
+        [envio.referencia_id],
+      );
+    }
     return novoStatus;
   }
 
   /** PDF assinado guardado no servidor (baixa do Autentique na hora se ainda não tiver). */
   async pdfAssinado(envioId: string) {
     let envio = await this.obterEnvio(envioId);
-    if (envio.status !== 'assinado') throw new BadRequestException('O documento ainda não foi assinado por todos.');
+    if (envio.status === 'cancelado') throw new BadRequestException('Este envio foi cancelado.');
     if (!envio.pdf_assinado_url && !this.ehSimulado(envio)) {
       await this.sincronizar(envio);
       envio = await this.obterEnvio(envioId);
     }
-    if (!envio.pdf_assinado_url) throw new NotFoundException('O PDF assinado ainda não está disponível.');
+    if (!envio.pdf_assinado_url) throw new NotFoundException('Ainda ninguém assinou este documento.');
     return this.storage.getFile(BUCKET_ASSINADOS, envio.pdf_assinado_url);
   }
 

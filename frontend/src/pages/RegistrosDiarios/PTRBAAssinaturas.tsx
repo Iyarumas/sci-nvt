@@ -189,8 +189,11 @@ export function ConfirmarEnvioModal({
   erro,
   onCancelar,
   onConfirmar,
+  documento = 'PTR-BA',
 }: {
   titulo: string;
+  /** Nome do tipo de documento no aviso (ex.: "PTR-BA", "LRO"). */
+  documento?: string;
   /** null enquanto busca os e-mails no cadastro. */
   assinantes: PreviaSignatario[] | null;
   enviando: boolean;
@@ -248,7 +251,7 @@ export function ConfirmarEnvioModal({
           </p>
         )}
         <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-          Depois de enviado, este PTR-BA não poderá mais ser editado nem excluído.
+          Depois de enviado, este {documento} não poderá mais ser editado nem excluído.
         </div>
         <p className="mb-4 text-xs text-graphite-500 dark:text-graphite-400">Cada pessoa receberá um e-mail do Autentique com o link para assinar.</p>
         {erro && <p role="alert" className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-alert-red">{erro}</p>}

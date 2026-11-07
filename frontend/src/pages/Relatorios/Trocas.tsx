@@ -278,17 +278,6 @@ async function getTrocaPdfBlob(doc: DocumentWithFields): Promise<Blob | null> {
   return getCachedTrocaPdfBlob(TROCA_TEMPLATE_PDF_URL);
 }
 
-const DRAFT_TTL_MS = 3 * 24 * 60 * 60 * 1000;
-
-function formatCountdown(ms: number): string {
-  if (ms <= 0) return 'Excluindo...';
-  const totalSec = Math.floor(ms / 1000);
-  const d = Math.floor(totalSec / 86400);
-  const h = Math.floor((totalSec % 86400) / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  return `${d}d ${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
 
 function formatCpf(v: string): string {
   const d = v.replace(/\D/g, '').slice(0, 11);
@@ -378,8 +367,8 @@ const TROCAS_TOUR_STEPS: TrocasTourStep[] = [
     target: 'trocas-acoes-form',
     subView: 'form',
     title: 'Finalize do jeito certo',
-    body: 'Visualizar mostra o PDF antes de aprovar. Aprovar gera o documento e confirma a troca. Salvar Rascunho guarda para continuar depois.',
-    detail: 'Só aprove quando tudo estiver certo, porque a troca aprovada passa a impactar escala, LRO e relatórios do período.',
+    body: 'Visualizar mostra o PDF antes de salvar. Salvar guarda a troca como rascunho; depois, no card, use "Enviar para assinatura".',
+    detail: 'Ao enviar, o documento vai deferido para todos assinarem e a troca passa a contar na escala. Com todas as assinaturas ela fica Aprovada sozinha.',
   },
 ];
 
@@ -629,7 +618,6 @@ export function Trocas() {
   const [saving, setSaving] = useState(false);
   const [showConfirmPdf, setShowConfirmPdf] = useState(false);
   const [editingFillId, setEditingFillId] = useState<string | null>(null);
-  const [draftCountdowns, setDraftCountdowns] = useState<Record<string, number>>({});
   const [missingFields, setMissingFields] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -964,32 +952,6 @@ export function Trocas() {
     init();
   }, [isRelatorioRoute, canVisualizarRelatorios, loadingContexto]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const nowMs = Date.now();
-      const countdowns: Record<string, number> = {};
-      const toDelete: string[] = [];
-      fills.forEach(fill => {
-        if (fill.status !== 'draft') return;
-        const created = new Date(fill.created_at).getTime();
-        const remaining = created + DRAFT_TTL_MS - nowMs;
-        if (remaining <= 0) {
-          toDelete.push(fill.id);
-        } else {
-          countdowns[fill.id] = remaining;
-        }
-      });
-      setDraftCountdowns(countdowns);
-      if (toDelete.length > 0) {
-        toDelete.forEach(async (id) => {
-          try { await excluirPreenchimento(id); } catch { /* ignore */ }
-        });
-        setFills(prev => prev.filter(f => !toDelete.includes(f.id)));
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [fills]);
-
   async function init() {
     try {
       setLoading(true);
@@ -1089,7 +1051,8 @@ export function Trocas() {
       const blob = await getTrocaPdfBlob(doc);
       if (!blob) throw new Error('PDF modelo da troca não encontrado.');
       const pdf = await preencherPdf(await blob.arrayBuffer(), buildPdfData(formDataToSave), fieldPositionsFromDoc(doc));
-      await atualizarPreenchimento(fill.id, { filled_data: formDataToSave });
+      // Enviada: sai de rascunho (não é mais editada nem excluída sozinha) e fica Aguardando as assinaturas.
+      await atualizarPreenchimento(fill.id, { filled_data: formDataToSave, status: 'pending' });
       await enviarParaAssinatura({
         tipo: 'troca',
         referenciaId: fill.id,
@@ -2221,11 +2184,9 @@ export function Trocas() {
             <button onClick={handleVisualizar} disabled={saving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Visualizar
             </button>
-            <button onClick={handleGerarPdf} disabled={saving} className="flex items-center gap-2 rounded-lg bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-700 disabled:opacity-50">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />} Aprovar
-            </button>
-            <button onClick={handleSaveDraft} disabled={saving} className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600 disabled:opacity-50">
-              <Save className="h-4 w-4" /> Salvar Rascunho
+            {/* A troca é aprovada pelas assinaturas: salva como rascunho e depois "Enviar para assinatura" no card. */}
+            <button onClick={handleSaveDraft} disabled={saving} className="flex items-center gap-2 rounded-lg bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-700 disabled:opacity-50">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar
             </button>
           </div>
         </div>
@@ -2796,37 +2757,9 @@ export function Trocas() {
                     }`}>
                       {fill.status === 'draft' ? 'Rascunho' : fill.status === 'signed' ? 'Aprovada' : fill.status === 'pending' ? 'Aguardando' : fill.status === 'cancelled' ? 'Cancelado' : fill.status}
                     </span>
-                    {fill.status === 'draft' && draftCountdowns[fill.id] != null && (
-                      <span className="text-[10px] text-yellow-600 dark:text-yellow-400" title="Tempo ate exclusao automatica">
-                        Exclui em: {formatCountdown(draftCountdowns[fill.id])}
-                      </span>
-                    )}
                     <button onClick={(event) => { event.stopPropagation(); setExpandedFill(isExpanded ? null : fill.id); }} className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-graphite-700">
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
-                    {canManageFill(fill) && fill.status === 'draft' && !envio && (
-                      <button onClick={(event) => { event.stopPropagation(); handleEditFill(fill); }} title="Editar" className="rounded p-1 text-graphite-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
-                        <Edit className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      onClick={(event) => { event.stopPropagation(); if (envio?.temPdfAssinado) void verTrocaAssinada(envio); else handleVisualizarPdf(fill); }}
-                      disabled={saving}
-                      title="Visualizar PDF"
-                      className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-aviation-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-graphite-700 dark:hover:text-aviation-400"
-                    >
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                    {canManageFill(fill) && (
-                      <button onClick={(event) => { event.stopPropagation(); setArchiveConfirmFill(fill); }} title="Arquivar" className="rounded p-1 text-graphite-400 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-900/20 dark:hover:text-amber-400">
-                        <Archive className="h-4 w-4" />
-                      </button>
-                    )}
-                    {canManageFill(fill) && !envio && (
-                      <button onClick={(event) => { event.stopPropagation(); handleDeleteFill(fill.id); }} title="Excluir" className="rounded p-1 text-graphite-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
                 {isExpanded && (
@@ -2959,37 +2892,56 @@ export function Trocas() {
                         </p>
                       </div>
                     )}
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      {!envio && fill.status === 'pending' && canManageFill(fill) && (
-                        <button onClick={() => void abrirEnvioTroca(fill)}
-                          className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
-                          <Signature className="h-4 w-4" /> Enviar para assinatura
-                        </button>
-                      )}
+                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-graphite-200/70 pt-4 dark:border-graphite-600">
+                      <button onClick={() => { if (envio?.temPdfAssinado) void verTrocaAssinada(envio); else handleVisualizarPdf(fill); }} disabled={saving}
+                        className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
+                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Ver documento
+                      </button>
                       {envio?.temPdfAssinado && (
                         <button onClick={() => void baixarPdfAssinado(envio.id, nomeArquivoTroca(data).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina').catch(err => setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.', type: 'error' }))}
-                          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all">
+                          className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
                           <Download className="h-4 w-4" /> Baixar PDF assinado
                         </button>
                       )}
+                      {canManageFill(fill) && fill.status === 'draft' && !envio && (
+                        <button onClick={() => handleEditFill(fill)} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                          <Edit className="h-4 w-4" /> Editar
+                        </button>
+                      )}
+                      {canManageFill(fill) && !envio && (
+                        <button onClick={() => handleDeleteFill(fill.id)} className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                          <Trash2 className="h-4 w-4" /> Excluir
+                        </button>
+                      )}
+                      {!envio && (fill.status === 'draft' || fill.status === 'pending') && canManageFill(fill) && (
+                        <button onClick={() => void abrirEnvioTroca(fill)}
+                          className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
+                          <Signature className="h-4 w-4" /> Enviar para assinatura
+                        </button>
+                      )}
                       {envio?.status === 'aguardando' && (
-                        <button onClick={() => void atualizarEnvioTroca(envio)} disabled={acaoEnvioTrocaId === envio.id}
-                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-graphite-700 dark:text-graphite-200">
+                        <button onClick={() => void atualizarEnvioTroca(envio)} disabled={acaoEnvioTrocaId === envio.id} title="Consulta agora no Autentique quem já assinou" className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                           <RefreshCw className={`h-4 w-4 ${acaoEnvioTrocaId === envio.id ? 'animate-spin' : ''}`} /> Atualizar assinaturas
                         </button>
                       )}
                       {envio?.status === 'aguardando' && envio.podeGerir && (
-                        <button onClick={() => void reenviarEnvioTroca(envio)} disabled={acaoEnvioTrocaId === envio.id}
-                          className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-graphite-700 dark:text-graphite-200">
+                        <button onClick={() => void reenviarEnvioTroca(envio)} disabled={acaoEnvioTrocaId === envio.id} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                           <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
                         </button>
                       )}
-                      {envio && contexto.isAdministradorSistema && (
-                        <button onClick={() => void cancelarEnvioTroca(envio)}
-                          className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-alert-red transition-all hover:bg-red-500/15">
-                          <Ban className="h-4 w-4" /> Cancelar envio
-                        </button>
-                      )}
+                      <div className="ml-auto flex flex-wrap items-center gap-2">
+                        {/* Igual ao LRO: só o administrador arquiva (tira da lista e guarda no Arquivo). */}
+                        {contexto.isAdministradorSistema && fill.status !== 'draft' && (
+                          <button onClick={() => setArchiveConfirmFill(fill)} className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-700 transition-all hover:bg-amber-500/15 dark:text-amber-300">
+                            <Archive className="h-4 w-4" /> Arquivar
+                          </button>
+                        )}
+                        {envio && contexto.isAdministradorSistema && (
+                          <button onClick={() => void cancelarEnvioTroca(envio)} className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                            <Ban className="h-4 w-4" /> Cancelar envio
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

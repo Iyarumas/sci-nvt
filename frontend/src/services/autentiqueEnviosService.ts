@@ -1,6 +1,6 @@
 import { apiFetch, apiUrl, authorizedFetch } from '../lib/apiClient';
 
-export type TipoEnvioAssinatura = 'ptrba' | 'lro' | 'troca';
+export type TipoEnvioAssinatura = 'ptrba' | 'lro' | 'troca' | 'tpepr';
 export type StatusEnvioAssinatura = 'aguardando' | 'assinado' | 'recusado';
 export type StatusSignatario = 'pendente' | 'assinado' | 'recusado';
 

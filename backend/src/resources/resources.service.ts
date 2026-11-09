@@ -136,6 +136,15 @@ export class ResourcesService {
         if (enviados.size) throw new BadRequestException('Esta troca já foi enviada para assinatura e não pode mais ser editada.');
       }
     }
+    // TP/EPR enviado para assinatura: não muda mais (quem aprova é o Autentique, pelo servidor).
+    if (table === 'treinamentos_tpepr') {
+      const params: unknown[] = [];
+      const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+      if (!whereSql) throw new BadRequestException('Update requires at least one filter');
+      const alvo = await this.database.query(`SELECT id FROM ${this.tableName(table)} ${whereSql}`, params);
+      const enviados = await documentosComEnvioAtivo(this.database, 'tpepr', alvo.rows.map(row => String(row.id)));
+      if (enviados.size) throw new BadRequestException('Este TP/EPR já foi enviado para assinatura e não pode mais ser editado.');
+    }
     if (mudaConteudoLro) {
       const params: unknown[] = [];
       const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
@@ -234,6 +243,11 @@ export class ResourcesService {
         const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         const enviados = await documentosComEnvioAtivo(client, 'troca', alvo.rows.map(row => String(row.id)));
         if (enviados.size) throw new BadRequestException('Esta troca já foi enviada para assinatura e não pode mais ser excluída.');
+      }
+      if (table === 'treinamentos_tpepr') {
+        const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
+        const enviados = await documentosComEnvioAtivo(client, 'tpepr', alvo.rows.map(row => String(row.id)));
+        if (enviados.size) throw new BadRequestException('Este TP/EPR já foi enviado para assinatura e não pode mais ser excluído.');
       }
       if (table === 'lro_drafts') {
         const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);

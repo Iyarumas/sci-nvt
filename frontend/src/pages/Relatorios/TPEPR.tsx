@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Ban,
   Calculator,
   CheckCircle2,
   Clock,
@@ -8,10 +9,13 @@ import {
   Download,
   Eye,
   Lock,
+  Mail,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   Search,
+  Signature,
   Trash2,
   Users,
   X,
@@ -47,6 +51,29 @@ import type { TPEPRInput, TPEPRParticipante, TreinamentoTPEPR } from '../../type
 import { TEMPO_CRONOMETRO_ZERO } from '../../utils/tempo';
 import { PageTour } from '../../components/ui/PageTour';
 import { resumoAuditoria } from '../../utils/auditoria';
+import {
+  atualizarEnvioAssinatura,
+  baixarPdfAssinado,
+  cancelarEnvioAssinatura,
+  enviarParaAssinatura,
+  listarEnviosAssinatura,
+  obterPdfAssinado,
+  previaEnvioAssinatura,
+  reenviarAvisosAssinatura,
+  type EnvioAssinatura,
+  type PreviaSignatario,
+} from '../../services/autentiqueEnviosService';
+import { CelulaAssinatura, ConfirmarEnvioModal, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+
+/**
+ * TP/EPR a partir deste treinamento vai para assinatura pelo Autentique: o chefe de equipe e o
+ * gerente assinam e os outros participantes só reconhecem. Fica Aprovado sozinho com as duas
+ * assinaturas. Os anteriores continuam com o Aprovar manual.
+ */
+const INICIO_ASSINATURA_TPEPR = '2026-11-08';
+function vaiPelaAssinatura(data: string) {
+  return !!data && data.slice(0, 10) >= INICIO_ASSINATURA_TPEPR;
+}
 
 const inputCls = 'w-full rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all hover:border-graphite-400 focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:scheme-dark';
 const labelCls = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
@@ -179,6 +206,42 @@ export function TPEPR() {
   const [fParticipantes, setFParticipantes] = useState<TPEPRParticipante[]>(criarParticipantesTPEPRVazios());
   const [expandidoId, setExpandidoId] = useState<string | null>(null);
   const saving = savingAction !== null;
+  const [envios, setEnvios] = useState<Record<string, EnvioAssinatura>>({});
+  const [envioRegistro, setEnvioRegistro] = useState<TreinamentoTPEPR | null>(null);
+  const [previaEnvio, setPreviaEnvio] = useState<PreviaSignatario[] | null>(null);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [acaoEnvioId, setAcaoEnvioId] = useState<string | null>(null);
+
+  async function carregarEnvios() {
+    try {
+      const lista = await listarEnviosAssinatura('tpepr');
+      setEnvios(Object.fromEntries(lista.map(envio => [envio.referenciaId, envio])));
+    } catch {
+      // Sem o status das assinaturas, a lista continua funcionando.
+    }
+  }
+
+  useEffect(() => {
+    void carregarEnvios();
+  }, []);
+
+  // Assinaturas aparecendo sozinhas: com TP/EPR aguardando, confere a cada 30 s no nosso servidor.
+  const temAguardando = Object.values(envios).some(envio => envio.status === 'aguardando');
+  useEffect(() => {
+    if (!temAguardando) return;
+    const conferir = () => {
+      if (document.visibilityState !== 'visible') return;
+      void carregarEnvios();
+      void listarTPEPRs({ ano: filtroAno }).then(setRegistros).catch(() => undefined);
+    };
+    const intervalo = window.setInterval(conferir, 30_000);
+    document.addEventListener('visibilitychange', conferir);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', conferir);
+    };
+  }, [temAguardando, filtroAno]);
 
   const equipesFormulario = useMemo(() => {
     if (canManageGlobal) return [...TPEPR_EQUIPES];
@@ -212,6 +275,7 @@ export function TPEPR() {
   async function carregar() {
     try {
       setErro('');
+      void carregarEnvios();
       setRegistros(await listarTPEPRs({ ano: filtroAno }));
     } catch (err) {
       setErro(mensagemErro(err));
@@ -333,17 +397,20 @@ export function TPEPR() {
   }
 
   function canAlterarRegistro(registro: TreinamentoTPEPR) {
+    // Enviado para assinatura: não muda mais (para corrigir, um administrador cancela o envio).
+    if (envios[registro.id]) return false;
     return registroAprovado(registro) ? isAdminSistema : canManageEquipe(registro.equipe);
   }
 
   function mensagemBloqueioRegistro(registro: TreinamentoTPEPR) {
+    if (envios[registro.id]) return 'Este TP/EPR ja foi enviado para assinatura e nao pode mais ser alterado.';
     return registroAprovado(registro)
       ? 'Este TP/EPR ja foi aprovado. Somente administradores e desenvolvedores podem alterar.'
       : 'Voce so pode alterar TP/EPR da sua equipe efetiva.';
   }
 
   function canGerarPdf(registro: TreinamentoTPEPR) {
-    return registroAprovado(registro);
+    return registroAprovado(registro) || envios[registro.id]?.status === 'assinado';
   }
 
   function resetForm() {
@@ -568,7 +635,12 @@ export function TPEPR() {
 
     try {
       setDownloadingId(registro.id);
-      await baixarTPEPRPdf(registro);
+      const envio = envios[registro.id];
+      if (envio?.status === 'assinado' && envio.temPdfAssinado) {
+        await baixarPdfAssinado(envio.id, nomeArquivoTPEPRPdf(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina');
+      } else {
+        await baixarTPEPRPdf(registro);
+      }
     } catch (err) {
       alert('Erro ao gerar PDF: ' + mensagemErro(err));
     } finally {
@@ -579,13 +651,84 @@ export function TPEPR() {
   async function handlePreviewPdf(registro: TreinamentoTPEPR) {
     try {
       setPreviewingId(registro.id);
-      const pdf = await gerarTPEPRPdf(registro);
+      // Com alguém já assinado mostra o PDF do Autentique (com as assinaturas feitas até agora).
+      const envio = envios[registro.id];
+      const pdf = envio?.temPdfAssinado ? await obterPdfAssinado(envio.id) : await gerarTPEPRPdf(registro);
       setPreviewPdfData(await pdf.arrayBuffer());
       setPreviewPdfTitle(nomeArquivoTPEPRPdf(registro).replace(/\.pdf$/i, ''));
     } catch (err) {
       alert('Erro ao visualizar PDF: ' + mensagemErro(err));
     } finally {
       setPreviewingId(null);
+    }
+  }
+
+  async function abrirEnvio(registro: TreinamentoTPEPR) {
+    setErroEnvio(null);
+    setPreviaEnvio(null);
+    setEnvioRegistro(registro);
+    try {
+      setPreviaEnvio(await previaEnvioAssinatura({ tipo: 'tpepr', referenciaId: registro.id }));
+    } catch (err) {
+      setErroEnvio(mensagemErro(err));
+      setPreviaEnvio([]);
+    }
+  }
+
+  async function confirmarEnvio() {
+    const registro = envioRegistro;
+    if (!registro) return;
+    setEnviando(true);
+    setErroEnvio(null);
+    try {
+      const pdf = await gerarTPEPRPdf(registro);
+      await enviarParaAssinatura({ tipo: 'tpepr', referenciaId: registro.id, pdf, nomeArquivo: nomeArquivoTPEPRPdf(registro) });
+      setEnvioRegistro(null);
+      await carregar();
+    } catch (err) {
+      setErroEnvio(mensagemErro(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function atualizarEnvio(envio: EnvioAssinatura) {
+    setAcaoEnvioId(envio.id);
+    try {
+      await atualizarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert('Erro ao atualizar as assinaturas: ' + mensagemErro(err));
+    } finally {
+      setAcaoEnvioId(null);
+    }
+  }
+
+  async function reenviarEnvio(envio: EnvioAssinatura) {
+    setAcaoEnvioId(envio.id);
+    try {
+      const { reenviados } = await reenviarAvisosAssinatura(envio.id);
+      alert(`Aviso reenviado por e-mail para ${reenviados} pessoa(s) que ainda nao responderam.`);
+    } catch (err) {
+      alert('Erro ao reenviar os avisos: ' + mensagemErro(err));
+    } finally {
+      setAcaoEnvioId(null);
+    }
+  }
+
+  async function cancelarEnvio(envio: EnvioAssinatura) {
+    const ok = window.confirm(
+      'Tem certeza que deseja cancelar o envio deste TP/EPR?\n\n'
+      + '- Ninguem mais conseguira assinar pelos links ja enviados.\n'
+      + '- As assinaturas ja feitas deixam de valer.\n'
+      + '- O TP/EPR volta a ser rascunho, para corrigir e enviar de novo.',
+    );
+    if (!ok) return;
+    try {
+      await cancelarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert('Erro ao cancelar o envio: ' + mensagemErro(err));
     }
   }
 
@@ -718,8 +861,16 @@ export function TPEPR() {
               const aprovado = registroAprovado(registro);
               const podeAlterar = canAlterarRegistro(registro);
               const podeGerarPdf = canGerarPdf(registro);
+              const envio = envios[registro.id];
+              const pelaAssinatura = vaiPelaAssinatura(registro.data);
+              const borda = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
+              const etiqueta = envio?.status === 'assinado' ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                : envio?.status === 'aguardando' ? { texto: 'Aguardando assinaturas', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
+                  : envio?.status === 'recusado' ? { texto: 'Recusado', cor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
+                    : aprovado ? { texto: 'Aprovado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                      : { texto: 'Rascunho', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
               return (
-                <div key={registro.id} className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+                <div key={registro.id} className={`rounded-2xl p-4 transition-all hover:shadow-md dark:bg-surface-card ${borda ? `border-2 ${borda} bg-white` : 'border border-graphite-200/60 bg-white/80 dark:border-border-dark'}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <button
                       type="button"
@@ -734,8 +885,8 @@ export function TPEPR() {
                           <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">
                             {String(registro.numero).padStart(3, '0')}/{registro.ano} - {registro.equipe} - TP/EPR
                           </p>
-                          <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${aprovado ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
-                            {aprovado ? 'Aprovado' : 'Rascunho'}
+                          <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${etiqueta.cor}`}>
+                            {etiqueta.texto}
                           </span>
                         </div>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
@@ -764,8 +915,56 @@ export function TPEPR() {
                           </div>
                         ))
                       )}
+                      {envio && (
+                        <div className="rounded-xl border border-graphite-200/60 bg-white p-3 dark:border-border-dark dark:bg-surface-card">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Assinaturas</span>
+                          <div className="mt-1 divide-y divide-graphite-100 dark:divide-border-dark">
+                            {envio.signatarios.map(signatario => (
+                              <div key={signatario.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                                <span className="text-graphite-800 dark:text-graphite-100">
+                                  <span className="font-semibold">{funcoesVisiveis(signatario.funcoes)}</span> · {signatario.nome}
+                                </span>
+                                <CelulaAssinatura envioId={envio.id} signatario={signatario} documento="TP/EPR" />
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
+                            Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica aprovado com as assinaturas do chefe de equipe e do gerente; quem esta em Reconhecimento nao segura o documento.
+                          </p>
+                        </div>
+                      )}
                       <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
-                        {!aprovado && podeAlterar && (
+                        {!envio && !aprovado && pelaAssinatura && podeAlterar && (
+                          <button
+                            type="button"
+                            onClick={() => void abrirEnvio(registro)}
+                            className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300"
+                          >
+                            <Signature className="h-4 w-4" /> Enviar para assinatura
+                          </button>
+                        )}
+                        {envio?.status === 'aguardando' && (
+                          <button
+                            type="button"
+                            onClick={() => void atualizarEnvio(envio)}
+                            disabled={acaoEnvioId === envio.id}
+                            title="Consulta agora no Autentique quem ja assinou"
+                            className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300"
+                          >
+                            <RefreshCw className={`h-4 w-4 ${acaoEnvioId === envio.id ? 'animate-spin' : ''}`} /> Atualizar assinaturas
+                          </button>
+                        )}
+                        {envio?.status === 'aguardando' && envio.podeGerir && (
+                          <button
+                            type="button"
+                            onClick={() => void reenviarEnvio(envio)}
+                            disabled={acaoEnvioId === envio.id}
+                            className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300"
+                          >
+                            <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
+                          </button>
+                        )}
+                        {!aprovado && !pelaAssinatura && podeAlterar && (
                           <button
                             type="button"
                             onClick={() => void handleAprovarRegistro(registro)}
@@ -814,6 +1013,15 @@ export function TPEPR() {
                               <Trash2 className="h-4 w-4" /> Excluir
                             </button>
                           </>
+                        )}
+                        {envio && isAdminSistema && (
+                          <button
+                            type="button"
+                            onClick={() => void cancelarEnvio(envio)}
+                            className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-alert-red transition-all hover:bg-red-500/15"
+                          >
+                            <Ban className="h-4 w-4" /> Cancelar envio
+                          </button>
                         )}
                       </div>
                     </div>
@@ -919,9 +1127,10 @@ export function TPEPR() {
                   disabled={!fEquipe || !fData || saving}
                   className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
                 >
-                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) ? 'Salvar' : 'Salvar rascunho'}
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) || vaiPelaAssinatura(fData) ? 'Salvar' : 'Salvar rascunho'}
                 </button>
-                {!registroAprovado(editando) && (
+                {/* A partir de 08/11/2026 quem aprova é a assinatura do chefe e do gerente: Salvar e depois "Enviar para assinatura". */}
+                {!registroAprovado(editando) && !vaiPelaAssinatura(fData) && (
                   <button
                     onClick={() => handleSalvar(true)}
                     disabled={!fEquipe || !fData || saving}
@@ -934,6 +1143,18 @@ export function TPEPR() {
             </div>
           </div>
         </div>
+      )}
+
+      {envioRegistro && (
+        <ConfirmarEnvioModal
+          titulo={`TP/EPR ${String(envioRegistro.numero).padStart(3, '0')}/${envioRegistro.ano} - Equipe ${envioRegistro.equipe} - ${fmtData(envioRegistro.data)}`}
+          documento="TP/EPR"
+          assinantes={previaEnvio}
+          enviando={enviando}
+          erro={erroEnvio}
+          onCancelar={() => { if (!enviando) setEnvioRegistro(null); }}
+          onConfirmar={() => void confirmarEnvio()}
+        />
       )}
 
       {previewPdfData && (

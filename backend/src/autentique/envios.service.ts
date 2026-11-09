@@ -17,15 +17,23 @@ import { AutentiqueApiService, SignatarioAutentique } from './autentique-api.ser
 import { posicaoNaLinhaLro, validarLinhasLro } from './posicoes-lro';
 import { linhasDaTabela, posicoesDaPessoa } from './posicoes-ptrba';
 import { PAPEIS_TROCA, posicoesTroca } from './posicoes-troca';
+import { posicaoTpepr } from './posicoes-tpepr';
 
-export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca']);
+export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca', 'tpepr']);
 
 /** Tabela, nome e regras de cada tipo de documento enviado para assinatura. */
 const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string; criador: string }> = {
   ptrba: { tabela: 'ptrba_completo_registros', nome: 'PTR-BA', pasta: 'PTRBA', criador: 'created_by' },
   lro: { tabela: 'lro_drafts', nome: 'LRO', pasta: 'LRO', criador: 'created_by' },
   troca: { tabela: 'document_fills', nome: 'troca', pasta: 'TROCAS', criador: 'filled_by' },
+  tpepr: { tabela: 'treinamentos_tpepr', nome: 'TP/EPR', pasta: 'TP EPR', criador: 'created_by' },
 };
+
+/** TP/EPR com treinamento antes deste dia seguem o fluxo antigo (Aprovar manual). */
+export const INICIO_ASSINATURA_TPEPR = '2026-11-08';
+
+/** TP/EPR: os participantes que não são chefe nem gerente só reconhecem o documento. */
+export const FUNCAO_RECONHECIMENTO = 'Reconhecimento';
 
 /** LRO com plantão antes deste dia seguem o fluxo antigo (Finalizar manual). */
 export const INICIO_ASSINATURA_LRO = '2026-11-06';
@@ -40,12 +48,15 @@ const PAPEIS_GESTAO = new Set(['gerente', 'chefe', 'lider']);
 export const INICIO_ASSINATURA_PTRBA = '2026-11-06';
 
 /**
- * Regra do PTR-BA: o documento está assinado quando todos os BA assinaram (CE, LR, MC, BA-2...).
- * APOC raramente assina, então não segura o documento; se assinar depois, o PDF é atualizado.
+ * Quem não segura o documento:
+ * - PTR-BA: está assinado quando todos os BA assinaram; APOC raramente assina, então não segura
+ *   (se assinar depois, o PDF é atualizado).
+ * - TP/EPR: só o chefe e o gerente assinam; quem só reconhece nunca segura.
  */
-function ehSoApoc(funcoes: string): boolean {
+const NAO_SEGURAM = new Set(['APOC', FUNCAO_RECONHECIMENTO.toUpperCase()]);
+function naoSeguraDocumento(funcoes: string): boolean {
   const lista = String(funcoes ?? '').split(',').map(f => f.trim().toUpperCase()).filter(Boolean);
-  return lista.length > 0 && lista.every(f => f === 'APOC');
+  return lista.length > 0 && lista.every(f => NAO_SEGURAM.has(f));
 }
 
 /** Onde ficam os PDFs assinados baixados do Autentique. */
@@ -350,6 +361,54 @@ export class EnviosService {
     };
   }
 
+  /**
+   * TP/EPR: o chefe de equipe e o gerente do dia assinam; os outros participantes da tabela só
+   * reconhecem (não aparecem na folha e não seguram o documento).
+   */
+  private async participantesTpepr(referenciaId: string) {
+    if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('TP/EPR não encontrado.');
+    const result = await this.database.query<{ data: string; equipe: string; chefe_equipe: string; participantes: unknown; status: string }>(
+      'SELECT data, equipe, chefe_equipe, participantes, status FROM treinamentos_tpepr WHERE id = $1',
+      [referenciaId],
+    );
+    const registro = result.rows[0];
+    if (!registro) throw new NotFoundException('TP/EPR não encontrado.');
+    const cadastro = await this.database.query<{ id: string; nome_completo: string; nome_guerra: string; cargo: string }>(
+      `SELECT id::text AS id, nome_completo, nome_guerra, cargo FROM bombeiros`,
+    );
+    const nomeCompletoDe = (nome: string) => {
+      const chave = normalizarNome(nome);
+      return cadastro.rows.find(b => normalizarNome(b.nome_completo) === chave)?.nome_completo
+        ?? cadastro.rows.find(b => normalizarNome(b.nome_guerra) === chave)?.nome_completo
+        ?? nome.trim();
+    };
+    const chefeInformado = String(registro.chefe_equipe ?? '').trim();
+    if (!chefeInformado) throw new BadRequestException('O TP/EPR não tem chefe de equipe.');
+    const chefe = nomeCompletoDe(chefeInformado);
+    const data = dataISO(registro.data);
+    const gerente = await this.gerenteDoDia(data, cadastro.rows);
+
+    const lista = Array.isArray(registro.participantes) ? registro.participantes as Record<string, unknown>[] : [];
+    const assinam = new Set([normalizarNome(chefe), normalizarNome(gerente)]);
+    const reconhecem: ParticipanteEnvio[] = [];
+    for (const p of lista) {
+      const nome = nomeCompletoDe(String(p?.nomeCompleto || p?.nomeGuerra || ''));
+      if (!nome || assinam.has(normalizarNome(nome))) continue;
+      if (reconhecem.some(r => normalizarNome(r.nomeCompleto) === normalizarNome(nome))) continue;
+      reconhecem.push({ funcao: FUNCAO_RECONHECIMENTO, nomeCompleto: nome });
+    }
+    return {
+      status: registro.status,
+      data,
+      equipe: registro.equipe,
+      participantes: [
+        { funcao: 'Chefe de equipe', nomeCompleto: chefe },
+        { funcao: 'Gerente', nomeCompleto: gerente },
+        ...reconhecem,
+      ] as ParticipanteEnvio[],
+    };
+  }
+
   /** Quem vai assinar, com o e-mail do cadastro, para conferir antes de enviar. */
   async previa(user: AuthUser, input: Omit<EnviarInput, 'pdf'>) {
     this.validarTipo(input.tipo);
@@ -358,7 +417,9 @@ export class EnviosService {
       ? await this.resolverSignatarios(await this.participantesLro(input.referenciaId))
       : input.tipo === 'troca'
         ? await this.resolverSignatarios((await this.participantesTroca(input.referenciaId, input.participantes)).participantes)
-        : await this.resolverSignatarios(input.participantes, input.chefeEquipe);
+        : input.tipo === 'tpepr'
+          ? await this.resolverSignatarios((await this.participantesTpepr(input.referenciaId)).participantes)
+          : await this.resolverSignatarios(input.participantes, input.chefeEquipe);
     return pessoas.map(({ nome, funcoes, email, problema }) => ({ nome, funcoes, email, problema }));
   }
 
@@ -369,6 +430,7 @@ export class EnviosService {
     if (input.pdf.subarray(0, 5).toString('latin1') !== '%PDF-') throw new BadRequestException('O arquivo enviado não é um PDF.');
     if (input.tipo === 'lro') return this.enviarLro(user, input, input.pdf);
     if (input.tipo === 'troca') return this.enviarTroca(user, input, input.pdf);
+    if (input.tipo === 'tpepr') return this.enviarTpepr(user, input, input.pdf);
 
     const registro = await this.database.query<{ data: unknown; is_apoc: boolean; origem_ptrba_id: string | null; equipe: string }>(
       'SELECT data, is_apoc, origem_ptrba_id, equipe FROM ptrba_completo_registros WHERE id = $1',
@@ -469,6 +531,68 @@ export class EnviosService {
       nomeArquivo,
       pdf,
       signatarios: paraAutentique,
+      pastaId,
+    });
+    const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s.public_id]));
+    try {
+      return await this.gravarEnvio(user, dadosEnvio, {
+        documentoId: documento.id,
+        sandbox: this.api.sandbox,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: porEmail.get(s.email.toLowerCase()) ?? null })),
+      });
+    } catch (erro) {
+      await this.api.cancelar(documento.id).catch(e => this.logger.error(`Documento ${documento.id} ficou no Autentique: ${(e as Error).message}`));
+      throw erro;
+    }
+  }
+
+  /**
+   * TP/EPR: todos recebem juntos (sem fila). Chefe e gerente assinam nas duas linhas do rodapé;
+   * os outros só reconhecem (sem marca na folha). Fica assinado com chefe e gerente.
+   */
+  private async enviarTpepr(user: AuthUser, input: EnviarInput, pdf: Buffer) {
+    const { status, data, equipe, participantes } = await this.participantesTpepr(input.referenciaId);
+    if (status !== 'Rascunho') throw new BadRequestException('Este TP/EPR não está mais esperando o envio para assinatura.');
+    if (data < INICIO_ASSINATURA_TPEPR) {
+      throw new BadRequestException('TP/EPR de treinamentos antes de 08/11/2026 não são enviados para assinatura pelo sistema.');
+    }
+    const ativos = await documentosComEnvioAtivo(this.database, 'tpepr', [input.referenciaId]);
+    if (ativos.size) throw new ConflictException('Este TP/EPR já foi enviado para assinatura.');
+
+    const signatarios = await this.montarSignatarios(participantes);
+    const dadosEnvio = { ...input, participantes };
+    if (this.modoSimulado) {
+      return this.gravarEnvio(user, dadosEnvio, {
+        documentoId: `simulado-${randomUUID()}`,
+        sandbox: true,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: `simulado-${randomUUID()}` })),
+      });
+    }
+
+    // Mesmo e-mail em mais de uma pessoa só passa no sandbox; aí vira um pedido só (assina, se alguém assina).
+    const porEmailAutentique = new Map<string, SignatarioAutentique>();
+    for (const s of signatarios) {
+      const chave = s.email.toLowerCase();
+      const posicoes = [
+        ...(s.funcoes.includes('Chefe de equipe') ? [posicaoTpepr('chefe')] : []),
+        ...(s.funcoes.includes('Gerente') ? [posicaoTpepr('gerente')] : []),
+      ];
+      const existente = porEmailAutentique.get(chave);
+      if (existente) {
+        existente.positions.push(...posicoes);
+        if (existente.positions.length) existente.action = 'SIGN';
+      } else {
+        porEmailAutentique.set(chave, { email: s.email, action: posicoes.length ? 'SIGN' : 'RECOGNIZE', positions: posicoes });
+      }
+    }
+    const [ano, mes, dia] = data.split('-');
+    const nomeArquivo = this.nomeArquivo(input.nomeArquivo, data, equipe, `${dia}-${mes}-${ano} NVT TP EPR`);
+    const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS.tpepr.pasta, data);
+    const documento = await this.api.criarDocumento({
+      nome: nomeArquivo.replace(/\.pdf$/i, ''),
+      nomeArquivo,
+      pdf,
+      signatarios: [...porEmailAutentique.values()],
       pastaId,
     });
     const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s.public_id]));
@@ -642,6 +766,13 @@ export class EnviosService {
       `UPDATE autentique_envios SET status = 'cancelado', cancelado_em = now(), cancelado_por_nome = $2 WHERE id = $1`,
       [envioId, user.username],
     );
+    // TP/EPR cancelado volta a ser rascunho, para corrigir e enviar de novo.
+    if (envio.tipo === 'tpepr') {
+      await this.database.query(
+        `UPDATE treinamentos_tpepr SET status = 'Rascunho', aprovado_por = '', aprovado_por_nome = '', aprovado_em = '' WHERE id = $1`,
+        [envio.referencia_id],
+      );
+    }
     // LRO cancelado volta a ser rascunho, para corrigir e enviar de novo.
     if (envio.tipo === 'lro') {
       await this.database.query(
@@ -733,7 +864,7 @@ export class EnviosService {
     const porId = new Map(documento.signatures.map(s => [s.public_id, s]));
     const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s]));
 
-    let baAssinaram = signatarios.rows.some(s => !ehSoApoc(s.funcoes));
+    let baAssinaram = signatarios.rows.some(s => !naoSeguraDocumento(s.funcoes));
     let alguemRecusou = false;
     let mudou = false;
     let alguemAssinou = false;
@@ -741,10 +872,10 @@ export class EnviosService {
       const lido = (signatario.autentique_signature_id && porId.get(signatario.autentique_signature_id))
         || porEmail.get(String(signatario.email ?? '').toLowerCase());
       const status = lido?.rejected ? 'recusado' : lido?.signed ? 'assinado' : 'pendente';
-      const apoc = ehSoApoc(signatario.funcoes);
+      const naoSegura = naoSeguraDocumento(signatario.funcoes);
       if (status === 'assinado') alguemAssinou = true;
-      if (!apoc && status !== 'assinado') baAssinaram = false;
-      if (!apoc && status === 'recusado') alguemRecusou = true;
+      if (!naoSegura && status !== 'assinado') baAssinaram = false;
+      if (!naoSegura && status === 'recusado') alguemRecusou = true;
       if (status !== signatario.status) {
         mudou = true;
         await this.database.query(
@@ -780,6 +911,16 @@ export class EnviosService {
     if (envio.tipo === 'troca' && novoStatus === 'assinado') {
       await this.database.query(
         `UPDATE document_fills SET status = 'signed', updated_at = now() WHERE id = $1 AND status IN ('pending', 'draft')`,
+        [envio.referencia_id],
+      );
+    }
+    // TP/EPR: com o chefe e o gerente assinados fica Aprovado sozinho.
+    if (envio.tipo === 'tpepr' && novoStatus === 'assinado') {
+      await this.database.query(
+        `UPDATE treinamentos_tpepr
+            SET status = 'Aprovado', aprovado_por = 'autentique', aprovado_por_nome = 'Assinado no Autentique',
+                aprovado_em = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+          WHERE id = $1 AND status <> 'Aprovado'`,
         [envio.referencia_id],
       );
     }

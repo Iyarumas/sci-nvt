@@ -36,7 +36,7 @@ import { CelulaAssinatura, ConfirmarEnvioModal, bordaAssinatura, funcoesVisiveis
 
 /**
  * TAF a partir deste treinamento vai para assinatura pelo Autentique: todos os participantes
- * assinam na linha deles e o chefe de equipe e o gestor também no rodapé. Fica Aprovado sozinho
+ * assinam na linha deles e o chefe de equipe e o gestor também no rodapé. Fica Assinado sozinho
  * quando todos assinarem. Não existe mais o Aprovar manual (igual ao PTR-BA).
  */
 const INICIO_ASSINATURA_TAF = '2026-11-08';
@@ -78,7 +78,7 @@ const TAF_TOUR_STEPS = [
   {
     selector: 'main .space-y-2',
     title: 'Cards de TAF',
-    body: 'Cada card mostra número/ano, equipe, tipo, data, turno e status de rascunho ou aprovado.',
+    body: 'Cada card mostra número/ano, equipe, tipo, data, turno e status: rascunho, aguardando assinaturas ou assinado.',
     detail: 'Ao expandir, aparecem participantes, funções, idades e tempos registrados.',
   },
   {
@@ -91,7 +91,7 @@ const TAF_TOUR_STEPS = [
     selector: 'main button[title="Ver documento"], main button[title="Baixar PDF"], main button',
     title: 'Assinatura e PDF',
     body: 'Rascunhos podem ser editados e aprovados. Depois da aprovação, o documento pode ser visualizado e baixado em PDF.',
-    detail: 'Salve o TAF e use "Enviar para assinatura": quando todos assinarem ele fica Aprovado sozinho. Revise os tempos antes de enviar.',
+    detail: 'Salve o TAF e use "Enviar para assinatura": quando todos assinarem ele fica Assinado sozinho. Revise os tempos antes de enviar.',
   },
 ];
 
@@ -328,7 +328,7 @@ export function TAF() {
   function mensagemBloqueioRegistro(registro: TreinamentoTAF) {
     if (envios[registro.id]) return 'Este TAF ja foi enviado para assinatura e nao pode mais ser alterado.';
     return registroAprovado(registro)
-      ? 'Este TAF ja foi aprovado. Somente administradores e desenvolvedores podem alterar.'
+      ? 'Este TAF ja foi assinado. Somente administradores e desenvolvedores podem alterar.'
       : 'Voce so pode alterar treinamentos da sua equipe efetiva.';
   }
 
@@ -705,7 +705,7 @@ export function TAF() {
               const etiqueta = envio?.status === 'assinado' ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
                 : envio?.status === 'aguardando' ? { texto: `Aguardando ${envio.signatarios.filter(s => s.status === 'assinado').length} de ${envio.signatarios.length}`, cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
                   : envio?.status === 'recusado' ? { texto: 'Recusado', cor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
-                    : aprovado ? { texto: 'Aprovado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                    : aprovado ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
                       : { texto: 'Rascunho', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
               return (
                 <div key={r.id} className="space-y-2">
@@ -762,7 +762,7 @@ export function TAF() {
                         ))}
                       </div>
                       <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
-                        Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica aprovado quando todos assinarem.
+                        Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica assinado quando todos assinarem.
                       </p>
                     </div>
                   )}
@@ -824,7 +824,7 @@ export function TAF() {
                 <h2 className="text-lg font-bold text-graphite-900 dark:text-graphite-100">{editando ? 'Editar' : 'Novo'} TAF</h2>
                 {editando && (
                   <p className="mt-1 text-xs font-semibold text-graphite-500 dark:text-graphite-400">
-                    Status: {registroAprovado(editando) ? 'Aprovado' : 'Rascunho'}
+                    Status: {registroAprovado(editando) ? 'Assinado' : 'Rascunho'}
                   </p>
                 )}
               </div>

@@ -67,7 +67,7 @@ import { CelulaAssinatura, ConfirmarEnvioModal, bordaAssinatura, funcoesVisiveis
 
 /**
  * TP/EPR a partir deste treinamento vai para assinatura pelo Autentique: o chefe de equipe e o
- * gerente assinam e os outros participantes só reconhecem. Fica Aprovado sozinho com as duas
+ * gerente assinam e os outros participantes só reconhecem. Fica Assinado sozinho com as duas
  * assinaturas. Não existe mais o Aprovar manual (igual ao PTR-BA).
  */
 const INICIO_ASSINATURA_TPEPR = '2026-11-08';
@@ -100,7 +100,7 @@ const TPEPR_TOUR_STEPS = [
   {
     selector: 'main .space-y-3',
     title: 'Cards TP/EPR',
-    body: 'Cada card mostra número/ano, equipe, data, turno, chefe e status de rascunho ou aprovado.',
+    body: 'Cada card mostra número/ano, equipe, data, turno, chefe e status: rascunho, aguardando assinaturas ou assinado.',
     detail: 'Ao expandir, aparecem participantes e tempos da 1ª, 2ª, 3ª e 4ª tomadas.',
   },
   {
@@ -112,7 +112,7 @@ const TPEPR_TOUR_STEPS = [
   {
     selector: 'main button[title="Ver documento"], main button[title="Baixar PDF"], main button',
     title: 'Assinatura e PDF',
-    body: 'Salve como rascunho e use "Enviar para assinatura": com as assinaturas do chefe e do gerente ele fica Aprovado sozinho.',
+    body: 'Salve como rascunho e use "Enviar para assinatura": com as assinaturas do chefe e do gerente ele fica Assinado sozinho.',
     detail: 'Confira equipe, participantes e tempos antes de enviar, porque o PDF assinado depende desses dados.',
   },
 ];
@@ -404,7 +404,7 @@ export function TPEPR() {
   function mensagemBloqueioRegistro(registro: TreinamentoTPEPR) {
     if (envios[registro.id]) return 'Este TP/EPR ja foi enviado para assinatura e nao pode mais ser alterado.';
     return registroAprovado(registro)
-      ? 'Este TP/EPR ja foi aprovado. Somente administradores e desenvolvedores podem alterar.'
+      ? 'Este TP/EPR ja foi assinado. Somente administradores e desenvolvedores podem alterar.'
       : 'Voce so pode alterar TP/EPR da sua equipe efetiva.';
   }
 
@@ -840,7 +840,7 @@ export function TPEPR() {
               const etiqueta = envio?.status === 'assinado' ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
                 : envio?.status === 'aguardando' ? { texto: 'Aguardando assinaturas', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
                   : envio?.status === 'recusado' ? { texto: 'Recusado', cor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
-                    : aprovado ? { texto: 'Aprovado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                    : aprovado ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
                       : { texto: 'Rascunho', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
               return (
                 <div key={registro.id} className={`rounded-2xl p-4 transition-all hover:shadow-md dark:bg-surface-card ${borda ? `border-2 ${borda} bg-white` : 'border border-graphite-200/60 bg-white/80 dark:border-border-dark'}`}>
@@ -902,7 +902,7 @@ export function TPEPR() {
                             ))}
                           </div>
                           <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
-                            Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica aprovado com as assinaturas do chefe de equipe e do gerente; quem esta em Reconhecimento nao segura o documento.
+                            Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica assinado com as assinaturas do chefe de equipe e do gerente; quem esta em Reconhecimento nao segura o documento.
                           </p>
                         </div>
                       )}
@@ -964,7 +964,7 @@ export function TPEPR() {
                 <p className="text-xs text-graphite-500 dark:text-graphite-400">Participantes em ordem: BA-CE, BA-LR, BA-MC e BA-2.</p>
                 {editando && (
                   <p className="mt-1 text-xs font-semibold text-graphite-500 dark:text-graphite-400">
-                    Status: {registroAprovado(editando) ? 'Aprovado' : 'Rascunho'}
+                    Status: {registroAprovado(editando) ? 'Assinado' : 'Rascunho'}
                   </p>
                 )}
               </div>

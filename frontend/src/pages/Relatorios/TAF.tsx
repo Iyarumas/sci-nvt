@@ -37,7 +37,7 @@ import { CelulaAssinatura, ConfirmarEnvioModal, bordaAssinatura, funcoesVisiveis
 /**
  * TAF a partir deste treinamento vai para assinatura pelo Autentique: todos os participantes
  * assinam na linha deles e o chefe de equipe e o gestor também no rodapé. Fica Aprovado sozinho
- * quando todos assinarem. Os anteriores continuam com o Aprovar manual.
+ * quando todos assinarem. Não existe mais o Aprovar manual (igual ao PTR-BA).
  */
 const INICIO_ASSINATURA_TAF = '2026-11-08';
 function vaiPelaAssinatura(data: string) {
@@ -89,9 +89,9 @@ const TAF_TOUR_STEPS = [
   },
   {
     selector: 'main button[title="Ver documento"], main button[title="Baixar PDF"], main button',
-    title: 'Aprovar e gerar PDF',
+    title: 'Assinatura e PDF',
     body: 'Rascunhos podem ser editados e aprovados. Depois da aprovação, o documento pode ser visualizado e baixado em PDF.',
-    detail: 'Aprovar significa considerar o TAF como final para emissão. Revise os tempos antes dessa etapa.',
+    detail: 'Salve o TAF e use "Enviar para assinatura": quando todos assinarem ele fica Aprovado sozinho. Revise os tempos antes de enviar.',
   },
 ];
 
@@ -238,7 +238,6 @@ export function TAF() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [expandidoId, setExpandidoId] = useState<string | null>(null);
@@ -520,32 +519,6 @@ export function TAF() {
     setDeleteConfirm(null);
   }
 
-  async function handleAprovarRegistro(registro: TreinamentoTAF) {
-    if (!canAlterarRegistro(registro)) {
-      alert(mensagemBloqueioRegistro(registro));
-      return;
-    }
-    if (!canManageEquipe(registro.equipe)) {
-      alert('Voce so pode aprovar treinamentos da sua equipe efetiva.');
-      return;
-    }
-
-    setApprovingId(registro.id);
-    try {
-      await atualizarTAF(registro.id, {
-        status: 'Aprovado',
-        aprovadoPor: currentUsername,
-        aprovadoPorNome: currentName,
-        aprovadoEm: new Date().toISOString(),
-      });
-      await carregar();
-    } catch (err) {
-      alert('Erro ao aprovar TAF: ' + (err instanceof Error ? err.message : 'Erro'));
-    } finally {
-      setApprovingId(null);
-    }
-  }
-
   async function handleDownload(registro: TreinamentoTAF) {
     if (!canGerarPdf(registro)) {
       alert('Aprove este TAF antes de gerar o PDF.');
@@ -817,11 +790,6 @@ export function TAF() {
                         <Signature className="h-4 w-4" /> Enviar para assinatura
                       </button>
                     )}
-                    {!aprovado && !pelaAssinatura && podeAlterar && (
-                      <button type="button" onClick={() => void handleAprovarRegistro(r)} disabled={approvingId === r.id} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:opacity-60">
-                        <CheckCircle2 className="h-4 w-4" /> {approvingId === r.id ? 'Aprovando...' : 'Aprovar'}
-                      </button>
-                    )}
                     {envio?.status === 'aguardando' && (
                       <button type="button" onClick={() => void atualizarEnvio(envio)} disabled={acaoEnvioId === envio.id} title="Consulta agora no Autentique quem ja assinou" className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                         <RefreshCw className={`h-4 w-4 ${acaoEnvioId === envio.id ? 'animate-spin' : ''}`} /> {acaoEnvioId === envio.id ? 'Atualizando...' : 'Atualizar assinaturas'}
@@ -948,15 +916,8 @@ export function TAF() {
                 <button onClick={() => setFormOpen(false)} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">Cancelar</button>
                 <button onClick={() => handleSalvar(false)} disabled={!fEquipe || !fData || !fTipo || saving}
                   className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
-                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) || vaiPelaAssinatura(fData) ? 'Salvar' : 'Salvar rascunho'}
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : 'Salvar'}
                 </button>
-                {/* A partir de 08/11/2026 quem aprova são as assinaturas: Salvar e depois "Enviar para assinatura". */}
-                {!registroAprovado(editando) && !vaiPelaAssinatura(fData) && (
-                  <button onClick={() => handleSalvar(true)} disabled={!fEquipe || !fData || !fTipo || saving}
-                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
-                    <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
-                  </button>
-                )}
               </div>
             </div>
           </div>

@@ -68,7 +68,7 @@ import { CelulaAssinatura, ConfirmarEnvioModal, bordaAssinatura, funcoesVisiveis
 /**
  * TP/EPR a partir deste treinamento vai para assinatura pelo Autentique: o chefe de equipe e o
  * gerente assinam e os outros participantes só reconhecem. Fica Aprovado sozinho com as duas
- * assinaturas. Os anteriores continuam com o Aprovar manual.
+ * assinaturas. Não existe mais o Aprovar manual (igual ao PTR-BA).
  */
 const INICIO_ASSINATURA_TPEPR = '2026-11-08';
 function vaiPelaAssinatura(data: string) {
@@ -111,9 +111,9 @@ const TPEPR_TOUR_STEPS = [
   },
   {
     selector: 'main button[title="Ver documento"], main button[title="Baixar PDF"], main button',
-    title: 'Aprovação e PDF',
-    body: 'O registro pode ficar como rascunho ou ser aprovado. Depois de aprovado, pode ser visualizado e baixado em PDF.',
-    detail: 'Confira equipe, participantes e tempos antes de aprovar, porque o PDF final depende desses dados.',
+    title: 'Assinatura e PDF',
+    body: 'Salve como rascunho e use "Enviar para assinatura": com as assinaturas do chefe e do gerente ele fica Aprovado sozinho.',
+    detail: 'Confira equipe, participantes e tempos antes de enviar, porque o PDF assinado depende desses dados.',
   },
 ];
 
@@ -190,7 +190,6 @@ export function TPEPR() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewingId, setPreviewingId] = useState<string | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
   const [erro, setErro] = useState('');
@@ -601,32 +600,6 @@ export function TPEPR() {
     }
   }
 
-  async function handleAprovarRegistro(registro: TreinamentoTPEPR) {
-    if (!canAlterarRegistro(registro)) {
-      alert(mensagemBloqueioRegistro(registro));
-      return;
-    }
-    if (!canManageEquipe(registro.equipe)) {
-      alert('Voce so pode aprovar TP/EPR da sua equipe efetiva.');
-      return;
-    }
-
-    setApprovingId(registro.id);
-    try {
-      await atualizarTPEPR(registro.id, {
-        status: 'Aprovado',
-        aprovadoPor: currentUsername,
-        aprovadoPorNome: currentName,
-        aprovadoEm: new Date().toISOString(),
-      });
-      await carregar();
-    } catch (err) {
-      alert('Erro ao aprovar TP/EPR: ' + mensagemErro(err));
-    } finally {
-      setApprovingId(null);
-    }
-  }
-
   async function handleDownload(registro: TreinamentoTPEPR) {
     if (!canGerarPdf(registro)) {
       alert('Aprove este TP/EPR antes de gerar o PDF.');
@@ -957,11 +930,6 @@ export function TPEPR() {
                             <Signature className="h-4 w-4" /> Enviar para assinatura
                           </button>
                         )}
-                        {!aprovado && !pelaAssinatura && podeAlterar && (
-                          <button type="button" onClick={() => void handleAprovarRegistro(registro)} disabled={approvingId === registro.id} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:opacity-60">
-                            <CheckCircle2 className="h-4 w-4" /> {approvingId === registro.id ? 'Aprovando...' : 'Aprovar'}
-                          </button>
-                        )}
                         {envio?.status === 'aguardando' && (
                           <button type="button" onClick={() => void atualizarEnvio(envio)} disabled={acaoEnvioId === envio.id} title="Consulta agora no Autentique quem ja assinou" className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
                             <RefreshCw className={`h-4 w-4 ${acaoEnvioId === envio.id ? 'animate-spin' : ''}`} /> {acaoEnvioId === envio.id ? 'Atualizando...' : 'Atualizar assinaturas'}
@@ -1081,18 +1049,8 @@ export function TPEPR() {
                   disabled={!fEquipe || !fData || saving}
                   className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
                 >
-                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) || vaiPelaAssinatura(fData) ? 'Salvar' : 'Salvar rascunho'}
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : 'Salvar'}
                 </button>
-                {/* A partir de 08/11/2026 quem aprova é a assinatura do chefe e do gerente: Salvar e depois "Enviar para assinatura". */}
-                {!registroAprovado(editando) && !vaiPelaAssinatura(fData) && (
-                  <button
-                    onClick={() => handleSalvar(true)}
-                    disabled={!fEquipe || !fData || saving}
-                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
-                  </button>
-                )}
               </div>
             </div>
           </div>

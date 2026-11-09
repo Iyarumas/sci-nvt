@@ -906,6 +906,14 @@ export function Trocas() {
       });
   }, [templateDoc]);
 
+  // Buscas pesadas (pessoa pelo nome, função na escala do dia) ficam guardadas: abrir um card ou
+  // mexer na tela não recalcula a lista inteira. Os caches recomeçam quando os dados mudam.
+  const cacheTrocas = useMemo(() => ({
+    funcionarios: new Map<boolean, ReturnType<typeof montarFuncionarios>>(),
+    pessoaPorNome: new Map<string, PessoaTroca | null>(),
+    contextoNaData: new Map<string, { equipe: string; cargoExercido: string } | null>(),
+  }), [bombeirosList, apocsList, vigenciasList, escalasCompletasList]);
+
   const years = useMemo(() => {
     const currentYear = new Date().getFullYear();
     return Array.from({ length: 5 }, (_, i) => currentYear - i);
@@ -1184,6 +1192,14 @@ export function Trocas() {
 
   /** Troca de serviço é só entre bombeiros: APOC não aparece para escolher (só para reconhecer trocas antigas). */
   function getAllFuncionarios(incluirApoc = false) {
+    const guardado = cacheTrocas.funcionarios.get(incluirApoc);
+    if (guardado) return guardado;
+    const lista = montarFuncionarios(incluirApoc);
+    cacheTrocas.funcionarios.set(incluirApoc, lista);
+    return lista;
+  }
+
+  function montarFuncionarios(incluirApoc: boolean) {
     return [
       ...bombeirosList.map(b => {
         const cargoLabel = CARGO_OPTIONS.find(c => c.value === b.cargo)?.label || b.cargo;
@@ -1242,6 +1258,13 @@ export function Trocas() {
 
   function getPessoaByNome(nome: string): PessoaTroca | null {
     if (!nome) return null;
+    if (cacheTrocas.pessoaPorNome.has(nome)) return cacheTrocas.pessoaPorNome.get(nome) ?? null;
+    const pessoa = buscarPessoaByNome(nome);
+    cacheTrocas.pessoaPorNome.set(nome, pessoa);
+    return pessoa;
+  }
+
+  function buscarPessoaByNome(nome: string): PessoaTroca | null {
     const all = getAllFuncionarios(true);
     const lower = nome.toLowerCase().trim();
     const primeiroNome = lower.split(' ')[0];
@@ -1275,6 +1298,14 @@ export function Trocas() {
   }
 
   function getContextoOperacionalPessoaNaData(pessoa: PessoaTroca | null, data: string) {
+    const chave = `${pessoa?.tipo}|${pessoa?.id}|${data}`;
+    if (cacheTrocas.contextoNaData.has(chave)) return cacheTrocas.contextoNaData.get(chave) ?? null;
+    const contexto = calcularContextoOperacionalPessoaNaData(pessoa, data);
+    cacheTrocas.contextoNaData.set(chave, contexto);
+    return contexto;
+  }
+
+  function calcularContextoOperacionalPessoaNaData(pessoa: PessoaTroca | null, data: string) {
     const bombeiro = getBombeiroTroca(pessoa);
     if (!bombeiro || !data) return null;
     const equipes = [

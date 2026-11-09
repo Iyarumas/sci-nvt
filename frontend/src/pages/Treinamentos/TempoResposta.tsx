@@ -97,6 +97,8 @@ export default function TempoResposta() {
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+  // Mês do treinamento ('' = todos os meses do ano).
+  const [filtroMes, setFiltroMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TreinamentoTempoResposta | null>(null);
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
@@ -219,6 +221,7 @@ export default function TempoResposta() {
   const filtered = useMemo(() => {
     let lista = treinos;
     if (filtroEquipe) lista = lista.filter(t => t.equipe === filtroEquipe);
+    if (filtroMes) lista = lista.filter(t => String(t.data || '').slice(5, 7) === filtroMes);
     if (search) {
       const s = search.toLowerCase();
       lista = lista.filter(t =>
@@ -228,7 +231,7 @@ export default function TempoResposta() {
       );
     }
     return lista;
-  }, [treinos, search, filtroEquipe]);
+  }, [treinos, search, filtroEquipe, filtroMes]);
 
   const stats = useMemo(() => ({
     total: treinos.length,
@@ -595,6 +598,10 @@ export default function TempoResposta() {
           <select value={filtroEquipe} onChange={e => setFiltroEquipe(e.target.value)} className={`${inputCls} !w-auto`}>
             <option value="">Todas equipas</option>
             {EQUIPES.map(eq => <option key={eq} value={eq}>{eq}</option>)}
+          </select>
+          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`} aria-label="Mês">
+            <option value="">Todos os meses</option>
+            {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((nome, i) => <option key={nome} value={String(i + 1).padStart(2, '0')}>{nome}</option>)}
           </select>
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
             {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(a =>

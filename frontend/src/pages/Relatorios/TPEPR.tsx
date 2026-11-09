@@ -63,7 +63,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { CelulaAssinatura, ConfirmarEnvioModal, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { CelulaAssinatura, ConfirmarEnvioModal, EtiquetasAssinantes, SeloAssinatura, bordaAssinatura, chaveNome, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 
 /**
  * TP/EPR a partir deste treinamento vai para assinatura pelo Autentique: o chefe de equipe e o
@@ -184,6 +184,8 @@ export function TPEPR() {
   const [search, setSearch] = useState('');
   const [filtroEquipe, setFiltroEquipe] = useState('');
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear().toString());
+  // Mês do treinamento ('' = todos os meses do ano).
+  const [filtroMes, setFiltroMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [formOpen, setFormOpen] = useState(false);
   const [editando, setEditando] = useState<TreinamentoTPEPR | null>(null);
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
@@ -211,6 +213,14 @@ export function TPEPR() {
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [acaoEnvioId, setAcaoEnvioId] = useState<string | null>(null);
+  // Nome completo → nome de guerra, para as etiquetas de quem assina (igual PTR-BA).
+  const nomesGuerra = useMemo(() => {
+    const mapa = new Map<string, string>();
+    bombeiros.forEach(pessoa => {
+      if (pessoa.nomeGuerra?.trim()) mapa.set(chaveNome(pessoa.nomeCompleto), pessoa.nomeGuerra.trim());
+    });
+    return mapa;
+  }, [bombeiros]);
 
   async function carregarEnvios() {
     try {
@@ -375,6 +385,7 @@ export function TPEPR() {
   const filtered = useMemo(() => {
     let lista = registros;
     if (filtroEquipe) lista = lista.filter(r => r.equipe === filtroEquipe);
+    if (filtroMes) lista = lista.filter(r => String(r.data || '').slice(5, 7) === filtroMes);
     if (search) {
       const termo = search.toLowerCase();
       lista = lista.filter(r => {
@@ -384,7 +395,7 @@ export function TPEPR() {
       });
     }
     return lista;
-  }, [registros, filtroEquipe, search]);
+  }, [registros, filtroEquipe, search, filtroMes]);
 
   const stats = useMemo(() => ({
     total: registros.length,
@@ -815,6 +826,10 @@ export function TPEPR() {
             <option value="">Todas</option>
             {TPEPR_EQUIPES.map(eq => <option key={eq} value={eq}>{eq}</option>)}
           </select>
+          <select value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className={`${inputCls} !w-auto`} aria-label="Mês">
+            <option value="">Todos os meses</option>
+            {['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'].map((nome, i) => <option key={nome} value={String(i + 1).padStart(2, '0')}>{nome}</option>)}
+          </select>
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={`${inputCls} !w-auto`}>
             {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(ano => <option key={ano} value={ano.toString()}>{ano}</option>)}
           </select>
@@ -858,14 +873,17 @@ export function TPEPR() {
                           <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">
                             {String(registro.numero).padStart(3, '0')}/{registro.ano} - {registro.equipe} - TP/EPR
                           </p>
-                          <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${etiqueta.cor}`}>
-                            {etiqueta.texto}
-                          </span>
+                          {envio ? <SeloAssinatura envio={envio} /> : (
+                            <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${etiqueta.cor}`}>
+                              {etiqueta.texto}
+                            </span>
+                          )}
                         </div>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
                           {fmtData(registro.data)} {registro.hora && `as ${registro.hora}`} - {registro.turno || '-'} - Chefe: {registro.chefeEquipe || '-'}
                         </p>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(registro, bombeiros)}</p>
+                        {envio && <EtiquetasAssinantes envio={envio} rascunho={[]} nomesGuerra={nomesGuerra} />}
                       </div>
                     </button>
                   </div>

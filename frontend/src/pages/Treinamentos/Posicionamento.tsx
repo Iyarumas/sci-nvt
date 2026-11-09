@@ -37,7 +37,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { CelulaAssinatura, ConfirmarEnvioModal, EtiquetasAssinantes, SeloAssinatura, bordaAssinatura, chaveNome, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 import { nomeDocumentoOperacional } from '../../utils/documentFileNames';
 
 /**
@@ -227,14 +227,6 @@ export default function Posicionamento() {
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [acaoEnvioId, setAcaoEnvioId] = useState<string | null>(null);
-  // Nome completo → nome de guerra, para as etiquetas de quem assina (igual PTR-BA).
-  const nomesGuerra = useMemo(() => {
-    const mapa = new Map<string, string>();
-    bombeiros.forEach(pessoa => {
-      if (pessoa.nomeGuerra?.trim()) mapa.set(chaveNome(pessoa.nomeCompleto), pessoa.nomeGuerra.trim());
-    });
-    return mapa;
-  }, [bombeiros]);
 
   async function carregarEnvios() {
     try {
@@ -874,7 +866,6 @@ export default function Posicionamento() {
                           {formatDate(ex.data)} {ex.hora && `às ${ex.hora}`} - {ex.local || 'Sem local'} - Chefe: {ex.chefeEquipe || '-'}
                         </p>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(ex, bombeiros)}</p>
-                        {envio && <EtiquetasAssinantes envio={envio} rascunho={[]} nomesGuerra={nomesGuerra} />}
                       </div>
                     </button>
                   </div>

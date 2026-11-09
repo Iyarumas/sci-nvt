@@ -63,7 +63,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { CelulaAssinatura, ConfirmarEnvioModal, EtiquetasAssinantes, SeloAssinatura, bordaAssinatura, chaveNome, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 
 /**
  * TP/EPR a partir deste treinamento vai para assinatura pelo Autentique: o chefe de equipe e o
@@ -213,14 +213,6 @@ export function TPEPR() {
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [acaoEnvioId, setAcaoEnvioId] = useState<string | null>(null);
-  // Nome completo → nome de guerra, para as etiquetas de quem assina (igual PTR-BA).
-  const nomesGuerra = useMemo(() => {
-    const mapa = new Map<string, string>();
-    bombeiros.forEach(pessoa => {
-      if (pessoa.nomeGuerra?.trim()) mapa.set(chaveNome(pessoa.nomeCompleto), pessoa.nomeGuerra.trim());
-    });
-    return mapa;
-  }, [bombeiros]);
 
   async function carregarEnvios() {
     try {
@@ -883,7 +875,6 @@ export function TPEPR() {
                           {fmtData(registro.data)} {registro.hora && `as ${registro.hora}`} - {registro.turno || '-'} - Chefe: {registro.chefeEquipe || '-'}
                         </p>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(registro, bombeiros)}</p>
-                        {envio && <EtiquetasAssinantes envio={envio} rascunho={[]} nomesGuerra={nomesGuerra} />}
                       </div>
                     </button>
                   </div>

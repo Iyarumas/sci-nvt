@@ -32,7 +32,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { CelulaAssinatura, ConfirmarEnvioModal, EtiquetasAssinantes, SeloAssinatura, bordaAssinatura, chaveNome, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 
 /**
  * TAF a partir deste treinamento vai para assinatura pelo Autentique: todos os participantes
@@ -265,14 +265,6 @@ export function TAF() {
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [acaoEnvioId, setAcaoEnvioId] = useState<string | null>(null);
-  // Nome completo → nome de guerra, para as etiquetas de quem assina (igual PTR-BA).
-  const nomesGuerra = useMemo(() => {
-    const mapa = new Map<string, string>();
-    bombeiros.forEach(pessoa => {
-      if (pessoa.nomeGuerra?.trim()) mapa.set(chaveNome(pessoa.nomeCompleto), pessoa.nomeGuerra.trim());
-    });
-    return mapa;
-  }, [bombeiros]);
 
   async function carregarEnvios() {
     try {
@@ -742,7 +734,6 @@ export function TAF() {
                     </div>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{resumoAuditoria(r, bombeiros)}</p>
-                    {envio && <EtiquetasAssinantes envio={envio} rascunho={[]} nomesGuerra={nomesGuerra} />}
                   </div>
                 </button>
               </div>

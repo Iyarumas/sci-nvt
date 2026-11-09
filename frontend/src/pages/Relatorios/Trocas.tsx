@@ -368,7 +368,7 @@ const TROCAS_TOUR_STEPS: TrocasTourStep[] = [
     subView: 'form',
     title: 'Finalize do jeito certo',
     body: 'Visualizar mostra o PDF antes de salvar. Salvar guarda a troca como rascunho; depois, no card, use "Enviar para assinatura".',
-    detail: 'Ao enviar, o documento vai deferido para todos assinarem e a troca passa a contar na escala. Com todas as assinaturas ela fica Aprovada sozinha.',
+    detail: 'Ao enviar, o documento vai deferido para todos assinarem e a troca passa a contar na escala. Com todas as assinaturas ela fica Assinado sozinha.',
   },
 ];
 
@@ -1530,7 +1530,7 @@ export function Trocas() {
   }
 
   function statusTrocaLabel(status?: DocumentFill['status']): string {
-    if (status === 'signed') return 'Aprovada';
+    if (status === 'signed') return 'Assinado';
     if (status === 'pending') return 'Aguardando';
     if (status === 'draft') return 'Rascunho';
     if (status === 'archived') return 'Arquivada';
@@ -2631,7 +2631,7 @@ export function Trocas() {
                                 fill.status === 'draft' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' :
                                 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                               }`}>
-                                {fill.status === 'signed' ? 'Aprovada' : fill.status === 'pending' ? 'Aguardando' : fill.status === 'draft' ? 'Rascunho' : 'Cancelado'}
+                                {fill.status === 'signed' ? 'Assinado' : fill.status === 'pending' ? 'Aguardando' : fill.status === 'draft' ? 'Rascunho' : 'Cancelado'}
                               </span>
                               <a href={fill.autentique_link || '#'} target={fill.autentique_link ? '_blank' : '_self'} rel="noopener noreferrer"
                                 onClick={!fill.autentique_link ? (e => e.preventDefault()) : undefined}
@@ -2653,7 +2653,7 @@ export function Trocas() {
                 <div className="rounded-2xl border border-green-200 bg-green-50/50 overflow-hidden dark:border-green-800/30 dark:bg-green-900/10">
                   <div className="border-b border-green-200 px-5 py-4 dark:border-green-800/30">
                     <h3 className="flex items-center gap-2 text-sm font-bold text-green-800 dark:text-green-300">
-                      <CheckCircle className="h-4 w-4" /> Trocas Aprovadas ({assinados.length})
+                      <CheckCircle className="h-4 w-4" /> Trocas Assinadas ({assinados.length})
                     </h3>
                   </div>
                   <div className="overflow-x-auto">
@@ -2678,7 +2678,7 @@ export function Trocas() {
                               <td className="px-4 py-3 text-xs text-green-600 dark:text-green-400">{formatarDataBR(da.data_folga_solicitado)}</td>
                               <td className="px-4 py-3 text-center">
                                 <span className="inline-flex items-center gap-1 rounded-full bg-green-200 px-2 py-0.5 text-[10px] font-bold text-green-800 dark:bg-green-800/40 dark:text-green-300">
-                                  <CheckCircle className="h-3 w-3" /> Aprovada
+                                  <CheckCircle className="h-3 w-3" /> Assinado
                                 </span>
                               </td>
                             </tr>
@@ -2718,7 +2718,7 @@ export function Trocas() {
             let dotLabel = 'Rascunho';
             if (fill.status === 'signed') {
               dotColor = 'bg-green-500 dark:bg-green-400';
-              dotLabel = 'Aprovada';
+              dotLabel = 'Assinado';
             } else if (fill.status === 'pending') {
               dotColor = 'bg-blue-500 dark:bg-blue-400';
               dotLabel = 'Aguardando';
@@ -2780,13 +2780,17 @@ export function Trocas() {
                   <div className="flex items-center gap-2">
                     {envio && <SeloAssinatura envio={envio} />}
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      envio ? (envio.status === 'assinado' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                        : envio.status === 'recusado' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300') :
                       fill.status === 'draft' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' :
                       fill.status === 'signed' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' :
                       fill.status === 'pending' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
                       fill.status === 'cancelled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' :
                       'bg-graphite-100 text-graphite-600 dark:bg-graphite-700 dark:text-graphite-300'
                     }`}>
-                      {fill.status === 'draft' ? 'Rascunho' : fill.status === 'signed' ? 'Aprovada' : fill.status === 'pending' ? 'Aguardando' : fill.status === 'cancelled' ? 'Cancelado' : fill.status}
+                      {envio ? (envio.status === 'assinado' ? 'Assinado' : envio.status === 'recusado' ? 'Recusado' : 'Aguardando')
+                        : fill.status === 'draft' ? 'Rascunho' : fill.status === 'signed' ? 'Assinado' : fill.status === 'pending' ? 'Aguardando' : fill.status === 'cancelled' ? 'Cancelado' : fill.status}
                     </span>
                     <button onClick={(event) => { event.stopPropagation(); setExpandedFill(isExpanded ? null : fill.id); }} className="rounded p-1 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-graphite-700">
                       {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -2865,7 +2869,7 @@ export function Trocas() {
                             'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
                           }`}>
                             {fill.status === 'signed' && <CheckCircle className="h-3.5 w-3.5" />}
-                            {fill.status === 'draft' ? 'Rascunho' : fill.status === 'signed' ? 'Aprovada' : fill.status === 'pending' ? 'Aguardando' : 'Cancelado'}
+                            {envio ? (envio.status === 'assinado' ? 'Assinado' : envio.status === 'recusado' ? 'Recusado' : 'Aguardando') : fill.status === 'draft' ? 'Rascunho' : fill.status === 'signed' ? 'Assinado' : fill.status === 'pending' ? 'Aguardando' : 'Cancelado'}
                           </span>
                           {data.troca_emergencial === 'SIM' && (
                             <button onClick={() => setShowJustificativaPopup(fill.id)} className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400">
@@ -3006,7 +3010,7 @@ export function Trocas() {
                   Trocas de {MONTH_NAMES[filterMonth]} de {filterYear}
                 </h3>
                 <p className="mt-1 text-sm text-graphite-500 dark:text-graphite-400">
-                  {trocasMensaisAprovadas.length} permuta(s) aprovada(s)
+                  {trocasMensaisAprovadas.length} permuta(s) assinada(s)
                 </p>
               </div>
               <button

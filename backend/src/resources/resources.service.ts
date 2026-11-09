@@ -11,6 +11,13 @@ import {
   selectClause,
 } from '../common/utils/sql';
 import { documentosComEnvioAtivo } from '../autentique/envios.service';
+
+/** Treinamentos que vão para assinatura pelo Autentique: depois de enviados não mudam mais. */
+const TABELAS_TREINAMENTO_ASSINADO: Record<string, { tipo: string; nome: string }> = {
+  treinamentos_tpepr: { tipo: 'tpepr', nome: 'TP/EPR' },
+  treinamentos_taf: { tipo: 'taf', nome: 'TAF' },
+  exercicios_posicionamento: { tipo: 'posicionamento', nome: 'exercício' },
+};
 import { ALLOWED_TABLES } from './resources.config';
 import { DeleteDto, InsertDto, UpdateDto } from './dto/mutation.dto';
 import { ResourceQueryDto } from './dto/resource-query.dto';
@@ -137,14 +144,14 @@ export class ResourcesService {
       }
     }
     // TP/EPR enviado para assinatura: não muda mais (quem aprova é o Autentique, pelo servidor).
-    if (table === 'treinamentos_tpepr' || table === 'treinamentos_taf') {
-      const tipo = table === 'treinamentos_taf' ? 'taf' : 'tpepr';
+    if (table in TABELAS_TREINAMENTO_ASSINADO) {
+      const { tipo, nome } = TABELAS_TREINAMENTO_ASSINADO[table];
       const params: unknown[] = [];
       const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
       if (!whereSql) throw new BadRequestException('Update requires at least one filter');
       const alvo = await this.database.query(`SELECT id FROM ${this.tableName(table)} ${whereSql}`, params);
       const enviados = await documentosComEnvioAtivo(this.database, tipo, alvo.rows.map(row => String(row.id)));
-      if (enviados.size) throw new BadRequestException(`Este ${tipo === 'taf' ? 'TAF' : 'TP/EPR'} já foi enviado para assinatura e não pode mais ser editado.`);
+      if (enviados.size) throw new BadRequestException(`Este ${nome} já foi enviado para assinatura e não pode mais ser editado.`);
     }
     if (mudaConteudoLro) {
       const params: unknown[] = [];
@@ -245,11 +252,11 @@ export class ResourcesService {
         const enviados = await documentosComEnvioAtivo(client, 'troca', alvo.rows.map(row => String(row.id)));
         if (enviados.size) throw new BadRequestException('Esta troca já foi enviada para assinatura e não pode mais ser excluída.');
       }
-      if (table === 'treinamentos_tpepr' || table === 'treinamentos_taf') {
-        const tipo = table === 'treinamentos_taf' ? 'taf' : 'tpepr';
+      if (table in TABELAS_TREINAMENTO_ASSINADO) {
+        const { tipo, nome } = TABELAS_TREINAMENTO_ASSINADO[table];
         const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         const enviados = await documentosComEnvioAtivo(client, tipo, alvo.rows.map(row => String(row.id)));
-        if (enviados.size) throw new BadRequestException(`Este ${tipo === 'taf' ? 'TAF' : 'TP/EPR'} já foi enviado para assinatura e não pode mais ser excluído.`);
+        if (enviados.size) throw new BadRequestException(`Este ${nome} já foi enviado para assinatura e não pode mais ser excluído.`);
       }
       if (table === 'lro_drafts') {
         const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);

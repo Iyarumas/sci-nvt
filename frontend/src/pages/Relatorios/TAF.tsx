@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Target,
   AlertTriangle, Users, Lock, Download,
-  CheckCircle2, Eye, Pencil,
+  CheckCircle2, Eye, Pencil, Ban, Mail, RefreshCw, Signature,
 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -20,6 +20,29 @@ import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { TEMPO_CRONOMETRO_ZERO, mascararTempoCronometro } from '../../utils/tempo';
 import { PageTour } from '../../components/ui/PageTour';
 import { resumoAuditoria } from '../../utils/auditoria';
+import {
+  atualizarEnvioAssinatura,
+  baixarPdfAssinado,
+  cancelarEnvioAssinatura,
+  enviarParaAssinatura,
+  listarEnviosAssinatura,
+  obterPdfAssinado,
+  previaEnvioAssinatura,
+  reenviarAvisosAssinatura,
+  type EnvioAssinatura,
+  type PreviaSignatario,
+} from '../../services/autentiqueEnviosService';
+import { CelulaAssinatura, ConfirmarEnvioModal, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+
+/**
+ * TAF a partir deste treinamento vai para assinatura pelo Autentique: todos os participantes
+ * assinam na linha deles e o chefe de equipe e o gestor também no rodapé. Fica Aprovado sozinho
+ * quando todos assinarem. Os anteriores continuam com o Aprovar manual.
+ */
+const INICIO_ASSINATURA_TAF = '2026-11-08';
+function vaiPelaAssinatura(data: string) {
+  return !!data && data.slice(0, 10) >= INICIO_ASSINATURA_TAF;
+}
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const TIPO_TAF = ['TAF-1', 'TAF-2'];
@@ -235,6 +258,35 @@ export function TAF() {
   const [fObs, setFObs] = useState('');
   const [fChefeEquipe, setFChefeEquipe] = useState('');
   const saving = savingAction !== null;
+  const [envios, setEnvios] = useState<Record<string, EnvioAssinatura>>({});
+  const [envioRegistro, setEnvioRegistro] = useState<TreinamentoTAF | null>(null);
+  const [previaEnvio, setPreviaEnvio] = useState<PreviaSignatario[] | null>(null);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [acaoEnvioId, setAcaoEnvioId] = useState<string | null>(null);
+
+  async function carregarEnvios() {
+    try {
+      const lista = await listarEnviosAssinatura('taf');
+      setEnvios(Object.fromEntries(lista.map(envio => [envio.referenciaId, envio])));
+    } catch {
+      // Sem o status das assinaturas, a lista continua funcionando.
+    }
+  }
+
+  // Assinaturas aparecendo sozinhas: com TAF aguardando, confere a cada 30 s no nosso servidor.
+  const temAguardando = Object.values(envios).some(envio => envio.status === 'aguardando');
+  useEffect(() => {
+    if (!temAguardando) return;
+    const conferir = () => { if (document.visibilityState === 'visible') void carregar(); };
+    const intervalo = window.setInterval(conferir, 30_000);
+    document.addEventListener('visibilitychange', conferir);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', conferir);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [temAguardando, filtroAno]);
 
   const equipesFormulario = useMemo(() => {
     if (canManageGlobal) return [...EQUIPES];
@@ -250,7 +302,10 @@ export function TAF() {
 
   useEffect(() => { carregar(); }, [filtroAno]);
 
-  async function carregar() { setRegistros(await listarTAFs({ ano: filtroAno })); }
+  async function carregar() {
+    void carregarEnvios();
+    setRegistros(await listarTAFs({ ano: filtroAno }));
+  }
 
   const filtered = useMemo(() => {
     let l = registros;
@@ -266,17 +321,20 @@ export function TAF() {
   }
 
   function canAlterarRegistro(registro: TreinamentoTAF) {
+    // Enviado para assinatura: não muda mais (para corrigir, um administrador cancela o envio).
+    if (envios[registro.id]) return false;
     return registroAprovado(registro) ? isAdminSistema : canManageEquipe(registro.equipe);
   }
 
   function mensagemBloqueioRegistro(registro: TreinamentoTAF) {
+    if (envios[registro.id]) return 'Este TAF ja foi enviado para assinatura e nao pode mais ser alterado.';
     return registroAprovado(registro)
       ? 'Este TAF ja foi aprovado. Somente administradores e desenvolvedores podem alterar.'
       : 'Voce so pode alterar treinamentos da sua equipe efetiva.';
   }
 
   function canGerarPdf(registro: TreinamentoTAF) {
-    return registroAprovado(registro);
+    return registroAprovado(registro) || envios[registro.id]?.status === 'assinado';
   }
 
   function setP(idx: number, field: keyof TafPessoaForm, val: any) {
@@ -496,7 +554,12 @@ export function TAF() {
 
     try {
       setDownloadingId(registro.id);
-      await baixarTAFPdf(prepararRegistroPdf(registro));
+      const envio = envios[registro.id];
+      if (envio?.status === 'assinado' && envio.temPdfAssinado) {
+        await baixarPdfAssinado(envio.id, nomeArquivoTAFPdf(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina');
+      } else {
+        await baixarTAFPdf(prepararRegistroPdf(registro));
+      }
     } catch (err) {
       alert('Erro ao gerar PDF do TAF: ' + mensagemErro(err));
     } finally {
@@ -517,13 +580,85 @@ export function TAF() {
     try {
       setPreviewingId(registro.id);
       const registroPdf = prepararRegistroPdf(registro);
-      const pdf = await gerarTAFPdf(registroPdf);
+      // Com alguém já assinado mostra o PDF do Autentique (com as assinaturas feitas até agora).
+      const envio = envios[registro.id];
+      const pdf = envio?.temPdfAssinado ? await obterPdfAssinado(envio.id) : await gerarTAFPdf(registroPdf);
       setPreviewPdfData(await pdf.arrayBuffer());
       setPreviewPdfTitle(nomeArquivoTAFPdf(registroPdf).replace(/\.pdf$/i, ''));
     } catch (err) {
       alert('Erro ao visualizar PDF do TAF: ' + mensagemErro(err));
     } finally {
       setPreviewingId(null);
+    }
+  }
+
+  async function abrirEnvio(registro: TreinamentoTAF) {
+    setErroEnvio(null);
+    setPreviaEnvio(null);
+    setEnvioRegistro(registro);
+    try {
+      setPreviaEnvio(await previaEnvioAssinatura({ tipo: 'taf', referenciaId: registro.id }));
+    } catch (err) {
+      setErroEnvio(mensagemErro(err));
+      setPreviaEnvio([]);
+    }
+  }
+
+  async function confirmarEnvio() {
+    const registro = envioRegistro;
+    if (!registro) return;
+    setEnviando(true);
+    setErroEnvio(null);
+    try {
+      const registroPdf = prepararRegistroPdf(registro);
+      const pdf = await gerarTAFPdf(registroPdf);
+      await enviarParaAssinatura({ tipo: 'taf', referenciaId: registro.id, pdf, nomeArquivo: nomeArquivoTAFPdf(registroPdf) });
+      setEnvioRegistro(null);
+      await carregar();
+    } catch (err) {
+      setErroEnvio(mensagemErro(err));
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function atualizarEnvio(envio: EnvioAssinatura) {
+    setAcaoEnvioId(envio.id);
+    try {
+      await atualizarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert('Erro ao atualizar as assinaturas: ' + mensagemErro(err));
+    } finally {
+      setAcaoEnvioId(null);
+    }
+  }
+
+  async function reenviarEnvio(envio: EnvioAssinatura) {
+    setAcaoEnvioId(envio.id);
+    try {
+      const { reenviados } = await reenviarAvisosAssinatura(envio.id);
+      alert(`Aviso reenviado por e-mail para ${reenviados} pessoa(s) que ainda nao assinaram.`);
+    } catch (err) {
+      alert('Erro ao reenviar os avisos: ' + mensagemErro(err));
+    } finally {
+      setAcaoEnvioId(null);
+    }
+  }
+
+  async function cancelarEnvio(envio: EnvioAssinatura) {
+    const ok = window.confirm(
+      'Tem certeza que deseja cancelar o envio deste TAF?\n\n'
+      + '- Ninguem mais conseguira assinar pelos links ja enviados.\n'
+      + '- As assinaturas ja feitas deixam de valer.\n'
+      + '- O TAF volta a ser rascunho, para corrigir e enviar de novo.',
+    );
+    if (!ok) return;
+    try {
+      await cancelarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert('Erro ao cancelar o envio: ' + mensagemErro(err));
     }
   }
 
@@ -591,9 +726,17 @@ export function TAF() {
               const aprovado = registroAprovado(r);
               const podeAlterar = canAlterarRegistro(r);
               const podeGerarPdf = canGerarPdf(r);
+              const envio = envios[r.id];
+              const pelaAssinatura = vaiPelaAssinatura(r.data);
+              const borda = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
+              const etiqueta = envio?.status === 'assinado' ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                : envio?.status === 'aguardando' ? { texto: `Aguardando ${envio.signatarios.filter(s => s.status === 'assinado').length} de ${envio.signatarios.length}`, cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
+                  : envio?.status === 'recusado' ? { texto: 'Recusado', cor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
+                    : aprovado ? { texto: 'Aprovado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                      : { texto: 'Rascunho', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
               return (
                 <div key={r.id} className="space-y-2">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+              <div className={`flex items-center justify-between gap-3 rounded-2xl p-4 transition-all hover:shadow-md dark:bg-surface-card ${borda ? `border-2 ${borda} bg-white` : 'border border-graphite-200/60 bg-white/80 dark:border-border-dark'}`}>
                 <button
                   type="button"
                   onClick={() => setExpandidoId(expandido ? null : r.id)}
@@ -603,8 +746,8 @@ export function TAF() {
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">{String(r.numero).padStart(3,'0')}/{r.ano} · {r.equipe} · {r.tipoTaf}</p>
-                      <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${aprovado ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
-                        {aprovado ? 'Aprovado' : 'Rascunho'}
+                      <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${etiqueta.cor}`}>
+                        {etiqueta.texto}
                       </span>
                     </div>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
@@ -632,8 +775,56 @@ export function TAF() {
                       ))}
                     </div>
                   )}
+                  {envio && (
+                    <div className="mt-3 rounded-xl border border-graphite-200/60 bg-white p-3 dark:border-border-dark dark:bg-surface-card">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Assinaturas</span>
+                      <div className="mt-1 divide-y divide-graphite-100 dark:divide-border-dark">
+                        {envio.signatarios.map(signatario => (
+                          <div key={signatario.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                            <span className="text-graphite-800 dark:text-graphite-100">
+                              <span className="font-semibold">{funcoesVisiveis(signatario.funcoes)}</span> · {signatario.nome}
+                            </span>
+                            <CelulaAssinatura envioId={envio.id} signatario={signatario} documento="TAF" />
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
+                        Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica aprovado quando todos assinarem.
+                      </p>
+                    </div>
+                  )}
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
-                    {!aprovado && podeAlterar && (
+                    {!envio && !aprovado && pelaAssinatura && podeAlterar && (
+                      <button
+                        type="button"
+                        onClick={() => void abrirEnvio(r)}
+                        className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300"
+                      >
+                        <Signature className="h-4 w-4" /> Enviar para assinatura
+                      </button>
+                    )}
+                    {envio?.status === 'aguardando' && (
+                      <button
+                        type="button"
+                        onClick={() => void atualizarEnvio(envio)}
+                        disabled={acaoEnvioId === envio.id}
+                        title="Consulta agora no Autentique quem ja assinou"
+                        className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300"
+                      >
+                        <RefreshCw className={`h-4 w-4 ${acaoEnvioId === envio.id ? 'animate-spin' : ''}`} /> Atualizar assinaturas
+                      </button>
+                    )}
+                    {envio?.status === 'aguardando' && envio.podeGerir && (
+                      <button
+                        type="button"
+                        onClick={() => void reenviarEnvio(envio)}
+                        disabled={acaoEnvioId === envio.id}
+                        className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300"
+                      >
+                        <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
+                      </button>
+                    )}
+                    {!aprovado && !pelaAssinatura && podeAlterar && (
                       <button
                         type="button"
                         onClick={() => void handleAprovarRegistro(r)}
@@ -682,6 +873,15 @@ export function TAF() {
                           <Trash2 className="h-4 w-4" /> Excluir
                         </button>
                       </>
+                    )}
+                    {envio && isAdminSistema && (
+                      <button
+                        type="button"
+                        onClick={() => void cancelarEnvio(envio)}
+                        className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-alert-red transition-all hover:bg-red-500/15"
+                      >
+                        <Ban className="h-4 w-4" /> Cancelar envio
+                      </button>
                     )}
                   </div>
                 </div>
@@ -794,9 +994,10 @@ export function TAF() {
                 <button onClick={() => setFormOpen(false)} className="rounded-xl border border-graphite-300 bg-white px-4 py-2.5 text-sm font-medium text-graphite-700 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">Cancelar</button>
                 <button onClick={() => handleSalvar(false)} disabled={!fEquipe || !fData || !fTipo || saving}
                   className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
-                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) ? 'Salvar' : 'Salvar rascunho'}
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) || vaiPelaAssinatura(fData) ? 'Salvar' : 'Salvar rascunho'}
                 </button>
-                {!registroAprovado(editando) && (
+                {/* A partir de 08/11/2026 quem aprova são as assinaturas: Salvar e depois "Enviar para assinatura". */}
+                {!registroAprovado(editando) && !vaiPelaAssinatura(fData) && (
                   <button onClick={() => handleSalvar(true)} disabled={!fEquipe || !fData || !fTipo || saving}
                     className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
                     <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
@@ -806,6 +1007,18 @@ export function TAF() {
             </div>
           </div>
         </div>
+      )}
+
+      {envioRegistro && (
+        <ConfirmarEnvioModal
+          titulo={`TAF ${String(envioRegistro.numero).padStart(3, '0')}/${envioRegistro.ano} - Equipe ${envioRegistro.equipe} - ${fmt(envioRegistro.data)}`}
+          documento="TAF"
+          assinantes={previaEnvio}
+          enviando={enviando}
+          erro={erroEnvio}
+          onCancelar={() => { if (!enviando) setEnvioRegistro(null); }}
+          onConfirmar={() => void confirmarEnvio()}
+        />
       )}
 
       {previewPdfData && (

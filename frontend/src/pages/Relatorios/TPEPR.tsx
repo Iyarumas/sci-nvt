@@ -934,92 +934,46 @@ export function TPEPR() {
                         </div>
                       )}
                       <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
-                        {!envio && !aprovado && pelaAssinatura && podeAlterar && (
-                          <button
-                            type="button"
-                            onClick={() => void abrirEnvio(registro)}
-                            className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300"
-                          >
-                            <Signature className="h-4 w-4" /> Enviar para assinatura
-                          </button>
-                        )}
-                        {envio?.status === 'aguardando' && (
-                          <button
-                            type="button"
-                            onClick={() => void atualizarEnvio(envio)}
-                            disabled={acaoEnvioId === envio.id}
-                            title="Consulta agora no Autentique quem ja assinou"
-                            className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300"
-                          >
-                            <RefreshCw className={`h-4 w-4 ${acaoEnvioId === envio.id ? 'animate-spin' : ''}`} /> Atualizar assinaturas
-                          </button>
-                        )}
-                        {envio?.status === 'aguardando' && envio.podeGerir && (
-                          <button
-                            type="button"
-                            onClick={() => void reenviarEnvio(envio)}
-                            disabled={acaoEnvioId === envio.id}
-                            className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300"
-                          >
-                            <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
-                          </button>
-                        )}
-                        {!aprovado && !pelaAssinatura && podeAlterar && (
-                          <button
-                            type="button"
-                            onClick={() => void handleAprovarRegistro(registro)}
-                            disabled={approvingId === registro.id}
-                            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <CheckCircle2 className="h-4 w-4" /> {approvingId === registro.id ? 'Aprovando...' : 'Aprovar'}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => void handlePreviewPdf(registro)}
-                          disabled={previewingId === registro.id}
-                          className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                          title="Ver documento"
-                        >
-                          <Eye className="h-4 w-4" /> {previewingId === registro.id ? 'Gerando...' : 'Ver documento'}
+                        <button type="button" onClick={() => void handlePreviewPdf(registro)} disabled={previewingId === registro.id} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300" title="Ver documento">
+                          <Eye className="h-4 w-4" /> {previewingId === registro.id ? 'Abrindo documento' : 'Ver documento'}
                         </button>
                         {podeGerarPdf && (
-                          <button
-                            type="button"
-                            onClick={() => handleDownload(registro)}
-                            disabled={downloadingId === registro.id}
-                            className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-45 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                            title="Baixar PDF"
-                          >
-                            <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando...' : 'PDF'}
+                          <button type="button" onClick={() => handleDownload(registro)} disabled={downloadingId === registro.id} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60" title="Baixar PDF">
+                            <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando PDF' : envio?.status === 'assinado' && envio.temPdfAssinado ? 'Download PDF assinado' : 'Download PDF'}
                           </button>
                         )}
                         {podeAlterar && (
                           <>
-                            <button
-                              type="button"
-                              onClick={() => handleEditar(registro)}
-                              className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover"
-                              title="Editar"
-                            >
+                            <button type="button" onClick={() => handleEditar(registro)} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200" title="Editar">
                               <Pencil className="h-4 w-4" /> Editar
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteConfirm(registro.id)}
-                              className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
-                              title="Excluir"
-                            >
+                            <button type="button" onClick={() => setDeleteConfirm(registro.id)} className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15" title="Excluir">
                               <Trash2 className="h-4 w-4" /> Excluir
                             </button>
                           </>
                         )}
+                        {!envio && !aprovado && pelaAssinatura && podeAlterar && (
+                          <button type="button" onClick={() => void abrirEnvio(registro)} className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
+                            <Signature className="h-4 w-4" /> Enviar para assinatura
+                          </button>
+                        )}
+                        {!aprovado && !pelaAssinatura && podeAlterar && (
+                          <button type="button" onClick={() => void handleAprovarRegistro(registro)} disabled={approvingId === registro.id} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:opacity-60">
+                            <CheckCircle2 className="h-4 w-4" /> {approvingId === registro.id ? 'Aprovando...' : 'Aprovar'}
+                          </button>
+                        )}
+                        {envio?.status === 'aguardando' && (
+                          <button type="button" onClick={() => void atualizarEnvio(envio)} disabled={acaoEnvioId === envio.id} title="Consulta agora no Autentique quem ja assinou" className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                            <RefreshCw className={`h-4 w-4 ${acaoEnvioId === envio.id ? 'animate-spin' : ''}`} /> {acaoEnvioId === envio.id ? 'Atualizando...' : 'Atualizar assinaturas'}
+                          </button>
+                        )}
+                        {envio?.status === 'aguardando' && envio.podeGerir && (
+                          <button type="button" onClick={() => void reenviarEnvio(envio)} disabled={acaoEnvioId === envio.id} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                            <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
+                          </button>
+                        )}
                         {envio && isAdminSistema && (
-                          <button
-                            type="button"
-                            onClick={() => void cancelarEnvio(envio)}
-                            className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-alert-red transition-all hover:bg-red-500/15"
-                          >
+                          <button type="button" onClick={() => void cancelarEnvio(envio)} className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
                             <Ban className="h-4 w-4" /> Cancelar envio
                           </button>
                         )}

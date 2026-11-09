@@ -845,7 +845,7 @@ export function TPEPR() {
               const pelaAssinatura = vaiPelaAssinatura(registro.data);
               const borda = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
               const etiqueta = envio?.status === 'assinado' ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
-                : envio?.status === 'aguardando' ? { texto: 'Aguardando assinaturas', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
+                : envio?.status === 'aguardando' ? { texto: 'Aguardando', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
                   : envio?.status === 'recusado' ? { texto: 'Recusado', cor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
                     : aprovado ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
                       : { texto: 'Rascunho', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
@@ -865,11 +865,6 @@ export function TPEPR() {
                           <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">
                             {String(registro.numero).padStart(3, '0')}/{registro.ano} - {registro.equipe} - TP/EPR
                           </p>
-                          {envio ? <SeloAssinatura envio={envio} /> : (
-                            <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${etiqueta.cor}`}>
-                              {etiqueta.texto}
-                            </span>
-                          )}
                         </div>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
                           {fmtData(registro.data)} {registro.hora && `as ${registro.hora}`} - {registro.turno || '-'} - Chefe: {registro.chefeEquipe || '-'}
@@ -877,6 +872,12 @@ export function TPEPR() {
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(registro, bombeiros)}</p>
                       </div>
                     </button>
+                    <div className="flex shrink-0 items-center gap-2 self-center">
+                      {envio && <SeloAssinatura envio={envio} />}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${etiqueta.cor}`}>
+                        {etiqueta.texto}
+                      </span>
+                    </div>
                   </div>
 
                   {expandido && (

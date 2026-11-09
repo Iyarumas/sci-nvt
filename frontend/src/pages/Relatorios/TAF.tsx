@@ -710,7 +710,7 @@ export function TAF() {
               const pelaAssinatura = vaiPelaAssinatura(r.data);
               const borda = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
               const etiqueta = envio?.status === 'assinado' ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
-                : envio?.status === 'aguardando' ? { texto: `Aguardando ${envio.signatarios.filter(s => s.status === 'assinado').length} de ${envio.signatarios.length}`, cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
+                : envio?.status === 'aguardando' ? { texto: 'Aguardando', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
                   : envio?.status === 'recusado' ? { texto: 'Recusado', cor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
                     : aprovado ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
                       : { texto: 'Rascunho', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
@@ -726,16 +726,17 @@ export function TAF() {
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">{String(r.numero).padStart(3,'0')}/{r.ano} · {r.equipe} · {r.tipoTaf}</p>
-                      {envio ? <SeloAssinatura envio={envio} /> : (
-                        <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${etiqueta.cor}`}>
-                          {etiqueta.texto}
-                        </span>
-                      )}
                     </div>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{fmt(r.data)} {r.hora && `às ${r.hora}`} · {r.turno}</p>
                     <p className="text-xs text-graphite-500 dark:text-graphite-400 truncate">{resumoAuditoria(r, bombeiros)}</p>
                   </div>
                 </button>
+                <div className="flex shrink-0 items-center gap-2 self-center">
+                  {envio && <SeloAssinatura envio={envio} />}
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${etiqueta.cor}`}>
+                    {etiqueta.texto}
+                  </span>
+                </div>
               </div>
 
               {expandido && (

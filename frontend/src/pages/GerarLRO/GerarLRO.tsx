@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, type CSSProperties, type ReactNode, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Save, Eye, AlertTriangle, ArrowLeft, ArrowRight, Trash2, Search, Check, X, Archive, RefreshCw, ChevronDown, ChevronUp, HelpCircle, MousePointer2, Signature, Mail, Ban, Download } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
@@ -36,7 +36,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { ConfirmarEnvioModal, bordaAssinatura, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { ConfirmarEnvioModal, bordaAssinatura, podeBaixarAssinado, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 import { nomeDocumentoOperacional } from '../../utils/documentFileNames';
 import { assinaturaCoordenadorLRO } from '../../types/lro';
 import type { Bombeiro } from '../../types/bombeiro';
@@ -585,6 +585,10 @@ const STATUS_LRO_TRAVAM_OCORRENCIAS = new Set<LRODraftStatus>(['assinado', 'fina
  * Os anteriores seguem o fluxo antigo, com o Finalizar manual.
  */
 const INICIO_ASSINATURA_LRO = '2026-11-06';
+const PdfPreview = lazy(async () => {
+  const module = await import('../../components/documentos/PdfPreview');
+  return { default: module.PdfPreview };
+});
 const lroPeloAutentique = (draft: LRODraft) => String(draft.data_plantao || '').slice(0, 10) >= INICIO_ASSINATURA_LRO;
 const STATUS_LRO_EDITAVEIS_POR_ADMIN = new Set<LRODraftStatus>(['aguardando', 'assinado', 'finalizado']);
 const STATUS_TROCA_ENTRA_LRO = new Set(['draft', 'pending', 'signed']);
@@ -703,6 +707,8 @@ export function GerarLRO() {
   const [erroEnvioLro, setErroEnvioLro] = useState<string | null>(null);
   const [enviandoLro, setEnviandoLro] = useState(false);
   const [acaoEnvioLroId, setAcaoEnvioLroId] = useState<string | null>(null);
+  // PDF assinado aberto só para olhar, dentro do sistema.
+  const [lroPdfPreview, setLroPdfPreview] = useState<{ dados: ArrayBuffer; titulo: string } | null>(null);
   const camposEquipeEditadosRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -2037,7 +2043,9 @@ export function GerarLRO() {
       cidade: 'NAVEGANTES',
       uf: 'SC',
       _ocorrenciasOperacionaisIds: idsOcorrenciasIncluidasNoTextoAtual(),
-      _lroExportavel: true,
+      // LRO que vai pelo Autentique: a prévia é só para conferir (sem Imprimir nem Salvar PDF).
+      _lroExportavel: String(dataInicio || '').slice(0, 10) < INICIO_ASSINATURA_LRO,
+      _lroSemExportar: String(dataInicio || '').slice(0, 10) >= INICIO_ASSINATURA_LRO,
     };
     navigate('/registros-diarios/preview-lro', { state: dados });
   }
@@ -2142,8 +2150,10 @@ export function GerarLRO() {
         ...dados,
         draftId: draft.id,
         status: draft.status,
-        _lroFinalizado: draft.status === 'finalizado' || draft.status === 'arquivado',
-        _lroExportavel: draft.status !== 'rascunho' && draft.status !== 'cancelado',
+        _lroFinalizado: !lroPeloAutentique(draft) && (draft.status === 'finalizado' || draft.status === 'arquivado'),
+        _lroExportavel: !lroPeloAutentique(draft) && draft.status !== 'rascunho' && draft.status !== 'cancelado',
+        // Vai pelo Autentique: baixar só o assinado, pelo botão "Baixar PDF assinado".
+        _lroSemExportar: lroPeloAutentique(draft),
       },
     });
   }
@@ -2499,12 +2509,11 @@ export function GerarLRO() {
   }
 
   async function verLroAssinado(envio: EnvioAssinatura) {
-    const janela = window.open('', '_blank');
+    // Só para olhar, dentro do sistema (sem baixar nem imprimir); o download é pelo botão "Baixar PDF assinado".
     try {
-      const url = URL.createObjectURL(await obterPdfAssinado(envio.id));
-      if (janela) janela.location.href = url; else window.location.href = url;
+      const pdf = await obterPdfAssinado(envio.id);
+      setLroPdfPreview({ dados: await pdf.arrayBuffer(), titulo: 'LRO assinado' });
     } catch (err) {
-      janela?.close();
       setErroValidacao(err instanceof Error ? err.message : 'Não foi possível abrir o PDF assinado.');
     }
   }
@@ -2628,6 +2637,27 @@ export function GerarLRO() {
             <p className="text-sm text-graphite-500 dark:text-graphite-400">{filtradas.length} LRO(s)</p>
           </div>
         </div>
+
+        {lroPdfPreview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="flex h-[92vh] w-full max-w-5xl flex-col rounded-2xl bg-white shadow-xl shadow-black/10 dark:bg-surface-elevated">
+              <div className="flex items-center justify-between gap-3 border-b border-graphite-200/70 px-5 py-4 dark:border-border-dark">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-bold text-graphite-900 dark:text-graphite-100">{lroPdfPreview.titulo}</p>
+                  <p className="text-xs text-graphite-500 dark:text-graphite-400">Visualização do documento</p>
+                </div>
+                <button onClick={() => setLroPdfPreview(null)} className="rounded-xl border border-graphite-300/60 bg-white/80 p-2 text-graphite-600 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300" title="Fechar">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto bg-graphite-100/60 p-4 dark:bg-surface-card/40">
+                <Suspense fallback={<div className="flex items-center justify-center py-20 text-sm text-graphite-500 dark:text-graphite-400">Carregando documento...</div>}>
+                  <PdfPreview pdfData={lroPdfPreview.dados} fields={[]} />
+                </Suspense>
+              </div>
+            </div>
+          </div>
+        )}
 
         {envioLroDraft && (
           <ConfirmarEnvioModal
@@ -2770,7 +2800,7 @@ export function GerarLRO() {
                         className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
                         <Eye className="h-4 w-4" /> Ver documento
                       </button>
-                      {envio?.temPdfAssinado && (
+                      {podeBaixarAssinado(envio) && envio && (
                         <button onClick={() => void baixarPdfAssinado(envio.id, nomeDocumentoOperacional(d.data_plantao, 'LRO', d.equipe).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'semAuditoria').catch(err => setErroValidacao(err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.'))}
                           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all">
                           <Download className="h-4 w-4" /> Baixar PDF assinado

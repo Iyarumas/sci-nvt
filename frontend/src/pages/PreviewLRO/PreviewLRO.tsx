@@ -126,7 +126,8 @@ export function PreviewLRO() {
 
   const isSample = !location.state || Object.keys(location.state).length <= 3;
   const status = String(dados.status || '');
-  const podeExportar = !isSample && (
+  // LRO que vai pelo Autentique não tem Imprimir nem Salvar PDF aqui: baixa-se só o assinado.
+  const podeExportar = !isSample && dados._lroSemExportar !== true && (
     dados._lroExportavel === true ||
     dados._lroFinalizado === true ||
     STATUS_LRO_EXPORTAVEIS.has(status)

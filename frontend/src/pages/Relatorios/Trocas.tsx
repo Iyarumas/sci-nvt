@@ -55,6 +55,7 @@ import {
   ConfirmarEnvioModal,
   SeloAssinatura,
   bordaAssinatura,
+  podeBaixarAssinado,
   funcoesVisiveis,
   situacaoAssinatura,
 } from '../RegistrosDiarios/PTRBAAssinaturas';
@@ -1122,12 +1123,10 @@ export function Trocas() {
   }
 
   async function verTrocaAssinada(envio: EnvioAssinatura) {
-    const janela = window.open('', '_blank');
+    // Só para olhar, dentro do sistema (sem baixar nem imprimir); o download é pelo botão "Baixar PDF assinado".
     try {
-      const url = URL.createObjectURL(await obterPdfAssinado(envio.id));
-      if (janela) janela.location.href = url; else window.location.href = url;
+      abrirPdfPreview(await obterPdfAssinado(envio.id), 'TROCA DE SERVICO ASSINADA.pdf', false);
     } catch (err) {
-      janela?.close();
       setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível abrir o PDF assinado.', type: 'error' });
     }
   }
@@ -1962,7 +1961,7 @@ export function Trocas() {
       };
       const dadosStr = buildPdfData(dadosComAuditoria);
       const pdfBlob = await preencherPdf(pdfBytes, dadosStr, fieldPositionsFromDoc(doc));
-      abrirPdfPreview(pdfBlob, nomeArquivoTroca(dadosComAuditoria), fill.status === 'signed');
+      abrirPdfPreview(pdfBlob, nomeArquivoTroca(dadosComAuditoria), fill.status === 'signed' && !enviosTroca[fill.id]);
     } catch (err) {
       closePdfPreview();
       console.error('Erro ao visualizar PDF:', err);
@@ -2932,7 +2931,7 @@ export function Trocas() {
                         className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Ver documento
                       </button>
-                      {envio?.temPdfAssinado && (
+                      {podeBaixarAssinado(envio) && envio && (
                         <button onClick={() => void baixarPdfAssinado(envio.id, nomeArquivoTroca(data).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina').catch(err => setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.', type: 'error' }))}
                           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
                           <Download className="h-4 w-4" /> Baixar PDF assinado

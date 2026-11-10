@@ -21,6 +21,21 @@ export function situacaoAssinatura(envio?: EnvioAssinatura): SituacaoAssinatura 
   return envio?.status ?? 'rascunho';
 }
 
+/** Quem não precisa ter assinado para liberar o download: o gerente/embaixador, o APOC e quem só reconhece. */
+const NAO_PRECISAM_PARA_BAIXAR = new Set(['GERENTE', 'APOC', 'RECONHECIMENTO']);
+
+/**
+ * O PDF só pode ser baixado depois que toda a equipe assinou no Autentique (assim ninguém baixa,
+ * colhe assinatura por fora e sobe de volta). Pode faltar só o gerente/embaixador.
+ */
+export function podeBaixarAssinado(envio?: EnvioAssinatura): boolean {
+  if (!envio || !envio.temPdfAssinado || envio.status === 'recusado') return false;
+  if (envio.status === 'assinado') return true;
+  return envio.signatarios.every(s =>
+    s.status === 'assinado' || (s.funcoes.length > 0 && s.funcoes.every(f => NAO_PRECISAM_PARA_BAIXAR.has(f.trim().toUpperCase()))),
+  );
+}
+
 /** Borda do card: verde quando todos assinaram, laranja aguardando, vermelha se alguém recusou. */
 export function bordaAssinatura(situacao: SituacaoAssinatura): string | null {
   if (situacao === 'assinado') return 'border-emerald-500/70 dark:border-emerald-500/60';

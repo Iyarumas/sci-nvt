@@ -37,7 +37,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, podeBaixarAssinado, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 import { nomeDocumentoOperacional } from '../../utils/documentFileNames';
 
 /**
@@ -286,7 +286,9 @@ export default function Posicionamento() {
   }
 
   function canUsarPdf(registro: ExercicioPosicionamento) {
-    return registroAprovado(registro) || envios[registro.id]?.status === 'assinado';
+    // Enviado: só depois que toda a equipe assinou (pode faltar o gerente). Antigos (sem envio): se aprovados.
+    const envio = envios[registro.id];
+    return envio ? podeBaixarAssinado(envio) : registroAprovado(registro);
   }
 
   function canAlterarRegistro(registro: ExercicioPosicionamento) {
@@ -626,7 +628,7 @@ export default function Posicionamento() {
     setProcessingPdfId(exercicio.id);
     try {
       const envio = envios[exercicio.id];
-      const pdf = envio?.status === 'assinado' && envio.temPdfAssinado
+      const pdf = envio
         ? await obterPdfAssinado(envio.id)
         : await gerarExercicioPosicionamentoPdf(await completarNomesAssinatura(exercicio));
       await imprimirPdfBlob(pdf);
@@ -645,7 +647,7 @@ export default function Posicionamento() {
     setProcessingPdfId(exercicio.id);
     try {
       const envio = envios[exercicio.id];
-      if (envio?.status === 'assinado' && envio.temPdfAssinado) {
+      if (envio) {
         const nome = nomeDocumentoOperacional(exercicio.data, 'EXERCICIO DE POSICIONAMENTO', exercicio.equipe).replace(/\.pdf$/i, ' ASSINADO.pdf');
         await baixarPdfAssinado(envio.id, nome, 'primeiraPagina');
       } else {
@@ -943,7 +945,7 @@ export default function Posicionamento() {
                         </button>
                         {podeUsarPdf && (
                           <button type="button" onClick={() => void handleDownloadPdf(ex)} disabled={processing} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60" title="Baixar PDF">
-                            <Download className="h-4 w-4" /> {envio?.status === 'assinado' && envio.temPdfAssinado ? 'Download PDF assinado' : 'Download PDF'}
+                            <Download className="h-4 w-4" /> {envio ? 'Download PDF assinado' : 'Download PDF'}
                           </button>
                         )}
                         {podeUsarPdf && (

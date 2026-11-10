@@ -37,6 +37,7 @@ import {
   EtiquetasAssinantes,
   SeloAssinatura,
   anteriorAssinaturaPeloSistema,
+  podeBaixarAssinado,
   signatarioDoNome,
   situacaoAssinatura,
 } from './PTRBAAssinaturas';
@@ -904,6 +905,9 @@ function PTRBACompletoCard({
   const bordaStatus = bordaAssinatura(situacao);
   // Antes de 06/11 a assinatura era feita fora do sistema: nada de selo, etiquetas ou botão de envio.
   const anterior = rascunho && anteriorAssinaturaPeloSistema(registro.data);
+  // Download: com toda a equipe assinada no Autentique (pode faltar só o APOC); os que não passam
+  // pelo Autentique (antes de 06/11, APOC, legado) baixam o PDF do sistema.
+  const podeBaixar = envio ? podeBaixarAssinado(envio) : foraDoAutentique(registro);
   const assinantesRascunho = rascunho ? quemAssinaPTRBA(participantesPreenchidos, registro.chefeEquipe) : [];
   const documento = `PTR-BA da equipe ${registro.equipe} de ${formatDate(registro.data)}`;
   const infoCards = [
@@ -1070,9 +1074,9 @@ function PTRBACompletoCard({
             <button type="button" onClick={onPreviewDocument} disabled={previewing} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               <Eye className="h-4 w-4" /> {previewing ? 'Abrindo documento' : 'Ver documento'}
             </button>
-            <button type="button" onClick={onDownload} disabled={downloading} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60">
-              <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : envio?.status === 'assinado' && envio.temPdfAssinado ? 'Download PDF assinado' : 'Download PDF'}
-            </button>
+            {podeBaixar && <button type="button" onClick={onDownload} disabled={downloading} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60">
+              <Download className="h-4 w-4" /> {downloading ? 'Gerando PDF' : envio ? 'Download PDF assinado' : 'Download PDF'}
+            </button>}
             {canEdit && rascunho && (
               <>
                 <button type="button" onClick={onEdit} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
@@ -1115,6 +1119,11 @@ function PTRBACompletoCard({
       )}
     </div>
   );
+}
+
+/** PTR-BA que não vai para o Autentique: plantão antes de 06/11, APOC ou documento APOC legado. */
+function foraDoAutentique(registro: Pick<PTRBACompleto, 'data' | 'isApoc' | 'origemPtrbaId'>): boolean {
+  return anteriorAssinaturaPeloSistema(registro.data) || !!registro.isApoc || !!registro.origemPtrbaId;
 }
 
 function PTRBACompletoPdfPreviewModal({
@@ -1529,10 +1538,12 @@ export function PTRBACompletoPage() {
     try {
       setDownloadingId(registro.id);
       const envio = envios[registro.id];
-      if (envio?.status === 'assinado' && envio.temPdfAssinado) {
-        await baixarPdfAssinado(envio.id, nomeArquivoPTRBACompleto(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'));
-      } else {
+      if (podeBaixarAssinado(envio)) {
+        await baixarPdfAssinado(envio!.id, nomeArquivoPTRBACompleto(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'));
+      } else if (!envio && foraDoAutentique(registro)) {
         await baixarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
+      } else {
+        alert('O PDF só pode ser baixado depois que toda a equipe assinar no Autentique.');
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Erro ao gerar PDF.');

@@ -63,7 +63,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, podeBaixarAssinado, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 
 /**
  * TP/EPR a partir deste treinamento vai para assinatura pelo Autentique: o chefe de equipe e o
@@ -412,7 +412,9 @@ export function TPEPR() {
   }
 
   function canGerarPdf(registro: TreinamentoTPEPR) {
-    return registroAprovado(registro) || envios[registro.id]?.status === 'assinado';
+    // Enviado: só depois que toda a equipe assinou (pode faltar o gerente). Antigos (sem envio): se aprovados.
+    const envio = envios[registro.id];
+    return envio ? podeBaixarAssinado(envio) : registroAprovado(registro);
   }
 
   function resetForm() {
@@ -612,7 +614,7 @@ export function TPEPR() {
     try {
       setDownloadingId(registro.id);
       const envio = envios[registro.id];
-      if (envio?.status === 'assinado' && envio.temPdfAssinado) {
+      if (envio) {
         await baixarPdfAssinado(envio.id, nomeArquivoTPEPRPdf(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina');
       } else {
         await baixarTPEPRPdf(registro);
@@ -922,7 +924,7 @@ export function TPEPR() {
                         </button>
                         {podeGerarPdf && (
                           <button type="button" onClick={() => handleDownload(registro)} disabled={downloadingId === registro.id} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60" title="Baixar PDF">
-                            <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando PDF' : envio?.status === 'assinado' && envio.temPdfAssinado ? 'Download PDF assinado' : 'Download PDF'}
+                            <Download className="h-4 w-4" /> {downloadingId === registro.id ? 'Gerando PDF' : envio ? 'Download PDF assinado' : 'Download PDF'}
                           </button>
                         )}
                         {podeAlterar && (

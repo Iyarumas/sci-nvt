@@ -32,7 +32,7 @@ import {
   type EnvioAssinatura,
   type PreviaSignatario,
 } from '../../services/autentiqueEnviosService';
-import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, podeBaixarAssinado, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 
 /**
  * TAF a partir deste treinamento vai para assinatura pelo Autentique: todos os participantes
@@ -336,7 +336,9 @@ export function TAF() {
   }
 
   function canGerarPdf(registro: TreinamentoTAF) {
-    return registroAprovado(registro) || envios[registro.id]?.status === 'assinado';
+    // Enviado: só depois que toda a equipe assinou (pode faltar o gerente). Antigos (sem envio): se aprovados.
+    const envio = envios[registro.id];
+    return envio ? podeBaixarAssinado(envio) : registroAprovado(registro);
   }
 
   function setP(idx: number, field: keyof TafPessoaForm, val: any) {
@@ -531,7 +533,7 @@ export function TAF() {
     try {
       setDownloadingId(registro.id);
       const envio = envios[registro.id];
-      if (envio?.status === 'assinado' && envio.temPdfAssinado) {
+      if (envio) {
         await baixarPdfAssinado(envio.id, nomeArquivoTAFPdf(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina');
       } else {
         await baixarTAFPdf(prepararRegistroPdf(registro));
@@ -782,7 +784,7 @@ export function TAF() {
                     </button>
                     {podeGerarPdf && (
                       <button type="button" onClick={() => handleDownload(r)} disabled={downloadingId === r.id} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60" title="Baixar PDF">
-                        <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando PDF' : envio?.status === 'assinado' && envio.temPdfAssinado ? 'Download PDF assinado' : 'Download PDF'}
+                        <Download className="h-4 w-4" /> {downloadingId === r.id ? 'Gerando PDF' : envio ? 'Download PDF assinado' : 'Download PDF'}
                       </button>
                     )}
                     {podeAlterar && (

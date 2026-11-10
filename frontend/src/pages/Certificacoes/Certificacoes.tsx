@@ -464,6 +464,9 @@ function credencialDoCadastro(f: Bombeiro, porPasta: Map<string, DocumentoAvalia
 
 /* ───────── Card Funcionário ───────── */
 
+/** Documentos simulados só no computador de desenvolvimento (nunca no servidor). */
+const EXEMPLO_PERMITIDO = import.meta.env.DEV;
+
 const FAIXA_PIOR: Record<string, string> = {
   vencido: 'before:bg-red-500', vence: 'before:bg-amber-500', emdia: 'before:bg-emerald-500', neutro: 'before:bg-graphite-300', falta: 'before:bg-red-500',
 };
@@ -471,13 +474,15 @@ const FAIXA_PIOR: Record<string, string> = {
 function FuncionarioCard({
   funcionario, certNR, certCurso, canManage,
   onAddNR, onAddCurso, onViewArquivo,
-  arquivosDrive, configDrive, hojeISO, onAbrirDrive,
+  arquivosDrive, configDrive, hojeISO, onAbrirDrive, semDrive,
 }: {
   funcionario: Bombeiro; certNR: CertificacaoNR[]; certCurso: CertificacaoCurso[];
   canManage: boolean; onAddNR: (id: string, nome: string) => void;
   onAddCurso: (id: string, nome: string) => void; onViewArquivo: (arquivo: string, title: string) => void;
   arquivosDrive: ArquivoDrive[]; configDrive: ConfigDocumentos; hojeISO: string;
   onAbrirDrive: (doc: DocumentoAvaliado, pessoaNome: string) => void;
+  /** Google Drive não ligado neste servidor: não mostra os blocos nem cobra documentos. */
+  semDrive?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [mostrarAnexados, setMostrarAnexados] = useState(false);
@@ -537,8 +542,14 @@ function FuncionarioCard({
 
           {/* ── Documentos do Google Drive, um bloco por pasta ── */}
           <div className="mb-4">
-            <PastasDrive arquivos={arquivosDrive} config={configDrive} hojeISO={hojeISO}
-              onAbrir={(doc: DocumentoAvaliado) => onAbrirDrive(doc, funcionario.nomeCompleto)} />
+            {semDrive ? (
+              <p className="rounded-xl border border-dashed border-graphite-200 py-3 text-center text-xs text-graphite-400 dark:border-border-dark">
+                Os documentos do Google Drive ainda não estão disponíveis.
+              </p>
+            ) : (
+              <PastasDrive arquivos={arquivosDrive} config={configDrive} hojeISO={hojeISO}
+                onAbrir={(doc: DocumentoAvaliado) => onAbrirDrive(doc, funcionario.nomeCompleto)} />
+            )}
           </div>
 
           {temAnexados && (
@@ -750,13 +761,17 @@ export function Certificacoes() {
     for (const b of bombeiros) {
       const arquivos = driveEstado === 'drive'
         ? (doDrive.has(b.id) ? arquivosDoServidor(doDrive.get(b.id)!.arquivos, doDrive.get(b.id)!.pasta, configDrive) : [])
-        : driveEstado === 'exemplo' ? documentosExemplo(b.id, hojeISO) : [];
+        : driveEstado === 'exemplo' && EXEMPLO_PERMITIDO ? documentosExemplo(b.id, hojeISO) : [];
       // CNH e credencial: a validade é a que está no cadastro da pessoa.
       const doCadastro: Record<string, string> = { CNH: b.cnhValidade, [TIPO_CRACHA]: b.credencialValidade };
       mapa.set(b.id, arquivos.map(a => (a.tipo in doCadastro ? { ...a, validadePropria: doCadastro[a.tipo] || null } : a)));
     }
     return mapa;
   }, [bombeiros, hojeISO, drive, driveEstado, configDrive]);
+
+  // Sem Drive (e fora do computador de desenvolvimento): nada de documentos simulados nem de "Falta".
+  const semDrive = driveEstado !== 'drive' && !(driveEstado === 'exemplo' && EXEMPLO_PERMITIDO);
+  const configSemDrive = useMemo(() => ({ ...configDrive, obrigatorios: [] }), [configDrive]);
 
   const tiposDoDrive = useMemo(() => {
     const vistos = new Map<string, string>();
@@ -869,7 +884,11 @@ export function Certificacoes() {
     <PageContainer>
       <PageTitle icon={Award} title="Certificações" />
 
-      {driveEstado === 'exemplo' ? (
+      {driveEstado === 'exemplo' && !EXEMPLO_PERMITIDO ? (
+        <div className="mb-4 rounded-xl border border-graphite-200 bg-white px-4 py-2.5 text-xs text-graphite-600 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300">
+          O Google Drive ainda não está ligado neste servidor; os documentos das pastas aparecem assim que for configurado.
+        </div>
+      ) : driveEstado === 'exemplo' ? (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/15 dark:text-amber-300">
           <strong>Dados de exemplo.</strong> Os documentos abaixo são simulados enquanto o sistema não está ligado ao Google Drive.
         </div>
@@ -918,7 +937,7 @@ export function Certificacoes() {
       )}
 
       {aba === 'validade' && podeEditarValidade ? (
-        <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive} encontrados={driveEstado === 'drive' ? tiposDoDrive : undefined} />
+        <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive} encontrados={driveEstado === 'drive' ? tiposDoDrive : EXEMPLO_PERMITIDO ? undefined : []} />
       ) : (<>
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-3">
@@ -956,7 +975,8 @@ export function Certificacoes() {
                 onAddNR={(id, nome) => { setFormNR(id); setFormCurso(null); setFuncNome(nome); }}
                 onAddCurso={(id, nome) => { setFormCurso(id); setFormNR(null); setFuncNome(nome); }}
                 onViewArquivo={(arquivo, title) => setArquivoModal({ arquivo, title })}
-                arquivosDrive={arquivosDrivePorPessoa.get(b.id) ?? []} configDrive={configDrive} hojeISO={hojeISO}
+                arquivosDrive={arquivosDrivePorPessoa.get(b.id) ?? []} configDrive={semDrive ? configSemDrive : configDrive} hojeISO={hojeISO}
+                semDrive={semDrive}
                 onAbrirDrive={(doc, pessoaNome) => setDocAberto({ doc, pessoaNome })}
               />
               {canManageCertificacoes && formNR === b.id && (

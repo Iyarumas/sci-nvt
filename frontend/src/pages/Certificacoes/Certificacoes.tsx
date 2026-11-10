@@ -36,6 +36,8 @@ import {
   type ArquivoDrive, type ConfigDocumentos, type DocumentoAvaliado,
 } from './regrasDrive';
 import { abrirArquivoDrive, buscarDocumentosDrive, informarDataDrive, type DocumentosDriveApi } from '../../services/driveDocumentosService';
+import { avaliarArquivo as avaliarParaVer } from './regrasDrive';
+import type { ExemploArquivo } from './DriveDocumentos';
 import { CrachaValidade, InfoCredencial, alertaCursosAsur, PastasDrive, ResumoDrive, TIPO_CRACHA, ValidadeDocumentos, VisualizadorDocumento } from './DriveDocumentos';
 
 const NR_COLORS: Record<string, string> = {
@@ -773,6 +775,19 @@ export function Certificacoes() {
   const semDrive = driveEstado !== 'drive' && !(driveEstado === 'exemplo' && EXEMPLO_PERMITIDO);
   const configSemDrive = useMemo(() => ({ ...configDrive, obrigatorios: [] }), [configDrive]);
 
+  // Para a aba Validade: quem tem cada documento (pasta|tipo) — permite ver um nome estranho antes de decidir.
+  const exemplosPorTipo = useMemo(() => {
+    const mapa = new Map<string, ExemploArquivo[]>();
+    const nomes = new Map(bombeiros.map(b => [b.id, b.nomeCompleto]));
+    for (const [pessoaId, arquivos] of arquivosDrivePorPessoa) {
+      for (const arquivo of arquivos) {
+        const chave = `${arquivo.pastaId}|${arquivo.tipo}`;
+        mapa.set(chave, [...(mapa.get(chave) ?? []), { arquivo, pessoaNome: nomes.get(pessoaId) ?? '' }]);
+      }
+    }
+    return mapa;
+  }, [arquivosDrivePorPessoa, bombeiros]);
+
   const tiposDoDrive = useMemo(() => {
     const vistos = new Map<string, string>();
     for (const arquivos of arquivosDrivePorPessoa.values()) {
@@ -937,7 +952,10 @@ export function Certificacoes() {
       )}
 
       {aba === 'validade' && podeEditarValidade ? (
-        <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive} encontrados={driveEstado === 'drive' ? tiposDoDrive : EXEMPLO_PERMITIDO ? undefined : []} />
+        <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive}
+          encontrados={driveEstado === 'drive' ? tiposDoDrive : EXEMPLO_PERMITIDO ? undefined : []}
+          exemplos={exemplosPorTipo}
+          onVer={ex => setDocAberto({ doc: { ...avaliarParaVer(ex.arquivo, configDrive, hojeISO), arquivos: [ex.arquivo] }, pessoaNome: ex.pessoaNome })} />
       ) : (<>
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-3">

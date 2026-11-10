@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import {
-  AlertTriangle, CheckCircle2, CircleDashed, FileImage, FileText, FolderOpen, FolderSearch, MinusCircle, Plus, Trash2, X, XCircle,
+  AlertTriangle, CheckCircle2, CircleDashed, Eye, FileImage, FileText, FolderOpen, FolderSearch, MinusCircle, Plus, Trash2, X, XCircle,
 } from 'lucide-react';
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { hojeLocalISO } from '../../utils/datas';
@@ -467,11 +467,21 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose, carregar, onIn
 /* ───────── Aba "Validade dos documentos" (administrador) ───────── */
 
 
-export function ValidadeDocumentos({ config, onChange, encontrados }: {
+export interface ExemploArquivo {
+  arquivo: ArquivoDrive;
+  pessoaNome: string;
+}
+
+export function ValidadeDocumentos({ config, onChange, encontrados, exemplos, onVer }: {
   config: ConfigDocumentos; onChange: (c: ConfigDocumentos) => void;
   /** Documentos achados nas pastas do Drive (sem isso, usa a lista de exemplo). */
   encontrados?: Array<{ tipo: string; pastaId: string }>;
+  /** Arquivos de cada documento ("pasta|tipo"), com o nome da pessoa dona da pasta. */
+  exemplos?: Map<string, ExemploArquivo[]>;
+  /** Abre um arquivo no visualizador. */
+  onVer?: (exemplo: ExemploArquivo) => void;
 }) {
+  const [vendo, setVendo] = useState<string | null>(null);
   const [adicionando, setAdicionando] = useState<string | null>(null);
   const [novo, setNovo] = useState({ nome: '', prazo: '', obrigatorio: true });
   const [erroNovo, setErroNovo] = useState('');
@@ -748,10 +758,49 @@ export function ValidadeDocumentos({ config, onChange, encontrados }: {
                       <span className="w-20">{prazo === 0 ? 'não vence' : 'meses'}</span>
                     </label>
                     )}
+                    {(() => {
+                      const lista = exemplos?.get(`${pasta.id}|${tipo}`) ?? [];
+                      const chave = `${pasta.id}|${tipo}`;
+                      if (!onVer || lista.length === 0) return <span className="w-[4.5rem]" aria-hidden />;
+                      return (
+                        <button type="button" onClick={() => setVendo(v => (v === chave ? null : chave))} aria-expanded={vendo === chave}
+                          title="Ver os arquivos deste documento"
+                          className={`flex w-[4.5rem] items-center justify-center gap-1 rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                            vendo === chave
+                              ? 'border-aviation-400 bg-aviation-50 text-aviation-700 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300'
+                              : 'border-graphite-300 text-graphite-600 hover:border-aviation-400 dark:border-border-dark dark:text-graphite-300'
+                          }`}>
+                          <Eye className="h-3.5 w-3.5" /> {lista.length}
+                        </button>
+                      );
+                    })()}
                     {manual ? (
                       <button type="button" onClick={() => removerAdicionado(tipo)} aria-label={`Remover ${tipo}`} title="Remover"
                         className="rounded-lg p-1.5 text-graphite-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"><Trash2 className="h-4 w-4" /></button>
                     ) : <span className="w-7" aria-hidden />}
+                    {vendo === `${pasta.id}|${tipo}` && (
+                      <ul className="order-last w-full divide-y divide-graphite-100 overflow-hidden rounded-xl border border-graphite-200 bg-graphite-50/60 dark:divide-border-dark dark:border-border-dark dark:bg-surface-elevated">
+                        {(exemplos?.get(`${pasta.id}|${tipo}`) ?? [])
+                          .slice().sort((a, b) => a.pessoaNome.localeCompare(b.pessoaNome, 'pt-BR'))
+                          .map(ex => (
+                            <li key={ex.arquivo.id}>
+                              <button type="button" onClick={() => onVer?.(ex)} disabled={!!ex.arquivo.marcadorFalta}
+                                className="flex w-full items-center gap-3 px-3 py-2 text-left text-xs transition-colors hover:bg-white disabled:cursor-default disabled:opacity-60 dark:hover:bg-surface-hover">
+                                {ex.arquivo.formato === 'imagem'
+                                  ? <FileImage className="h-4 w-4 shrink-0 text-graphite-400" />
+                                  : <FileText className="h-4 w-4 shrink-0 text-graphite-400" />}
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate font-semibold text-graphite-900 dark:text-graphite-100">{ex.pessoaNome}</span>
+                                  <span className="block truncate text-graphite-500 dark:text-graphite-400">
+                                    {ex.arquivo.nomeArquivo}{ex.arquivo.marcadorFalta ? ' · bloco de notas (falta)' : ''}
+                                  </span>
+                                </span>
+                                {!ex.arquivo.marcadorFalta && <span className="shrink-0 font-medium text-aviation-700 dark:text-aviation-300">Ver</span>}
+                              </button>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
                   </li>
                 );
               })}

@@ -6,7 +6,7 @@ import {
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { hojeLocalISO } from '../../utils/datas';
 import {
-  PASTAS_DRIVE, PASTA_EXTRAS, TIPOS_COM_VALIDADE_PROPRIA, avaliarPessoa, posicaoNaPasta, documentosDaPastaEscolhida, tipoPeloNome, tiposEncontrados,
+  CARGOS_DOCUMENTOS, PASTAS_DRIVE, PASTA_EXTRAS, TIPOS_COM_VALIDADE_PROPRIA, avaliarPessoa, posicaoNaPasta, documentosDaPastaEscolhida, tipoPeloNome, tiposEncontrados,
   type ConfigDocumentos, type DocumentoAvaliado, type SituacaoDocumento, type ArquivoDrive,
 } from './regrasDrive';
 
@@ -299,10 +299,12 @@ function CardDocumento({ doc, onAbrir }: { doc: DocumentoAvaliado; onAbrir: (doc
   );
 }
 
-export function PastasDrive({ arquivos, config, hojeISO, onAbrir }: {
+export function PastasDrive({ arquivos, config, hojeISO, onAbrir, cargo }: {
   arquivos: ArquivoDrive[]; config: ConfigDocumentos; hojeISO: string; onAbrir: (doc: DocumentoAvaliado) => void;
+  /** Cargo da pessoa: decide o que é obrigatório para ela. */
+  cargo?: string | null;
 }) {
-  const { porPasta } = useMemo(() => avaliarPessoa(arquivos, config, hojeISO), [arquivos, config, hojeISO]);
+  const { porPasta } = useMemo(() => avaliarPessoa(arquivos, config, hojeISO, cargo), [arquivos, config, hojeISO, cargo]);
   return (
     <div className="space-y-4">
       {PASTAS_DRIVE.map(pasta => {
@@ -514,6 +516,12 @@ export function ValidadeDocumentos({ config, onChange, encontrados, exemplos, on
     const apelidos = Object.fromEntries(Object.entries(config.apelidos ?? {}).map(([de, para]) => [de, para === tipo ? alvo : para]));
     apelidos[tipo] = alvo;
     onChange({ ...config, apelidos, obrigatorios: config.obrigatorios.filter(t => t !== tipo) });
+  }
+
+  function alternarCargo(tipo: string, cargo: string | null) {
+    const atuais = config.cargosObrigatorio?.[tipo] ?? [];
+    const novos = cargo === null ? [] : atuais.includes(cargo) ? atuais.filter(c => c !== cargo) : [...atuais, cargo];
+    onChange({ ...config, cargosObrigatorio: { ...(config.cargosObrigatorio ?? {}), [tipo]: novos } });
   }
 
   function separar(variante: string) {
@@ -778,6 +786,21 @@ export function ValidadeDocumentos({ config, onChange, encontrados, exemplos, on
                       <button type="button" onClick={() => removerAdicionado(tipo)} aria-label={`Remover ${tipo}`} title="Remover"
                         className="rounded-lg p-1.5 text-graphite-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"><Trash2 className="h-4 w-4" /></button>
                     ) : <span className="w-7" aria-hidden />}
+                    {config.obrigatorios.includes(tipo) && (() => {
+                      const cargos = config.cargosObrigatorio?.[tipo] ?? [];
+                      const chip = (ativo: boolean) => `rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                        ativo ? 'border-aviation-500 bg-aviation-600 text-white' : 'border-graphite-300 text-graphite-600 hover:border-aviation-400 dark:border-border-dark dark:text-graphite-300'
+                      }`;
+                      return (
+                        <span className="order-last flex w-full flex-wrap items-center gap-1 pl-0.5 text-[11px] text-graphite-500 dark:text-graphite-400">
+                          Obrigatório para:
+                          <button type="button" onClick={() => alternarCargo(tipo, null)} aria-pressed={cargos.length === 0} className={chip(cargos.length === 0)}>Todos</button>
+                          {CARGOS_DOCUMENTOS.map(c => (
+                            <button key={c} type="button" onClick={() => alternarCargo(tipo, c)} aria-pressed={cargos.includes(c)} className={chip(cargos.includes(c))}>{c}</button>
+                          ))}
+                        </span>
+                      );
+                    })()}
                     {vendo === `${pasta.id}|${tipo}` && (
                       <ul className="order-last w-full divide-y divide-graphite-100 overflow-hidden rounded-xl border border-graphite-200 bg-graphite-50/60 dark:divide-border-dark dark:border-border-dark dark:bg-surface-elevated">
                         {(exemplos?.get(`${pasta.id}|${tipo}`) ?? [])

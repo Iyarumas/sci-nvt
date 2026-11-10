@@ -489,7 +489,8 @@ function FuncionarioCard({
   const [expanded, setExpanded] = useState(false);
   const [mostrarAnexados, setMostrarAnexados] = useState(false);
   const [infoCredencial, setInfoCredencial] = useState(false);
-  const resumoDrive = useMemo(() => avaliarPessoa(arquivosDrive, configDrive, hojeISO), [arquivosDrive, configDrive, hojeISO]);
+  const resumoDrive = useMemo(() => avaliarPessoa(arquivosDrive, configDrive, hojeISO, funcionario.cargo),
+    [arquivosDrive, configDrive, hojeISO, funcionario.cargo]);
   const temAnexados = certNR.length + certCurso.length > 0;
   const credencial = credencialDoCadastro(funcionario, resumoDrive.porPasta, configDrive, hojeISO);
   const cursosInternos = CURSO_OPTIONS.filter(c => c.categoria === 'interno');
@@ -549,7 +550,7 @@ function FuncionarioCard({
                 Os documentos do Google Drive ainda não estão disponíveis.
               </p>
             ) : (
-              <PastasDrive arquivos={arquivosDrive} config={configDrive} hojeISO={hojeISO}
+              <PastasDrive arquivos={arquivosDrive} config={configDrive} hojeISO={hojeISO} cargo={funcionario.cargo}
                 onAbrir={(doc: DocumentoAvaliado) => onAbrirDrive(doc, funcionario.nomeCompleto)} />
             )}
           </div>

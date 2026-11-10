@@ -75,6 +75,24 @@ export interface ConfigDocumentos {
   padroes?: Record<string, Record<string, string>>;
   /** Nomes juntados: apelidos["COMLIANCE"] = "COMPLIANCE". */
   apelidos?: Record<string, string>;
+  /** Para quais cargos o documento é obrigatório (vazio/sem entrada = todos). Ex.: CVE → ["BA-MC"]. */
+  cargosObrigatorio?: Record<string, string[]>;
+}
+
+export const CARGOS_DOCUMENTOS = ['BA-2', 'BA-MC', 'BA-CE', 'BA-LR', 'BA-RE', 'GS', 'OC'] as const;
+
+/** Obrigatórios por cargo já combinados com o usuário. */
+export const CARGOS_OBRIGATORIO_INICIAIS: Record<string, string[]> = {
+  CVE: ['BA-MC'],
+  'MOTORISTA CONDUTOR (BA-MC)': ['BA-MC'],
+  'CHEFE DE EQUIPE (BA-CE)': ['BA-CE', 'BA-LR'],
+};
+
+/** O documento é obrigatório para quem tem esse cargo? */
+export function obrigatorioPara(tipo: string, cargo: string | null | undefined, config: ConfigDocumentos): boolean {
+  if (!config.obrigatorios.includes(tipo)) return false;
+  const cargos = config.cargosObrigatorio?.[tipo];
+  return !cargos || cargos.length === 0 || (!!cargo && cargos.includes(cargo));
 }
 
 /** Padrão de nomes e números das pastas, como está no Drive. */
@@ -303,7 +321,17 @@ export function avaliarArquivo(arquivo: ArquivoDrive, config: ConfigDocumentos, 
 const MELHOR: Record<SituacaoDocumento, number> = { emdia: 4, vence: 3, neutro: 2, vencido: 1, falta: 0 };
 
 /** Documentos da pessoa por pasta, incluindo os obrigatórios que não estão na pasta ("Falta"). */
-export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos, hojeISO: string) {
+/**
+ * Documento que a pessoa NÃO é obrigada a ter não fica vermelho nem amarelo: vencido/vencendo/falta viram
+ * cinza com "não obrigatório" (só aparece para informação).
+ */
+function suavizarSeNaoObrigatorio(doc: DocumentoAvaliado, obrigatorio: boolean): DocumentoAvaliado {
+  if (obrigatorio || (doc.situacao !== 'vencido' && doc.situacao !== 'vence' && doc.situacao !== 'falta')) return doc;
+  const texto = doc.situacao === 'falta' ? 'Não tem · não obrigatório' : `${doc.texto} · não obrigatório`;
+  return { ...doc, situacao: 'neutro', texto };
+}
+
+export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos, hojeISO: string, cargo?: string | null) {
   const porPasta = new Map<string, DocumentoAvaliado[]>();
   for (const pasta of PASTAS_DRIVE) porPasta.set(pasta.id, []);
   const grupos = new Map<string, ArquivoDrive[]>();
@@ -316,12 +344,12 @@ export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos
     const avaliados = doGrupo.map(a => avaliarArquivo(a, config, hojeISO));
     const melhor = avaliados.reduce((a, b) => (MELHOR[b.situacao] > MELHOR[a.situacao]
       || (MELHOR[b.situacao] === MELHOR[a.situacao] && (b.vencimento ?? '') > (a.vencimento ?? '')) ? b : a));
-    porPasta.get(melhor.pastaId)?.push({ ...melhor, arquivos: doGrupo });
+    porPasta.get(melhor.pastaId)?.push(suavizarSeNaoObrigatorio({ ...melhor, arquivos: doGrupo }, obrigatorioPara(melhor.tipo, cargo, config)));
   }
 
   const tipos = new Set(arquivos.map(a => a.tipo));
   for (const tipo of config.obrigatorios) {
-    if (tipos.has(tipo)) continue;
+    if (tipos.has(tipo) || !obrigatorioPara(tipo, cargo, config)) continue;
     const pastaId = config.adicionados?.find(a => a.tipo === tipo)?.pastaId ?? PASTA_PADRAO[tipo] ?? '04';
     porPasta.get(pastaId)?.push({ arquivo: null, arquivos: [], tipo, pastaId, situacao: 'falta', vencimento: null, texto: 'Não está na pasta' });
   }
@@ -451,11 +479,23 @@ export function lerConfig(): ConfigDocumentos {
     if (salvo) {
       const c = JSON.parse(salvo) as ConfigDocumentos;
       if (c && typeof c.prazos === 'object' && Array.isArray(c.obrigatorios)) {
-        return { ...c, padroes: c.padroes ?? PADROES_INICIAIS, apelidos: c.apelidos ?? {} };
+        const semCargos = !c.cargosObrigatorio;
+        return {
+          ...c, padroes: c.padroes ?? PADROES_INICIAIS, apelidos: c.apelidos ?? {},
+          cargosObrigatorio: c.cargosObrigatorio ?? CARGOS_OBRIGATORIO_INICIAIS,
+          // configuração salva antes dos cargos: entra com os obrigatórios por cargo combinados
+          obrigatorios: semCargos
+            ? [...new Set([...c.obrigatorios, ...Object.keys(CARGOS_OBRIGATORIO_INICIAIS)])]
+            : c.obrigatorios,
+        };
       }
     }
   } catch { /* sem armazenamento: usa o exemplo */ }
-  return { ...CONFIG_EXEMPLO, padroes: PADROES_INICIAIS, apelidos: {} };
+  return {
+    ...CONFIG_EXEMPLO,
+    obrigatorios: [...new Set([...CONFIG_EXEMPLO.obrigatorios, ...Object.keys(CARGOS_OBRIGATORIO_INICIAIS)])],
+    padroes: PADROES_INICIAIS, apelidos: {}, cargosObrigatorio: CARGOS_OBRIGATORIO_INICIAIS,
+  };
 }
 
 export function salvarConfig(config: ConfigDocumentos) {

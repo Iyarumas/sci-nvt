@@ -123,7 +123,7 @@ const BUCKET_ASSINADOS = 'autentique-assinados';
 /**
  * PTR-BA assinado com o PDF guardado: as fotos já estão dentro do PDF e o registro não pode mais ser
  * editado, então saem do banco (cada PTR-BA tem ~1 MB de fotos). A evidência guarda
- * `fotoNoPdfAssinado` para a tela continuar contando a foto. Mesma regra da migração 078.
+ * `fotoNoPdfAssinado` para a tela continuar contando a foto. Mesma regra da migração 087.
  */
 const SQL_TIRAR_FOTOS_PTRBA = `
   UPDATE ptrba_completo_registros r
@@ -138,6 +138,19 @@ const SQL_TIRAR_FOTOS_PTRBA = `
      AND jsonb_typeof(r.evidencias) = 'array'
      AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.evidencias) e
                   WHERE jsonb_typeof(e) = 'object' AND coalesce(e->>'imagem', '') <> '')`;
+
+/** Tira a marca fotoNoPdfAssinado: a foto passa a faltar e precisa ser colocada de novo. */
+const SQL_FOTOS_DE_VOLTA_PTRBA = `
+  UPDATE ptrba_completo_registros r
+     SET evidencias = (
+       SELECT coalesce(jsonb_agg(
+         CASE WHEN jsonb_typeof(e) = 'object' THEN e - 'fotoNoPdfAssinado' ELSE e END
+         ORDER BY ordem), '[]'::jsonb)
+       FROM jsonb_array_elements(r.evidencias) WITH ORDINALITY AS t(e, ordem))
+   WHERE r.id = $1
+     AND jsonb_typeof(r.evidencias) = 'array'
+     AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.evidencias) e
+                  WHERE jsonb_typeof(e) = 'object' AND e ? 'fotoNoPdfAssinado')`;
 
 export interface ParticipanteEnvio {
   funcao?: string;
@@ -1229,15 +1242,16 @@ export class EnviosService {
     if (!isAdmin(user)) throw new ForbiddenException('Só um administrador pode cancelar o envio.');
     const envio = await this.obterEnvio(envioId);
     if (envio.status === 'cancelado') return { id: envio.id };
-    // Depois de assinado as fotos do PTR-BA ficam só no PDF; voltar a editar perderia as imagens.
-    if (envio.tipo === 'ptrba' && envio.status === 'assinado') {
-      throw new BadRequestException('PTR-BA já assinado não pode ser cancelado: as fotos estão só no PDF assinado.');
-    }
     if (!this.ehSimulado(envio)) await this.api.cancelar(envio.autentique_document_id);
     await this.database.query(
       `UPDATE autentique_envios SET status = 'cancelado', cancelado_em = now(), cancelado_por_nome = $2 WHERE id = $1`,
       [envioId, user.username],
     );
+    // PTR-BA assinado cancelado: as fotos tinham ficado só no PDF assinado. Elas voltam a contar como
+    // faltando, para serem colocadas de novo antes do próximo envio (a tela avisa antes de cancelar).
+    if (envio.tipo === 'ptrba') {
+      await this.database.query(SQL_FOTOS_DE_VOLTA_PTRBA, [envio.referencia_id]);
+    }
     // TP/EPR, TAF e Posicionamento cancelados voltam a ser rascunho, para corrigir e enviar de novo.
     if (envio.tipo === 'tpepr' || envio.tipo === 'taf' || envio.tipo === 'posicionamento' || envio.tipo === 'temporesposta') {
       await this.database.query(

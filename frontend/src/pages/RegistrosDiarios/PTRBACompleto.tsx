@@ -1104,7 +1104,7 @@ function PTRBACompletoCard({
                 <RefreshCw className={`h-4 w-4 ${atualizando ? 'animate-spin' : ''}`} /> {atualizando ? 'Atualizando...' : 'Atualizar assinaturas'}
               </button>
             )}
-            {!rascunho && situacao !== 'assinado' && podeCancelarEnvio && (
+            {!rascunho && podeCancelarEnvio && (
               <button type="button" onClick={onCancelarEnvio} className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
                 <Ban className="h-4 w-4" /> Cancelar envio
               </button>
@@ -1726,6 +1726,12 @@ export function PTRBACompletoPage() {
               <li>As assinaturas já feitas deixam de valer.</li>
               <li>O PTR-BA volta a ser rascunho, para corrigir e enviar de novo.</li>
             </ul>
+            {confirmCancelarEnvio.status === 'assinado' && (
+              <p className="-mt-3 mb-6 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-medium text-red-700 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-300">
+                Este PTR-BA já foi assinado. As fotos ficaram só no PDF assinado: se cancelar, <strong>todas as fotos
+                terão que ser colocadas novamente</strong> antes de enviar de novo.
+              </p>
+            )}
             <div className="flex justify-end gap-3">
               <button onClick={() => setConfirmCancelarEnvio(null)} className="rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2 text-sm font-medium text-graphite-700 shadow-sm transition-all hover:bg-graphite-50 dark:border-border-dark dark:bg-surface-card/80 dark:text-graphite-200">
                 Não, voltar

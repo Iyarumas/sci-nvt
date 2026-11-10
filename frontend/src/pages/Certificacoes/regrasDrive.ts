@@ -322,13 +322,14 @@ const MELHOR: Record<SituacaoDocumento, number> = { emdia: 4, vence: 3, neutro: 
 
 /** Documentos da pessoa por pasta, incluindo os obrigatórios que não estão na pasta ("Falta"). */
 /**
- * Documento que a pessoa NÃO é obrigada a ter não fica vermelho nem amarelo: vencido/vencendo/falta viram
- * cinza com "não obrigatório" (só aparece para informação).
+ * Documento que a pessoa NÃO é obrigada a ter: se ela tem, fica verde (mesmo vencido, com o aviso no texto);
+ * se não tem, fica cinza "Não tem · não obrigatório". Nunca vermelho nem amarelo.
  */
 function suavizarSeNaoObrigatorio(doc: DocumentoAvaliado, obrigatorio: boolean): DocumentoAvaliado {
-  if (obrigatorio || (doc.situacao !== 'vencido' && doc.situacao !== 'vence' && doc.situacao !== 'falta')) return doc;
-  const texto = doc.situacao === 'falta' ? 'Não tem · não obrigatório' : `${doc.texto} · não obrigatório`;
-  return { ...doc, situacao: 'neutro', texto };
+  if (obrigatorio) return doc;
+  if (doc.situacao === 'falta') return { ...doc, situacao: 'neutro', texto: 'Não tem · não obrigatório' };
+  const texto = doc.situacao === 'vencido' || doc.situacao === 'vence' ? `${doc.texto} · não obrigatório` : doc.texto;
+  return { ...doc, situacao: 'emdia', texto };
 }
 
 export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos, hojeISO: string, cargo?: string | null) {

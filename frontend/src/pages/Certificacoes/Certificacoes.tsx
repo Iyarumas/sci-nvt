@@ -32,9 +32,10 @@ import { dataLocalISO, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
 import { isAdministradorSistema } from '../../utils/permissoes';
 import {
-  avaliarArquivo, avaliarPessoa, documentosExemplo, lerConfig, salvarConfig,
+  arquivosDoServidor, avaliarArquivo, avaliarPessoa, documentosExemplo, lerConfig, salvarConfig,
   type ArquivoDrive, type ConfigDocumentos, type DocumentoAvaliado,
 } from './regrasDrive';
+import { abrirArquivoDrive, buscarDocumentosDrive, informarDataDrive, type DocumentosDriveApi } from '../../services/driveDocumentosService';
 import { CrachaValidade, InfoCredencial, alertaCursosAsur, PastasDrive, ResumoDrive, TIPO_CRACHA, ValidadeDocumentos, VisualizadorDocumento } from './DriveDocumentos';
 
 const NR_COLORS: Record<string, string> = {
@@ -719,17 +720,52 @@ export function Certificacoes() {
     salvarConfig(config);
   }
 
-  // Dados de exemplo até o servidor estar ligado ao Google Drive.
+  // Documentos do Google Drive (lidos pelo servidor). Sem Drive configurado, a tela usa dados de exemplo.
+  const [drive, setDrive] = useState<DocumentosDriveApi | null>(null);
+  const [driveEstado, setDriveEstado] = useState<'carregando' | 'drive' | 'exemplo' | 'erro'>('carregando');
+
+  async function carregarDrive(atualizar = false, silencioso = false) {
+    if (!silencioso) setDriveEstado('carregando');
+    try {
+      const resposta = await buscarDocumentosDrive(atualizar);
+      setDrive(resposta);
+      setDriveEstado(resposta.configurado ? 'drive' : 'exemplo');
+    } catch {
+      if (!silencioso) setDriveEstado('erro');
+    }
+  }
+
+  // Enquanto o servidor lê as datas dos PDFs, a tela se atualiza sozinha a cada 20 segundos.
+  useEffect(() => {
+    if (!drive?.leituraDatas?.lendo) return;
+    const t = window.setTimeout(() => carregarDrive(false, true), 20_000);
+    return () => window.clearTimeout(t);
+  }, [drive]);
+
+  useEffect(() => { if (permissoesReady && canViewCertificacoes) carregarDrive(); }, [permissoesReady, canViewCertificacoes]);
+
   const arquivosDrivePorPessoa = useMemo(() => {
     const mapa = new Map<string, ArquivoDrive[]>();
+    const doDrive = new Map((drive?.pessoas ?? []).map(p => [p.bombeiroId, p]));
     for (const b of bombeiros) {
+      const arquivos = driveEstado === 'drive'
+        ? (doDrive.has(b.id) ? arquivosDoServidor(doDrive.get(b.id)!.arquivos, doDrive.get(b.id)!.pasta, configDrive) : [])
+        : driveEstado === 'exemplo' ? documentosExemplo(b.id, hojeISO) : [];
       // CNH e credencial: a validade é a que está no cadastro da pessoa.
       const doCadastro: Record<string, string> = { CNH: b.cnhValidade, [TIPO_CRACHA]: b.credencialValidade };
-      mapa.set(b.id, documentosExemplo(b.id, hojeISO).map(a =>
-        a.tipo in doCadastro ? { ...a, validadePropria: doCadastro[a.tipo] || null } : a));
+      mapa.set(b.id, arquivos.map(a => (a.tipo in doCadastro ? { ...a, validadePropria: doCadastro[a.tipo] || null } : a)));
     }
     return mapa;
-  }, [bombeiros, hojeISO]);
+  }, [bombeiros, hojeISO, drive, driveEstado, configDrive]);
+
+  const tiposDoDrive = useMemo(() => {
+    const vistos = new Map<string, string>();
+    for (const arquivos of arquivosDrivePorPessoa.values()) {
+      for (const a of arquivos) if (!vistos.has(a.tipo)) vistos.set(a.tipo, a.pastaId);
+    }
+    return [...vistos].map(([tipo, pastaId]) => ({ tipo, pastaId }))
+      .sort((a, b) => a.pastaId.localeCompare(b.pastaId) || a.tipo.localeCompare(b.tipo, 'pt-BR', { numeric: true }));
+  }, [arquivosDrivePorPessoa]);
 
   const podeFiltrar = canManageCertificacoes;
 
@@ -833,9 +869,40 @@ export function Certificacoes() {
     <PageContainer>
       <PageTitle icon={Award} title="Certificações" />
 
-      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/15 dark:text-amber-300">
-        <strong>Dados de exemplo.</strong> Os documentos abaixo são simulados enquanto o sistema não está ligado ao Google Drive.
-      </div>
+      {driveEstado === 'exemplo' ? (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/15 dark:text-amber-300">
+          <strong>Dados de exemplo.</strong> Os documentos abaixo são simulados enquanto o sistema não está ligado ao Google Drive.
+        </div>
+      ) : (
+        <div className={`mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border px-4 py-2.5 text-xs ${
+          driveEstado === 'erro'
+            ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800/50 dark:bg-red-900/15 dark:text-red-300'
+            : 'border-graphite-200 bg-white text-graphite-600 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300'
+        }`}>
+          <span className="flex-1">
+            {driveEstado === 'carregando' && 'Lendo os documentos no Google Drive…'}
+            {driveEstado === 'erro' && 'Não foi possível ler o Google Drive agora.'}
+            {driveEstado === 'drive' && drive && (<>
+              <strong>Google Drive</strong> · {drive.pessoas.length} pasta(s) ligadas ao cadastro
+              {drive.atualizadoEm && ` · lido às ${new Date(drive.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+              {drive.leituraDatas?.lendo && (
+                <span className="ml-1 text-aviation-700 dark:text-aviation-300">
+                  · lendo as datas dos PDFs: {drive.leituraDatas.feitos} de {drive.leituraDatas.total}
+                </span>
+              )}
+              {drive.semVinculo.length > 0 && (
+                <span className="ml-1 font-semibold text-amber-700 dark:text-amber-400" title={drive.semVinculo.map(s => s.pasta).join('\n')}>
+                  · {drive.semVinculo.length} pasta(s) sem pessoa ligada
+                </span>
+              )}
+            </>)}
+          </span>
+          <button type="button" onClick={() => carregarDrive(true)} disabled={driveEstado === 'carregando'}
+            className="rounded-lg border border-graphite-300 bg-white px-2.5 py-1 font-medium text-graphite-700 hover:border-aviation-400 disabled:opacity-50 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+            Atualizar
+          </button>
+        </div>
+      )}
 
       {podeEditarValidade && (
         <div role="tablist" className="mb-5 inline-flex rounded-xl border border-graphite-200 bg-graphite-50 p-1 dark:border-border-dark dark:bg-surface-card">
@@ -851,7 +918,7 @@ export function Certificacoes() {
       )}
 
       {aba === 'validade' && podeEditarValidade ? (
-        <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive} />
+        <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive} encontrados={driveEstado === 'drive' ? tiposDoDrive : undefined} />
       ) : (<>
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-3">
@@ -921,7 +988,13 @@ export function Certificacoes() {
 
       </>)}
 
-      {docAberto && <VisualizadorDocumento doc={docAberto.doc} pessoaNome={docAberto.pessoaNome} onClose={() => setDocAberto(null)} />}
+      {docAberto && <VisualizadorDocumento doc={docAberto.doc} pessoaNome={docAberto.pessoaNome} onClose={() => setDocAberto(null)}
+        carregar={driveEstado === 'drive' ? (arquivo => abrirArquivoDrive(arquivo.id)) : undefined}
+        onInformarData={driveEstado === 'drive' && canManageCertificacoes ? async (arquivo, data) => {
+          await informarDataDrive(arquivo.id, data);
+          setDocAberto(null);
+          await carregarDrive();
+        } : undefined} />}
       {arquivoModal && <ArquivoModal arquivo={arquivoModal.arquivo} title={arquivoModal.title} onClose={() => setArquivoModal(null)} />}
       <PageTour
         steps={CERTIFICACOES_TOUR_STEPS}

@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { AutentiqueModule } from './autentique/autentique.module';
 import { DatabaseModule } from './database/database.module';
+import { DriveModule } from './drive/drive.module';
 import { HealthModule } from './health/health.module';
 import { PublicModule } from './public/public.module';
 import { ResourcesModule } from './resources/resources.module';
@@ -22,6 +23,7 @@ import { LocalStorageModule } from './storage/local-storage.module';
     RpcModule,
     LocalStorageModule,
     AutentiqueModule,
+    DriveModule,
   ],
 })
 export class AppModule {}

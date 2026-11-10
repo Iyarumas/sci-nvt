@@ -1,8 +1,22 @@
 # Documentos do Google Drive na tela de Certificações
 
-Situação da branch `feat/drive-documentos` (10/11/2026): **tela pronta com dados de exemplo**, ainda sem ligação
-com o Drive. Código em `frontend/src/pages/Certificacoes/` (`regrasDrive.ts` = regras e exemplo;
-`DriveDocumentos.tsx` = blocos, visualizador, credencial e aba de validade).
+Situação da branch `feat/drive-documentos` (10/11/2026): **ligada ao Google Drive de verdade** (local), ainda não
+está no ar. Frontend em `frontend/src/pages/Certificacoes/` (`regrasDrive.ts`, `DriveDocumentos.tsx`); servidor em
+`backend/src/drive/`; tabela `drive_datas` (migração 084).
+
+## Ligação com o Drive
+
+- Conta de serviço do Google (projeto `sci-nvt`, sem faturamento), **Leitor** só na pasta principal
+  ("Controle Documentos"). Variáveis: `GOOGLE_DRIVE_PASTA_RAIZ` e `GOOGLE_DRIVE_CREDENCIAIS_ARQUIVO` (caminho do
+  .json) ou `GOOGLE_DRIVE_CREDENCIAIS_JSON`. A chave fica fora do repositório.
+- `GET /api/drive/documentos`: lê as pastas (guarda 5 min; `?atualizar=1` lê de novo), liga cada pasta à pessoa
+  do cadastro pelo nome (aceita erro pequeno de digitação; "GS - NOME" pelo cargo; ignora pasta PADRÃO) e respeita
+  o acesso da tela (admin/GS tudo; BA-CE/BA-LR só a equipe do cadastro).
+- `GET /api/drive/arquivo/:id`: abre o arquivo pelo servidor, só se ele estiver na pasta principal.
+- Datas: o servidor lê o texto de cada PDF em segundo plano (pdf-parse) e acha a data do curso ("realizado em",
+  "Data de Conclusão", "período de … a …", emissão); grava em `drive_datas` e só relê se o arquivo mudar.
+  `POST /api/drive/data` = data informada à mão (admin/GS), para PDF sem texto.
+- Bloco de notas (.txt) na pasta = documento faltando ("Falta · marcado na pasta"), menos em Cursos Extras.
 
 ## O que a tela já faz (com dados de exemplo)
 
@@ -17,7 +31,8 @@ com o Drive. Código em `frontend/src/pages/Certificacoes/` (`regrasDrive.ts` = 
 - Amarelo com 3 meses; cursos ASUR com 4 meses. Cursos extras (pasta 04) aparecem como "Curso extra", sem prazo.
 - Aba **Validade dos documentos** (só administrador): meses, obrigatório, **Adicionar documento** em cada pasta e
   **Ler pasta do computador** (lê só os nomes dos arquivos de uma pasta do Drive montado no Windows).
-- Prazos e obrigatórios ficam por enquanto no navegador (localStorage); vão para o banco na ligação com o Drive.
+- Nº padrão por pasta (01, 02 e 03 vieram do usuário) e "Juntar com…" para nomes escritos de jeitos diferentes.
+- Prazos, obrigatórios, Nº e nomes juntados ainda ficam no navegador (localStorage): falta passar para o banco.
 
 ## O que foi combinado
 
@@ -53,9 +68,7 @@ servidor (variáveis de ambiente), nunca no repositório nem no chat.
 
 ## Próximos passos
 
-1. Usuário cria a conta de serviço (Leitor só na pasta principal) e passa o e-mail dela e o link da pasta.
-2. Servidor: listar pastas/arquivos por pessoa e abrir arquivo (conferindo que está dentro da pasta principal).
-3. Ligar a pasta à pessoa pelo nome; as que não casarem, o administrador liga uma vez na aba.
-4. Tabelas no banco: prazos/obrigatórios/adicionados e data do curso por documento de cada pessoa.
-5. Leitura da data dentro do PDF (foto: data informada no card).
-6. Falta saber como as pastas das pessoas estão nomeadas (nome completo, de guerra, com número?).
+1. Passar prazos/obrigatórios/Nº/nomes juntados para o banco (valer para todos os administradores).
+2. Padrão das pastas 04, 05 e 06 (o usuário vai mandar) e os prazos reais em meses.
+3. Ligar à mão as pastas que não casaram com o cadastro.
+4. Colocar no ar: migração 084, variáveis do Drive e a chave .json no servidor (fora do repositório).

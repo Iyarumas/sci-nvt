@@ -290,7 +290,7 @@ function CardDocumento({ doc, onAbrir }: { doc: DocumentoAvaliado; onAbrir: (doc
     </>
   );
   const classe = `group flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${estilo.card}`;
-  if (!doc.arquivo) return <div className={classe}>{conteudo}</div>;
+  if (!doc.arquivo || doc.arquivo.marcadorFalta) return <div className={classe}>{conteudo}</div>;
   return (
     <button type="button" onClick={() => onAbrir(doc)} title={`Ver ${doc.arquivo.nomeArquivo}`}
       className={`${classe} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aviation-500/40 active:scale-[0.99]`}>
@@ -362,9 +362,17 @@ function arquivoDeExemplo(doc: DocumentoAvaliado, arquivo: ArquivoDrive): Promis
   return Promise.resolve({ pdf: pdf.output('arraybuffer') });
 }
 
-export function VisualizadorDocumento({ doc, pessoaNome, onClose }: {
+export function VisualizadorDocumento({ doc, pessoaNome, onClose, carregar, onInformarData }: {
   doc: DocumentoAvaliado; pessoaNome: string; onClose: () => void;
+  /** Só para quem pode corrigir a data (administrador/GS). */
+  onInformarData?: (arquivo: ArquivoDrive, data: string | null) => Promise<void>;
+  /** Busca o arquivo de verdade (Drive). Sem ele, mostra um arquivo de exemplo. */
+  carregar?: (arquivo: ArquivoDrive) => Promise<{ pdf?: ArrayBuffer; imagem?: string }>;
 }) {
+  const [erro, setErro] = useState('');
+  const [editandoData, setEditandoData] = useState(false);
+  const [novaData, setNovaData] = useState('');
+  const [salvandoData, setSalvandoData] = useState(false);
   const [conteudo, setConteudo] = useState<{ pdf?: ArrayBuffer; imagem?: string } | null>(null);
   const [indice, setIndice] = useState(() => Math.max(0, doc.arquivos.findIndex(a => a.id === doc.arquivo?.id)));
   const arquivo = doc.arquivos[indice] ?? doc.arquivo!;
@@ -373,7 +381,10 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose }: {
   useEffect(() => {
     let cancelado = false;
     setConteudo(null);
-    arquivoDeExemplo(doc, arquivo).then(c => { if (!cancelado) setConteudo(c); });
+    setErro('');
+    (carregar ? carregar(arquivo) : arquivoDeExemplo(doc, arquivo))
+      .then(c => { if (!cancelado) setConteudo(c); })
+      .catch(() => { if (!cancelado) setErro('Não foi possível abrir o documento agora.'); });
     return () => { cancelado = true; };
   }, [doc, arquivo]);
 
@@ -393,6 +404,32 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose }: {
             <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
               {arquivo.nomeArquivo} · <span className={`font-medium ${estilo.texto}`}>{doc.texto}</span>
             </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-graphite-500 dark:text-graphite-400">
+              <span>
+                Data do curso: <strong className="text-graphite-800 dark:text-graphite-200">
+                  {arquivo.dataCurso ? arquivo.dataCurso.split('-').reverse().join('/') : 'não encontrada'}
+                </strong>
+                {arquivo.origemData && ` (${arquivo.origemData === 'informada' ? 'informada' : 'lida do PDF'})`}
+              </span>
+              {onInformarData && !editandoData && (
+                <button type="button" onClick={() => { setNovaData(arquivo.dataCurso ?? ''); setEditandoData(true); }}
+                  className="rounded-md border border-graphite-300 px-2 py-0.5 font-medium text-graphite-700 hover:border-aviation-400 dark:border-border-dark dark:text-graphite-200">
+                  {arquivo.dataCurso ? 'Corrigir data' : 'Informar data'}
+                </button>
+              )}
+              {onInformarData && editandoData && (
+                <form className="flex items-center gap-1.5" onSubmit={async e => {
+                  e.preventDefault();
+                  setSalvandoData(true);
+                  try { await onInformarData(arquivo, novaData || null); setEditandoData(false); } finally { setSalvandoData(false); }
+                }}>
+                  <input type="date" value={novaData} onChange={e => setNovaData(e.target.value)} aria-label="Data do curso"
+                    className="rounded-md border border-graphite-300 bg-white px-2 py-0.5 text-xs text-graphite-900 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100" />
+                  <button type="submit" disabled={salvandoData} className="rounded-md bg-aviation-600 px-2 py-0.5 font-medium text-white disabled:opacity-50">Salvar</button>
+                  <button type="button" onClick={() => setEditandoData(false)} className="px-1 font-medium text-graphite-500">Cancelar</button>
+                </form>
+              )}
+            </div>
           </div>
           {doc.arquivos.length > 1 && (
             <div className="flex shrink-0 gap-1 rounded-lg bg-graphite-100 p-0.5 dark:bg-surface-card">
@@ -407,7 +444,9 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose }: {
           <button onClick={onClose} aria-label="Fechar" className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-auto bg-graphite-100 p-4 dark:bg-surface-card">
-          {!conteudo ? (
+          {erro ? (
+            <p className="py-16 text-center text-sm text-red-600">{erro}</p>
+          ) : !conteudo ? (
             <p className="py-16 text-center text-sm text-graphite-500">Carregando documento...</p>
           ) : conteudo.pdf ? (
             <PdfPreview pdfData={conteudo.pdf} fields={[]} />
@@ -425,19 +464,50 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose }: {
 /* ───────── Aba "Validade dos documentos" (administrador) ───────── */
 
 
-export function ValidadeDocumentos({ config, onChange }: { config: ConfigDocumentos; onChange: (c: ConfigDocumentos) => void }) {
+export function ValidadeDocumentos({ config, onChange, encontrados }: {
+  config: ConfigDocumentos; onChange: (c: ConfigDocumentos) => void;
+  /** Documentos achados nas pastas do Drive (sem isso, usa a lista de exemplo). */
+  encontrados?: Array<{ tipo: string; pastaId: string }>;
+}) {
   const [adicionando, setAdicionando] = useState<string | null>(null);
   const [novo, setNovo] = useState({ nome: '', prazo: '', obrigatorio: true });
   const [erroNovo, setErroNovo] = useState('');
 
   const tipos = useMemo(() => {
     const lista: Array<{ tipo: string; pastaId: string; manual: boolean }> =
-      tiposEncontrados().map(t => ({ ...t, manual: false }));
+      (encontrados ?? tiposEncontrados()).map(t => ({ ...t, manual: false }));
     for (const a of config.adicionados ?? []) {
       if (!lista.some(t => t.tipo === a.tipo)) lista.push({ ...a, manual: true });
     }
     return lista;
-  }, [config.adicionados]);
+  }, [config.adicionados, encontrados]);
+
+  /** Nº padrão do documento na pasta (arquivo "05 - …" na pasta 01 = CNH, qualquer que seja o nome). */
+  function numeroDe(pastaId: string, tipo: string): string {
+    const daPasta = config.padroes?.[pastaId] ?? {};
+    return Object.keys(daPasta).find(n => daPasta[n] === tipo) ?? '';
+  }
+
+  function mudarNumero(pastaId: string, tipo: string, valor: string) {
+    const limpo = valor.replace(/\D/g, '').slice(0, 2);
+    const daPasta = Object.fromEntries(Object.entries(config.padroes?.[pastaId] ?? {}).filter(([, t]) => t !== tipo));
+    if (limpo) daPasta[limpo.padStart(2, '0')] = tipo;
+    onChange({ ...config, padroes: { ...(config.padroes ?? {}), [pastaId]: daPasta } });
+  }
+
+  /** "COMLIANCE" passa a contar como "COMPLIANCE" (e o que já estava juntado nele também). */
+  function juntar(tipo: string, alvo: string) {
+    if (!alvo || alvo === tipo) return;
+    const apelidos = Object.fromEntries(Object.entries(config.apelidos ?? {}).map(([de, para]) => [de, para === tipo ? alvo : para]));
+    apelidos[tipo] = alvo;
+    onChange({ ...config, apelidos, obrigatorios: config.obrigatorios.filter(t => t !== tipo) });
+  }
+
+  function separar(variante: string) {
+    const apelidos = { ...(config.apelidos ?? {}) };
+    delete apelidos[variante];
+    onChange({ ...config, apelidos });
+  }
 
   function abrirAdicionar(pastaId: string) {
     setAdicionando(pastaId);
@@ -630,6 +700,32 @@ export function ValidadeDocumentos({ config, onChange }: { config: ConfigDocumen
                       {indefinido && <span className="ml-2 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Novo · definir</span>}
                       {manual && <span className="ml-2 rounded-full bg-aviation-50 px-1.5 py-0.5 text-[10px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">Adicionado</span>}
                     </span>
+                    {(() => {
+                      const juntados = Object.entries(config.apelidos ?? {}).filter(([, para]) => para === tipo).map(([de]) => de);
+                      return juntados.length > 0 && (
+                        <span className="order-last flex w-full flex-wrap items-center gap-1 pl-0.5 text-[11px] text-graphite-500 dark:text-graphite-400">
+                          Também conta como {tipo}:
+                          {juntados.map(j => (
+                            <span key={j} className="inline-flex items-center gap-1 rounded-full bg-graphite-100 py-0.5 pl-2 pr-1 dark:bg-surface-elevated">
+                              {j}
+                              <button type="button" onClick={() => separar(j)} aria-label={`Separar ${j}`} title="Separar"
+                                className="rounded-full p-0.5 text-graphite-400 hover:bg-graphite-200 hover:text-graphite-700 dark:hover:bg-surface-hover"><X className="h-3 w-3" /></button>
+                            </span>
+                          ))}
+                        </span>
+                      );
+                    })()}
+                    <label className="flex items-center gap-1.5 text-xs text-graphite-500 dark:text-graphite-400" title="Número na frente do arquivo nesta pasta">
+                      Nº
+                      <input inputMode="numeric" value={numeroDe(pasta.id, tipo)} onChange={e => mudarNumero(pasta.id, tipo, e.target.value)} placeholder="—"
+                        aria-label={`Número padrão de ${tipo} na pasta`}
+                        className="w-11 rounded-lg border border-graphite-300 bg-white px-1.5 py-1.5 text-center text-sm tabular-nums text-graphite-900 outline-none focus:border-aviation-500 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100" />
+                    </label>
+                    <select value="" onChange={e => juntar(tipo, e.target.value)} aria-label={`Juntar ${tipo} com outro documento`}
+                      className="max-w-[9.5rem] rounded-lg border border-graphite-300 bg-white px-2 py-1.5 text-xs text-graphite-600 outline-none focus:border-aviation-500 dark:border-border-dark dark:bg-surface-card dark:text-graphite-300">
+                      <option value="">Juntar com…</option>
+                      {daPasta.filter(o => o.tipo !== tipo).map(o => <option key={o.tipo} value={o.tipo}>{o.tipo}</option>)}
+                    </select>
                     <label className="flex items-center gap-2 text-xs text-graphite-500 dark:text-graphite-400">
                       <input type="checkbox" checked={config.obrigatorios.includes(tipo)} onChange={e => mudarObrigatorio(tipo, e.target.checked)}
                         className="h-4 w-4 rounded border-graphite-300 text-aviation-600 focus:ring-aviation-500" />

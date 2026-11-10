@@ -46,8 +46,16 @@ export interface ArquivoDrive {
   formato: 'pdf' | 'imagem' | 'outro';
   /** Data do curso/emissão (lida do PDF ou informada no card). */
   dataCurso: string | null;
+  /** Validade escrita no próprio PDF (usada quando o documento não tem prazo em meses). */
+  validadeTexto?: string | null;
+  /** De onde veio a data: "realizado", "conclusão", "período", "informada"… */
+  origemData?: string | null;
+  /** O servidor já tentou ler a data deste arquivo. */
+  dataLida?: boolean;
   /** Validade escrita no próprio documento (ex.: CNH). Tem prioridade sobre o prazo em meses. */
   validadePropria?: string | null;
+  /** Bloco de notas com o nome do documento: na pasta é o aviso de que o documento falta. */
+  marcadorFalta?: boolean;
 }
 
 /** Prazo de cada tipo de documento, em meses. 0 = não vence; null = ainda não definido. */
@@ -63,6 +71,41 @@ export interface ConfigDocumentos {
   obrigatorios: string[];
   /** Documentos que o administrador cadastrou à mão numa pasta (mesmo que ninguém tenha o arquivo ainda). */
   adicionados?: DocumentoAdicionado[];
+  /** Nº padrão de cada documento na pasta: padroes["01"]["05"] = "CNH". Vale mais que o nome do arquivo. */
+  padroes?: Record<string, Record<string, string>>;
+  /** Nomes juntados: apelidos["COMLIANCE"] = "COMPLIANCE". */
+  apelidos?: Record<string, string>;
+}
+
+/** Padrão de nomes e números das pastas, como está no Drive. */
+export const PADROES_INICIAIS: Record<string, Record<string, string>> = {
+  '01': {
+    '01': 'FORMAÇÃO', '02': 'CAP BA + CBA AT', '03': 'CHEFE DE EQUIPE (BA-CE)', '04': 'MOTORISTA CONDUTOR (BA-MC)',
+    '05': 'CNH', '06': 'CVE', '07': 'X6', '08': 'PRIMEIROS SOCORROS',
+  },
+  '02': {
+    '01': 'APAM', '02': 'AVSEC', '03': 'CVA', '04': 'SGSO', '05': 'GERENCIAMENTO DE FAUNA',
+    '06': 'INTEGRAÇÃO DE SEGURANÇA', '07': 'COMPLIANCE',
+  },
+  '03': {
+    '02': 'NR 06', '03': 'NR 10', '04': 'NR 12', '05': 'NR 17', '06': 'NR 18', '07': 'NR 20', '08': 'NR 20 II',
+    '09': 'NR 23', '10': 'NR 32', '11': 'NR 33', '12': 'NR 35',
+  },
+};
+
+/** Número da frente do arquivo ("04B - CURSO BAMC" → "04"). */
+export function numeroDoArquivo(nomeArquivo: string): string | null {
+  const m = nomeArquivo.match(/^\s*(\d{1,3})[A-Z]?\s*[-–.]/i);
+  return m ? m[1].padStart(2, '0') : null;
+}
+
+/** Tipo final do documento: Nº padrão da pasta (só nos arquivos soltos na pasta) → nome juntado → nome lido. */
+export function resolverTipo(nomeArquivo: string, pastaId: string, nomePessoa: string, config: ConfigDocumentos, naRaizDaPasta = true): string {
+  const numero = naRaizDaPasta ? numeroDoArquivo(nomeArquivo) : null;
+  const doNumero = numero ? config.padroes?.[pastaId]?.[numero] : undefined;
+  if (doNumero) return doNumero;
+  const lido = tipoPeloNome(nomeArquivo, nomePessoa);
+  return config.apelidos?.[lido] ?? lido;
 }
 
 export type SituacaoDocumento = 'vencido' | 'vence' | 'emdia' | 'neutro' | 'falta';
@@ -89,6 +132,16 @@ export function tipoPeloNome(nomeArquivo: string, nomePessoa = ''): string {
   let nome = nomeArquivo.replace(/\.[a-z0-9]{2,4}$/i, '');
   nome = nome.replace(/^\s*\d{1,3}[A-Z]?\s*[-–.]\s*/i, '');
   nome = nome.replace(/\(\d+\)/g, '');
+  nome = nome
+    .replace(/\[\s*assinado\s*\]/gi, '')
+    .replace(/[\s_-]+c[oó]pia\b/gi, '')
+    .replace(/[\s_-]+(rotated|edited)\b/gi, '')
+    .replace(/\s+-\s+falta\s*$/i, '')
+    .replace(/\.+\s*$/, '')
+    // Certificados da plataforma: "NOVO_ONBORDING-CERTIFICADO___NOVO_ONBORDING_16906" → "NOVO ONBORDING"
+    .replace(/(.{3,}?)[\s_-]*-?\s*CERTIFICADOS?[\s_].*$/i, '$1')
+    .replace(/_+/g, ' ')
+    .replace(/\s+\d{3,}(-\d+)?\s*$/, '');
   if (nomePessoa) {
     const escapar = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const nomeTodo = nomePessoa.trim().split(/\s+/).map(escapar).join('\\s+');
@@ -99,8 +152,8 @@ export function tipoPeloNome(nomeArquivo: string, nomePessoa = ''): string {
     // "DE", "DA", "DOS"… que sobraram do nome no fim
     nome = nome.replace(/(\s+(DE|DA|DO|DAS|DOS|E))+\s*$/i, '');
   }
-  const nr = nome.match(/\bNR\s*-?\s*(\d{1,2})\b/i);
-  if (nr) return `NR ${nr[1].padStart(2, '0')}`;
+  const nr = nome.match(/\bNR\s*[-_]?\s*(\d{1,2})(?:\s*[-_]?\s*(II|III|IV)\b)?/i);
+  if (nr) return `NR ${nr[1].padStart(2, '0')}${nr[2] ? ` ${nr[2].toUpperCase()}` : ''}`;
   const limpo = nome.replace(/\s*[-–]\s*$/g, '').replace(/\s{2,}/g, ' ').replace(/^[\s-–]+|[\s-–]+$/g, '').toUpperCase();
   return NOMES_CONHECIDOS[limpo] ?? limpo;
 }
@@ -138,6 +191,44 @@ export function documentosDaPastaEscolhida(caminhos: string[]): Array<{ tipo: st
   return [...achados.values()].sort((a, b) => a.pastaId.localeCompare(b.pastaId) || a.tipo.localeCompare(b.tipo));
 }
 
+/** Bloco de notas de aviso: o conteúdo é texto (um ".txt" que na verdade é PDF conta como documento). */
+function ehMarcador(a: { nome: string; mime: string }): boolean {
+  if (a.mime.includes('pdf') || a.mime.startsWith('image/')) return false;
+  return /^text\//.test(a.mime) || /\.txt$/i.test(a.nome);
+}
+
+/** Converte o que o servidor leu do Drive para a tela. */
+export function arquivosDoServidor(
+  arquivos: Array<{
+    id: string; nome: string; pasta: string; caminho: string[]; mime: string;
+    dataCurso?: string | null; validadeTexto?: string | null; origemData?: string | null; dataLida?: boolean;
+  }>,
+  nomePastaPessoa: string,
+  config: ConfigDocumentos,
+): ArquivoDrive[] {
+  // "C - ALINE FABIANA LIMA" → nome da pessoa, para tirar dos nomes do credenciamento
+  const nomePessoa = nomePastaPessoa.replace(/^\s*[A-Z]{1,2}\s*-\s*/i, '').replace(/\s+-\s+.*$/, '');
+  return arquivos
+    .filter(a => !arquivoIgnorado(a.nome) && !a.caminho.some(c => /anterior/i.test(c)))
+    .filter(a => !(a.pasta === PASTA_EXTRAS && ehMarcador(a)))
+    .map(a => {
+      const texto = ehMarcador(a);
+      return {
+        id: a.id,
+        pastaId: a.pasta,
+        nomeArquivo: a.nome,
+        tipo: resolverTipo(a.nome, a.pasta, nomePessoa, config, a.caminho.length === 0),
+        formato: a.mime.includes('pdf') ? 'pdf' as const : a.mime.startsWith('image/') ? 'imagem' as const : 'outro' as const,
+        dataCurso: a.dataCurso ?? null,
+        validadeTexto: a.validadeTexto ?? null,
+        origemData: a.origemData ?? null,
+        dataLida: a.dataLida ?? false,
+        marcadorFalta: texto,
+      };
+    })
+    .filter(a => !!a.tipo);
+}
+
 /** Arquivos que o Windows/Drive cria e não são documentos. */
 export function arquivoIgnorado(nomeArquivo: string): boolean {
   return /^desktop(\.ini)?$/i.test(nomeArquivo) || /^\./.test(nomeArquivo) || /^thumbs\.db$/i.test(nomeArquivo);
@@ -165,6 +256,7 @@ const br = (iso: string) => iso.split('-').reverse().join('/');
 
 export function avaliarArquivo(arquivo: ArquivoDrive, config: ConfigDocumentos, hojeISO: string): DocumentoAvaliado {
   const base = { arquivo, arquivos: [arquivo], tipo: arquivo.tipo, pastaId: arquivo.pastaId };
+  if (arquivo.marcadorFalta) return { ...base, situacao: 'falta', vencimento: null, texto: 'Falta · marcado na pasta' };
   const prazo = config.prazos[arquivo.tipo];
 
   let vencimento: string | null = null;
@@ -174,13 +266,17 @@ export function avaliarArquivo(arquivo: ArquivoDrive, config: ConfigDocumentos, 
     return { ...base, situacao: 'neutro', vencimento: null, texto: 'Validade não cadastrada' };
   } else if (prazo === 0) {
     return { ...base, situacao: 'neutro', vencimento: null, texto: 'Não vence' };
+  } else if ((prazo === null || prazo === undefined) && arquivo.validadeTexto) {
+    vencimento = arquivo.validadeTexto; // validade escrita no próprio documento
   } else if ((prazo === null || prazo === undefined) && arquivo.pastaId === PASTA_EXTRAS) {
     // Cursos extras variam de pessoa para pessoa: aparecem sem cobrar prazo.
     return { ...base, situacao: 'neutro', vencimento: null, texto: 'Curso extra' };
   } else if (prazo === null || prazo === undefined) {
     return { ...base, situacao: 'neutro', vencimento: null, texto: 'Prazo a definir' };
   } else if (!arquivo.dataCurso) {
-    return { ...base, situacao: 'neutro', vencimento: null, texto: 'Falta a data do curso' };
+    const texto = arquivo.formato === 'pdf' && arquivo.dataLida === false ? 'Lendo a data…'
+      : arquivo.dataLida ? 'Data não encontrada no PDF' : 'Falta a data do curso';
+    return { ...base, situacao: 'neutro', vencimento: null, texto };
   } else {
     vencimento = somarMeses(arquivo.dataCurso, prazo);
   }
@@ -347,10 +443,12 @@ export function lerConfig(): ConfigDocumentos {
     const salvo = localStorage.getItem(CHAVE_CONFIG);
     if (salvo) {
       const c = JSON.parse(salvo) as ConfigDocumentos;
-      if (c && typeof c.prazos === 'object' && Array.isArray(c.obrigatorios)) return c;
+      if (c && typeof c.prazos === 'object' && Array.isArray(c.obrigatorios)) {
+        return { ...c, padroes: c.padroes ?? PADROES_INICIAIS, apelidos: c.apelidos ?? {} };
+      }
     }
   } catch { /* sem armazenamento: usa o exemplo */ }
-  return CONFIG_EXEMPLO;
+  return { ...CONFIG_EXEMPLO, padroes: PADROES_INICIAIS, apelidos: {} };
 }
 
 export function salvarConfig(config: ConfigDocumentos) {

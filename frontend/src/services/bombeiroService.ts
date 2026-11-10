@@ -36,20 +36,12 @@ function rowToBombeiro(row: Record<string, unknown>): Bombeiro {
     turno: row.turno as Bombeiro['turno'],
     tipoSanguineo: row.tipo_sanguineo as string,
     cpf: row.cpf as string,
-    rg: row.rg as string,
     cnhNumero: row.cnh_numero as string,
     cnhCategoria: row.cnh_categoria as Bombeiro['cnhCategoria'],
     cnhValidade: row.cnh_validade as string,
     credencialValidade: (row.credencial_validade as string) || '',
     foto: row.foto as string,
     dataDesligamento: row.data_desligamento as string,
-    endereco: row.endereco as string,
-    numeroEndereco: row.numero_endereco as string,
-    complemento: row.complemento as string,
-    bairro: (row.bairro as string) || '',
-    cep: row.cep as string,
-    uf: row.uf as string,
-    municipio: row.municipio as string,
     celular: row.celular as string,
     sexo: row.sexo as Bombeiro['sexo'],
     cursoChefeEquipe: row.curso_chefe_equipe as boolean,
@@ -76,18 +68,10 @@ function rowToBombeiroPublico(row: Record<string, unknown>): Bombeiro {
     data_admissao: '',
     tipo_sanguineo: '',
     cpf: '',
-    rg: '',
     cnh_numero: '',
     cnh_categoria: '',
     cnh_validade: '',
     credencial_validade: '',
-    endereco: '',
-    numero_endereco: '',
-    complemento: '',
-    bairro: '',
-    cep: '',
-    uf: '',
-    municipio: '',
     celular: '',
     sexo: 'M',
     curso_chefe_equipe: false,
@@ -119,20 +103,12 @@ function bombeiroToRow(data: Omit<Bombeiro, 'id' | 'createdAt' | 'updatedAt'>): 
     turno: data.turno,
     tipo_sanguineo: data.tipoSanguineo,
     cpf: data.cpf,
-    rg: data.rg,
     cnh_numero: data.cnhNumero,
     cnh_categoria: data.cnhCategoria,
     cnh_validade: data.cnhValidade,
     credencial_validade: data.credencialValidade,
     foto: data.foto,
     data_desligamento: data.dataDesligamento,
-    endereco: data.endereco,
-    numero_endereco: data.numeroEndereco,
-    complemento: data.complemento,
-    bairro: data.bairro,
-    cep: data.cep,
-    uf: data.uf,
-    municipio: data.municipio,
     celular: data.celular,
     sexo: data.sexo,
     curso_chefe_equipe: data.cursoChefeEquipe,
@@ -273,19 +249,11 @@ export async function atualizarBombeiro(id: string, data: Partial<Bombeiro>): Pr
   if (data.turno !== undefined) row.turno = data.turno;
   if (data.tipoSanguineo !== undefined) row.tipo_sanguineo = data.tipoSanguineo;
   if (data.cpf !== undefined) row.cpf = data.cpf;
-  if (data.rg !== undefined) row.rg = data.rg;
   if (data.cnhNumero !== undefined) row.cnh_numero = data.cnhNumero;
   if (data.cnhCategoria !== undefined) row.cnh_categoria = data.cnhCategoria;
   if (data.cnhValidade !== undefined) row.cnh_validade = data.cnhValidade;
   if (data.foto !== undefined) row.foto = data.foto;
   if (data.dataDesligamento !== undefined) row.data_desligamento = data.dataDesligamento;
-  if (data.endereco !== undefined) row.endereco = data.endereco;
-  if (data.numeroEndereco !== undefined) row.numero_endereco = data.numeroEndereco;
-  if (data.complemento !== undefined) row.complemento = data.complemento;
-  if (data.bairro !== undefined) row.bairro = data.bairro;
-  if (data.cep !== undefined) row.cep = data.cep;
-  if (data.uf !== undefined) row.uf = data.uf;
-  if (data.municipio !== undefined) row.municipio = data.municipio;
   if (data.celular !== undefined) row.celular = data.celular;
   if (data.sexo !== undefined) row.sexo = data.sexo;
   if (data.cursoChefeEquipe !== undefined) row.curso_chefe_equipe = data.cursoChefeEquipe;

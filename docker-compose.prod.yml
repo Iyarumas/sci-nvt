@@ -33,6 +33,8 @@ services:
       AUTENTIQUE_MODO: ${AUTENTIQUE_MODO:-}
       AUTENTIQUE_WEBHOOK_SECRET: ${AUTENTIQUE_WEBHOOK_SECRET:-}
       JWT_SECRET: ${JWT_SECRET:-}
+      GOOGLE_DRIVE_PASTA_RAIZ: ${GOOGLE_DRIVE_PASTA_RAIZ:-}
+      GOOGLE_DRIVE_CREDENCIAIS_JSON: ${GOOGLE_DRIVE_CREDENCIAIS_JSON:-}
       STORAGE_PATH: /app/backend/storage
     volumes:
       - backend_storage:/app/backend/storage

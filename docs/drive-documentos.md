@@ -1,6 +1,23 @@
 # Documentos do Google Drive na tela de Certificações
 
-Situação da branch `feat/drive-documentos`: **só o plano**, nenhum código ainda (10/11/2026).
+Situação da branch `feat/drive-documentos` (10/11/2026): **tela pronta com dados de exemplo**, ainda sem ligação
+com o Drive. Código em `frontend/src/pages/Certificacoes/` (`regrasDrive.ts` = regras e exemplo;
+`DriveDocumentos.tsx` = blocos, visualizador, credencial e aba de validade).
+
+## O que a tela já faz (com dados de exemplo)
+
+- Card da pessoa: faixa com a pior situação, contadores e a **credencial** (validade do cadastro
+  `credencialValidade`, com o tempo que falta). Clicar na credencial mostra só informações: validade e os cursos
+  internos ASUR (pasta 02, base da credencial) vencidos, faltando ou vencendo.
+- Cursos do Cadastro: cadastro **ou** documento no Drive. CURSO BACE = Chefe de Equipe, CURSO BAMC = Motorista
+  Condutor; CNH AD/D/AE/E + CVE em dia = pode dirigir os veículos da SCI. CNH usa `cnhValidade` do cadastro.
+- Nomes dos arquivos: ignora número da frente (inclusive `04B`), extensão, cópias `(1)`, nome da pessoa
+  (credenciamento) e `desktop.ini`; abreviações conhecidas (PS = Primeiros Socorros). Arquivos repetidos do mesmo
+  documento viram um card só (vale o de maior validade; o visualizador alterna entre eles).
+- Amarelo com 3 meses; cursos ASUR com 4 meses. Cursos extras (pasta 04) aparecem como "Curso extra", sem prazo.
+- Aba **Validade dos documentos** (só administrador): meses, obrigatório, **Adicionar documento** em cada pasta e
+  **Ler pasta do computador** (lê só os nomes dos arquivos de uma pasta do Drive montado no Windows).
+- Prazos e obrigatórios ficam por enquanto no navegador (localStorage); vão para o banco na ligação com o Drive.
 
 ## O que foi combinado
 
@@ -36,8 +53,9 @@ servidor (variáveis de ambiente), nunca no repositório nem no chat.
 
 ## Próximos passos
 
-1. Conexão de leitura com o Drive (servidor) e listagem por pessoa.
-2. Tabelas de prazo por documento e de data por documento de cada pessoa.
-3. Tela de Certificações com os blocos por pasta e as cores.
-4. Aba de validade para o administrador.
-5. Leitura da data dentro do PDF.
+1. Usuário cria a conta de serviço (Leitor só na pasta principal) e passa o e-mail dela e o link da pasta.
+2. Servidor: listar pastas/arquivos por pessoa e abrir arquivo (conferindo que está dentro da pasta principal).
+3. Ligar a pasta à pessoa pelo nome; as que não casarem, o administrador liga uma vez na aba.
+4. Tabelas no banco: prazos/obrigatórios/adicionados e data do curso por documento de cada pessoa.
+5. Leitura da data dentro do PDF (foto: data informada no card).
+6. Falta saber como as pastas das pessoas estão nomeadas (nome completo, de guerra, com número?).

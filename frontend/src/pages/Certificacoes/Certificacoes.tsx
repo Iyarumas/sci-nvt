@@ -30,6 +30,12 @@ import {
 } from '../../utils/permissoes';
 import { dataLocalISO, formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
+import { isAdministradorSistema } from '../../utils/permissoes';
+import {
+  avaliarArquivo, avaliarPessoa, documentosExemplo, lerConfig, salvarConfig,
+  type ArquivoDrive, type ConfigDocumentos, type DocumentoAvaliado,
+} from './regrasDrive';
+import { CrachaValidade, InfoCredencial, alertaCursosAsur, PastasDrive, ResumoDrive, TIPO_CRACHA, ValidadeDocumentos, VisualizadorDocumento } from './DriveDocumentos';
 
 const NR_COLORS: Record<string, string> = {
   'NR-1': 'from-slate-500 to-slate-600',
@@ -354,25 +360,139 @@ function CursoFormInline({ funcionarioId, funcionarioNome, onSave, onCancel }: {
   );
 }
 
+/* ───────── Cursos do Cadastro (cadastro + Drive) ───────── */
+
+type CorRequisito = 'green' | 'orange' | 'red' | 'gray';
+
+const COR_REQUISITO: Record<CorRequisito, { card: string; icone: string; texto: string }> = {
+  green: { card: 'border-green-200 bg-green-50/50 dark:border-green-800/40 dark:bg-green-900/10', icone: 'bg-gradient-to-br from-green-500 to-green-600 text-white', texto: 'text-green-600 dark:text-green-400' },
+  orange: { card: 'border-orange-200 bg-orange-50/50 dark:border-orange-800/40 dark:bg-orange-900/10', icone: 'bg-gradient-to-br from-orange-500 to-orange-600 text-white', texto: 'text-orange-600 dark:text-orange-400' },
+  red: { card: 'border-red-200 bg-red-50/50 dark:border-red-800/40 dark:bg-red-900/10', icone: 'bg-gradient-to-br from-red-500 to-red-600 text-white', texto: 'text-red-600 dark:text-red-400' },
+  gray: { card: 'border-graphite-200 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-card/50', icone: 'bg-graphite-200 text-graphite-400 dark:bg-graphite-700 dark:text-graphite-500', texto: 'text-graphite-400 dark:text-graphite-500' },
+};
+
+interface Requisito { titulo: string; cor: CorRequisito; texto: string; detalhe?: string; icone: 'curso' | 'carro' }
+
+function CardRequisito({ titulo, cor, texto, detalhe, icone }: Requisito) {
+  const estilo = COR_REQUISITO[cor];
+  const Icone = icone === 'carro' ? Car : BadgeCheck;
+  return (
+    <div className={`flex items-center gap-3 rounded-xl border p-3 ${estilo.card}`}>
+      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${estilo.icone}`}>
+        <Icone className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100">{titulo}</p>
+        <p className={`text-[10.5px] font-medium leading-snug ${estilo.texto}`}>{texto}</p>
+        {detalhe && <p className="text-[10px] leading-snug text-graphite-500 dark:text-graphite-400">{detalhe}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Chefe de Equipe, Motorista/Condutor CCI, CNH D/E e CVE: vale o que estiver marcado no cadastro OU o
+ * documento que estiver na pasta do Drive. CNH AD, D, AE ou E com CVE = pode dirigir os veículos da SCI.
+ */
+function requisitosDoCadastro(f: Bombeiro, porPasta: Map<string, DocumentoAvaliado[]>): Requisito[] {
+  const noDrive = (tipo: string) => {
+    for (const docs of porPasta.values()) {
+      const doc = docs.find(d => d.tipo === tipo && d.situacao !== 'falta');
+      if (doc) return doc;
+    }
+    return undefined;
+  };
+  const venceu = (doc?: DocumentoAvaliado) => doc?.situacao === 'vencido';
+  const validadeDe = (doc?: DocumentoAvaliado) => (doc && doc.vencimento ? doc.texto : undefined);
+
+  const categoria = (f.cnhCategoria || '').toUpperCase();
+  const catDE = temCategoriaD(categoria);
+  const cnhDoc = noDrive('CNH');
+  const cveDoc = noDrive('CVE');
+  const temCVE = (f.cursoCVE || !!cveDoc) && !venceu(cveDoc);
+  const cnhOk = catDE && !venceu(cnhDoc);
+
+  const chefeDoc = noDrive('CHEFE DE EQUIPE (BA-CE)');
+  const temChefe = f.cursoChefeEquipe || !!chefeDoc;
+  const cargoExigeChefe = f.cargo === 'BA-CE' || f.cargo === 'BA-LR';
+
+  const motoristaDoc = noDrive('MOTORISTA CONDUTOR (BA-MC)');
+  const temMotorista = f.cursoMotoristaCCI || !!motoristaDoc;
+  const podeDirigirCRS = !temMotorista && cnhOk && temCVE;
+
+  return [
+    {
+      titulo: 'Chefe de Equipe', icone: 'curso',
+      cor: temChefe ? 'green' : cargoExigeChefe ? 'red' : 'gray',
+      texto: temChefe ? 'Possui o curso' : 'Não possui',
+    },
+    {
+      titulo: 'Motorista/Condutor CCI', icone: 'carro',
+      cor: temMotorista ? 'green' : podeDirigirCRS ? 'orange' : f.cargo === 'BA-MC' ? 'red' : 'gray',
+      texto: temMotorista ? 'Possui o curso' : podeDirigirCRS ? 'Não possui · pode dirigir o CRS' : 'Não possui',
+    },
+    {
+      titulo: 'CNH Categoria D/E', icone: 'carro',
+      cor: !catDE ? 'gray' : venceu(cnhDoc) ? 'red' : temCVE ? 'green' : 'orange',
+      texto: !catDE
+        ? (categoria ? `Categoria ${categoria} · não é D/E` : 'Não possui')
+        : venceu(cnhDoc) ? `Categoria ${categoria} · CNH vencida`
+          : temCVE ? `Categoria ${categoria} · pode dirigir os veículos da SCI` : `Categoria ${categoria} · falta o CVE para dirigir`,
+      detalhe: catDE ? validadeDe(cnhDoc) : undefined,
+    },
+    {
+      titulo: 'CVE', icone: 'curso',
+      cor: venceu(cveDoc) ? 'red' : temCVE ? 'green' : catDE ? 'red' : 'gray',
+      texto: venceu(cveDoc) ? 'Vencido' : temCVE ? 'Possui' : 'Não possui',
+      detalhe: validadeDe(cveDoc),
+    },
+  ];
+}
+
+/** Credencial do card: data do cadastro; o arquivo (para abrir) vem da pasta do Drive, se houver. */
+function credencialDoCadastro(f: Bombeiro, porPasta: Map<string, DocumentoAvaliado[]>, config: ConfigDocumentos, hojeISO: string) {
+  const noDrive = [...porPasta.values()].flat().find(d => d.tipo === TIPO_CRACHA && d.situacao !== 'falta');
+  if (noDrive) return noDrive;
+  if (!f.credencialValidade) return undefined;
+  const avaliado = avaliarArquivo({
+    id: `${f.id}-credencial`, pastaId: '06', nomeArquivo: '', tipo: TIPO_CRACHA, formato: 'outro',
+    dataCurso: null, validadePropria: f.credencialValidade,
+  }, config, hojeISO);
+  return { ...avaliado, arquivo: null, arquivos: [] };
+}
+
 /* ───────── Card Funcionário ───────── */
+
+const FAIXA_PIOR: Record<string, string> = {
+  vencido: 'before:bg-red-500', vence: 'before:bg-amber-500', emdia: 'before:bg-emerald-500', neutro: 'before:bg-graphite-300', falta: 'before:bg-red-500',
+};
 
 function FuncionarioCard({
   funcionario, certNR, certCurso, canManage,
   onAddNR, onAddCurso, onViewArquivo,
+  arquivosDrive, configDrive, hojeISO, onAbrirDrive,
 }: {
   funcionario: Bombeiro; certNR: CertificacaoNR[]; certCurso: CertificacaoCurso[];
   canManage: boolean; onAddNR: (id: string, nome: string) => void;
   onAddCurso: (id: string, nome: string) => void; onViewArquivo: (arquivo: string, title: string) => void;
+  arquivosDrive: ArquivoDrive[]; configDrive: ConfigDocumentos; hojeISO: string;
+  onAbrirDrive: (doc: DocumentoAvaliado, pessoaNome: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [mostrarAnexados, setMostrarAnexados] = useState(false);
+  const [infoCredencial, setInfoCredencial] = useState(false);
+  const resumoDrive = useMemo(() => avaliarPessoa(arquivosDrive, configDrive, hojeISO), [arquivosDrive, configDrive, hojeISO]);
+  const temAnexados = certNR.length + certCurso.length > 0;
+  const credencial = credencialDoCadastro(funcionario, resumoDrive.porPasta, configDrive, hojeISO);
   const cursosInternos = CURSO_OPTIONS.filter(c => c.categoria === 'interno');
   const cursosAsur = CURSO_OPTIONS.filter(c => c.categoria === 'asur');
   const certInternos = certCurso.filter(c => cursosInternos.some(ci => ci.tipo === c.cursoTipo));
   const certAsur = certCurso.filter(c => cursosAsur.some(cm => cm.tipo === c.cursoTipo));
 
   return (
-    <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
-      <button onClick={() => setExpanded(!expanded)} className="flex w-full items-center gap-4 px-5 py-4 text-left">
+    <div className={`relative overflow-hidden rounded-2xl border border-graphite-200 bg-white shadow-sm transition-shadow before:absolute before:inset-y-0 before:left-0 before:w-1 hover:shadow-md dark:border-border-dark dark:bg-surface-card ${FAIXA_PIOR[resumoDrive.pior]}`}>
+      <button onClick={() => setExpanded(!expanded)}
+        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 px-5 py-4 text-left md:grid-cols-[auto_minmax(0,1fr)_12.5rem_minmax(0,1fr)] md:gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-aviation-500 to-aviation-700 text-sm font-bold text-white shadow-md shadow-aviation-500/20">
           {funcionario.foto ? <img src={funcionario.foto} className="h-full w-full rounded-xl object-cover" />
             : funcionario.nomeGuerra?.charAt(0)?.toUpperCase() || funcionario.nomeCompleto.charAt(0).toUpperCase()}
@@ -381,157 +501,54 @@ function FuncionarioCard({
           <p className="font-bold text-graphite-900 dark:text-graphite-100 truncate">{funcionario.nomeCompleto}</p>
           <p className="text-xs text-graphite-500 dark:text-graphite-400">{funcionario.nomeGuerra} · Equipe {funcionario.equipe}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 rounded-full bg-aviation-50 px-2.5 py-0.5 text-[10px] font-bold text-aviation-700 dark:bg-aviation-900/30 dark:text-aviation-300">
-            <Shield className="h-3 w-3" /> NRs {certNR.length}
-          </span>
-          <span className="flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-[10px] font-bold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-            <GraduationCap className="h-3 w-3" /> Cursos {certInternos.length}
-          </span>
-          <span className="flex items-center gap-1 rounded-full bg-teal-50 px-2.5 py-0.5 text-[10px] font-bold text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
-            <Award className="h-3 w-3" /> ASUR {certAsur.length}
-          </span>
+        {/* Crachá numa coluna de largura fixa no meio do card: fica alinhado em todas as pessoas */}
+        <div className="flex md:w-[12.5rem] md:justify-self-center">
+          <CrachaValidade
+            doc={credencial}
+            alertaAsur={alertaCursosAsur(resumoDrive.porPasta.get('02') ?? [], credencial?.vencimento ?? null)}
+            iniciais={(funcionario.nomeGuerra || funcionario.nomeCompleto).slice(0, 2).toUpperCase()}
+            onInfo={() => setInfoCredencial(true)} />
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          <ResumoDrive contagem={resumoDrive.contagem} />
           {expanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
         </div>
       </button>
+      {infoCredencial && (
+        <InfoCredencial pessoaNome={funcionario.nomeCompleto} credencial={credencial}
+          docsAsur={resumoDrive.porPasta.get('02') ?? []} onClose={() => setInfoCredencial(false)} />
+      )}
 
       {expanded && (
         <div className="border-t border-graphite-200 px-5 py-4 dark:border-border-dark">
 
-          {/* ── Cursos do Cadastro (cores dinâmicas) ── */}
+          {/* ── Cursos do Cadastro: junta o que está no cadastro com o que está no Drive ── */}
           <div className="mb-4">
             <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">
               <GraduationCap className="h-3.5 w-3.5" /> Cursos do Cadastro
             </h4>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {(() => {
-                const cargoExigeChefe = funcionario.cargo === 'BA-CE' || funcionario.cargo === 'BA-LR';
-                const temCursoChefe = funcionario.cursoChefeEquipe;
-                const corChefe = temCursoChefe ? 'green' : (cargoExigeChefe ? 'red' : 'gray');
-                const labelChefe = temCursoChefe ? 'Possui' : 'Não possui';
-                return (
-                  <div className={`flex items-center gap-3 rounded-xl border p-3 ${
-                    corChefe === 'green' ? 'border-green-200 bg-green-50/50 dark:border-green-800/40 dark:bg-green-900/10' :
-                    corChefe === 'red' ? 'border-red-200 bg-red-50/50 dark:border-red-800/40 dark:bg-red-900/10' :
-                    'border-graphite-200 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-card/50'
-                  }`}>
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                      corChefe === 'green' ? 'bg-gradient-to-br from-green-500 to-green-600 text-white' :
-                      corChefe === 'red' ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' :
-                      'bg-graphite-200 text-graphite-400 dark:bg-graphite-700 dark:text-graphite-500'
-                    }`}>
-                      <BadgeCheck className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100">Chefe de Equipe</p>
-                      <p className={`text-[10px] font-medium ${
-                        corChefe === 'green' ? 'text-green-600 dark:text-green-400' :
-                        corChefe === 'red' ? 'text-red-600 dark:text-red-400' :
-                        'text-graphite-400 dark:text-graphite-500'
-                      }`}>{labelChefe}</p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {(() => {
-                const cargoExigeMotorista = funcionario.cargo === 'BA-MC';
-                const temCursoMotorista = funcionario.cursoMotoristaCCI;
-                const temCNHD = temCategoriaD(funcionario.cnhCategoria);
-                const temCVE = funcionario.cursoCVE;
-                const podeDirigirCRS = !temCursoMotorista && temCNHD && temCVE;
-                const corMotorista = temCursoMotorista ? 'green' : (podeDirigirCRS ? 'orange' : (cargoExigeMotorista ? 'red' : 'gray'));
-                const labelMotorista = temCursoMotorista ? 'Possui' : (podeDirigirCRS ? 'Pode dirigir CRS' : 'Não possui');
-                return (
-                  <div className={`flex items-center gap-3 rounded-xl border p-3 ${
-                    corMotorista === 'green' ? 'border-green-200 bg-green-50/50 dark:border-green-800/40 dark:bg-green-900/10' :
-                    corMotorista === 'orange' ? 'border-orange-200 bg-orange-50/50 dark:border-orange-800/40 dark:bg-orange-900/10' :
-                    corMotorista === 'red' ? 'border-red-200 bg-red-50/50 dark:border-red-800/40 dark:bg-red-900/10' :
-                    'border-graphite-200 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-card/50'
-                  }`}>
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                      corMotorista === 'green' ? 'bg-gradient-to-br from-green-500 to-green-600 text-white' :
-                      corMotorista === 'orange' ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white' :
-                      corMotorista === 'red' ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' :
-                      'bg-graphite-200 text-graphite-400 dark:bg-graphite-700 dark:text-graphite-500'
-                    }`}>
-                      <Car className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100">Motorista/Condutor CCI</p>
-                      <p className={`text-[10px] font-medium ${
-                        corMotorista === 'green' ? 'text-green-600 dark:text-green-400' :
-                        corMotorista === 'orange' ? 'text-orange-600 dark:text-orange-400' :
-                        corMotorista === 'red' ? 'text-red-600 dark:text-red-400' :
-                        'text-graphite-400 dark:text-graphite-500'
-                      }`}>{labelMotorista}</p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {(() => {
-                const temCNHD = temCategoriaD(funcionario.cnhCategoria);
-                const temCVE = funcionario.cursoCVE;
-                const corCNH = temCNHD ? (temCVE ? 'green' : 'orange') : 'gray';
-                const labelCNH = temCNHD ? (temCVE ? 'Possui' : 'Possui CNH D/E') : 'Não possui';
-                return (
-                  <div className={`flex items-center gap-3 rounded-xl border p-3 ${
-                    corCNH === 'green' ? 'border-green-200 bg-green-50/50 dark:border-green-800/40 dark:bg-green-900/10' :
-                    corCNH === 'orange' ? 'border-orange-200 bg-orange-50/50 dark:border-orange-800/40 dark:bg-orange-900/10' :
-                    'border-graphite-200 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-card/50'
-                  }`}>
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                      corCNH === 'green' ? 'bg-gradient-to-br from-green-500 to-green-600 text-white' :
-                      corCNH === 'orange' ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white' :
-                      'bg-graphite-200 text-graphite-400 dark:bg-graphite-700 dark:text-graphite-500'
-                    }`}>
-                      <Car className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100">CNH Categoria D/E</p>
-                      <p className={`text-[10px] font-medium ${
-                        corCNH === 'green' ? 'text-green-600 dark:text-green-400' :
-                        corCNH === 'orange' ? 'text-orange-600 dark:text-orange-400' :
-                        'text-graphite-400 dark:text-graphite-500'
-                      }`}>{labelCNH}</p>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {(() => {
-                const temCNHD = temCategoriaD(funcionario.cnhCategoria);
-                const temCVE = funcionario.cursoCVE;
-                const corCVE = temCVE ? 'green' : (temCNHD ? 'red' : 'gray');
-                const labelCVE = temCVE ? 'Possui' : 'Não possui';
-                return (
-                  <div className={`flex items-center gap-3 rounded-xl border p-3 ${
-                    corCVE === 'green' ? 'border-green-200 bg-green-50/50 dark:border-green-800/40 dark:bg-green-900/10' :
-                    corCVE === 'red' ? 'border-red-200 bg-red-50/50 dark:border-red-800/40 dark:bg-red-900/10' :
-                    'border-graphite-200 bg-graphite-50/50 dark:border-border-dark dark:bg-surface-card/50'
-                  }`}>
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                      corCVE === 'green' ? 'bg-gradient-to-br from-green-500 to-green-600 text-white' :
-                      corCVE === 'red' ? 'bg-gradient-to-br from-red-500 to-red-600 text-white' :
-                      'bg-graphite-200 text-graphite-400 dark:bg-graphite-700 dark:text-graphite-500'
-                    }`}>
-                      <BadgeCheck className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-graphite-900 dark:text-graphite-100">CVE</p>
-                      <p className={`text-[10px] font-medium ${
-                        corCVE === 'green' ? 'text-green-600 dark:text-green-400' :
-                        corCVE === 'red' ? 'text-red-600 dark:text-red-400' :
-                        'text-graphite-400 dark:text-graphite-500'
-                      }`}>{labelCVE}</p>
-                    </div>
-                  </div>
-                );
-              })()}
+              {requisitosDoCadastro(funcionario, resumoDrive.porPasta).map(r => (
+                <CardRequisito key={r.titulo} {...r} />
+              ))}
             </div>
           </div>
 
+          {/* ── Documentos do Google Drive, um bloco por pasta ── */}
+          <div className="mb-4">
+            <PastasDrive arquivos={arquivosDrive} config={configDrive} hojeISO={hojeISO}
+              onAbrir={(doc: DocumentoAvaliado) => onAbrirDrive(doc, funcionario.nomeCompleto)} />
+          </div>
+
+          {temAnexados && (
+            <button type="button" onClick={() => setMostrarAnexados(v => !v)}
+              className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-graphite-500 hover:text-graphite-700 dark:text-graphite-400 dark:hover:text-graphite-200">
+              {mostrarAnexados ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              Anexados no sistema ({certNR.length + certCurso.length})
+            </button>
+          )}
+
+          {mostrarAnexados && (<>
           {/* ── Cursos Anexados Internos ── */}
           <div className="mb-4">
             <div className="mb-2 flex items-center justify-between">
@@ -667,6 +684,7 @@ function FuncionarioCard({
               </div>
             )}
           </div>
+          </>)}
         </div>
       )}
     </div>
@@ -690,6 +708,28 @@ export function Certificacoes() {
   const [canManageCertificacoes, setCanManageCertificacoes] = useState(() => podeVerDadosPessoaisBase(user));
   const [equipeEscopo, setEquipeEscopo] = useState<Equipe | null>(null);
   const [permissoesReady, setPermissoesReady] = useState(false);
+  const [aba, setAba] = useState<'pessoas' | 'validade'>('pessoas');
+  const [configDrive, setConfigDrive] = useState<ConfigDocumentos>(() => lerConfig());
+  const [docAberto, setDocAberto] = useState<{ doc: DocumentoAvaliado; pessoaNome: string } | null>(null);
+  const hojeISO = hojeLocalISO();
+  const podeEditarValidade = isAdministradorSistema(user);
+
+  function mudarConfigDrive(config: ConfigDocumentos) {
+    setConfigDrive(config);
+    salvarConfig(config);
+  }
+
+  // Dados de exemplo até o servidor estar ligado ao Google Drive.
+  const arquivosDrivePorPessoa = useMemo(() => {
+    const mapa = new Map<string, ArquivoDrive[]>();
+    for (const b of bombeiros) {
+      // CNH e credencial: a validade é a que está no cadastro da pessoa.
+      const doCadastro: Record<string, string> = { CNH: b.cnhValidade, [TIPO_CRACHA]: b.credencialValidade };
+      mapa.set(b.id, documentosExemplo(b.id, hojeISO).map(a =>
+        a.tipo in doCadastro ? { ...a, validadePropria: doCadastro[a.tipo] || null } : a));
+    }
+    return mapa;
+  }, [bombeiros, hojeISO]);
 
   const podeFiltrar = canManageCertificacoes;
 
@@ -792,6 +832,27 @@ export function Certificacoes() {
   return (
     <PageContainer>
       <PageTitle icon={Award} title="Certificações" />
+
+      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/15 dark:text-amber-300">
+        <strong>Dados de exemplo.</strong> Os documentos abaixo são simulados enquanto o sistema não está ligado ao Google Drive.
+      </div>
+
+      {podeEditarValidade && (
+        <div role="tablist" className="mb-5 inline-flex rounded-xl border border-graphite-200 bg-graphite-50 p-1 dark:border-border-dark dark:bg-surface-card">
+          {([['pessoas', 'Pessoas'], ['validade', 'Validade dos documentos']] as const).map(([id, rotulo]) => (
+            <button key={id} role="tab" aria-selected={aba === id} onClick={() => setAba(id)}
+              className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                aba === id ? 'bg-white text-graphite-900 shadow-sm dark:bg-surface-elevated dark:text-graphite-100' : 'text-graphite-500 hover:text-graphite-800 dark:text-graphite-400 dark:hover:text-graphite-200'
+              }`}>
+              {rotulo}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {aba === 'validade' && podeEditarValidade ? (
+        <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive} />
+      ) : (<>
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-3">
           <div className="relative flex-1 max-w-md">
@@ -808,7 +869,7 @@ export function Certificacoes() {
           )}
         </div>
         <p className="text-sm text-graphite-500 dark:text-graphite-400">
-          {filtrados.length} funcionário(s) · {certNR.length} NR(s) · {certCurso.length} curso(s)
+          {filtrados.length} funcionário(s)
         </p>
       </div>
 
@@ -828,6 +889,8 @@ export function Certificacoes() {
                 onAddNR={(id, nome) => { setFormNR(id); setFormCurso(null); setFuncNome(nome); }}
                 onAddCurso={(id, nome) => { setFormCurso(id); setFormNR(null); setFuncNome(nome); }}
                 onViewArquivo={(arquivo, title) => setArquivoModal({ arquivo, title })}
+                arquivosDrive={arquivosDrivePorPessoa.get(b.id) ?? []} configDrive={configDrive} hojeISO={hojeISO}
+                onAbrirDrive={(doc, pessoaNome) => setDocAberto({ doc, pessoaNome })}
               />
               {canManageCertificacoes && formNR === b.id && (
                 <div className="mt-2 overflow-hidden rounded-2xl border border-aviation-200 bg-white shadow-lg dark:border-aviation-700 dark:bg-surface-card">
@@ -856,6 +919,9 @@ export function Certificacoes() {
         </div>
       )}
 
+      </>)}
+
+      {docAberto && <VisualizadorDocumento doc={docAberto.doc} pessoaNome={docAberto.pessoaNome} onClose={() => setDocAberto(null)} />}
       {arquivoModal && <ArquivoModal arquivo={arquivoModal.arquivo} title={arquivoModal.title} onClose={() => setArquivoModal(null)} />}
       <PageTour
         steps={CERTIFICACOES_TOUR_STEPS}

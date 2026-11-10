@@ -136,6 +136,7 @@ const SQL_TIRAR_FOTOS_PTRBA = `
        FROM jsonb_array_elements(r.evidencias) WITH ORDINALITY AS t(e, ordem))
    WHERE r.id = $1
      AND jsonb_typeof(r.evidencias) = 'array'
+     AND r.data::date >= DATE '2026-11-01'
      AND EXISTS (SELECT 1 FROM jsonb_array_elements(r.evidencias) e
                   WHERE jsonb_typeof(e) = 'object' AND coalesce(e->>'imagem', '') <> '')`;
 

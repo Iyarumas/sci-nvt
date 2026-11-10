@@ -353,22 +353,49 @@ function drawOutrosRecursos(doc: jsPDF, conteudo: string, y: number): number {
   return safeY + boxH;
 }
 
-function drawAssinatura(doc: jsPDF, y: number): number {
+/** Onde cai cada assinatura (para o Autentique): página e ponto de base no campo do rodapé. */
+export interface AssinaturaBonaPdf {
+  papel: 'chefe' | 'lr';
+  pagina: number;
+  linhaYMm: number;
+  centroXMm: number;
+}
+
+/** O BA-LR assina ao lado do chefe quando participou do BONA. */
+export function bonaTemBaLr(registro: Ocorrencia): boolean {
+  return dadosBona(registro).bombeiros.some(b => /^BA-?LR/i.test(String(b.funcao || '').trim()));
+}
+
+function drawAssinatura(doc: jsPDF, y: number, temLr: boolean): AssinaturaBonaPdf[] {
   const boxH = 13.2;
   const safeY = manterCaixaInteiraNaPagina(doc, y, boxH);
+  const pagina = doc.getCurrentPageInfo().pageNumber;
+  // O campo continua igual ao formulário; só medimos onde as assinaturas caem dentro dele.
   rect(doc, L, safeY, W, boxH);
   doc.line(73, safeY, 73, safeY + boxH);
   label(doc, 'Assinatura do Chefe de Equipe:', L, safeY, 68, boxH, 'left', 8.6);
-  return safeY + boxH;
+  const linhaYMm = safeY + boxH - 1.6;
+  if (!temLr) return [{ papel: 'chefe', pagina, linhaYMm, centroXMm: (73 + R) / 2 }];
+  // Com BA-LR: chefe na metade esquerda do campo e BA-LR na metade direita, lado a lado.
+  const meio = (73 + R) / 2;
+  return [
+    { papel: 'chefe', pagina, linhaYMm, centroXMm: (73 + meio) / 2 },
+    { papel: 'lr', pagina, linhaYMm, centroXMm: (meio + R) / 2 },
+  ];
 }
 
-function drawRodapeFormulario(doc: jsPDF, dados: ReturnType<typeof dadosBona>, y: number) {
+function drawRodapeFormulario(doc: jsPDF, dados: ReturnType<typeof dadosBona>, y: number, temLr: boolean): AssinaturaBonaPdf[] {
   const afterVehicles = drawVeiculosEAgentes(doc, dados, y);
   const afterOutros = drawOutrosRecursos(doc, dados.outrosRecursosUtilizados, afterVehicles + 1);
-  drawAssinatura(doc, afterOutros + 1.1);
+  return drawAssinatura(doc, afterOutros + 1.1, temLr);
 }
 
 export async function gerarBonaPdf(registro: Ocorrencia): Promise<Blob> {
+  return (await gerarBonaPdfComAssinaturas(registro)).blob;
+}
+
+/** Gera o PDF e devolve onde caiu cada assinatura (a folha cresce com o texto). */
+export async function gerarBonaPdfComAssinaturas(registro: Ocorrencia): Promise<{ blob: Blob; assinaturas: AssinaturaBonaPdf[] }> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({
     title: nomeArquivoBonaPdf(registro).replace(/\.pdf$/i, ''),
@@ -389,7 +416,7 @@ export async function gerarBonaPdf(registro: Ocorrencia): Promise<Blob> {
   drawCronologia(doc, dados);
   const afterDescricaoOcorrencia = drawSecaoTexto(doc, 'Descrição Sucinta da Ocorrência / Acionamento', dados.descricaoOcorrencia, L, 164.1, W, 20.8, 6.8, 9.8);
   const afterDescricaoAtuacao = drawSecaoTexto(doc, 'Descrição Sucinta da Atuação da Equipe do SESCINC', dados.descricaoAtuacaoEquipe, L, afterDescricaoOcorrencia + 1, W, 35, 6.8, 9.8);
-  drawRodapeFormulario(doc, dados, afterDescricaoAtuacao + 1.4);
+  const assinaturas = drawRodapeFormulario(doc, dados, afterDescricaoAtuacao + 1.4, bonaTemBaLr(registro));
 
-  return doc.output('blob');
+  return { blob: doc.output('blob'), assinaturas };
 }

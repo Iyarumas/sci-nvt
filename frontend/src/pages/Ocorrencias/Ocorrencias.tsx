@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   AlertTriangle, Plus, Save, Eye, Pencil, Trash2, ChevronDown, ChevronUp, FileText,
-  CheckCircle, Download, Printer, X,
+  CheckCircle, Download, Printer, X, Ban, Mail, RefreshCw, Signature,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -15,7 +15,20 @@ import { listarOcorrencias, criarOcorrencia, atualizarOcorrencia, excluirOcorren
 import { listarBombeiros } from '../../services/bombeiroService';
 import { atualizarRea, criarRea, excluirRea, listarReas, obterRea } from '../../services/reaService';
 import { gerarReaPdf, nomeArquivoReaPdf } from '../../services/reaPdfService';
-import { gerarBonaPdf, nomeArquivoBonaPdf } from '../../services/bonaPdfService';
+import { gerarBonaPdf, gerarBonaPdfComAssinaturas, nomeArquivoBonaPdf } from '../../services/bonaPdfService';
+import {
+  atualizarEnvioAssinatura,
+  baixarPdfAssinado,
+  cancelarEnvioAssinatura,
+  enviarParaAssinatura,
+  listarEnviosAssinatura,
+  obterPdfAssinado,
+  previaEnvioAssinatura,
+  reenviarAvisosAssinatura,
+  type EnvioAssinatura,
+  type PreviaSignatario,
+} from '../../services/autentiqueEnviosService';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, podeBaixarAssinado, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
 import { resolverEfetivoOperacional } from '../../services/efetivoOperacionalService';
 import { downloadPdf } from '../../services/pdfService';
 import { BONA_FUNCOES, BONA_TIPOS_OCORRENCIA, CATEGORIAS_OCORRENCIA, EQUIPES, TIPO_DOCUMENTO, criarBonaDadosVazios, normalizarFuncaoBona } from '../../types/ocorrencia';
@@ -29,6 +42,16 @@ import { PageTour } from '../../components/ui/PageTour';
 import { resumoAuditoria } from '../../utils/auditoria';
 
 const BONA_ULTIMO_NUMERO_LEGADO = 63;
+
+/**
+ * BONA a partir deste dia vai para assinatura pelo Autentique: o chefe de equipe e, quando
+ * participou, o BA-LR assinam no rodapé; os outros envolvidos reconhecem. Fica Fechada (aprovado)
+ * sozinho com as assinaturas. Os anteriores continuam com o Aprovar manual.
+ */
+const INICIO_ASSINATURA_BONA = '2026-11-10';
+function bonaPelaAssinatura(o: Pick<Ocorrencia, 'tipoDocumento' | 'data'>) {
+  return o.tipoDocumento === 'BONA' && !!o.data && o.data.slice(0, 10) >= INICIO_ASSINATURA_BONA;
+}
 
 const BONA_REA_TOUR_STEPS = [
   {
@@ -856,8 +879,24 @@ function OcorrenciaCard({
   onApprove,
   onEdit,
   onDelete,
+  envio,
+  podeBaixar,
+  isAdmin,
+  acaoEnvio,
+  onEnviar,
+  onAtualizarEnvio,
+  onReenviarEnvio,
+  onCancelarEnvio,
 }: {
   o: Ocorrencia; canManage: boolean;
+  envio?: EnvioAssinatura;
+  podeBaixar: boolean;
+  isAdmin: boolean;
+  acaoEnvio: boolean;
+  onEnviar: () => void;
+  onAtualizarEnvio: () => void;
+  onReenviarEnvio: () => void;
+  onCancelarEnvio: () => void;
   canEditApprovedNumber: boolean;
   canDeleteApproved: boolean;
   processingPdf: boolean;
@@ -884,9 +923,14 @@ function OcorrenciaCard({
 
   const bonaDados = bonaDadosFromOcorrencia(o);
   const isFechada = o.status === 'Fechada';
-  const canEdit = isFechada ? canEditApprovedNumber : canManage;
-  const canDelete = isFechada ? canDeleteApproved : canManage;
-  const canApprove = !isFechada && canManage;
+  const pelaAssinatura = bonaPelaAssinatura(o);
+  // Enviado para assinatura: não muda mais (para corrigir, um administrador cancela o envio).
+  const canEdit = !envio && (isFechada ? canEditApprovedNumber : canManage);
+  const canDelete = !envio && (isFechada ? canDeleteApproved : canManage);
+  // Quem aprova o BONA a partir de 10/11 são as assinaturas.
+  const canApprove = !isFechada && canManage && !pelaAssinatura;
+  const podeEnviar = pelaAssinatura && !envio && canManage;
+  const borda = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
   const detailCardCls = 'rounded-xl border border-graphite-200/60 bg-graphite-50/70 p-3 dark:border-border-dark dark:bg-surface-hover/70';
   const detailLabelCls = 'text-[10px] font-black uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
   const detailValueCls = 'mt-1 text-sm font-semibold text-graphite-900 dark:text-graphite-100';
@@ -899,7 +943,7 @@ function OcorrenciaCard({
   const auditoria = resumoAuditoria(o, auditoriaPessoas);
 
   return (
-    <div className="rounded-2xl border border-graphite-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+    <div className={`rounded-2xl bg-white shadow-sm transition-all hover:shadow-md dark:bg-surface-card ${borda ? `border-2 ${borda}` : 'border border-graphite-200 dark:border-border-dark'}`}>
       <button onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center justify-between px-5 py-4 text-left">
         <div className="min-w-0 flex-1">
@@ -917,6 +961,7 @@ function OcorrenciaCard({
           </div>
           <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
         </div>
+        {envio && <span className="ml-3 shrink-0"><SeloAssinatura envio={envio} /></span>}
         <span className="ml-3 flex shrink-0 items-center gap-1 rounded-lg bg-graphite-100 px-2.5 py-1 text-xs font-medium text-graphite-600 dark:bg-surface-hover dark:text-graphite-300">
           Detalhes
           {expanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
@@ -977,7 +1022,41 @@ function OcorrenciaCard({
             </div>
           )}
 
+          {envio && (
+            <div className="rounded-xl border border-graphite-200/60 bg-white p-3 dark:border-border-dark dark:bg-surface-card">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Assinaturas</span>
+              <div className="mt-1 divide-y divide-graphite-100 dark:divide-border-dark">
+                {envio.signatarios.map(signatario => (
+                  <div key={signatario.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                    <span className="text-graphite-800 dark:text-graphite-100">
+                      <span className="font-semibold">{funcoesVisiveis(signatario.funcoes)}</span> · {signatario.nome}
+                    </span>
+                    <CelulaAssinatura envioId={envio.id} signatario={signatario} documento="BONA" />
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
+                Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica assinado com o chefe de equipe (e o BA-LR, quando participou); quem está em Reconhecimento não segura o documento.
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
+            {podeEnviar && (
+              <button onClick={onEnviar} className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
+                <Signature className="h-4 w-4" /> Enviar para assinatura
+              </button>
+            )}
+            {envio?.status === 'aguardando' && (
+              <button onClick={onAtualizarEnvio} disabled={acaoEnvio} title="Consulta agora no Autentique quem já assinou" className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300">
+                <RefreshCw className={`h-4 w-4 ${acaoEnvio ? 'animate-spin' : ''}`} /> Atualizar assinaturas
+              </button>
+            )}
+            {envio?.status === 'aguardando' && envio.podeGerir && (
+              <button onClick={onReenviarEnvio} disabled={acaoEnvio} className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300">
+                <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
+              </button>
+            )}
             {canApprove && (
               <button onClick={onApprove} disabled={approving} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60">
                 <CheckCircle className="h-4 w-4" /> {approving ? 'Aprovando...' : 'Aprovar'}
@@ -986,12 +1065,12 @@ function OcorrenciaCard({
             <button onClick={onPreviewDocument} disabled={processingPdf} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
               <Eye className="h-4 w-4" /> {processingPdf ? 'Gerando...' : 'Ver documento'}
             </button>
-            {isFechada && (
+            {podeBaixar && (
               <button onClick={onDownloadDocument} disabled={processingPdf} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60">
-                <Download className="h-4 w-4" /> Baixar PDF
+                <Download className="h-4 w-4" /> {envio ? 'Download PDF assinado' : 'Baixar PDF'}
               </button>
             )}
-            {isFechada && (
+            {podeBaixar && (
               <button onClick={onPrintDocument} disabled={processingPdf} className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover">
                 <Printer className="h-4 w-4" /> Imprimir
               </button>
@@ -1007,6 +1086,11 @@ function OcorrenciaCard({
             {canDelete && (
               <button onClick={onDelete} className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30">
                 <Trash2 className="h-4 w-4" /> Excluir
+              </button>
+            )}
+            {envio && isAdmin && (
+              <button onClick={onCancelarEnvio} className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                <Ban className="h-4 w-4" /> Cancelar envio
               </button>
             )}
           </div>
@@ -1059,7 +1143,45 @@ export function Ocorrencias() {
   const ANOS = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString());
   const inputClass = 'rounded-xl border border-graphite-300 bg-white px-3 py-2.5 text-sm text-graphite-900 transition-all duration-200 hover:border-graphite-400 focus:border-aviation-500 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:placeholder:text-graphite-500 dark:scheme-dark';
 
+  const [enviosBona, setEnviosBona] = useState<Record<string, EnvioAssinatura>>({});
+  const [envioBona, setEnvioBona] = useState<Ocorrencia | null>(null);
+  const [previaEnvioBona, setPreviaEnvioBona] = useState<PreviaSignatario[] | null>(null);
+  const [erroEnvioBona, setErroEnvioBona] = useState<string | null>(null);
+  const [enviandoBona, setEnviandoBona] = useState(false);
+  const [acaoEnvioBonaId, setAcaoEnvioBonaId] = useState<string | null>(null);
+
+  async function carregarEnviosBona() {
+    try {
+      const lista = await listarEnviosAssinatura('bona');
+      setEnviosBona(Object.fromEntries(lista.map(envio => [envio.referenciaId, envio])));
+    } catch {
+      // Sem o status das assinaturas, a lista continua funcionando.
+    }
+  }
+
+  // Assinaturas aparecendo sozinhas: com BONA aguardando, confere a cada 30 s no nosso servidor.
+  const bonaAguardando = Object.values(enviosBona).some(envio => envio.status === 'aguardando');
+  useEffect(() => {
+    if (!bonaAguardando) return;
+    const conferir = () => { if (document.visibilityState === 'visible') void carregar(); };
+    const intervalo = window.setInterval(conferir, 30_000);
+    document.addEventListener('visibilitychange', conferir);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', conferir);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bonaAguardando]);
+
+  /** Download e impressão: com envio, só depois que o chefe (e o BA-LR) assinarem; antigos, depois de aprovados. */
+  function podeBaixarBona(ocorrencia: Ocorrencia) {
+    const envio = enviosBona[ocorrencia.id];
+    if (envio) return podeBaixarAssinado(envio);
+    return ocorrencia.status === 'Fechada' && !bonaPelaAssinatura(ocorrencia);
+  }
+
   async function carregar() {
+    void carregarEnviosBona();
     const [ocorrenciasData, reasData, bombeirosData] = await Promise.all([listarOcorrencias(), listarReas(), listarBombeiros()]);
     setOcorrencias(ocorrenciasData);
     setReas(reasData);
@@ -1296,24 +1418,32 @@ export function Ocorrencias() {
     try {
       closeBonaPreview();
       const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
-      const pdf = await gerarBonaPdf(registroDocumento);
+      // Com alguém já assinado mostra o PDF do Autentique (com as assinaturas feitas até agora).
+      const envio = enviosBona[ocorrencia.id];
+      const pdf = envio?.temPdfAssinado ? await obterPdfAssinado(envio.id) : await gerarBonaPdf(registroDocumento);
       const nomeArquivo = nomeArquivoBonaPdf(registroDocumento);
       setPreviewPdfData(await pdf.arrayBuffer());
       setPreviewPdfTitle(nomeArquivo.replace(/\.pdf$/i, ''));
       setPreviewPdfName(nomeArquivo);
-      setPreviewPdfDownloadAllowed(ocorrencia.status === 'Fechada');
+      // Ver documento é só para olhar quando vai pelo Autentique; o download é pelo botão do card.
+      setPreviewPdfDownloadAllowed(!envio && !bonaPelaAssinatura(ocorrencia) && ocorrencia.status === 'Fechada');
     } finally {
       setProcessingBonaPdfId(null);
     }
   }
 
   async function handleDownloadBona(ocorrencia: Ocorrencia) {
-    if (ocorrencia.status !== 'Fechada') {
-      alert('Só é possível baixar o BONA depois de aprovado.');
+    if (!podeBaixarBona(ocorrencia)) {
+      alert(bonaPelaAssinatura(ocorrencia) ? 'O PDF só pode ser baixado depois que o chefe de equipe assinar no Autentique.' : 'Só é possível baixar o BONA depois de aprovado.');
       return;
     }
     setProcessingBonaPdfId(ocorrencia.id);
     try {
+      const envio = enviosBona[ocorrencia.id];
+      if (envio) {
+        await baixarPdfAssinado(envio.id, nomeArquivoBonaPdf(ocorrencia), 'semAuditoria');
+        return;
+      }
       const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
       const pdf = await gerarBonaPdf(registroDocumento);
       downloadPdf(pdf, nomeArquivoBonaPdf(registroDocumento));
@@ -1328,14 +1458,15 @@ export function Ocorrencias() {
   }
 
   async function handlePrintBona(ocorrencia: Ocorrencia) {
-    if (ocorrencia.status !== 'Fechada') {
-      alert('Só é possível imprimir o BONA depois de aprovado.');
+    if (!podeBaixarBona(ocorrencia)) {
+      alert(bonaPelaAssinatura(ocorrencia) ? 'Só é possível imprimir depois que o chefe de equipe assinar no Autentique.' : 'Só é possível imprimir o BONA depois de aprovado.');
       return;
     }
     setProcessingBonaPdfId(ocorrencia.id);
     try {
+      const envio = enviosBona[ocorrencia.id];
       const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
-      const pdf = await gerarBonaPdf(registroDocumento);
+      const pdf = envio ? await obterPdfAssinado(envio.id) : await gerarBonaPdf(registroDocumento);
       await imprimirPdfBlob(pdf);
     } finally {
       setProcessingBonaPdfId(null);
@@ -1361,6 +1492,88 @@ export function Ocorrencias() {
       setSuccessMsg('BONA aprovado e finalizado.');
     } finally {
       setApprovingBonaId(null);
+    }
+  }
+
+  /** Chefe de equipe do plantão (BA-CE do efetivo do dia): assina o BONA sempre, mesmo sem ter participado. */
+  async function chefeDoPlantaoBona(ocorrencia: Ocorrencia): Promise<string> {
+    try {
+      const efetivo = await resolverEfetivoOperacional(ocorrencia.equipe, ocorrencia.data);
+      const chefe = efetivo.find(entry => entry.cargoExercido === 'BA-CE');
+      return chefe?.bombeiro.nomeCompleto || '';
+    } catch {
+      return '';
+    }
+  }
+
+  async function abrirEnvioBona(ocorrencia: Ocorrencia) {
+    setErroEnvioBona(null);
+    setPreviaEnvioBona(null);
+    setEnvioBona(ocorrencia);
+    try {
+      setPreviaEnvioBona(await previaEnvioAssinatura({ tipo: 'bona', referenciaId: ocorrencia.id, chefeEquipe: await chefeDoPlantaoBona(ocorrencia) }));
+    } catch (err) {
+      setErroEnvioBona(err instanceof Error ? err.message : 'Não foi possível buscar quem assina.');
+      setPreviaEnvioBona([]);
+    }
+  }
+
+  /** Gera o PDF medindo onde cai o campo de assinatura (a folha cresce com o texto) e envia. */
+  async function confirmarEnvioBona() {
+    const ocorrencia = envioBona;
+    if (!ocorrencia) return;
+    setEnviandoBona(true);
+    setErroEnvioBona(null);
+    try {
+      const registroDocumento = await prepararBonaParaDocumento(ocorrencia);
+      const { blob, assinaturas } = await gerarBonaPdfComAssinaturas(registroDocumento);
+      await enviarParaAssinatura({ tipo: 'bona', referenciaId: ocorrencia.id, pdf: blob, nomeArquivo: nomeArquivoBonaPdf(registroDocumento), linhasAssinatura: assinaturas, chefeEquipe: await chefeDoPlantaoBona(ocorrencia) });
+      setEnvioBona(null);
+      await carregar();
+    } catch (err) {
+      setErroEnvioBona(err instanceof Error ? err.message : 'Não foi possível enviar para assinatura.');
+    } finally {
+      setEnviandoBona(false);
+    }
+  }
+
+  async function atualizarEnvioBona(envio: EnvioAssinatura) {
+    setAcaoEnvioBonaId(envio.id);
+    try {
+      await atualizarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível atualizar as assinaturas.');
+    } finally {
+      setAcaoEnvioBonaId(null);
+    }
+  }
+
+  async function reenviarEnvioBona(envio: EnvioAssinatura) {
+    setAcaoEnvioBonaId(envio.id);
+    try {
+      const { reenviados } = await reenviarAvisosAssinatura(envio.id);
+      alert(`Aviso reenviado por e-mail para ${reenviados} pessoa(s) que ainda não assinaram.`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível reenviar os avisos.');
+    } finally {
+      setAcaoEnvioBonaId(null);
+    }
+  }
+
+  async function cancelarEnvioBona(envio: EnvioAssinatura) {
+    const ok = window.confirm(
+      'Tem certeza que deseja cancelar o envio deste BONA?\n\n'
+      + '- Ninguém mais conseguirá assinar pelos links já enviados.\n'
+      + '- As assinaturas já feitas deixam de valer.\n'
+      + '- O BONA volta a poder ser corrigido e enviado de novo.',
+    );
+    if (!ok) return;
+    try {
+      await cancelarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Não foi possível cancelar o envio.');
     }
   }
 
@@ -1489,6 +1702,14 @@ export function Ocorrencias() {
               onApprove={() => handleApproveBona(doc.item)}
               onEdit={() => handleEditBona(doc.item)}
               onDelete={() => setConfirmDelete(doc.item.id)}
+              envio={enviosBona[doc.item.id]}
+              podeBaixar={podeBaixarBona(doc.item)}
+              isAdmin={isAdminSistema}
+              acaoEnvio={acaoEnvioBonaId === enviosBona[doc.item.id]?.id}
+              onEnviar={() => void abrirEnvioBona(doc.item)}
+              onAtualizarEnvio={() => { const e = enviosBona[doc.item.id]; if (e) void atualizarEnvioBona(e); }}
+              onReenviarEnvio={() => { const e = enviosBona[doc.item.id]; if (e) void reenviarEnvioBona(e); }}
+              onCancelarEnvio={() => { const e = enviosBona[doc.item.id]; if (e) void cancelarEnvioBona(e); }}
             />
           ) : (
             <ReaCard key={`rea-${doc.item.id}`} rea={doc.item} canEdit={canManageEquipe(doc.item.equipe)}
@@ -1561,6 +1782,18 @@ export function Ocorrencias() {
           onSave={handleSaveRea}
           onSelectBona={() => { setShowReaModal(false); setEditandoRea(null); openBonaForm(); }}
           onCancel={() => { setShowReaModal(false); setEditandoRea(null); }}
+        />
+      )}
+
+      {envioBona && (
+        <ConfirmarEnvioModal
+          titulo={`BONA ${envioBona.numero} - Equipe ${envioBona.equipe} - ${formatarDataBR(envioBona.data)}`}
+          documento="BONA"
+          assinantes={previaEnvioBona}
+          enviando={enviandoBona}
+          erro={erroEnvioBona}
+          onCancelar={() => { if (!enviandoBona) setEnvioBona(null); }}
+          onConfirmar={() => void confirmarEnvioBona()}
         />
       )}
 

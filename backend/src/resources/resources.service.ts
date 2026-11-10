@@ -154,6 +154,16 @@ export class ResourcesService {
       const enviados = await documentosComEnvioAtivo(this.database, tipo, alvo.rows.map(row => String(row.id)));
       if (enviados.size) throw new BadRequestException(`Este ${nome} já foi enviado para assinatura e não pode mais ser editado.`);
     }
+    // BONA enviado para assinatura: o conteúdo não muda mais (o status, como o LRO fechando a ocorrência, continua livre).
+    const camposBona = ['bona_dados', 'envolvidos', 'descricao', 'acoes_tomadas', 'data', 'hora', 'equipe', 'numero', 'local', 'titulo', 'categoria', 'tipo_documento'];
+    if (table === 'ocorrencias_operacionais' && camposBona.some(key => dto.payload[key] !== undefined)) {
+      const params: unknown[] = [];
+      const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+      if (!whereSql) throw new BadRequestException('Update requires at least one filter');
+      const alvo = await this.database.query(`SELECT id FROM ${this.tableName(table)} ${whereSql}`, params);
+      const enviados = await documentosComEnvioAtivo(this.database, 'bona', alvo.rows.map(row => String(row.id)));
+      if (enviados.size) throw new BadRequestException('Este BONA já foi enviado para assinatura e não pode mais ser editado.');
+    }
     if (mudaConteudoLro) {
       const params: unknown[] = [];
       const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
@@ -258,6 +268,11 @@ export class ResourcesService {
         const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
         const enviados = await documentosComEnvioAtivo(client, tipo, alvo.rows.map(row => String(row.id)));
         if (enviados.size) throw new BadRequestException(`Este ${nome} já foi enviado para assinatura e não pode mais ser excluído.`);
+      }
+      if (table === 'ocorrencias_operacionais') {
+        const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);
+        const enviados = await documentosComEnvioAtivo(client, 'bona', alvo.rows.map(row => String(row.id)));
+        if (enviados.size) throw new BadRequestException('Este BONA já foi enviado para assinatura e não pode mais ser excluído.');
       }
       if (table === 'lro_drafts') {
         const alvo = await client.query(`SELECT id FROM ${this.tableName(table)} ${whereSql} FOR UPDATE`, params);

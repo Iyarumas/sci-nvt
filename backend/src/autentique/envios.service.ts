@@ -22,8 +22,9 @@ import { VAGAS_TAF, posicaoLinhaTaf, posicaoRodapeTaf } from './posicoes-taf';
 import { posicaoEquipagem, posicaoMotorista, posicaoRodapePosicionamento } from './posicoes-posicionamento';
 import { posicaoEquipagemTempoResposta, posicaoMotoristaTempoResposta, posicaoRodapeTempoResposta } from './posicoes-tempo-resposta';
 import type { PosicaoAutentique } from './autentique-api.service';
+import { posicaoNaLinhaBona, validarLinhasBona } from './posicoes-bona';
 
-export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca', 'tpepr', 'taf', 'posicionamento', 'temporesposta']);
+export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca', 'tpepr', 'taf', 'posicionamento', 'temporesposta', 'bona']);
 
 /** Tabela, nome e regras de cada tipo de documento enviado para assinatura. */
 const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string; criador: string }> = {
@@ -34,7 +35,11 @@ const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string; 
   taf: { tabela: 'treinamentos_taf', nome: 'TAF', pasta: 'TAF', criador: 'created_by' },
   posicionamento: { tabela: 'exercicios_posicionamento', nome: 'Exercício de Posicionamento', pasta: 'POSICIONAMENTO', criador: 'created_by' },
   temporesposta: { tabela: 'treinamentos_tempo_resposta', nome: 'Tempo Resposta', pasta: 'TEMPO RESPOSTA', criador: 'created_by' },
+  bona: { tabela: 'ocorrencias_operacionais', nome: 'BONA', pasta: 'BONA', criador: 'created_by' },
 };
+
+/** BONA com ocorrência antes deste dia segue o fluxo antigo (Aprovar manual). */
+export const INICIO_ASSINATURA_BONA = '2026-11-10';
 
 /** Exercício de Posicionamento antes deste dia segue o fluxo antigo. */
 export const INICIO_ASSINATURA_POSICIONAMENTO = '2026-11-08';
@@ -579,6 +584,71 @@ export class EnviosService {
     };
   }
 
+  /**
+   * BONA: o chefe de equipe do plantão assina no campo do rodapé (sempre, mesmo sem ter participado) e,
+   * se o BA-LR participou, ele assina ao lado. Todos os outros envolvidos só reconhecem.
+   */
+  private async participantesBona(referenciaId: string, chefeDoPlantao?: string) {
+    if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('BONA não encontrado.');
+    const result = await this.database.query<Record<string, unknown>>(
+      'SELECT * FROM ocorrencias_operacionais WHERE id = $1',
+      [referenciaId],
+    );
+    const registro = result.rows[0];
+    if (!registro || String(registro.tipo_documento ?? '').toUpperCase() !== 'BONA') throw new NotFoundException('BONA não encontrado.');
+    const cadastro = await this.database.query<{ nome_completo: string; nome_guerra: string }>(
+      `SELECT nome_completo, nome_guerra FROM bombeiros`,
+    );
+    const nomeCompletoDe = (nome: string) => {
+      const chave = normalizarNome(nome);
+      const porNomeCompleto = cadastro.rows.find(b => normalizarNome(b.nome_completo) === chave);
+      if (porNomeCompleto) return porNomeCompleto.nome_completo;
+      const porGuerra = cadastro.rows.filter(b => normalizarNome(b.nome_guerra) === chave);
+      if (porGuerra.length > 1) throw new BadRequestException(`Mais de um bombeiro com o nome de guerra "${nome}" no cadastro.`);
+      return porGuerra[0]?.nome_completo ?? nome.trim();
+    };
+    // Bombeiros envolvidos: a lista do BONA (ou, nos antigos, o texto "nome - função" de envolvidos).
+    const dados = (registro.bona_dados ?? {}) as { bombeiros?: { nome?: string; funcao?: string }[] };
+    let envolvidos = Array.isArray(dados.bombeiros) ? dados.bombeiros : [];
+    if (!envolvidos.length) {
+      envolvidos = String(registro.envolvidos ?? '').split(/\r?\n|;|,/).map(t => t.trim()).filter(Boolean).map(t => {
+        const [nome, ...funcao] = t.split(/\s+-\s+|\s+–\s+|\s+\|\s+/);
+        return { nome, funcao: funcao.join(' - ') };
+      });
+    }
+    const pessoas = envolvidos
+      .map(b => ({ nomeCompleto: nomeCompletoDe(String(b?.nome ?? '').trim()), funcao: String(b?.funcao ?? '').trim().toUpperCase() }))
+      .filter(b => b.nomeCompleto);
+    // O chefe de equipe do plantão assina sempre, mesmo sem ter participado. Ele vem da tela (BA-CE do
+    // efetivo do dia: escala, trocas, férias e substituições); sem ele, vale o BA-CE da lista de envolvidos.
+    const chefeInformado = String(chefeDoPlantao ?? '').trim();
+    const chefeCadastro = chefeInformado ? nomeCompletoDe(chefeInformado) : '';
+    const chefeNoCadastro = !!chefeCadastro && cadastro.rows.some(b => normalizarNome(b.nome_completo) === normalizarNome(chefeCadastro));
+    const chefe = chefeNoCadastro
+      ? { nomeCompleto: chefeCadastro, funcao: 'BA-CE' }
+      : pessoas.find(b => b.funcao.startsWith('BA-CE') || b.funcao.startsWith('BACE'));
+    if (!chefe) throw new BadRequestException('Não foi possível achar o chefe de equipe do plantão nem um BA-CE na lista de envolvidos.');
+    const lr = pessoas.find(b => (b.funcao.startsWith('BA-LR') || b.funcao.startsWith('BALR')) && normalizarNome(b.nomeCompleto) !== normalizarNome(chefe.nomeCompleto));
+    const assinam = new Set([normalizarNome(chefe.nomeCompleto), ...(lr ? [normalizarNome(lr.nomeCompleto)] : [])]);
+    const reconhecem: ParticipanteEnvio[] = [];
+    for (const b of pessoas) {
+      const chave = normalizarNome(b.nomeCompleto);
+      if (assinam.has(chave) || reconhecem.some(x => normalizarNome(x.nomeCompleto) === chave)) continue;
+      reconhecem.push({ funcao: FUNCAO_RECONHECIMENTO, nomeCompleto: b.nomeCompleto });
+    }
+    return {
+      data: dataISO(registro.data),
+      equipe: String(registro.equipe ?? ''),
+      numero: String(registro.numero ?? ''),
+      temLr: !!lr,
+      participantes: [
+        { funcao: 'Chefe de equipe', nomeCompleto: chefe.nomeCompleto },
+        ...(lr ? [{ funcao: 'BA-LR', nomeCompleto: lr.nomeCompleto }] : []),
+        ...reconhecem,
+      ] as ParticipanteEnvio[],
+    };
+  }
+
   /** Quem vai assinar, com o e-mail do cadastro, para conferir antes de enviar. */
   async previa(user: AuthUser, input: Omit<EnviarInput, 'pdf'>) {
     this.validarTipo(input.tipo);
@@ -591,7 +661,9 @@ export class EnviosService {
           ? await this.resolverSignatarios((await this.participantesTpepr(input.referenciaId)).participantes)
           : input.tipo === 'taf'
             ? await this.previaTaf(input.referenciaId)
-            : input.tipo === 'posicionamento' || input.tipo === 'temporesposta'
+            : input.tipo === 'bona'
+              ? await this.resolverSignatarios((await this.participantesBona(input.referenciaId, input.chefeEquipe)).participantes)
+              : input.tipo === 'posicionamento' || input.tipo === 'temporesposta'
               ? await this.previaExercicio(input.tipo, input.referenciaId, input.participantes)
               : await this.resolverSignatarios(input.participantes, input.chefeEquipe);
     return pessoas.map(({ nome, funcoes, email, problema }) => ({ nome, funcoes, email, problema }));
@@ -607,6 +679,7 @@ export class EnviosService {
     if (input.tipo === 'tpepr') return this.enviarTpepr(user, input, input.pdf);
     if (input.tipo === 'taf') return this.enviarTaf(user, input, input.pdf);
     if (input.tipo === 'posicionamento' || input.tipo === 'temporesposta') return this.enviarExercicio(input.tipo, user, input, input.pdf);
+    if (input.tipo === 'bona') return this.enviarBona(user, input, input.pdf);
 
     const registro = await this.database.query<{ data: unknown; is_apoc: boolean; origem_ptrba_id: string | null; equipe: string }>(
       'SELECT data, is_apoc, origem_ptrba_id, equipe FROM ptrba_completo_registros WHERE id = $1',
@@ -834,6 +907,72 @@ export class EnviosService {
     const [ano, mes, dia] = data.split('-');
     const nomeArquivo = this.nomeArquivo(input.nomeArquivo, data, equipe, `${dia}-${mes}-${ano} ${config.prefixoArquivo}`);
     const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS[tipo].pasta, data);
+    const documento = await this.api.criarDocumento({
+      nome: nomeArquivo.replace(/\.pdf$/i, ''),
+      nomeArquivo,
+      pdf,
+      signatarios: [...porEmailAutentique.values()],
+      pastaId,
+    });
+    const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s.public_id]));
+    try {
+      return await this.gravarEnvio(user, dadosEnvio, {
+        documentoId: documento.id,
+        sandbox: this.api.sandbox,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: porEmail.get(s.email.toLowerCase()) ?? null })),
+      });
+    } catch (erro) {
+      await this.api.cancelar(documento.id).catch(e => this.logger.error(`Documento ${documento.id} ficou no Autentique: ${(e as Error).message}`));
+      throw erro;
+    }
+  }
+
+  /**
+   * BONA: todos recebem juntos (sem fila). Chefe e BA-LR assinam no campo do rodapé, na página e no
+   * lugar medidos pelo gerador do PDF; os outros envolvidos só reconhecem. Fica assinado com os dois.
+   */
+  private async enviarBona(user: AuthUser, input: EnviarInput, pdf: Buffer) {
+    const { data, equipe, numero, temLr, participantes } = await this.participantesBona(input.referenciaId, input.chefeEquipe);
+    if (data < INICIO_ASSINATURA_BONA) {
+      throw new BadRequestException('BONA de ocorrências antes de 10/11/2026 não são enviados para assinatura pelo sistema.');
+    }
+    const ativos = await documentosComEnvioAtivo(this.database, 'bona', [input.referenciaId]);
+    if (ativos.size) throw new ConflictException('Este BONA já foi enviado para assinatura.');
+    const linhas = validarLinhasBona(input.linhasAssinatura);
+    if (!linhas.some(l => l.papel === 'chefe') || (temLr && !linhas.some(l => l.papel === 'lr'))) {
+      throw new BadRequestException('Não foi possível localizar o campo de assinatura no PDF do BONA.');
+    }
+
+    const signatarios = await this.montarSignatarios(participantes);
+    const dadosEnvio = { ...input, participantes };
+    if (this.modoSimulado) {
+      return this.gravarEnvio(user, dadosEnvio, {
+        documentoId: `simulado-${randomUUID()}`,
+        sandbox: true,
+        signatarios: signatarios.map(s => ({ ...s, signatureId: `simulado-${randomUUID()}` })),
+      });
+    }
+
+    // Mesmo e-mail em mais de uma pessoa só passa no sandbox; aí vira um pedido só (assina, se alguém assina).
+    const porEmailAutentique = new Map<string, SignatarioAutentique>();
+    for (const s of signatarios) {
+      const posicoes = [
+        ...(s.funcoes.includes('Chefe de equipe') ? linhas.filter(l => l.papel === 'chefe').map(posicaoNaLinhaBona) : []),
+        ...(s.funcoes.includes('BA-LR') ? linhas.filter(l => l.papel === 'lr').map(posicaoNaLinhaBona) : []),
+      ];
+      const chave = s.email.toLowerCase();
+      const existente = porEmailAutentique.get(chave);
+      if (existente) {
+        existente.positions.push(...posicoes);
+        if (existente.positions.length) existente.action = 'SIGN';
+      } else {
+        porEmailAutentique.set(chave, { email: s.email, action: posicoes.length ? 'SIGN' : 'RECOGNIZE', positions: posicoes });
+      }
+    }
+    const [ano, mes, dia] = data.split('-');
+    const numeroCurto = (String(numero).match(/(\d+)/)?.[1] ?? '').replace(/^0+(?=\d)/, '');
+    const nomeArquivo = this.nomeArquivo(input.nomeArquivo, data, equipe, `${dia}-${mes}-${ano} NVT BONA ${numeroCurto}`.trim());
+    const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS.bona.pasta, data);
     const documento = await this.api.criarDocumento({
       nome: nomeArquivo.replace(/\.pdf$/i, ''),
       nomeArquivo,
@@ -1231,6 +1370,13 @@ export class EnviosService {
             SET status = 'Aprovado', aprovado_por = 'autentique', aprovado_por_nome = 'Assinado no Autentique',
                 aprovado_em = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
           WHERE id = $1 AND status <> 'Aprovado'`,
+        [envio.referencia_id],
+      );
+    }
+    // BONA: com o chefe (e o BA-LR) assinados fica Fechada, como era o Aprovar.
+    if (envio.tipo === 'bona' && novoStatus === 'assinado') {
+      await this.database.query(
+        `UPDATE ocorrencias_operacionais SET status = 'Fechada' WHERE id = $1 AND status <> 'Fechada'`,
         [envio.referencia_id],
       );
     }

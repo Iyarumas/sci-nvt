@@ -6,7 +6,7 @@ import {
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { hojeLocalISO } from '../../utils/datas';
 import {
-  CARGOS_DOCUMENTOS, PASTAS_DRIVE, PASTA_EXTRAS, TIPOS_COM_VALIDADE_PROPRIA, avaliarPessoa, posicaoNaPasta, documentosDaPastaEscolhida, tipoPeloNome, tiposEncontrados,
+  CARGOS_DOCUMENTOS, PASTAS_DRIVE, PASTA_EXTRAS, TIPOS_COM_VALIDADE_PROPRIA, TIPOS_PRAZO_PELO_VENCIMENTO, avaliarPessoa, posicaoNaPasta, documentosDaPastaEscolhida, tipoPeloNome, tiposEncontrados,
   type ConfigDocumentos, type DocumentoAvaliado, type SituacaoDocumento, type ArquivoDrive,
 } from './regrasDrive';
 
@@ -763,7 +763,7 @@ export function ValidadeDocumentos({ config, onChange, encontrados, exemplos, on
                         className={`w-16 rounded-lg border px-2 py-1.5 text-right text-sm tabular-nums text-graphite-900 outline-none focus:border-aviation-500 focus:ring-2 focus:ring-aviation-500/10 dark:bg-surface-card dark:text-graphite-100 ${
                           indefinido ? 'border-amber-300 bg-amber-50/50 dark:border-amber-700' : 'border-graphite-300 bg-white dark:border-border-dark'
                         }`} />
-                      <span className="w-20">{prazo === 0 ? 'não vence' : 'meses'}</span>
+                      <span className="w-20">{prazo === 0 ? 'não vence' : TIPOS_PRAZO_PELO_VENCIMENTO.includes(tipo) ? 'meses do vencimento da conta' : 'meses'}</span>
                     </label>
                     )}
                     {(() => {

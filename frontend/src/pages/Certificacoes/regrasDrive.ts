@@ -29,6 +29,9 @@ export const PASTAS_DRIVE: PastaDrive[] = [
 export const TIPO_CREDENCIAL = 'CREDENCIAL AEROPORTUÁRIA';
 export const TIPOS_COM_VALIDADE_PROPRIA = ['CNH', TIPO_CREDENCIAL];
 
+/** Documentos cujo prazo conta a partir da data de vencimento escrita neles (conta de luz/água etc.). */
+export const TIPOS_PRAZO_PELO_VENCIMENTO = ['COMPROVANTE DE RESIDÊNCIA'];
+
 /** Com quantos meses antes de vencer o card fica amarelo. Cursos internos ASUR (base da credencial): 4. */
 const MESES_AVISO_PADRAO = 3;
 const MESES_AVISO_POR_PASTA: Record<string, number> = { '02': 4 };
@@ -283,6 +286,11 @@ export function avaliarArquivo(arquivo: ArquivoDrive, config: ConfigDocumentos, 
   const base = { arquivo, arquivos: [arquivo], tipo: arquivo.tipo, pastaId: arquivo.pastaId };
   if (arquivo.marcadorFalta) return { ...base, situacao: 'falta', vencimento: null, texto: 'Falta · marcado na pasta' };
   const prazo = config.prazos[arquivo.tipo];
+  // Comprovante de residência: o prazo conta do vencimento da conta, não da data de um curso.
+  if (TIPOS_PRAZO_PELO_VENCIMENTO.includes(arquivo.tipo)) {
+    const base = arquivo.validadeTexto ?? arquivo.dataCurso;
+    arquivo = { ...arquivo, dataCurso: base ?? null, validadeTexto: null };
+  }
 
   let vencimento: string | null = null;
   if (arquivo.validadePropria) {
@@ -419,7 +427,7 @@ export const CONFIG_EXEMPLO: ConfigDocumentos = {
     'NR 01': 24, 'NR 05': 12, 'NR 06': 12, 'NR 10': 24, 'NR 12': 24, 'NR 18': 24, 'NR 20': 12,
     'NR 23': 12, 'NR 26': 24, 'NR 33': 12, 'NR 35': 24,
     'OPERADOR DE EMPILHADEIRA': null,
-    'FICHA CADASTRAL': 0, CTPS: 0, ASO: 12, 'COMPROVANTE DE RESIDÊNCIA': 0, ESCOLARIDADE: 0, 'FICHA EPI': 0,
+    'FICHA CADASTRAL': 0, CTPS: 0, ASO: 12, 'COMPROVANTE DE RESIDÊNCIA': 12, ESCOLARIDADE: 0, 'FICHA EPI': 0,
     'ANTECEDENTES CRIMINAIS': 6,
   },
   obrigatorios: ['CNH', 'CVE', 'APAM', 'AVSEC', 'NR 10', 'NR 35', 'ASO', 'CREDENCIAL AEROPORTUÁRIA'],

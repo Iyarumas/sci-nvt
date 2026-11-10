@@ -223,10 +223,9 @@ function BombeiroDetailModal({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {fullAccess && (
                 <>
+                  {/* CPF e número da CNH ficam só no cadastro (dados sensíveis), não na ficha. */}
                   <InfoRow icon={Mail} label="E-mail" value={bombeiro.email} />
-                  <InfoRow icon={IdCard} label="CPF" value={bombeiro.cpf} />
                   <InfoRow icon={Phone} label="Celular" value={formatarCelular(bombeiro.celular)} />
-                  <InfoRow icon={Car} label="Número da CNH" value={bombeiro.cnhNumero} />
                 </>
               )}
               <InfoRow icon={Car} label="Cat. CNH" value={bombeiro.cnhCategoria} />

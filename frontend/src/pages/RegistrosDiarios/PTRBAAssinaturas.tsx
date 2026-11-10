@@ -21,8 +21,8 @@ export function situacaoAssinatura(envio?: EnvioAssinatura): SituacaoAssinatura 
   return envio?.status ?? 'rascunho';
 }
 
-/** Quem não precisa ter assinado para liberar o download: o gerente/embaixador, o APOC e quem só reconhece. */
-const NAO_PRECISAM_PARA_BAIXAR = new Set(['GERENTE', 'APOC', 'RECONHECIMENTO']);
+/** Quem não precisa ter assinado para liberar o download: o gerente/embaixador, o APOC, quem só reconhece e quem testemunha. */
+const NAO_PRECISAM_PARA_BAIXAR = new Set(['GERENTE', 'APOC', 'RECONHECIMENTO', 'TESTEMUNHA']);
 
 /**
  * O PDF só pode ser baixado depois que toda a equipe assinou no Autentique (assim ninguém baixa,

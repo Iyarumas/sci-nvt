@@ -16,8 +16,8 @@ export interface PosicaoAutentique {
 
 export interface SignatarioAutentique {
   email: string;
-  /** SIGN assina na folha; RECOGNIZE só reconhece o documento (sem marca na folha). */
-  action: 'SIGN' | 'RECOGNIZE';
+  /** SIGN assina na folha; RECOGNIZE só reconhece; SIGN_AS_A_WITNESS testemunha (as duas sem marca na folha). */
+  action: 'SIGN' | 'RECOGNIZE' | 'SIGN_AS_A_WITNESS';
   positions: PosicaoAutentique[];
 }
 

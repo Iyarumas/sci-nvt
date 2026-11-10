@@ -20,8 +20,10 @@ import { PAPEIS_TROCA, posicoesTroca } from './posicoes-troca';
 import { posicaoTpepr } from './posicoes-tpepr';
 import { VAGAS_TAF, posicaoLinhaTaf, posicaoRodapeTaf } from './posicoes-taf';
 import { posicaoEquipagem, posicaoMotorista, posicaoRodapePosicionamento } from './posicoes-posicionamento';
+import { posicaoEquipagemTempoResposta, posicaoMotoristaTempoResposta, posicaoRodapeTempoResposta } from './posicoes-tempo-resposta';
+import type { PosicaoAutentique } from './autentique-api.service';
 
-export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca', 'tpepr', 'taf', 'posicionamento']);
+export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca', 'tpepr', 'taf', 'posicionamento', 'temporesposta']);
 
 /** Tabela, nome e regras de cada tipo de documento enviado para assinatura. */
 const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string; criador: string }> = {
@@ -31,17 +33,47 @@ const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string; 
   tpepr: { tabela: 'treinamentos_tpepr', nome: 'TP/EPR', pasta: 'TP EPR', criador: 'created_by' },
   taf: { tabela: 'treinamentos_taf', nome: 'TAF', pasta: 'TAF', criador: 'created_by' },
   posicionamento: { tabela: 'exercicios_posicionamento', nome: 'Exercício de Posicionamento', pasta: 'POSICIONAMENTO', criador: 'created_by' },
+  temporesposta: { tabela: 'treinamentos_tempo_resposta', nome: 'Tempo Resposta', pasta: 'TEMPO RESPOSTA', criador: 'created_by' },
 };
 
 /** Exercício de Posicionamento antes deste dia segue o fluxo antigo. */
 export const INICIO_ASSINATURA_POSICIONAMENTO = '2026-11-08';
 
-/** Viaturas do Posicionamento: coluna do BA-MC e da equipagem, na ordem em que o PDF desenha. */
-const VIATURAS_POSICIONAMENTO = [
-  { motorista: 'faisca2_ba_mc', equipagem: ['faisca2_ba_ce', 'faisca2_ba2'] },
-  { motorista: 'faisca3_ba_mc', equipagem: ['faisca3_ba2_1', 'faisca3_ba2_2'] },
-  { motorista: 'crs_ba_mc', equipagem: ['crs_ba_lr', 'crs_ba_re1', 'crs_ba_re2'] },
-];
+/**
+ * Exercícios com viaturas (Posicionamento e Tempo Resposta): cada BA-MC assina na coluna dele, cada
+ * pessoa da equipagem na altura do nome, e o BA-CE e o GS no rodapé. Muda só a tabela, as viaturas
+ * (na ordem em que o PDF desenha) e as posições.
+ */
+type TipoExercicio = 'posicionamento' | 'temporesposta';
+const EXERCICIOS: Record<TipoExercicio, {
+  viaturas: { motorista: string; equipagem: string[] }[];
+  prefixoArquivo: string;
+  motorista: (viatura: number) => PosicaoAutentique;
+  equipagem: (viatura: number, indice: number, total: number) => PosicaoAutentique;
+  rodape: (papel: 'chefe' | 'gerente') => PosicaoAutentique;
+}> = {
+  posicionamento: {
+    viaturas: [
+      { motorista: 'faisca2_ba_mc', equipagem: ['faisca2_ba_ce', 'faisca2_ba2'] },
+      { motorista: 'faisca3_ba_mc', equipagem: ['faisca3_ba2_1', 'faisca3_ba2_2'] },
+      { motorista: 'crs_ba_mc', equipagem: ['crs_ba_lr', 'crs_ba_re1', 'crs_ba_re2'] },
+    ],
+    prefixoArquivo: 'NVT EXERCICIO DE POSICIONAMENTO',
+    motorista: posicaoMotorista,
+    equipagem: posicaoEquipagem,
+    rodape: posicaoRodapePosicionamento,
+  },
+  temporesposta: {
+    viaturas: [
+      { motorista: 'f2_ba_mc', equipagem: ['f2_ba_ce', 'f2_ba2'] },
+      { motorista: 'f3_ba_mc', equipagem: ['f3_ba2_1', 'f3_ba2_2'] },
+    ],
+    prefixoArquivo: 'NVT TEMPO RESPOSTA',
+    motorista: posicaoMotoristaTempoResposta,
+    equipagem: posicaoEquipagemTempoResposta,
+    rodape: posicaoRodapeTempoResposta,
+  },
+};
 
 /** TAF com treinamento antes deste dia seguem o fluxo antigo (Aprovar manual). */
 export const INICIO_ASSINATURA_TAF = '2026-11-08';
@@ -51,6 +83,9 @@ export const INICIO_ASSINATURA_TPEPR = '2026-11-08';
 
 /** TP/EPR: os participantes que não são chefe nem gerente só reconhecem o documento. */
 export const FUNCAO_RECONHECIMENTO = 'Reconhecimento';
+
+/** Tempo Resposta: a equipagem do CRS do plantão recebe o documento como testemunha. */
+export const FUNCAO_TESTEMUNHA = 'Testemunha';
 
 /** LRO com plantão antes deste dia seguem o fluxo antigo (Finalizar manual). */
 export const INICIO_ASSINATURA_LRO = '2026-11-06';
@@ -69,8 +104,9 @@ export const INICIO_ASSINATURA_PTRBA = '2026-11-06';
  * - PTR-BA: está assinado quando todos os BA assinaram; APOC raramente assina, então não segura
  *   (se assinar depois, o PDF é atualizado).
  * - TP/EPR: só o chefe e o gerente assinam; quem só reconhece nunca segura.
+ * - Tempo Resposta: a equipagem do CRS testemunha e não segura.
  */
-const NAO_SEGURAM = new Set(['APOC', FUNCAO_RECONHECIMENTO.toUpperCase()]);
+const NAO_SEGURAM = new Set(['APOC', FUNCAO_RECONHECIMENTO.toUpperCase(), FUNCAO_TESTEMUNHA.toUpperCase()]);
 function naoSeguraDocumento(funcoes: string): boolean {
   const lista = String(funcoes ?? '').split(',').map(f => f.trim().toUpperCase()).filter(Boolean);
   return lista.length > 0 && lista.every(f => NAO_SEGURAM.has(f));
@@ -478,10 +514,11 @@ export class EnviosService {
    * tabela das viaturas; o BA-CE (chefe) e o gerente do dia (GS) assinam no rodapé.
    * Os nomes da tabela são nomes de guerra; o e-mail vem do cadastro.
    */
-  private async participantesPosicionamento(referenciaId: string) {
+  private async participantesExercicio(tipo: TipoExercicio, referenciaId: string, informados: ParticipanteEnvio[] = []) {
     if (!/^[0-9a-f-]{36}$/i.test(referenciaId)) throw new NotFoundException('Exercício não encontrado.');
+    const config = EXERCICIOS[tipo];
     const result = await this.database.query<Record<string, unknown>>(
-      'SELECT * FROM exercicios_posicionamento WHERE id = $1',
+      `SELECT * FROM ${DOCUMENTOS[tipo].tabela} WHERE id = $1`,
       [referenciaId],
     );
     const registro = result.rows[0];
@@ -503,16 +540,31 @@ export class EnviosService {
     const gerente = await this.gerenteDoDia(data, cadastro.rows);
 
     // Onde cada pessoa assina na tabela (a mesma pessoa pode estar em mais de um lugar).
-    const marcas: { nomeCompleto: string; funcao: string; posicao: ReturnType<typeof posicaoMotorista> }[] = [];
-    VIATURAS_POSICIONAMENTO.forEach((viatura, i) => {
+    const marcas: { nomeCompleto: string; funcao: string; posicao: PosicaoAutentique }[] = [];
+    config.viaturas.forEach((viatura, i) => {
       const motorista = String(registro[viatura.motorista] ?? '').trim();
-      if (motorista) marcas.push({ nomeCompleto: nomeCompletoDe(motorista), funcao: 'BA-MC', posicao: posicaoMotorista(i) });
+      if (motorista) marcas.push({ nomeCompleto: nomeCompletoDe(motorista), funcao: 'BA-MC', posicao: config.motorista(i) });
       const equipagem = viatura.equipagem.map(campo => String(registro[campo] ?? '').trim()).filter(Boolean);
       equipagem.forEach((nome, indice) => {
-        marcas.push({ nomeCompleto: nomeCompletoDe(nome), funcao: 'Equipagem', posicao: posicaoEquipagem(i, indice, equipagem.length) });
+        marcas.push({ nomeCompleto: nomeCompletoDe(nome), funcao: 'Equipagem', posicao: config.equipagem(i, indice, equipagem.length) });
       });
     });
     if (!marcas.length) throw new BadRequestException('O exercício não tem ninguém nas viaturas.');
+
+    // Tempo Resposta: a equipagem do CRS (calculada pela tela, pela escala do dia) testemunha.
+    // Só entra quem está no cadastro e não assina em outro lugar do documento.
+    const testemunhas: ParticipanteEnvio[] = [];
+    if (tipo === 'temporesposta') {
+      const jaAssinam = new Set([...marcas.map(m => normalizarNome(m.nomeCompleto)), normalizarNome(nomeCompletoDe(chefeInformado)), normalizarNome(gerente)]);
+      for (const p of (Array.isArray(informados) ? informados : []).slice(0, 6)) {
+        if (String(p?.funcao ?? '') !== FUNCAO_TESTEMUNHA) continue;
+        const nome = nomeCompletoDe(String(p?.nomeCompleto ?? '').trim());
+        const chave = normalizarNome(nome);
+        if (!chave || jaAssinam.has(chave) || testemunhas.some(t => normalizarNome(t.nomeCompleto) === chave)) continue;
+        if (!cadastro.rows.some(b => normalizarNome(b.nome_completo) === chave)) continue;
+        testemunhas.push({ funcao: FUNCAO_TESTEMUNHA, nomeCompleto: nome });
+      }
+    }
     return {
       status: String(registro.status ?? ''),
       data,
@@ -522,6 +574,7 @@ export class EnviosService {
       participantes: [
         ...marcas.map(m => ({ funcao: m.funcao, nomeCompleto: m.nomeCompleto })),
         { funcao: 'Gerente', nomeCompleto: gerente },
+        ...testemunhas,
       ] as ParticipanteEnvio[],
     };
   }
@@ -538,8 +591,8 @@ export class EnviosService {
           ? await this.resolverSignatarios((await this.participantesTpepr(input.referenciaId)).participantes)
           : input.tipo === 'taf'
             ? await this.previaTaf(input.referenciaId)
-            : input.tipo === 'posicionamento'
-              ? await this.previaPosicionamento(input.referenciaId)
+            : input.tipo === 'posicionamento' || input.tipo === 'temporesposta'
+              ? await this.previaExercicio(input.tipo, input.referenciaId, input.participantes)
               : await this.resolverSignatarios(input.participantes, input.chefeEquipe);
     return pessoas.map(({ nome, funcoes, email, problema }) => ({ nome, funcoes, email, problema }));
   }
@@ -553,7 +606,7 @@ export class EnviosService {
     if (input.tipo === 'troca') return this.enviarTroca(user, input, input.pdf);
     if (input.tipo === 'tpepr') return this.enviarTpepr(user, input, input.pdf);
     if (input.tipo === 'taf') return this.enviarTaf(user, input, input.pdf);
-    if (input.tipo === 'posicionamento') return this.enviarPosicionamento(user, input, input.pdf);
+    if (input.tipo === 'posicionamento' || input.tipo === 'temporesposta') return this.enviarExercicio(input.tipo, user, input, input.pdf);
 
     const registro = await this.database.query<{ data: unknown; is_apoc: boolean; origem_ptrba_id: string | null; equipe: string }>(
       'SELECT data, is_apoc, origem_ptrba_id, equipe FROM ptrba_completo_registros WHERE id = $1',
@@ -731,8 +784,8 @@ export class EnviosService {
     }
   }
 
-  private async previaPosicionamento(referenciaId: string) {
-    const { participantes, chefe } = await this.participantesPosicionamento(referenciaId);
+  private async previaExercicio(tipo: TipoExercicio, referenciaId: string, informados: ParticipanteEnvio[] = []) {
+    const { participantes, chefe } = await this.participantesExercicio(tipo, referenciaId, informados);
     return this.resolverSignatarios(participantes, chefe);
   }
 
@@ -740,13 +793,14 @@ export class EnviosService {
    * Exercício de Posicionamento: todos recebem juntos (sem fila). Cada um assina no(s) lugar(es)
    * dele na tabela; o BA-CE também no rodapé e o gerente do dia no traço do GS. Fica assinado com todos.
    */
-  private async enviarPosicionamento(user: AuthUser, input: EnviarInput, pdf: Buffer) {
-    const { status, data, equipe, marcas, chefe, participantes } = await this.participantesPosicionamento(input.referenciaId);
+  private async enviarExercicio(tipo: TipoExercicio, user: AuthUser, input: EnviarInput, pdf: Buffer) {
+    const config = EXERCICIOS[tipo];
+    const { status, data, equipe, marcas, chefe, participantes } = await this.participantesExercicio(tipo, input.referenciaId, input.participantes);
     if (status !== 'Rascunho') throw new BadRequestException('Este exercício não está mais esperando o envio para assinatura.');
     if (data < INICIO_ASSINATURA_POSICIONAMENTO) {
       throw new BadRequestException('Exercícios antes de 08/11/2026 não são enviados para assinatura pelo sistema.');
     }
-    const ativos = await documentosComEnvioAtivo(this.database, 'posicionamento', [input.referenciaId]);
+    const ativos = await documentosComEnvioAtivo(this.database, tipo, [input.referenciaId]);
     if (ativos.size) throw new ConflictException('Este exercício já foi enviado para assinatura.');
 
     const signatarios = await this.montarSignatarios(participantes, chefe);
@@ -763,17 +817,23 @@ export class EnviosService {
     for (const s of signatarios) {
       const posicoes = [
         ...marcas.filter(m => normalizarNome(m.nomeCompleto) === s.chave).map(m => m.posicao),
-        ...(s.funcoes.includes('Chefe de equipe') ? [posicaoRodapePosicionamento('chefe')] : []),
-        ...(s.funcoes.includes('Gerente') ? [posicaoRodapePosicionamento('gerente')] : []),
+        ...(s.funcoes.includes('Chefe de equipe') ? [config.rodape('chefe')] : []),
+        ...(s.funcoes.includes('Gerente') ? [config.rodape('gerente')] : []),
       ];
+      // Quem só testemunha (equipagem do CRS no Tempo Resposta) não tem marca na folha.
+      const action: SignatarioAutentique['action'] = posicoes.length ? 'SIGN' : 'SIGN_AS_A_WITNESS';
       const chave = s.email.toLowerCase();
       const existente = porEmailAutentique.get(chave);
-      if (existente) existente.positions.push(...posicoes);
-      else porEmailAutentique.set(chave, { email: s.email, action: 'SIGN', positions: posicoes });
+      if (existente) {
+        existente.positions.push(...posicoes);
+        if (existente.positions.length) existente.action = 'SIGN';
+      } else {
+        porEmailAutentique.set(chave, { email: s.email, action, positions: posicoes });
+      }
     }
     const [ano, mes, dia] = data.split('-');
-    const nomeArquivo = this.nomeArquivo(input.nomeArquivo, data, equipe, `${dia}-${mes}-${ano} NVT EXERCICIO DE POSICIONAMENTO`);
-    const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS.posicionamento.pasta, data);
+    const nomeArquivo = this.nomeArquivo(input.nomeArquivo, data, equipe, `${dia}-${mes}-${ano} ${config.prefixoArquivo}`);
+    const pastaId = await this.api.pastaDoMes('NAVEGANTES', DOCUMENTOS[tipo].pasta, data);
     const documento = await this.api.criarDocumento({
       nome: nomeArquivo.replace(/\.pdf$/i, ''),
       nomeArquivo,
@@ -1017,7 +1077,7 @@ export class EnviosService {
       [envioId, user.username],
     );
     // TP/EPR, TAF e Posicionamento cancelados voltam a ser rascunho, para corrigir e enviar de novo.
-    if (envio.tipo === 'tpepr' || envio.tipo === 'taf' || envio.tipo === 'posicionamento') {
+    if (envio.tipo === 'tpepr' || envio.tipo === 'taf' || envio.tipo === 'posicionamento' || envio.tipo === 'temporesposta') {
       await this.database.query(
         `UPDATE ${DOCUMENTOS[envio.tipo].tabela} SET status = 'Rascunho', aprovado_por = '', aprovado_por_nome = '', aprovado_em = '' WHERE id = $1`,
         [envio.referencia_id],
@@ -1165,7 +1225,7 @@ export class EnviosService {
       );
     }
     // TP/EPR (chefe e gerente) e TAF (todos): com as assinaturas fica Aprovado sozinho.
-    if ((envio.tipo === 'tpepr' || envio.tipo === 'taf' || envio.tipo === 'posicionamento') && novoStatus === 'assinado') {
+    if ((envio.tipo === 'tpepr' || envio.tipo === 'taf' || envio.tipo === 'posicionamento' || envio.tipo === 'temporesposta') && novoStatus === 'assinado') {
       await this.database.query(
         `UPDATE ${DOCUMENTOS[envio.tipo].tabela}
             SET status = 'Aprovado', aprovado_por = 'autentique', aprovado_por_nome = 'Assinado no Autentique',

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus, Search, Trash2, Save, X, Timer, Pencil,
-  AlertTriangle, Shield, Download, Eye, Printer, CheckCircle2,
+  AlertTriangle, Shield, Download, Eye, Printer,
+  Ban, Mail, RefreshCw, Signature,
 } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -24,6 +25,30 @@ import { imprimirPdfBlob } from '../../utils/pdfPrint';
 import { PageTour } from '../../components/ui/PageTour';
 import { resumoAuditoria } from '../../utils/auditoria';
 import type { Bombeiro } from '../../types/bombeiro';
+import {
+  atualizarEnvioAssinatura,
+  baixarPdfAssinado,
+  cancelarEnvioAssinatura,
+  enviarParaAssinatura,
+  listarEnviosAssinatura,
+  obterPdfAssinado,
+  previaEnvioAssinatura,
+  reenviarAvisosAssinatura,
+  type EnvioAssinatura,
+  type PreviaSignatario,
+} from '../../services/autentiqueEnviosService';
+import { CelulaAssinatura, ConfirmarEnvioModal, SeloAssinatura, bordaAssinatura, funcoesVisiveis, podeBaixarAssinado, situacaoAssinatura } from '../RegistrosDiarios/PTRBAAssinaturas';
+import { nomeDocumentoOperacional } from '../../utils/documentFileNames';
+
+/**
+ * Tempo Resposta a partir deste dia vai para assinatura pelo Autentique: motoristas e equipagem
+ * assinam na tabela das viaturas e o BA-CE e o GS/Embaixador no rodapé. Fica Assinado sozinho quando
+ * todos assinarem. Não existe mais o Aprovar manual (igual ao PTR-BA).
+ */
+const INICIO_ASSINATURA_TEMPO_RESPOSTA = '2026-11-08';
+function vaiPelaAssinatura(data: string) {
+  return !!data && data.slice(0, 10) >= INICIO_ASSINATURA_TEMPO_RESPOSTA;
+}
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
 const CCI_OPTIONS = ['319', '320', '333'];
@@ -104,7 +129,6 @@ export default function TempoResposta() {
   const [savingAction, setSavingAction] = useState<'draft' | 'approve' | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [processingPdfId, setProcessingPdfId] = useState<string | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [expandidoId, setExpandidoId] = useState<string | null>(null);
   const [previewPdfData, setPreviewPdfData] = useState<ArrayBuffer | null>(null);
   const [previewPdfTitle, setPreviewPdfTitle] = useState('');
@@ -212,7 +236,38 @@ export default function TempoResposta() {
     return () => { active = false; };
   }, [formOpen, formAno, editando]);
 
+  const [envios, setEnvios] = useState<Record<string, EnvioAssinatura>>({});
+  const [envioRegistro, setEnvioRegistro] = useState<TreinamentoTempoResposta | null>(null);
+  const [previaEnvio, setPreviaEnvio] = useState<PreviaSignatario[] | null>(null);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [acaoEnvioId, setAcaoEnvioId] = useState<string | null>(null);
+
+  async function carregarEnvios() {
+    try {
+      const lista = await listarEnviosAssinatura('temporesposta');
+      setEnvios(Object.fromEntries(lista.map(envio => [envio.referenciaId, envio])));
+    } catch {
+      // Sem o status das assinaturas, a lista continua funcionando.
+    }
+  }
+
+  // Assinaturas aparecendo sozinhas: com treino aguardando, confere a cada 30 s no nosso servidor.
+  const temAguardando = Object.values(envios).some(envio => envio.status === 'aguardando');
+  useEffect(() => {
+    if (!temAguardando) return;
+    const conferir = () => { if (document.visibilityState === 'visible') void carregar(); };
+    const intervalo = window.setInterval(conferir, 30_000);
+    document.addEventListener('visibilitychange', conferir);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', conferir);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [temAguardando, filtroAno]);
+
   async function carregar() {
+    void carregarEnvios();
     const [lista, ativos] = await Promise.all([listarTreinos({ ano: filtroAno }), listarAtivos()]);
     setTreinos(lista);
     setBombeiros(ativos);
@@ -242,16 +297,21 @@ export default function TempoResposta() {
   }
 
   function canUsarPdf(registro: TreinamentoTempoResposta) {
-    return registroAprovado(registro);
+    // Enviado: só depois que toda a equipe assinou (pode faltar o gerente). Antigos (sem envio): se aprovados.
+    const envio = envios[registro.id];
+    return envio ? podeBaixarAssinado(envio) : registroAprovado(registro);
   }
 
   function canAlterarRegistro(registro: TreinamentoTempoResposta) {
+    // Enviado para assinatura: não muda mais (para corrigir, um administrador cancela o envio).
+    if (envios[registro.id]) return false;
     return registroAprovado(registro) ? isAdminSistema : canManageEquipe(registro.equipe);
   }
 
   function mensagemBloqueioRegistro(registro: TreinamentoTempoResposta) {
+    if (envios[registro.id]) return 'Este treino já foi enviado para assinatura e não pode mais ser alterado.';
     return registroAprovado(registro)
-      ? 'Este treino já foi aprovado. Somente administradores e desenvolvedores podem alterar.'
+      ? 'Este treino já foi assinado. Somente administradores e desenvolvedores podem alterar.'
       : 'Você só pode alterar treinamentos da sua equipe efetiva.';
   }
 
@@ -478,30 +538,6 @@ export default function TempoResposta() {
     setDeleteConfirm(null);
   }
 
-  async function handleAprovarRegistro(treino: TreinamentoTempoResposta) {
-    if (!canAlterarRegistro(treino)) {
-      alert(mensagemBloqueioRegistro(treino));
-      return;
-    }
-    setApprovingId(treino.id);
-    try {
-      const treinoComAssinaturas = await completarNomesAssinatura(treino);
-      await atualizarTreino(treino.id, {
-        chefeEquipe: treinoComAssinaturas.chefeEquipe,
-        gerente: treinoComAssinaturas.gerente,
-        status: 'Aprovado',
-        aprovadoPor: currentUsername,
-        aprovadoPorNome: currentName,
-        aprovadoEm: new Date().toISOString(),
-      });
-      await carregar();
-    } catch (err) {
-      alert('Erro ao aprovar: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
-    } finally {
-      setApprovingId(null);
-    }
-  }
-
   function closePreviewPdf() {
     setPreviewPdfData(null);
     setPreviewPdfTitle('');
@@ -511,8 +547,11 @@ export default function TempoResposta() {
     setProcessingPdfId(treino.id);
     try {
       closePreviewPdf();
-      const treinoComAssinaturas = await completarNomesAssinatura(treino);
-      const pdf = await gerarTempoRespostaPdf(treinoComAssinaturas);
+      // Com alguém já assinado mostra o PDF do Autentique (com as assinaturas feitas até agora).
+      const envio = envios[treino.id];
+      const pdf = envio?.temPdfAssinado
+        ? await obterPdfAssinado(envio.id)
+        : await gerarTempoRespostaPdf(await completarNomesAssinatura(treino));
       setPreviewPdfData(await pdf.arrayBuffer());
       setPreviewPdfTitle(`${String(treino.numero).padStart(3, '0')}/${treino.ano} - Tempo Resposta`);
     } catch (err) {
@@ -529,8 +568,10 @@ export default function TempoResposta() {
     }
     setProcessingPdfId(treino.id);
     try {
-      const treinoComAssinaturas = await completarNomesAssinatura(treino);
-      const pdf = await gerarTempoRespostaPdf(treinoComAssinaturas);
+      const envio = envios[treino.id];
+      const pdf = envio
+        ? await obterPdfAssinado(envio.id)
+        : await gerarTempoRespostaPdf(await completarNomesAssinatura(treino));
       await imprimirPdfBlob(pdf);
     } catch (err) {
       alert('Erro ao imprimir PDF: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
@@ -546,12 +587,107 @@ export default function TempoResposta() {
     }
     setProcessingPdfId(treino.id);
     try {
-      const treinoComAssinaturas = await completarNomesAssinatura(treino);
-      await baixarTempoRespostaPdf(treinoComAssinaturas);
+      const envio = envios[treino.id];
+      if (envio) {
+        await baixarPdfAssinado(envio.id, nomeDocumentoOperacional(treino.data, 'TEMPO RESPOSTA', treino.equipe), 'primeiraPagina');
+      } else {
+        await baixarTempoRespostaPdf(await completarNomesAssinatura(treino));
+      }
     } catch (err) {
       alert('Erro ao baixar PDF: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
     } finally {
       setProcessingPdfId(null);
+    }
+  }
+
+  /** Equipagem do CRS do plantão (pela escala do dia): recebe o documento como testemunha. */
+  async function testemunhasCrs(treino: TreinamentoTempoResposta) {
+    try {
+      const { guarnicoes } = await resolverEquipagemExercicio(treino.equipe, treino.data, treino.hora);
+      return [guarnicoes.crs.baMc, guarnicoes.crs.baLr, guarnicoes.crs.baRe1, guarnicoes.crs.baRe2]
+        .map(nome => String(nome || '').trim())
+        .filter(Boolean)
+        .map(nome => ({ funcao: 'Testemunha', nomeCompleto: nome, situacao: '' }));
+    } catch {
+      return [];
+    }
+  }
+
+  async function abrirEnvio(treino: TreinamentoTempoResposta) {
+    setErroEnvio(null);
+    setPreviaEnvio(null);
+    setEnvioRegistro(treino);
+    try {
+      setPreviaEnvio(await previaEnvioAssinatura({ tipo: 'temporesposta', referenciaId: treino.id, participantes: await testemunhasCrs(treino) }));
+    } catch (err) {
+      setErroEnvio(err instanceof Error ? err.message : 'Não foi possível buscar quem assina.');
+      setPreviaEnvio([]);
+    }
+  }
+
+  async function confirmarEnvio() {
+    const treino = envioRegistro;
+    if (!treino) return;
+    setEnviando(true);
+    setErroEnvio(null);
+    try {
+      // Nome impresso embaixo das linhas = quem vai assinar (ex.: o substituto do gerente nas férias dele).
+      const comNomes = await completarNomesAssinatura(treino);
+      const gerenteDoDia = previaEnvio?.find(p => p.funcoes.includes('Gerente'))?.nome;
+      const chefeDoDia = previaEnvio?.find(p => p.funcoes.includes('Chefe de equipe'))?.nome;
+      const pdf = await gerarTempoRespostaPdf({
+        ...comNomes,
+        ...(gerenteDoDia ? { gerente: gerenteDoDia } : {}),
+        ...(chefeDoDia ? { chefeEquipe: chefeDoDia } : {}),
+      });
+      const nomeArquivo = nomeDocumentoOperacional(treino.data, 'TEMPO RESPOSTA', treino.equipe);
+      await enviarParaAssinatura({ tipo: 'temporesposta', referenciaId: treino.id, pdf, nomeArquivo, participantes: await testemunhasCrs(treino) });
+      setEnvioRegistro(null);
+      await carregar();
+    } catch (err) {
+      setErroEnvio(err instanceof Error ? err.message : 'Não foi possível enviar para assinatura.');
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function atualizarEnvio(envio: EnvioAssinatura) {
+    setAcaoEnvioId(envio.id);
+    try {
+      await atualizarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert('Erro ao atualizar as assinaturas: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
+    } finally {
+      setAcaoEnvioId(null);
+    }
+  }
+
+  async function reenviarEnvio(envio: EnvioAssinatura) {
+    setAcaoEnvioId(envio.id);
+    try {
+      const { reenviados } = await reenviarAvisosAssinatura(envio.id);
+      alert(`Aviso reenviado por e-mail para ${reenviados} pessoa(s) que ainda não assinaram.`);
+    } catch (err) {
+      alert('Erro ao reenviar os avisos: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
+    } finally {
+      setAcaoEnvioId(null);
+    }
+  }
+
+  async function cancelarEnvio(envio: EnvioAssinatura) {
+    const ok = window.confirm(
+      'Tem certeza que deseja cancelar o envio deste Tempo Resposta?\n\n'
+      + '- Ninguém mais conseguirá assinar pelos links já enviados.\n'
+      + '- As assinaturas já feitas deixam de valer.\n'
+      + '- O treino volta a ser rascunho, para corrigir e enviar de novo.',
+    );
+    if (!ok) return;
+    try {
+      await cancelarEnvioAssinatura(envio.id);
+      await carregar();
+    } catch (err) {
+      alert('Erro ao cancelar o envio: ' + (err instanceof Error ? err.message : 'Erro desconhecido'));
     }
   }
 
@@ -625,6 +761,14 @@ export default function TempoResposta() {
               const podeUsarPdf = canUsarPdf(t);
               const processing = processingPdfId === t.id;
               const expandido = expandidoId === t.id;
+              const envio = envios[t.id];
+              const pelaAssinatura = vaiPelaAssinatura(t.data);
+              const borda = envio ? bordaAssinatura(situacaoAssinatura(envio)) : null;
+              const etiqueta = envio?.status === 'assinado' ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                : envio?.status === 'aguardando' ? { texto: 'Aguardando', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' }
+                  : envio?.status === 'recusado' ? { texto: 'Recusado', cor: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' }
+                    : aprovado ? { texto: 'Assinado', cor: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' }
+                      : { texto: 'Rascunho', cor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' };
               const f2Dados = [
                 ['CCI', t.f2Cci],
                 ['BA-MC', t.f2BaMc],
@@ -648,7 +792,7 @@ export default function TempoResposta() {
                 ['Performance', t.f3Performance],
               ].filter(([, valor]) => Boolean(valor));
               return (
-                <div key={t.id} className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-card">
+                <div key={t.id} className={`rounded-2xl p-4 transition-all hover:shadow-md dark:bg-surface-card ${borda ? `border-2 ${borda} bg-white` : 'border border-graphite-200/60 bg-white/80 dark:border-border-dark'}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <button
                       type="button"
@@ -663,9 +807,6 @@ export default function TempoResposta() {
                           <p className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">
                             {String(t.numero).padStart(3, '0')}/{t.ano} - {t.equipe} - Tempo Resposta
                           </p>
-                          <span className={`rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wider ${aprovado ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
-                            {aprovado ? 'Aprovado' : 'Rascunho'}
-                          </span>
                         </div>
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
                           {fmt(t.data)} {t.hora && `às ${t.hora}`} - {t.local || 'Sem local'} - Chefe: {t.chefeEquipe || '-'}
@@ -673,6 +814,12 @@ export default function TempoResposta() {
                         <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">{resumoAuditoria(t, bombeiros)}</p>
                       </div>
                     </button>
+                    <div className="flex shrink-0 items-center gap-2 self-center">
+                      {envio && <SeloAssinatura envio={envio} />}
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${etiqueta.cor}`}>
+                        {etiqueta.texto}
+                      </span>
+                    </div>
                   </div>
 
                   {expandido && (
@@ -723,64 +870,68 @@ export default function TempoResposta() {
                         </div>
                       )}
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        {!aprovado && podeAlterar && (
-                          <button
-                            type="button"
-                            onClick={() => void handleAprovarRegistro(t)}
-                            disabled={approvingId === t.id}
-                            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-all hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <CheckCircle2 className="h-4 w-4" /> {approvingId === t.id ? 'Aprovando...' : 'Aprovar'}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => void handlePreviewPdf(t)}
-                          disabled={processing}
-                          className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-3 py-2 text-xs font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300"
-                        >
-                          <Eye className="h-4 w-4" /> {processing ? 'Gerando...' : 'Ver documento'}
+                      {envio && (
+                        <div className="rounded-xl border border-graphite-200/60 bg-white p-3 dark:border-border-dark dark:bg-surface-card">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-graphite-400 dark:text-graphite-500">Assinaturas</span>
+                          <div className="mt-1 divide-y divide-graphite-100 dark:divide-border-dark">
+                            {envio.signatarios.map(signatario => (
+                              <div key={signatario.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                                <span className="text-graphite-800 dark:text-graphite-100">
+                                  <span className="font-semibold">{funcoesVisiveis(signatario.funcoes)}</span> · {signatario.nome}
+                                </span>
+                                <CelulaAssinatura envioId={envio.id} signatario={signatario} documento="Tempo Resposta" />
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">
+                            Enviado por {envio.enviadoPorNome || '-'} em {new Date(envio.enviadoEm).toLocaleString('pt-BR')}. Fica assinado quando todos assinarem; quem está como Testemunha (equipagem do CRS) não segura o documento.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-2 border-t border-graphite-200/60 pt-3 dark:border-border-dark">
+                        <button type="button" onClick={() => void handlePreviewPdf(t)} disabled={processing} className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-60 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300" title="Ver documento">
+                          <Eye className="h-4 w-4" /> {processing ? 'Abrindo documento' : 'Ver documento'}
                         </button>
                         {podeUsarPdf && (
-                          <button
-                            type="button"
-                            onClick={() => void handleDownloadPdf(t)}
-                            disabled={processing}
-                            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            <Download className="h-4 w-4" /> Baixar PDF
+                          <button type="button" onClick={() => void handleDownloadPdf(t)} disabled={processing} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600 disabled:opacity-60" title="Baixar PDF">
+                            <Download className="h-4 w-4" /> {envio ? 'Download PDF assinado' : 'Download PDF'}
                           </button>
                         )}
                         {podeUsarPdf && (
-                            <button
-                              type="button"
-                              onClick={() => void handlePrintPdf(t)}
-                              disabled={processing}
-                              className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"
-                            >
-                              <Printer className="h-4 w-4" /> Imprimir
-                            </button>
+                          <button type="button" onClick={() => void handlePrintPdf(t)} disabled={processing} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200" title="Imprimir">
+                            <Printer className="h-4 w-4" /> Imprimir
+                          </button>
                         )}
                         {podeAlterar && (
                           <>
-                            <button
-                              type="button"
-                              onClick={() => handleEditar(t)}
-                              className="flex items-center gap-2 rounded-xl bg-graphite-100 px-3 py-2 text-xs font-medium text-graphite-700 transition-colors hover:bg-graphite-200 dark:bg-surface-hover dark:text-graphite-300 dark:hover:bg-surface-hover"
-                              title="Editar"
-                            >
+                            <button type="button" onClick={() => handleEditar(t)} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200" title="Editar">
                               <Pencil className="h-4 w-4" /> Editar
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteConfirm(t.id)}
-                              className="flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-alert-red transition-colors hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
-                              title="Excluir"
-                            >
+                            <button type="button" onClick={() => setDeleteConfirm(t.id)} className="flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15" title="Excluir">
                               <Trash2 className="h-4 w-4" /> Excluir
                             </button>
                           </>
+                        )}
+                        {!envio && !aprovado && pelaAssinatura && podeAlterar && (
+                          <button type="button" onClick={() => void abrirEnvio(t)} className="flex items-center gap-2 rounded-xl border border-aviation-500/40 bg-aviation-500/10 px-4 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-500/15 dark:text-aviation-300">
+                            <Signature className="h-4 w-4" /> Enviar para assinatura
+                          </button>
+                        )}
+                        {envio?.status === 'aguardando' && (
+                          <button type="button" onClick={() => void atualizarEnvio(envio)} disabled={acaoEnvioId === envio.id} title="Consulta agora no Autentique quem já assinou" className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                            <RefreshCw className={`h-4 w-4 ${acaoEnvioId === envio.id ? 'animate-spin' : ''}`} /> {acaoEnvioId === envio.id ? 'Atualizando...' : 'Atualizar assinaturas'}
+                          </button>
+                        )}
+                        {envio?.status === 'aguardando' && envio.podeGerir && (
+                          <button type="button" onClick={() => void reenviarEnvio(envio)} disabled={acaoEnvioId === envio.id} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 bg-white/80 px-4 py-2.5 text-sm font-semibold text-graphite-700 transition-all hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:bg-surface-card dark:text-graphite-200">
+                            <Mail className="h-4 w-4" /> Reenviar aviso por e-mail
+                          </button>
+                        )}
+                        {envio && isAdminSistema && (
+                          <button type="button" onClick={() => void cancelarEnvio(envio)} className="ml-auto flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-alert-red transition-all hover:bg-red-500/15">
+                            <Ban className="h-4 w-4" /> Cancelar envio
+                          </button>
                         )}
                       </div>
                     </div>
@@ -803,7 +954,7 @@ export default function TempoResposta() {
                 </h2>
                 {editando && (
                   <p className="mt-1 text-xs font-semibold text-graphite-500 dark:text-graphite-400">
-                    Status: {registroAprovado(editando) ? 'Aprovado' : 'Rascunho'}
+                    Status: {registroAprovado(editando) ? 'Assinado' : 'Rascunho'}
                   </p>
                 )}
               </div>
@@ -959,18 +1110,24 @@ export default function TempoResposta() {
                 </button>
                 <button onClick={() => handleSalvar(false)} disabled={!formEquipe || !formData || saving || carregandoNumero || carregandoEquipagem || !!erroNumero}
                   className="flex items-center gap-2 rounded-xl border border-aviation-300 bg-white px-5 py-2.5 text-sm font-semibold text-aviation-700 transition-all hover:bg-aviation-50 disabled:opacity-50 dark:border-aviation-700 dark:bg-aviation-900/20 dark:text-aviation-300">
-                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : registroAprovado(editando) ? 'Salvar' : 'Salvar rascunho'}
+                  <Save className="h-4 w-4" /> {savingAction === 'draft' ? 'Salvando...' : 'Salvar'}
                 </button>
-                {!registroAprovado(editando) && (
-                  <button onClick={() => handleSalvar(true)} disabled={!formEquipe || !formData || saving || carregandoNumero || carregandoEquipagem || !!erroNumero}
-                    className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-medium text-white shadow-lg shadow-emerald-500/20 transition-all hover:shadow-xl active:scale-[0.98] disabled:opacity-50">
-                    <CheckCircle2 className="h-4 w-4" /> {savingAction === 'approve' ? 'Aprovando...' : 'Aprovar'}
-                  </button>
-                )}
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {envioRegistro && (
+        <ConfirmarEnvioModal
+          titulo={`Tempo Resposta ${String(envioRegistro.numero).padStart(3, '0')}/${envioRegistro.ano} - Equipe ${envioRegistro.equipe} - ${fmt(envioRegistro.data)}`}
+          documento="Tempo Resposta"
+          assinantes={previaEnvio}
+          enviando={enviando}
+          erro={erroEnvio}
+          onCancelar={() => { if (!enviando) setEnvioRegistro(null); }}
+          onConfirmar={() => void confirmarEnvio()}
+        />
       )}
 
       {previewPdfData && (

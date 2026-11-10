@@ -17,6 +17,7 @@ const TABELAS_TREINAMENTO_ASSINADO: Record<string, { tipo: string; nome: string 
   treinamentos_tpepr: { tipo: 'tpepr', nome: 'TP/EPR' },
   treinamentos_taf: { tipo: 'taf', nome: 'TAF' },
   exercicios_posicionamento: { tipo: 'posicionamento', nome: 'exercício' },
+  treinamentos_tempo_resposta: { tipo: 'temporesposta', nome: 'Tempo Resposta' },
 };
 import { ALLOWED_TABLES } from './resources.config';
 import { DeleteDto, InsertDto, UpdateDto } from './dto/mutation.dto';

@@ -648,7 +648,7 @@ export default function Posicionamento() {
     try {
       const envio = envios[exercicio.id];
       if (envio) {
-        const nome = nomeDocumentoOperacional(exercicio.data, 'EXERCICIO DE POSICIONAMENTO', exercicio.equipe).replace(/\.pdf$/i, ' ASSINADO.pdf');
+        const nome = nomeDocumentoOperacional(exercicio.data, 'EXERCICIO DE POSICIONAMENTO', exercicio.equipe);
         await baixarPdfAssinado(envio.id, nome, 'primeiraPagina');
       } else {
         await baixarExercicioPosicionamentoPdf(await completarNomesAssinatura(exercicio));

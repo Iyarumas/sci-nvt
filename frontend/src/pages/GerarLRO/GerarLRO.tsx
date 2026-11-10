@@ -2801,7 +2801,7 @@ export function GerarLRO() {
                         <Eye className="h-4 w-4" /> Ver documento
                       </button>
                       {podeBaixarAssinado(envio) && envio && (
-                        <button onClick={() => void baixarPdfAssinado(envio.id, nomeDocumentoOperacional(d.data_plantao, 'LRO', d.equipe).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'semAuditoria').catch(err => setErroValidacao(err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.'))}
+                        <button onClick={() => void baixarPdfAssinado(envio.id, nomeDocumentoOperacional(d.data_plantao, 'LRO', d.equipe), 'semAuditoria').catch(err => setErroValidacao(err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.'))}
                           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all">
                           <Download className="h-4 w-4" /> Baixar PDF assinado
                         </button>

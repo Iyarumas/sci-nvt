@@ -1539,7 +1539,7 @@ export function PTRBACompletoPage() {
       setDownloadingId(registro.id);
       const envio = envios[registro.id];
       if (podeBaixarAssinado(envio)) {
-        await baixarPdfAssinado(envio!.id, nomeArquivoPTRBACompleto(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'));
+        await baixarPdfAssinado(envio!.id, nomeArquivoPTRBACompleto(registro));
       } else if (!envio && foraDoAutentique(registro)) {
         await baixarPTRBACompletoPdf(await comFotosPTRBACompleto(registro));
       } else {

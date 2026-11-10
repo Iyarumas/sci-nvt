@@ -1125,7 +1125,7 @@ export function Trocas() {
   async function verTrocaAssinada(envio: EnvioAssinatura) {
     // Só para olhar, dentro do sistema (sem baixar nem imprimir); o download é pelo botão "Baixar PDF assinado".
     try {
-      abrirPdfPreview(await obterPdfAssinado(envio.id), 'TROCA DE SERVICO ASSINADA.pdf', false);
+      abrirPdfPreview(await obterPdfAssinado(envio.id), 'Troca de serviço', false);
     } catch (err) {
       setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível abrir o PDF assinado.', type: 'error' });
     }
@@ -2932,7 +2932,7 @@ export function Trocas() {
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Ver documento
                       </button>
                       {podeBaixarAssinado(envio) && envio && (
-                        <button onClick={() => void baixarPdfAssinado(envio.id, nomeArquivoTroca(data).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina').catch(err => setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.', type: 'error' }))}
+                        <button onClick={() => void baixarPdfAssinado(envio.id, nomeArquivoTroca(data), 'primeiraPagina').catch(err => setShowNotifPopup({ msg: err instanceof Error ? err.message : 'Não foi possível baixar o PDF assinado.', type: 'error' }))}
                           className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-aviation-500/20 transition-all hover:from-aviation-500 hover:to-aviation-600">
                           <Download className="h-4 w-4" /> Baixar PDF assinado
                         </button>

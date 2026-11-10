@@ -615,7 +615,7 @@ export function TPEPR() {
       setDownloadingId(registro.id);
       const envio = envios[registro.id];
       if (envio) {
-        await baixarPdfAssinado(envio.id, nomeArquivoTPEPRPdf(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina');
+        await baixarPdfAssinado(envio.id, nomeArquivoTPEPRPdf(registro), 'primeiraPagina');
       } else {
         await baixarTPEPRPdf(registro);
       }

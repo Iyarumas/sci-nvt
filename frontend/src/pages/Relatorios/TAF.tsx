@@ -534,7 +534,7 @@ export function TAF() {
       setDownloadingId(registro.id);
       const envio = envios[registro.id];
       if (envio) {
-        await baixarPdfAssinado(envio.id, nomeArquivoTAFPdf(registro).replace(/\.pdf$/i, ' ASSINADO.pdf'), 'primeiraPagina');
+        await baixarPdfAssinado(envio.id, nomeArquivoTAFPdf(registro), 'primeiraPagina');
       } else {
         await baixarTAFPdf(prepararRegistroPdf(registro));
       }

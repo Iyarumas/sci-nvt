@@ -35,7 +35,12 @@ import {
   arquivosDoServidor, avaliarArquivo, avaliarPessoa, documentosExemplo, lerConfig, salvarConfig,
   type ArquivoDrive, type ConfigDocumentos, type DocumentoAvaliado,
 } from './regrasDrive';
-import { abrirArquivoDrive, buscarDocumentosDrive, informarDataDrive, type DocumentosDriveApi } from '../../services/driveDocumentosService';
+import {
+  abrirArquivoDrive, buscarDocumentosDrive, informarDataDrive, lerConfigDrive, salvarConfigDrive, type DocumentosDriveApi,
+} from '../../services/driveDocumentosService';
+import { completarConfig, lerConfigLocal } from './regrasDrive';
+import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
+import type { SubstituicaoTemporaria } from '../../types/substituicaoTemporaria';
 import { avaliarArquivo as avaliarParaVer } from './regrasDrive';
 import type { ExemploArquivo } from './DriveDocumentos';
 import { CrachaValidade, InfoCredencial, alertaCursosAsur, PastasDrive, ResumoDrive, TIPO_CRACHA, ValidadeDocumentos, VisualizadorDocumento } from './DriveDocumentos';
@@ -476,7 +481,7 @@ const FAIXA_PIOR: Record<string, string> = {
 function FuncionarioCard({
   funcionario, certNR, certCurso, canManage,
   onAddNR, onAddCurso, onViewArquivo,
-  arquivosDrive, configDrive, hojeISO, onAbrirDrive, semDrive,
+  arquivosDrive, configDrive, hojeISO, onAbrirDrive, semDrive, afastadoInss,
 }: {
   funcionario: Bombeiro; certNR: CertificacaoNR[]; certCurso: CertificacaoCurso[];
   canManage: boolean; onAddNR: (id: string, nome: string) => void;
@@ -485,6 +490,8 @@ function FuncionarioCard({
   onAbrirDrive: (doc: DocumentoAvaliado, pessoaNome: string) => void;
   /** Google Drive não ligado neste servidor: não mostra os blocos nem cobra documentos. */
   semDrive?: boolean;
+  /** Afastado pelo INSS hoje (substituição temporária aprovada ou pasta do Drive marcada "- INSS"). */
+  afastadoInss?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [mostrarAnexados, setMostrarAnexados] = useState(false);
@@ -507,7 +514,14 @@ function FuncionarioCard({
             : funcionario.nomeGuerra?.charAt(0)?.toUpperCase() || funcionario.nomeCompleto.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="font-bold text-graphite-900 dark:text-graphite-100 truncate">{funcionario.nomeCompleto}</p>
+          <p className="flex min-w-0 items-center gap-2 font-bold text-graphite-900 dark:text-graphite-100">
+            <span className="truncate">{funcionario.nomeCompleto}</span>
+            {afastadoInss && (
+              <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                Afastamento INSS
+              </span>
+            )}
+          </p>
           <p className="text-xs text-graphite-500 dark:text-graphite-400">{funcionario.nomeGuerra} · Equipe {funcionario.equipe}</p>
         </div>
         {/* Crachá numa coluna de largura fixa no meio do card: fica alinhado em todas as pessoas */}
@@ -729,9 +743,43 @@ export function Certificacoes() {
   const hojeISO = hojeLocalISO();
   const podeEditarValidade = isAdministradorSistema(user);
 
+  // A configuração que vale é a do banco (uma para todos). O navegador guarda só uma cópia.
+  const [configSalva, setConfigSalva] = useState<{ estado: 'ok' | 'salvando' | 'erro'; em: string | null; por: string | null }>(
+    { estado: 'ok', em: null, por: null },
+  );
+  const esperaSalvar = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!permissoesReady || !canViewCertificacoes) return;
+    let cancelado = false;
+    lerConfigDrive().then(async resposta => {
+      if (cancelado) return;
+      const doBanco = completarConfig(resposta.config);
+      if (doBanco) {
+        setConfigDrive(doBanco);
+        salvarConfig(doBanco);
+        setConfigSalva({ estado: 'ok', em: resposta.atualizadoEm, por: resposta.atualizadoPor });
+      } else if (podeEditarValidade) {
+        // Banco ainda vazio: leva para lá o que este administrador já tinha ajustado no navegador.
+        const local = lerConfigLocal() ?? configDrive;
+        await salvarConfigDrive(local);
+        if (!cancelado) setConfigSalva({ estado: 'ok', em: new Date().toISOString(), por: null });
+      }
+    }).catch(() => { /* sem servidor: fica a cópia do navegador */ });
+    return () => { cancelado = true; };
+  }, [permissoesReady, canViewCertificacoes]);
+
   function mudarConfigDrive(config: ConfigDocumentos) {
     setConfigDrive(config);
     salvarConfig(config);
+    if (!podeEditarValidade) return;
+    setConfigSalva(s => ({ ...s, estado: 'salvando' }));
+    if (esperaSalvar.current) window.clearTimeout(esperaSalvar.current);
+    esperaSalvar.current = window.setTimeout(() => {
+      salvarConfigDrive(config)
+        .then(() => setConfigSalva({ estado: 'ok', em: new Date().toISOString(), por: null }))
+        .catch(() => setConfigSalva(s => ({ ...s, estado: 'erro' })));
+    }, 700);
   }
 
   // Documentos do Google Drive (lidos pelo servidor). Sem Drive configurado, a tela usa dados de exemplo.
@@ -788,6 +836,27 @@ export function Certificacoes() {
     }
     return mapa;
   }, [arquivosDrivePorPessoa, bombeiros]);
+
+  // Afastados pelo INSS hoje: substituição temporária aprovada com motivo INSS (ou INSS Indeterminado)
+  // em vigor, ou a pasta do Drive com "- INSS" no nome.
+  const [substituicoesInss, setSubstituicoesInss] = useState<SubstituicaoTemporaria[]>([]);
+  useEffect(() => {
+    if (!permissoesReady || !canViewCertificacoes) return;
+    listarSubstituicoesTemporarias()
+      .then(lista => setSubstituicoesInss(lista.filter(s => s.motivo === 'INSS' || s.motivo === 'INSS Indeterminado')))
+      .catch(() => setSubstituicoesInss([]));
+  }, [permissoesReady, canViewCertificacoes]);
+  const afastadosInss = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of substituicoesInss) {
+      if (s.status !== 'Aprovada' || !s.funcionarioId) continue;
+      const comecou = !s.dataInicio || s.dataInicio <= hojeISO;
+      const naoTerminou = !s.dataFim || s.motivo === 'INSS Indeterminado' || s.dataFim >= hojeISO;
+      if (comecou && naoTerminou) ids.add(s.funcionarioId);
+    }
+    for (const p of drive?.pessoas ?? []) if (/\s-\s*INSS\b/i.test(p.pasta)) ids.add(p.bombeiroId);
+    return ids;
+  }, [substituicoesInss, drive, hojeISO]);
 
   const tiposDoDrive = useMemo(() => {
     const vistos = new Map<string, string>();
@@ -952,12 +1021,19 @@ export function Certificacoes() {
         </div>
       )}
 
-      {aba === 'validade' && podeEditarValidade ? (
+      {aba === 'validade' && podeEditarValidade ? (<>
+        <p className={`mb-3 text-xs ${configSalva.estado === 'erro' ? 'font-semibold text-red-600 dark:text-red-400' : 'text-graphite-500 dark:text-graphite-400'}`}>
+          {configSalva.estado === 'salvando' && 'Salvando…'}
+          {configSalva.estado === 'erro' && 'Não foi possível salvar no servidor. A alteração ficou só neste navegador; tente de novo.'}
+          {configSalva.estado === 'ok' && (configSalva.em
+            ? `Salvo para todos os administradores · ${new Date(configSalva.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${configSalva.por ? ` por ${configSalva.por}` : ''}`
+            : 'As alterações valem para todos os administradores.')}
+        </p>
         <ValidadeDocumentos config={configDrive} onChange={mudarConfigDrive}
           encontrados={driveEstado === 'drive' ? tiposDoDrive : EXEMPLO_PERMITIDO ? undefined : []}
           exemplos={exemplosPorTipo}
           onVer={ex => setDocAberto({ doc: { ...avaliarParaVer(ex.arquivo, configDrive, hojeISO), arquivos: [ex.arquivo] }, pessoaNome: ex.pessoaNome })} />
-      ) : (<>
+      </>) : (<>
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-1 gap-3">
           <div className="relative flex-1 max-w-md">
@@ -996,6 +1072,7 @@ export function Certificacoes() {
                 onViewArquivo={(arquivo, title) => setArquivoModal({ arquivo, title })}
                 arquivosDrive={arquivosDrivePorPessoa.get(b.id) ?? []} configDrive={semDrive ? configSemDrive : configDrive} hojeISO={hojeISO}
                 semDrive={semDrive}
+                afastadoInss={afastadosInss.has(b.id)}
                 onAbrirDrive={(doc, pessoaNome) => setDocAberto({ doc, pessoaNome })}
               />
               {canManageCertificacoes && formNR === b.id && (

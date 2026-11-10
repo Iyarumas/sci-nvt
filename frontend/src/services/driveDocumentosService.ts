@@ -27,6 +27,15 @@ export function buscarDocumentosDrive(atualizar = false): Promise<DocumentosDriv
   return apiFetch<DocumentosDriveApi>(`/drive/documentos${atualizar ? '?atualizar=1' : ''}`, { cache: 'no-store' });
 }
 
+/** Configuração da aba "Validade dos documentos" guardada no banco (vale para todos). */
+export function lerConfigDrive(): Promise<{ config: unknown; atualizadoEm: string | null; atualizadoPor: string | null }> {
+  return apiFetch('/drive/config', { cache: 'no-store' });
+}
+
+export function salvarConfigDrive(config: unknown): Promise<{ ok: boolean }> {
+  return apiFetch('/drive/config', { method: 'PUT', body: JSON.stringify({ config }), headers: { 'Content-Type': 'application/json' } });
+}
+
 /** Data do curso digitada (PDF sem texto ou data lida errada). null apaga. */
 export function informarDataDrive(arquivoId: string, data: string | null): Promise<{ ok: boolean }> {
   return apiFetch('/drive/data', { method: 'POST', body: JSON.stringify({ arquivoId, data }), headers: { 'Content-Type': 'application/json' } });

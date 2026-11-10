@@ -221,6 +221,35 @@ export class DriveService {
     });
   }
 
+  /* ───────── Configuração da aba "Validade dos documentos" (uma só para todos) ───────── */
+
+  async lerConfig(user: AuthUser | undefined) {
+    await this.escopo(user);
+    const r = await this.database.query<{ config: unknown; atualizado_em: string; atualizado_por: string | null }>(
+      'SELECT config, atualizado_em, atualizado_por FROM drive_config WHERE id = 1',
+    );
+    const linha = r.rows[0];
+    return linha
+      ? { config: linha.config, atualizadoEm: linha.atualizado_em, atualizadoPor: linha.atualizado_por }
+      : { config: null, atualizadoEm: null, atualizadoPor: null };
+  }
+
+  async salvarConfig(user: AuthUser | undefined, config: unknown) {
+    if (!isAdmin(user)) throw new ForbiddenException('Somente administradores alteram a validade dos documentos.');
+    const c = config as Record<string, unknown> | null;
+    if (!c || typeof c !== 'object' || Array.isArray(c) || typeof c.prazos !== 'object' || !Array.isArray(c.obrigatorios)) {
+      throw new BadRequestException('Configuração inválida.');
+    }
+    const texto = JSON.stringify(c);
+    if (texto.length > 500_000) throw new BadRequestException('Configuração grande demais.');
+    await this.database.query(
+      `INSERT INTO drive_config (id, config, atualizado_em, atualizado_por) VALUES (1, $1::jsonb, now(), $2)
+       ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config, atualizado_em = now(), atualizado_por = EXCLUDED.atualizado_por`,
+      [texto, user?.username ?? null],
+    );
+    return { ok: true };
+  }
+
   /** Data digitada por alguém (PDF sem texto ou data errada). null apaga. */
   async informarData(user: AuthUser | undefined, arquivoId: string, data: string | null) {
     const escopo = await this.escopo(user);

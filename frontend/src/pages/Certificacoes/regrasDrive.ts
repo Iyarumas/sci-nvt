@@ -482,24 +482,34 @@ export function tiposEncontrados(): Array<{ tipo: string; pastaId: string }> {
 
 const CHAVE_CONFIG = 'certificacoes.drive.config.v2';
 
-export function lerConfig(): ConfigDocumentos {
+/** Completa uma configuração salva (navegador ou banco) com o que foi criado depois. null = inválida. */
+export function completarConfig(valor: unknown): ConfigDocumentos | null {
+  const c = valor as ConfigDocumentos | null;
+  if (!c || typeof c.prazos !== 'object' || !Array.isArray(c.obrigatorios)) return null;
+  const semCargos = !c.cargosObrigatorio;
+  return {
+    ...c, padroes: c.padroes ?? PADROES_INICIAIS, apelidos: c.apelidos ?? {},
+    cargosObrigatorio: c.cargosObrigatorio ?? CARGOS_OBRIGATORIO_INICIAIS,
+    // configuração salva antes dos cargos: entra com os obrigatórios por cargo combinados
+    obrigatorios: semCargos
+      ? [...new Set([...c.obrigatorios, ...Object.keys(CARGOS_OBRIGATORIO_INICIAIS)])]
+      : c.obrigatorios,
+  };
+}
+
+/** Configuração guardada neste navegador (cópia; a que vale é a do banco). */
+export function lerConfigLocal(): ConfigDocumentos | null {
   try {
     const salvo = localStorage.getItem(CHAVE_CONFIG);
-    if (salvo) {
-      const c = JSON.parse(salvo) as ConfigDocumentos;
-      if (c && typeof c.prazos === 'object' && Array.isArray(c.obrigatorios)) {
-        const semCargos = !c.cargosObrigatorio;
-        return {
-          ...c, padroes: c.padroes ?? PADROES_INICIAIS, apelidos: c.apelidos ?? {},
-          cargosObrigatorio: c.cargosObrigatorio ?? CARGOS_OBRIGATORIO_INICIAIS,
-          // configuração salva antes dos cargos: entra com os obrigatórios por cargo combinados
-          obrigatorios: semCargos
-            ? [...new Set([...c.obrigatorios, ...Object.keys(CARGOS_OBRIGATORIO_INICIAIS)])]
-            : c.obrigatorios,
-        };
-      }
-    }
-  } catch { /* sem armazenamento: usa o exemplo */ }
+    return salvo ? completarConfig(JSON.parse(salvo)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function lerConfig(): ConfigDocumentos {
+  const local = lerConfigLocal();
+  if (local) return local;
   return {
     ...CONFIG_EXEMPLO,
     obrigatorios: [...new Set([...CONFIG_EXEMPLO.obrigatorios, ...Object.keys(CARGOS_OBRIGATORIO_INICIAIS)])],

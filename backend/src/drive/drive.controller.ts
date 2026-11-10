@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { DriveService } from './drive.service';
 
@@ -10,6 +10,17 @@ export class DriveController {
   @Get('documentos')
   documentos(@Req() request: Request, @Query('atualizar') atualizar?: string) {
     return this.drive.documentos(request.authUser, atualizar === '1');
+  }
+
+  /** Configuração da aba "Validade dos documentos" (prazos, obrigatórios, Nº, nomes juntados). */
+  @Get('config')
+  lerConfig(@Req() request: Request) {
+    return this.drive.lerConfig(request.authUser);
+  }
+
+  @Put('config')
+  salvarConfig(@Req() request: Request, @Body() body: { config?: unknown }) {
+    return this.drive.salvarConfig(request.authUser, body?.config);
   }
 
   /** Data do curso digitada (quando o PDF não tem texto ou a data lida está errada). */

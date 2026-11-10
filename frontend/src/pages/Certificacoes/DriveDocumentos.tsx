@@ -6,7 +6,7 @@ import {
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { hojeLocalISO } from '../../utils/datas';
 import {
-  PASTAS_DRIVE, PASTA_EXTRAS, TIPOS_COM_VALIDADE_PROPRIA, avaliarPessoa, documentosDaPastaEscolhida, tipoPeloNome, tiposEncontrados,
+  PASTAS_DRIVE, PASTA_EXTRAS, TIPOS_COM_VALIDADE_PROPRIA, avaliarPessoa, posicaoNaPasta, documentosDaPastaEscolhida, tipoPeloNome, tiposEncontrados,
   type ConfigDocumentos, type DocumentoAvaliado, type SituacaoDocumento, type ArquivoDrive,
 } from './regrasDrive';
 
@@ -306,8 +306,11 @@ export function PastasDrive({ arquivos, config, hojeISO, onAbrir }: {
   return (
     <div className="space-y-4">
       {PASTAS_DRIVE.map(pasta => {
+        // Ordem da pasta no Drive (Nº padrão); sem Nº, os piores primeiro.
         const docs = [...(porPasta.get(pasta.id) ?? [])]
-          .sort((a, b) => ORDEM_SITUACAO.indexOf(a.situacao) - ORDEM_SITUACAO.indexOf(b.situacao));
+          .sort((a, b) => posicaoNaPasta(pasta.id, a.tipo, config) - posicaoNaPasta(pasta.id, b.tipo, config)
+            || ORDEM_SITUACAO.indexOf(a.situacao) - ORDEM_SITUACAO.indexOf(b.situacao)
+            || a.tipo.localeCompare(b.tipo, 'pt-BR', { numeric: true }));
         return (
           <section key={pasta.id}>
             <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">
@@ -645,7 +648,9 @@ export function ValidadeDocumentos({ config, onChange, encontrados }: {
         </section>
       )}
       {PASTAS_DRIVE.map(pasta => {
-        const daPasta = tipos.filter(t => t.pastaId === pasta.id);
+        const daPasta = tipos.filter(t => t.pastaId === pasta.id)
+          .sort((a, b) => posicaoNaPasta(pasta.id, a.tipo, config) - posicaoNaPasta(pasta.id, b.tipo, config)
+            || a.tipo.localeCompare(b.tipo, 'pt-BR', { numeric: true }));
         return (
           <section key={pasta.id} className="overflow-hidden rounded-2xl border border-graphite-200 bg-white dark:border-border-dark dark:bg-surface-card">
             <div className="flex items-center gap-2 border-b border-graphite-200 bg-graphite-50 px-4 py-2 dark:border-border-dark dark:bg-surface-elevated">

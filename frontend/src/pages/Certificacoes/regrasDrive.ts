@@ -93,6 +93,13 @@ export const PADROES_INICIAIS: Record<string, Record<string, string>> = {
   },
 };
 
+/** Posição do documento na pasta pelo Nº padrão (sem Nº = fim). Mudar o Nº muda a ordem. */
+export function posicaoNaPasta(pastaId: string, tipo: string, config: ConfigDocumentos): number {
+  const daPasta = config.padroes?.[pastaId] ?? {};
+  const numero = Object.keys(daPasta).find(n => daPasta[n] === tipo);
+  return numero ? Number(numero) : Number.MAX_SAFE_INTEGER;
+}
+
 /** Número da frente do arquivo ("04B - CURSO BAMC" → "04"). */
 export function numeroDoArquivo(nomeArquivo: string): string | null {
   const m = nomeArquivo.match(/^\s*(\d{1,3})[A-Z]?\s*[-–.]/i);

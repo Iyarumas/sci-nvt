@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, User, Unlink } from 'lucide-react';
+import { X, User, Unlink, Radio } from 'lucide-react';
 import type { UserRole } from '../../context/AuthContext';
 import { cargoParaUserRole, apocParaUserRole } from '../../context/AuthContext';
 import { Autocomplete } from '../../components/documentos/Autocomplete';
@@ -17,11 +17,14 @@ interface UserData {
   role: UserRole;
   previousRole?: UserRole;
   personId?: string;
-  personType?: 'bombeiro' | 'apoc';
+  personType?: TipoVinculo;
 }
 
+type TipoVinculo = 'bombeiro' | 'apoc' | 'equipe';
+const EQUIPES_CENTRAL = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
+
 interface Props {
-  user?: { username: string; name: string; role?: UserRole; previousRole?: UserRole; personId?: string; personType?: 'bombeiro' | 'apoc' } | null;
+  user?: { username: string; name: string; role?: UserRole; previousRole?: UserRole; personId?: string; personType?: TipoVinculo } | null;
   onSave: (data: UserData) => void | Promise<void>;
   onClose: () => void;
 }
@@ -43,7 +46,8 @@ export function UsuarioForm({ user, onSave, onClose }: Props) {
   const [erro, setErro] = useState('');
 
   const [personId, setPersonId] = useState<string | undefined>(user?.personId);
-  const [personType, setPersonType] = useState<'bombeiro' | 'apoc' | undefined>(user?.personType);
+  const [personType, setPersonType] = useState<TipoVinculo | undefined>(user?.personType);
+  const [contaCentral, setContaCentral] = useState(user?.personType === 'equipe');
 
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
   const [apocs, setApocs] = useState<APOC[]>([]);
@@ -70,8 +74,27 @@ export function UsuarioForm({ user, onSave, onClose }: Props) {
       setPassword('');
       setPersonId(user.personId);
       setPersonType(user.personType);
+      setContaCentral(user.personType === 'equipe');
     }
   }, [user]);
+
+  /** Conta da Central da equipe: login compartilhado da central (OC), sem pessoa do cadastro. */
+  function escolherCentral(equipe: string) {
+    setPersonId(equipe);
+    setPersonType('equipe');
+    setRole('comunicante');
+    setName(`Central ${equipe}`);
+    if (!user && !username) setUsername(`central.${equipe.toLowerCase()}`);
+  }
+
+  function alternarContaCentral(ativa: boolean) {
+    setContaCentral(ativa);
+    if (!ativa && personType === 'equipe') {
+      setPersonId(undefined);
+      setPersonType(undefined);
+      setName('');
+    }
+  }
 
   const allPersons: PersonOption[] = useMemo(() => {
     const bOpts: PersonOption[] = bombeiros.map(b => ({
@@ -94,7 +117,7 @@ export function UsuarioForm({ user, onSave, onClose }: Props) {
   );
 
   const linkedPerson = useMemo(() => {
-    if (!personId || !personType) return null;
+    if (!personId || !personType || personType === 'equipe') return null;
     return allPersons.find(p => p.id === personId && p.type === personType) || null;
   }, [personId, personType, allPersons]);
 
@@ -125,6 +148,10 @@ export function UsuarioForm({ user, onSave, onClose }: Props) {
       setErro('Preencha todos os campos obrigatórios.');
       return;
     }
+    if (contaCentral && personType !== 'equipe') {
+      setErro('Escolha a equipe da central.');
+      return;
+    }
     if (!user && password.length < 6) {
       setErro('A senha deve ter pelo menos 6 caracteres.');
       return;
@@ -153,6 +180,35 @@ export function UsuarioForm({ user, onSave, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-teal-200 bg-teal-50/50 px-3 py-2.5 dark:border-teal-800/50 dark:bg-teal-900/10">
+            <input type="checkbox" checked={contaCentral} onChange={e => alternarContaCentral(e.target.checked)} className="mt-0.5 h-4 w-4 accent-teal-600" />
+            <span>
+              <span className="block text-sm font-medium text-graphite-900 dark:text-graphite-100">Conta da Central da equipe</span>
+              <span className="block text-[11px] text-graphite-500 dark:text-graphite-400">Login compartilhado de quem está na central no plantão. Não é uma pessoa do cadastro.</span>
+            </span>
+          </label>
+
+          {contaCentral ? (
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-graphite-700 dark:text-graphite-300">Equipe *</p>
+              <div role="radiogroup" aria-label="Equipe da central" className="grid grid-cols-4 gap-2">
+                {EQUIPES_CENTRAL.map(eq => (
+                  <button key={eq} type="button" role="radio" aria-checked={personId === eq} onClick={() => escolherCentral(eq)}
+                    className={`rounded-xl border px-2 py-2 text-sm font-semibold transition-colors ${personId === eq
+                      ? 'border-teal-500 bg-teal-600 text-white'
+                      : 'border-graphite-300 text-graphite-700 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-200 dark:hover:bg-surface-hover'}`}>
+                    {eq}
+                  </button>
+                ))}
+              </div>
+              {personType === 'equipe' && personId && (
+                <p className="mt-2 flex items-center gap-1.5 text-[11px] text-teal-700 dark:text-teal-300">
+                  <Radio className="h-3.5 w-3.5" /> Central {personId} · Comunicante (OC) · preenche início e fim de plantão e os registros do LRO da equipe {personId}.
+                </p>
+              )}
+            </div>
+          ) : (
+          <>
           <div>
             <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Nome Completo</label>
             {loadingPessoas ? (
@@ -191,6 +247,8 @@ export function UsuarioForm({ user, onSave, onClose }: Props) {
                 <Unlink className="h-4 w-4" />
               </button>
             </div>
+          )}
+          </>
           )}
 
           <div>

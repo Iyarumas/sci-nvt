@@ -114,7 +114,7 @@ export function Usuarios() {
   const [canManageCadastro, setCanManageCadastro] = useState(() => podeVerCadastroCompletoBase(user));
   const [termo, setTermo] = useState('');
   const [formOpen, setFormOpen] = useState(false);
-  const [editando, setEditando] = useState<{ username: string; name: string; role?: UserRole; previousRole?: UserRole; personId?: string; personType?: 'bombeiro' | 'apoc' } | null>(null);
+  const [editando, setEditando] = useState<{ username: string; name: string; role?: UserRole; previousRole?: UserRole; personId?: string; personType?: 'bombeiro' | 'apoc' | 'equipe' } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [convites, setConvites] = useState<Convite[]>([]);
   const [copiado, setCopiado] = useState<string | null>(null);
@@ -153,6 +153,8 @@ export function Usuarios() {
 
   function resolvePerson(data: StoredUser) {
     if (!data.personId || !data.personType) return null;
+    // Conta da Central da equipe: o vínculo é a própria equipe.
+    if (data.personType === 'equipe') return { nomeGuerra: `Central ${data.personId} · conta da central` } as Pick<APOC, 'nomeGuerra'>;
     if (data.personType === 'bombeiro') {
       return bombeiros.find(b => b.id === data.personId) || null;
     }
@@ -236,7 +238,7 @@ export function Usuarios() {
     copiarUrl(codigo);
   }
 
-  async function handleSave(data: { username: string; name: string; password: string; role: UserRole; personId?: string; personType?: 'bombeiro' | 'apoc' }) {
+  async function handleSave(data: { username: string; name: string; password: string; role: UserRole; personId?: string; personType?: 'bombeiro' | 'apoc' | 'equipe' }) {
     if (!canManageCadastro) return;
     try {
       if (editando) {

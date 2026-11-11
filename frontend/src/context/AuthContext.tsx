@@ -24,7 +24,8 @@ export interface PessoaVinculada {
   foto?: string;
   funcao: string;
   equipe?: string;
-  personType: 'bombeiro' | 'apoc';
+  /** 'equipe' = conta da Central da equipe (OC): não é uma pessoa do cadastro, só tem a equipe. */
+  personType: 'bombeiro' | 'apoc' | 'equipe';
 }
 
 interface User {
@@ -51,7 +52,7 @@ export interface StoredUser {
   role: UserRole;
   previousRole?: UserRole;
   personId?: string;
-  personType?: 'bombeiro' | 'apoc';
+  personType?: 'bombeiro' | 'apoc' | 'equipe';
 }
 
 const USERS_KEY = 'sescinc-users';
@@ -215,7 +216,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: roleGarantida,
     };
 
-    if (remote.personId && remote.personType) {
+    if (remote.personId && remote.personType === 'equipe') {
+      // Conta da Central: compartilhada por quem está na central no plantão; a equipe é o próprio vínculo.
+      userData.name = remote.name || `Central ${remote.personId}`;
+      userData.pessoa = {
+        id: remote.personId,
+        nomeGuerra: `Central ${remote.personId}`,
+        funcao: 'OC',
+        equipe: remote.personId,
+        personType: 'equipe',
+      };
+    } else if (remote.personId && remote.personType) {
       try {
         if (remote.personType === 'bombeiro') {
           const b = await obterBombeiro(remote.personId);

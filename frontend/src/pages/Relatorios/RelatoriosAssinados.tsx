@@ -116,7 +116,8 @@ export default function RelatoriosAssinados({ rota: rotaFixa }: { rota?: string 
 
   const nomeDocumento = (d: DocumentoRelatorio) => {
     if (cfg.tipo === 'troca') return `${nomeCompleto(d.solicitante)} ↔ ${nomeCompleto(d.solicitado)}`;
-    if (ehRea) return `${br(d.data).replace(/\//g, '-')} NVT ${d.numero || 'REA'} ${d.equipe.toUpperCase()}`.trim();
+    // BONA e REA já têm o número completo (BONA-084/2026, REA-001/2026).
+    if (ehRea || cfg.tipo === 'bona') return `${br(d.data).replace(/\//g, '-')} NVT ${d.numero || cfg.sigla} ${d.equipe.toUpperCase()}`.trim();
     const numero = d.numero ? ` Nº ${String(d.numero).padStart(3, '0')}` : '';
     return `${br(d.data).replace(/\//g, '-')} NVT ${cfg.sigla}${numero} ${d.equipe.toUpperCase()}`.trim();
   };

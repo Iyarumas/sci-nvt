@@ -47,7 +47,9 @@ const RELATORIO_POR_TIPO: Record<string, {
   lro: { data: 't.data_plantao::text', equipe: 't.equipe', numero: "''", hora: "''", solicitante: "''", solicitado: "''", filtro: 'true' },
   bona: {
     data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')",
-    solicitante: "''", solicitado: "''", filtro: "coalesce(t.tipo_documento, '') ILIKE 'BONA%'",
+    solicitante: "''", solicitado: "''",
+    // Só o BONA criado (tem número BONA-xxx/aaaa). A mesma tabela guarda as ocorrências do LRO, sem número.
+    filtro: "coalesce(t.tipo_documento, '') ILIKE 'BONA%' AND coalesce(t.numero, '') <> ''",
   },
   taf: { data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')", solicitante: "''", solicitado: "''", filtro: 'true' },
   tpepr: { data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')", solicitante: "''", solicitado: "''", filtro: 'true' },

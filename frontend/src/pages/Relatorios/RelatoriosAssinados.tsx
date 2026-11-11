@@ -111,7 +111,23 @@ export default function RelatoriosAssinados({ rota: rotaFixa }: { rota?: string 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docs, equipe, cfg.tipo, bombeiros]);
 
-  const doPeriodo = useMemo(() => (periodo === 'quinzena' ? lista.filter(d => naPrimeiraQuinzena(d.data)) : lista), [lista, periodo]);
+  /**
+   * 1ª quinzena. Trocas: vale quando a troca foi FEITA (até o dia 15, ou já no mês anterior), mesmo que o
+   * plantão trocado seja na 2ª quinzena. Os demais documentos: pela data do plantão.
+   */
+  const fimPrimeiraQuinzena = `${ano}-${String(mes).padStart(2, '0')}-15`;
+  const ehPrimeiraQuinzena = (d: DocumentoRelatorio) => {
+    if (cfg.tipo !== 'troca') return naPrimeiraQuinzena(d.data);
+    // Vem do banco como texto ("2026-11-10 13:41:52.9+00"): ajusta para o formato ISO antes de ler.
+    const texto = (d.criadoEm || '').replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
+    const feita = texto ? new Date(texto) : null;
+    if (!feita || Number.isNaN(feita.getTime())) return d.criadoEm ? d.criadoEm.slice(0, 10) <= fimPrimeiraQuinzena : naPrimeiraQuinzena(d.data);
+    const local = `${feita.getFullYear()}-${String(feita.getMonth() + 1).padStart(2, '0')}-${String(feita.getDate()).padStart(2, '0')}`;
+    return local <= fimPrimeiraQuinzena;
+  };
+  const doPeriodo = useMemo(() => (periodo === 'quinzena' ? lista.filter(ehPrimeiraQuinzena) : lista),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lista, periodo, cfg.tipo, ano, mes]);
   const assinadosNoPeriodo = doPeriodo.filter(d => d.situacao === 'assinado').length;
 
   const nomeDocumento = (d: DocumentoRelatorio) => {
@@ -209,8 +225,8 @@ export default function RelatoriosAssinados({ rota: rotaFixa }: { rota?: string 
 
   const anos = Array.from({ length: 4 }, (_, i) => hoje.getFullYear() - i);
   const quinzenas: Array<[string, DocumentoRelatorio[]]> = [
-    ['1ª quinzena · dias 01 a 15', lista.filter(d => naPrimeiraQuinzena(d.data))],
-    ['2ª quinzena · dia 16 ao fim do mês', lista.filter(d => !naPrimeiraQuinzena(d.data))],
+    [cfg.tipo === 'troca' ? '1ª quinzena · trocas feitas até o dia 15' : '1ª quinzena · dias 01 a 15', lista.filter(ehPrimeiraQuinzena)],
+    [cfg.tipo === 'troca' ? '2ª quinzena · trocas feitas do dia 16 em diante' : '2ª quinzena · dia 16 ao fim do mês', lista.filter(d => !ehPrimeiraQuinzena(d))],
   ];
   let ordem = 0;
   const seletor = 'rounded-xl border border-graphite-300 bg-white px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-card dark:text-graphite-100';

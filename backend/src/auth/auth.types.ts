@@ -21,9 +21,12 @@ export function isAdmin(user: AuthUser | undefined): boolean {
   return !!user && ADMIN_ROLES.has(user.role);
 }
 
-/** Comunicante: permissão "Comunicante (OC)" dada em Usuários, ou função OC no cadastro. */
+/**
+ * Comunicante: só as contas da Central (uma por equipe, permissão "Comunicante (OC)" em Usuários).
+ * O bombeiro com função OC no cadastro e login próprio continua usando o sistema normal.
+ */
 export function isComunicante(user: AuthUser | undefined): boolean {
-  return !!user && !isAdmin(user) && (user.role === 'comunicante' || user.funcao === 'OC');
+  return !!user && !isAdmin(user) && user.role === 'comunicante';
 }
 
 export const IS_PUBLIC_KEY = 'auth:isPublic';

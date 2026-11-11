@@ -44,12 +44,13 @@ export function isAdministradorSistema(user: AuthUserPermissao): boolean {
 }
 
 /**
- * Comunicante: permissão "Comunicante (OC)" dada em Usuários, ou função OC no cadastro.
+ * Comunicante: as contas da Central da equipe (permissão "Comunicante (OC)" em Usuários).
  * Entra no sistema e vê só as telas da central.
  */
 export function isComunicante(user: AuthUserPermissao): boolean {
   if (isAdministradorSistema(user)) return false;
-  return user?.role === 'comunicante' || (user?.pessoa?.personType === 'bombeiro' && user.pessoa.funcao === 'OC');
+  // Só as contas da Central (uma por equipe). O OC do cadastro com login próprio usa o sistema normal.
+  return user?.role === 'comunicante';
 }
 
 export const ROTAS_COMUNICANTE = [

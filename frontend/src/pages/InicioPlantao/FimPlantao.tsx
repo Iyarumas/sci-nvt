@@ -35,10 +35,10 @@ import {
 import { cardPlantao as card, PainelMensagemPlantao, tituloCardPlantao as tituloCard } from './PainelMensagemPlantao';
 
 const EQUIPES = ['Alfa', 'Bravo', 'Charlie', 'Delta'] as const;
-const input = 'w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm transition-all focus:border-aviation-500/50 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:scheme-dark';
+const input = 'w-full rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2.5 text-base sm:py-2 sm:text-sm transition-all focus:border-aviation-500/50 focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:scheme-dark';
 const label = 'mb-1 block text-xs font-semibold text-graphite-600 dark:text-graphite-300';
-const botaoAdicionar = 'mt-3 flex items-center gap-2 rounded-xl border border-dashed border-aviation-400/60 px-4 py-2 text-sm font-semibold text-aviation-700 transition-colors hover:bg-aviation-50 dark:text-aviation-300 dark:hover:bg-aviation-900/20';
-const botaoRemover = 'shrink-0 rounded-lg p-2 text-graphite-400 transition-colors hover:bg-red-500/10 hover:text-alert-red';
+const botaoAdicionar = 'mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-dashed border-aviation-400/60 px-4 py-2.5 sm:min-h-0 sm:py-2 text-sm font-semibold text-aviation-700 transition-colors hover:bg-aviation-50 dark:text-aviation-300 dark:hover:bg-aviation-900/20';
+const botaoRemover = 'shrink-0 rounded-lg p-3 sm:p-2 text-graphite-400 transition-colors hover:bg-red-500/10 hover:text-alert-red';
 
 function vazio(): DadosFimPlantao {
   return {
@@ -187,7 +187,7 @@ export default function FimPlantao() {
           </select>
         </label>
         {!salvo && equipe && (
-          <button type="button" onClick={() => setRecarregar(v => v + 1)} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 px-3 py-2 text-sm font-medium text-graphite-700 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-200 dark:hover:bg-surface-hover">
+          <button type="button" onClick={() => setRecarregar(v => v + 1)} className="flex min-h-11 items-center gap-2 rounded-xl border border-graphite-300/60 px-3 py-2 text-sm font-medium sm:min-h-0 text-graphite-700 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-200 dark:hover:bg-surface-hover">
             <RefreshCw className="h-4 w-4" /> Buscar de novo
           </button>
         )}
@@ -217,8 +217,8 @@ export default function FimPlantao() {
                       </label>
                     )}
                     <div role="group" aria-label={`Situação de ${item.nome}`} className="flex overflow-hidden rounded-xl border border-graphite-300/60 text-xs font-bold dark:border-border-dark">
-                      <button type="button" aria-pressed={item.ok} onClick={() => setItem(i, { ok: true })} className={`px-3 py-1.5 ${item.ok ? 'bg-emerald-500 text-white' : 'text-graphite-500 hover:bg-graphite-50 dark:hover:bg-surface-hover'}`}>✅ OK</button>
-                      <button type="button" aria-pressed={!item.ok} onClick={() => setItem(i, { ok: false })} className={`px-3 py-1.5 ${!item.ok ? 'bg-red-500 text-white' : 'text-graphite-500 hover:bg-graphite-50 dark:hover:bg-surface-hover'}`}>❌ Alteração</button>
+                      <button type="button" aria-pressed={item.ok} onClick={() => setItem(i, { ok: true })} className={`min-h-11 px-4 py-2.5 sm:min-h-0 sm:px-3 sm:py-1.5 ${item.ok ? 'bg-emerald-500 text-white' : 'text-graphite-500 hover:bg-graphite-50 dark:hover:bg-surface-hover'}`}>✅ OK</button>
+                      <button type="button" aria-pressed={!item.ok} onClick={() => setItem(i, { ok: false })} className={`min-h-11 px-4 py-2.5 sm:min-h-0 sm:px-3 sm:py-1.5 ${!item.ok ? 'bg-red-500 text-white' : 'text-graphite-500 hover:bg-graphite-50 dark:hover:bg-surface-hover'}`}>❌ Alteração</button>
                     </div>
                     {(!item.ok || item.nome === HIDROMETRO) && (
                       <input

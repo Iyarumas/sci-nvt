@@ -220,11 +220,11 @@ export function Inspecoes() {
 
   return (
     <PageContainer>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-3">
         <PageTitle icon={ShieldCheck} title="Inspeções" />
         {modo === 'lista' && (canManageGlobal || equipeEfetiva) && (
           <button onClick={() => { setEditando(null); setTipoInspecao(''); setDescricao(''); setModo('form'); }}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]">
+            className="mb-6 flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]">
             <Plus className="h-4 w-4" /> Nova Inspeção
           </button>
         )}

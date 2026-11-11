@@ -10,6 +10,7 @@ import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
+import { dataDoPlantaoAtual, registroNoPlantao } from '../../utils/plantaoRegistros';
 import { resumoAuditoria } from '../../utils/auditoria';
 
 const EQUIPES_SOLICITACAO = EQUIPE_OPTIONS.filter(eq => eq !== 'Ferista' && eq !== 'Embaixador');
@@ -54,7 +55,10 @@ const SOLICITACOES_TOUR_STEPS = [
 ];
 
 export function Solicitacoes() {
-  const { user, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
+  const { user, contexto, canManageGlobal, canManageEquipe, equipeEfetiva } = useContextoOperacional();
+  // Central (comunicante): só os registros da equipe dela no plantão em andamento; os demais veem todos.
+  const ehCentral = !!contexto.isComunicante && !!equipeEfetiva;
+  const dataPlantaoCentral = ehCentral ? dataDoPlantaoAtual(equipeEfetiva as string) : '';
 
   const [modo, setModo] = useState<'lista' | 'form'>('lista');
   const [data, setData] = useState(hojeLocalISO());
@@ -92,6 +96,14 @@ export function Solicitacoes() {
 
   const filtrados = useMemo(() => {
     let lista = registros;
+    if (ehCentral) {
+      return lista
+        .filter(r => registroNoPlantao({
+          data: r.dataConferencia, hora: (r.dataConferencia || '').slice(11, 16), equipeRegistro: r.equipe,
+          equipe: equipeEfetiva as string, dataPlantao: dataPlantaoCentral, dataTurno: r.dataProximaInspecao,
+        }))
+        .sort((a, b) => (b.dataConferencia || '').localeCompare(a.dataConferencia || ''));
+    }
 
     if (filtroEquipe) {
       lista = lista.filter(r => r.equipe === filtroEquipe);
@@ -106,7 +118,7 @@ export function Solicitacoes() {
     }
 
     return lista.sort((a, b) => (b.dataConferencia || '').localeCompare(a.dataConferencia || ''));
-  }, [registros, filtroEquipe, filterMode, filtroMes, filtroAno, dataInicio, dataFinal]);
+  }, [registros, filtroEquipe, filterMode, filtroMes, filtroAno, dataInicio, dataFinal, ehCentral, equipeEfetiva, dataPlantaoCentral]);
 
   async function handleSalvar(e: React.FormEvent) {
     e.preventDefault();
@@ -287,6 +299,12 @@ export function Solicitacoes() {
         </form>
       ) : (
         <>
+          {ehCentral ? (
+            <p className="mb-4 text-sm text-graphite-600 dark:text-graphite-300">
+              Plantão da equipe <span className="font-semibold">{equipeEfetiva}</span> de <span className="font-semibold">{formatarDataBR(dataPlantaoCentral)}</span>
+              {' · '}{filtrados.length} registro(s) deste plantão
+            </p>
+          ) : (
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <div className="flex overflow-hidden rounded-xl border border-graphite-300/60 bg-white/70 text-xs font-medium dark:border-border-dark dark:bg-surface-card">
               <button onClick={() => setFilterMode('mes-ano')}
@@ -322,6 +340,7 @@ export function Solicitacoes() {
             </select>
             <span className="text-xs text-graphite-400">{filtrados.length} registro(s)</span>
           </div>
+          )}
 
           {filtrados.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-graphite-300/60 bg-white/50 p-12 text-center dark:border-border-dark dark:bg-surface-card">

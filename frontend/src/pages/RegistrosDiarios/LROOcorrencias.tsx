@@ -14,6 +14,7 @@ import type { Ocorrencia } from '../../types/ocorrencia';
 import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
+import { dataDoPlantaoAtual, registroNoPlantao } from '../../utils/plantaoRegistros';
 import { montarPessoasAuditoria, resumoAuditoria } from '../../utils/auditoria';
 import type { PessoaAuditoria } from '../../utils/auditoria';
 import {
@@ -284,6 +285,12 @@ export function LROOcorrencias() {
   const canCreate = canCriarRegistrosDiarios(contexto);
   const canEscolherEquipe = canManageGlobal || canEscolherEquipeRegistrosDiarios(contexto);
   const equipePadrao = equipePadraoRegistrosDiarios(contexto) || equipeEfetiva;
+  /**
+   * Central (comunicante): vê só as ocorrências da equipe dela no plantão em andamento.
+   * Quem não é da Central continua vendo todas, com os filtros.
+   */
+  const ehCentral = !!contexto.isComunicante && !!equipeEfetiva;
+  const dataPlantaoCentral = ehCentral ? dataDoPlantaoAtual(equipeEfetiva as string) : '';
 
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [bombeiros, setBombeiros] = useState<Bombeiro[]>([]);
@@ -321,6 +328,14 @@ export function LROOcorrencias() {
 
   const filtradas = useMemo(() => {
     let list = ocorrencias.filter(ocorrenciaPertenceAoLRO);
+    if (ehCentral) {
+      return list
+        .filter(o => registroNoPlantao({
+          data: o.data, hora: o.hora, equipeRegistro: o.equipe, equipe: equipeEfetiva as string,
+          dataPlantao: dataPlantaoCentral, dataTurno: o.local,
+        }))
+        .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
+    }
     if (filtroEquipe) {
       list = list.filter(o => o.equipe === filtroEquipe);
     }
@@ -337,7 +352,7 @@ export function LROOcorrencias() {
       });
     }
     return list.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
-  }, [ocorrencias, filtroEquipe, filtroStatus, filtroAno, filtroMes]);
+  }, [ocorrencias, filtroEquipe, filtroStatus, filtroAno, filtroMes, ehCentral, equipeEfetiva, dataPlantaoCentral]);
 
   async function handleSave(data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) {
     if (editando?.id && ocorrenciaBloqueadaPorLRO(editando)) {
@@ -440,6 +455,12 @@ export function LROOcorrencias() {
       <PageTitle icon={AlertCircle} title="LRO/Ocorrências" />
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        {ehCentral ? (
+          <p className="text-sm text-graphite-600 dark:text-graphite-300">
+            Plantão da equipe <span className="font-semibold">{equipeEfetiva}</span> de <span className="font-semibold">{formatarDataBR(dataPlantaoCentral)}</span>
+            {' · '}{filtradas.length} ocorrência(s) deste plantão
+          </p>
+        ) : (
         <div className="flex flex-wrap items-center gap-3">
           <select value={filtroAno} onChange={e => setFiltroAno(e.target.value)} className={inputClass}>
             <option value="">Todos os anos</option>
@@ -459,6 +480,7 @@ export function LROOcorrencias() {
           </select>
           <p className="text-sm text-graphite-500 dark:text-graphite-400">{filtradas.length} ocorrência(s)</p>
         </div>
+        )}
         {canCreate && (
           <button onClick={() => { setEditando(null); setMode('form'); }}
             className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all duration-200 hover:shadow-xl hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98]">

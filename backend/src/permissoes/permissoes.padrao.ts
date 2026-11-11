@@ -53,6 +53,8 @@ const CANCELAR: [string, string] = ['cancelar_envio', 'Cancelar envio'];
 const BAIXAR: [string, string] = ['baixar_pdf', 'Baixar PDF'];
 const IMPRIMIR: [string, string] = ['imprimir', 'Imprimir'];
 const CRUD = [VER, CRIAR, EDITAR, EXCLUIR];
+/** Relatórios: lista do mês + PDF (1ª quinzena ou mês completo) + impressão. */
+const RELATORIO = [VER, BAIXAR, IMPRIMIR];
 const ASSINATURA = [ENVIAR, REENVIAR, CANCELAR, BAIXAR];
 
 export const TELAS: readonly TelaCatalogo[] = [
@@ -67,7 +69,7 @@ export const TELAS: readonly TelaCatalogo[] = [
   // Escalas e pessoal
   { grupo: 'Escalas e pessoal', chave: 'escala_diaria', nome: 'Escala diária', acoes: acoes(VER, CRIAR, EDITAR, IMPRIMIR) },
   { grupo: 'Escalas e pessoal', chave: 'escala_mensal', nome: 'Escala mensal', acoes: acoes(...CRUD, IMPRIMIR) },
-  { grupo: 'Escalas e pessoal', chave: 'substituicoes', nome: 'Substituições e extras', acoes: acoes(VER, CRIAR, ['aprovar', 'Aprovar / rejeitar'], ['gerar_relatorio', 'Gerar relatório']) },
+  { grupo: 'Escalas e pessoal', chave: 'substituicoes', nome: 'Substituições e extras', acoes: acoes(VER, CRIAR, ['aprovar', 'Aprovar / rejeitar']) },
   { grupo: 'Escalas e pessoal', chave: 'ferias', nome: 'Férias', acoes: acoes(...CRUD, ['aprovar', 'Aprovar / rejeitar'], ['gerar_relatorio', 'Gerar relatório']) },
   { grupo: 'Escalas e pessoal', chave: 'funcionarios', nome: 'Funcionários (ficha)', acoes: acoes(VER, ['dados_pessoais', 'Ver dados pessoais']) },
   { grupo: 'Escalas e pessoal', chave: 'cadastro_pessoas', nome: 'Bombeiros e APOC (cadastro)', acoes: acoes(VER, CRIAR, EDITAR, ['desligar', 'Registrar desligamento'], EXCLUIR) },
@@ -90,12 +92,16 @@ export const TELAS: readonly TelaCatalogo[] = [
   { grupo: 'Materiais e cadastros', chave: 'documentos_modelos', nome: 'Documentos (modelos)', acoes: acoes(VER, CRIAR, EDITAR) },
   { grupo: 'Materiais e cadastros', chave: 'ordem_servico', nome: 'Ordem de Serviço', acoes: acoes(...CRUD, IMPRIMIR) },
   // Relatórios e arquivo
-  { grupo: 'Relatórios e arquivo', chave: 'rel_bona', nome: 'Relatório BONA', acoes: acoes(VER) },
-  { grupo: 'Relatórios e arquivo', chave: 'rel_lro', nome: 'Relatório LRO', acoes: acoes(VER) },
-  { grupo: 'Relatórios e arquivo', chave: 'rel_ptrba', nome: 'Relatório PTR-BA', acoes: acoes(VER) },
-  { grupo: 'Relatórios e arquivo', chave: 'rel_exercicios', nome: 'Relatório de exercícios', acoes: acoes(VER) },
-  { grupo: 'Relatórios e arquivo', chave: 'rel_substituicoes', nome: 'Relatório de substituições', acoes: acoes(VER) },
-  { grupo: 'Relatórios e arquivo', chave: 'rel_trocas', nome: 'Relatório de trocas', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_lro', nome: 'Relatório LRO', acoes: acoes(...RELATORIO) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_bona', nome: 'Relatório BONA / REA', acoes: acoes(...RELATORIO) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_ptrba', nome: 'Relatório PTR-BA (horas)', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_ptrba_registros', nome: 'Relatório PTR-BA Registros', acoes: acoes(...RELATORIO) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_taf', nome: 'Relatório TAF', acoes: acoes(...RELATORIO) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_tpepr', nome: 'Relatório TP/EPR', acoes: acoes(...RELATORIO) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_posicionamento', nome: 'Relatório Posicionamento', acoes: acoes(...RELATORIO) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_tempo_resposta', nome: 'Relatório Tempo Resposta', acoes: acoes(...RELATORIO) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_trocas', nome: 'Relatório de trocas', acoes: acoes(...RELATORIO, ['folha_trocas', 'Só a folha de trocas']) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_substituicoes', nome: 'Relatório de substituições', acoes: acoes(VER, ['imprimir_mensal', 'Imprimir mensal'], ['imprimir_individual', 'Imprimir individual']) },
   { grupo: 'Relatórios e arquivo', chave: 'arquivo', nome: 'Arquivo', acoes: acoes(VER) },
   { grupo: 'Relatórios e arquivo', chave: 'estatisticas', nome: 'Estatísticas', acoes: acoes(VER) },
 ];
@@ -118,6 +124,11 @@ const CADASTRO_ALFA = com(SO_GS, {
   'BA-LR': c('nao', 'Hoje o BA-LR da Alfa pode (usar exceção por pessoa).'),
 });
 const RELATORIO_GS = com(SO_GS, { 'BA-LR': c('nao', 'Hoje o BA-LR da Delta vê (usar exceção por pessoa).') });
+
+/** PTR-BA (horas e registros): GS, BA-CE e BA-LR, como no menu hoje. */
+const RELATORIO_PTRBA = com(SO_GS, { 'BA-CE': c('todas'), 'BA-LR': c('todas') });
+/** Quem vê o relatório também baixa e imprime (pode separar pela grade). */
+const relatorio = (base: Linha): Record<string, Linha> => ({ ver: base, baixar_pdf: base, imprimir: base });
 
 const treinamento = (): Record<string, Linha> => ({
   ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE,
@@ -146,7 +157,6 @@ const PADRAO_POR_TELA: Record<string, Record<string, Linha>> = {
   escala_mensal: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE, imprimir: VER_TODOS },
   substituicoes: {
     ver: VER_TODOS, criar: SEM_TRAVA(), aprovar: SO_GS,
-    gerar_relatorio: com(SO_GS, {}),
   },
   ferias: {
     ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: SO_GS, aprovar: SO_GS, gerar_relatorio: SO_GS,
@@ -180,12 +190,16 @@ const PADRAO_POR_TELA: Record<string, Record<string, Linha>> = {
   relatorios_agentes: { ver: VER_TODOS, criar: CADASTRO_ALFA, editar: CADASTRO_ALFA, finalizar: CADASTRO_ALFA, baixar_pdf: VER_TODOS },
   documentos_modelos: { ver: VER_TODOS, criar: SO_GS, editar: SO_GS },
   ordem_servico: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE, imprimir: VER_TODOS },
-  rel_bona: { ver: RELATORIO_GS },
-  rel_lro: { ver: RELATORIO_GS },
-  rel_exercicios: { ver: RELATORIO_GS },
-  rel_substituicoes: { ver: RELATORIO_GS },
-  rel_trocas: { ver: RELATORIO_GS },
-  rel_ptrba: { ver: com(SO_GS, { 'BA-CE': c('todas'), 'BA-LR': c('todas') }) },
+  rel_lro: relatorio(RELATORIO_GS),
+  rel_bona: relatorio(RELATORIO_GS),
+  rel_taf: relatorio(RELATORIO_GS),
+  rel_tpepr: relatorio(RELATORIO_GS),
+  rel_posicionamento: relatorio(RELATORIO_GS),
+  rel_tempo_resposta: relatorio(RELATORIO_GS),
+  rel_trocas: { ...relatorio(RELATORIO_GS), folha_trocas: RELATORIO_GS },
+  rel_substituicoes: { ver: RELATORIO_GS, imprimir_mensal: RELATORIO_GS, imprimir_individual: RELATORIO_GS },
+  rel_ptrba: { ver: RELATORIO_PTRBA },
+  rel_ptrba_registros: relatorio(RELATORIO_PTRBA),
   arquivo: { ver: com(SO_GS, { 'BA-CE': c('todas'), 'BA-LR': c('todas') }) },
   estatisticas: { ver: VER_TODOS },
 };

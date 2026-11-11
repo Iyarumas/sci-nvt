@@ -152,9 +152,8 @@ export function Usuarios() {
   }, [canManageCadastro]);
 
   function resolvePerson(data: StoredUser) {
-    if (!data.personId || !data.personType) return null;
-    // Conta da Central da equipe: o vínculo é a própria equipe.
-    if (data.personType === 'equipe') return { nomeGuerra: `Central ${data.personId} · conta da central` } as Pick<APOC, 'nomeGuerra'>;
+    // Conta da Central da equipe: não tem pessoa do cadastro (o nome sai em personGuerra, abaixo).
+    if (!data.personId || !data.personType || data.personType === 'equipe') return null;
     if (data.personType === 'bombeiro') {
       return bombeiros.find(b => b.id === data.personId) || null;
     }
@@ -427,7 +426,9 @@ export function Usuarios() {
               {usuarios.map(([username, data]) => {
                 const person = resolvePerson(data);
                 const personFoto = person && 'foto' in person ? (person as Bombeiro).foto : undefined;
-                const personGuerra = person && 'nomeGuerra' in person ? (person as Bombeiro | APOC).nomeGuerra : undefined;
+                const personGuerra = data.personType === 'equipe' && data.personId
+                  ? `Central ${data.personId} · conta da central`
+                  : person && 'nomeGuerra' in person ? (person as Bombeiro | APOC).nomeGuerra : undefined;
                 const personCargo = person && 'cargo' in person
                   ? CARGO_OPTIONS.find(c => c.value === (person as Bombeiro).cargo)?.label
                   : person && 'funcao' in person

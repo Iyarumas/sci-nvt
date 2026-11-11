@@ -3,8 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import { createReadStream, promises as fs } from 'fs';
 import { basename, dirname, join, normalize, resolve } from 'path';
 
-/** Buckets usados pelo front (documentoService). Novo bucket precisa entrar aqui. */
-export const ALLOWED_BUCKETS: ReadonlySet<string> = new Set(['document-pdfs']);
+/**
+ * Pastas que existem no storage (lista fechada). Nova pasta precisa entrar aqui.
+ * - document-pdfs: modelos de documentos (tela Gerenciar Documentos);
+ * - autentique-assinados: PDFs assinados, gravados e lidos só pelo servidor (envios do Autentique).
+ */
+export const ALLOWED_BUCKETS: ReadonlySet<string> = new Set(['document-pdfs', 'autentique-assinados']);
+/** Pastas que as telas acessam direto por /storage/:bucket. Os assinados só saem pelas rotas do Autentique. */
+export const PUBLIC_BUCKETS: ReadonlySet<string> = new Set(['document-pdfs']);
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const PDF_SIGNATURE = Buffer.from('%PDF-');
 

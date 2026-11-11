@@ -287,7 +287,7 @@ function reconciliarParticipantesComEfetivo(
     if (index < 0) index = participantes.findIndex(participante => !participante.nomeCompleto);
     if (index < 0) return;
     participantes[index] = {
-      funcao: pessoa.cargo,
+      funcao: pessoa.cargo || '',
       nomeCompleto: pessoa.nomeCompleto,
       situacao: 'P',
     };

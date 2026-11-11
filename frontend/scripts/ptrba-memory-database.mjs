@@ -6,6 +6,8 @@ export function createPtrbaMemoryDatabase(readRows, writeRows) {
     sqlCalls,
     async query(sql, params = []) {
       sqlCalls.push(sql);
+      // Conferência "já foi enviado para assinatura?" (Autentique): nos testes nada foi enviado.
+      if (sql.includes('autentique_envios')) return { rows: [], rowCount: 0 };
       const conditions = [...sql.matchAll(/"(id|equipe|data|created_by|origem_ptrba_id)" (>=|<=|=) \$(\d+)/g)];
       const selected = readRows().filter(row => conditions.every(([, column, op, index]) => {
         const value = params[Number(index) - 1];

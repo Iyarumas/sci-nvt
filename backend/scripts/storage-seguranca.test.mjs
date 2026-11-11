@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
-const { LocalStorageService, MAX_UPLOAD_BYTES } = require('../dist/storage/local-storage.service.js');
+const { LocalStorageService, MAX_UPLOAD_BYTES, PUBLIC_BUCKETS } = require('../dist/storage/local-storage.service.js');
 
 async function withStorage(run) {
   const root = await mkdtemp(join(tmpdir(), 'sci-storage-'));
@@ -27,6 +27,16 @@ test('buckets "." e ".." e desconhecidos são recusados (não saem da pasta de a
       await assert.rejects(storage.getFile(bucket, 'x.pdf'), /Invalid bucket/);
       await assert.rejects(storage.list(bucket), /Invalid bucket/);
     }
+  });
+});
+
+test('o servidor grava e lê os PDFs assinados (autentique-assinados), mas as telas não acessam essa pasta direto', async () => {
+  await withStorage(async (storage) => {
+    assert.deepEqual(await storage.upload('autentique-assinados', 'bona/x/y.pdf', pdf()), { path: 'bona/x/y.pdf' });
+    const arquivo = await storage.getFile('autentique-assinados', 'bona/x/y.pdf');
+    arquivo.stream.destroy();
+    assert.equal(PUBLIC_BUCKETS.has('autentique-assinados'), false);
+    assert.equal(PUBLIC_BUCKETS.has('document-pdfs'), true);
   });
 });
 

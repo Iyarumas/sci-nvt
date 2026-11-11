@@ -27,7 +27,7 @@ function harness(initial = []) {
   const sqlCalls = database.sqlCalls;
   const backend = new ResourcesService(database);
   const context = vm.createContext({
-    console: { ...console, error() {} }, structuredClone, FormData, Blob,
+    console: { ...console, error() {} }, structuredClone, FormData, Blob, URL, URLSearchParams,
     fetch: async (url, init) => {
       const [, resource, action] = new URL(url).pathname.match(/\/data\/([^/]+)\/([^/]+)$/);
       try {

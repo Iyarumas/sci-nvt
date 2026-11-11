@@ -15,6 +15,16 @@ async function harness() {
   const database = new DatabaseService({ get: () => 'postgresql://test:test@127.0.0.1:1/test' });
   await database.onModuleDestroy();
   database.pool = {
+    // Fora da transação: a conferência "já foi enviado para assinatura?" (Autentique) antes de editar.
+    query: async (sql, params = []) => {
+      calls.push(sql);
+      if (sql.includes('autentique_envios')) return { rows: [] };
+      const table = sql.match(/FROM "([a-z_]+)"/)?.[1];
+      if (table && sql.startsWith('SELECT id FROM')) {
+        return { rows: tables[table].filter(r => params.includes(r.id)).map(r => ({ id: r.id })) };
+      }
+      throw new Error(`SQL inesperado fora da transação: ${sql}`);
+    },
     connect: async () => {
       let unlock;
       let snapshot;

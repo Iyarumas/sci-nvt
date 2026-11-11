@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -16,7 +17,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { AuthService } from '../auth/auth.service';
 import { Public } from '../auth/auth.types';
-import { LocalStorageService, MAX_UPLOAD_BYTES } from './local-storage.service';
+import { LocalStorageService, MAX_UPLOAD_BYTES, PUBLIC_BUCKETS } from './local-storage.service';
+
+/** Só as pastas liberadas para as telas; as outras (ex.: assinados do Autentique) ficam só no servidor. */
+function exigirBucketPublico(bucket: string): void {
+  if (!PUBLIC_BUCKETS.has(bucket)) throw new BadRequestException('Invalid bucket name');
+}
 
 @Controller('storage/:bucket')
 export class LocalStorageController {
@@ -33,17 +39,20 @@ export class LocalStorageController {
     @UploadedFile() file: Express.Multer.File,
     @Req() request: Request,
   ) {
+    exigirBucketPublico(bucket);
     this.assertCanWrite(request);
     return this.storage.upload(bucket, path, file);
   }
 
   @Get('list')
   list(@Param('bucket') bucket: string, @Query('prefix') prefix = '') {
+    exigirBucketPublico(bucket);
     return this.storage.list(bucket, prefix);
   }
 
   @Post('remove')
   async remove(@Param('bucket') bucket: string, @Body() body: { paths?: string[] }, @Req() request: Request) {
+    exigirBucketPublico(bucket);
     this.assertCanWrite(request);
     await this.storage.remove(bucket, body.paths ?? []);
     return { ok: true };
@@ -51,6 +60,7 @@ export class LocalStorageController {
 
   @Post('signed-url')
   signedUrl(@Param('bucket') bucket: string, @Body() body: { path?: string }) {
+    exigirBucketPublico(bucket);
     const path = body.path ?? '';
     return this.storage.createSignedUrl(bucket, path, this.auth.signFileLink(bucket, path));
   }
@@ -69,6 +79,7 @@ export class LocalStorageController {
     @Req() request: Request,
     @Res() res: Response,
   ) {
+    exigirBucketPublico(bucket);
     const allowed = !!request.authUser || this.auth.verifyFileLink(bucket, path ?? '', exp, sig);
     if (!allowed) throw new UnauthorizedException('Link expirado ou sem autorização.');
     const file = await this.storage.getFile(bucket, path);

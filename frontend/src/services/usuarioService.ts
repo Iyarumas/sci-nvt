@@ -25,7 +25,8 @@ export interface Usuario {
   role: UserRole;
   previousRole?: UserRole;
   personId?: string;
-  personType?: 'bombeiro' | 'apoc';
+  /** 'equipe' = conta da Central da equipe (person_id é o nome da equipe). */
+  personType?: 'bombeiro' | 'apoc' | 'equipe';
   createdAt: string;
   updatedAt: string;
 }

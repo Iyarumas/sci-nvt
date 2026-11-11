@@ -1,99 +1,204 @@
 /**
- * Permissões padrão por função e módulo. Reproduzem as regras que hoje estão
- * espalhadas nas telas (frontend/src/utils/permissoes.ts e nas próprias páginas).
- * O administrador pode alterar qualquer célula pela tela Permissões; a alteração
- * fica na tabela permissoes_funcao e vale no lugar do padrão.
+ * Catálogo de permissões: cada tela tem as suas ações, e cada ação tem, por função, um alcance
+ * (Não / Própria equipe / Todas). O padrão reproduz as regras que as telas usam hoje
+ * (frontend/src/utils/permissoes.ts e as próprias páginas). O administrador muda pela tela
+ * Permissões; a alteração por função fica em permissoes_funcao e a de uma pessoa em permissoes_usuario.
+ * Administrador e Desenvolvedor têm acesso total e não entram na grade.
  */
 
-export type NivelPermissao = 'nenhum' | 'ver' | 'equipe' | 'tudo';
-
-export const NIVEIS: readonly NivelPermissao[] = ['nenhum', 'ver', 'equipe', 'tudo'];
+export type Alcance = 'nao' | 'equipe' | 'todas';
+export const ALCANCES: readonly Alcance[] = ['nao', 'equipe', 'todas'];
 
 export const FUNCOES = ['GS', 'BA-CE', 'BA-LR', 'BA-MC', 'BA-RE', 'BA-2', 'OC'] as const;
 export type Funcao = (typeof FUNCOES)[number];
 
-export interface ModuloPermissao {
-  chave: string;
-  nome: string;
-  descricao: string;
-  /** Algumas telas não fazem sentido por equipe; nelas o nível "equipe" não aparece. */
-  porEquipe: boolean;
-}
+export interface Celula { alcance: Alcance; observacao?: string }
+type Linha = Record<Funcao, Celula>;
 
-export const MODULOS: readonly ModuloPermissao[] = [
-  { chave: 'registros_diarios', nome: 'Registros diários', descricao: 'PTR-BA, LRO e ocorrências do LRO', porEquipe: true },
-  { chave: 'escalas', nome: 'Escalas', descricao: 'Escala diária e mensal', porEquipe: true },
-  { chave: 'substituicoes', nome: 'Substituições', descricao: 'Substituições e extras', porEquipe: true },
-  { chave: 'ferias', nome: 'Férias', descricao: 'Férias e escala anual', porEquipe: true },
-  { chave: 'bona_rea', nome: 'BONA / REA', descricao: 'Ocorrências BONA e REA', porEquipe: true },
-  { chave: 'inspecoes', nome: 'Inspeções', descricao: 'Inspeções e solicitações', porEquipe: true },
-  { chave: 'treinamentos', nome: 'Treinamentos', descricao: 'TAF, TP-EPR, Posicionamento e Tempo Resposta', porEquipe: true },
-  { chave: 'epis', nome: 'EPIs', descricao: 'Controle de EPIs e estoque', porEquipe: true },
-  { chave: 'viaturas_cci', nome: 'Viaturas CCI', descricao: 'Panes e situação das viaturas', porEquipe: false },
-  { chave: 'cadastro_pessoas', nome: 'Bombeiros e APOC', descricao: 'Cadastro completo do efetivo', porEquipe: false },
-  { chave: 'certificacoes', nome: 'Certificações', descricao: 'Cursos, NRs e documentos', porEquipe: true },
-  { chave: 'arquivo', nome: 'Arquivo', descricao: 'Documentos gerados pelo sistema', porEquipe: true },
-  { chave: 'relatorios', nome: 'Relatórios', descricao: 'BONA, LRO, exercícios e trocas', porEquipe: true },
-  { chave: 'relatorios_ptrba', nome: 'Relatório de PTR-BA', descricao: 'Relatórios de PTR-BA', porEquipe: true },
-  { chave: 'equipamentos_viaturas', nome: 'Equipamentos e viaturas', descricao: 'Cadastro de equipamentos e viaturas', porEquipe: false },
-  { chave: 'extintores_hidrantes', nome: 'Extintores e hidrantes', descricao: 'Extintores, agentes extintores e hidrantes', porEquipe: false },
+export interface AcaoCatalogo { chave: string; nome: string }
+export interface TelaCatalogo { chave: string; nome: string; grupo: string; acoes: AcaoCatalogo[] }
+
+/* ───────── Atalhos para montar o padrão ───────── */
+
+const c = (alcance: Alcance, observacao?: string): Celula => ({ alcance, observacao });
+const todas = (alcance: Alcance, observacao?: string): Linha =>
+  Object.fromEntries(FUNCOES.map(f => [f, c(alcance, observacao)])) as Linha;
+const com = (base: Linha, mudancas: Partial<Record<Funcao, Celula>>): Linha => ({ ...base, ...mudancas });
+
+/** Todos veem. */
+const VER_TODOS = todas('todas');
+/** GS mexe em todas as equipes; qualquer pessoa da equipe mexe na própria equipe (regra das telas hoje). */
+const GS_TODAS_EQUIPE = com(todas('equipe'), { GS: c('todas') });
+/** Só o GS. */
+const SO_GS = com(todas('nao'), { GS: c('todas') });
+/** Ninguém da grade (hoje só administrador). */
+const SO_ADMIN = todas('nao', 'Hoje só administrador.');
+/** Envio para assinatura: chefia (GS, BA-CE, BA-LR) ou quem criou o documento. */
+const ENVIO = com(todas('nao', 'Quem criou o documento também pode.'), {
+  GS: c('todas'), 'BA-CE': c('todas'), 'BA-LR': c('todas'),
+});
+const BAIXAR_ASSINADO = todas('todas', 'Depois que a equipe assinou.');
+const SEM_TRAVA = (obs = 'Hoje não há trava: qualquer função pode.') => todas('todas', obs);
+
+/* ───────── Catálogo ───────── */
+
+const acoes = (...lista: Array<[string, string]>): AcaoCatalogo[] => lista.map(([chave, nome]) => ({ chave, nome }));
+const VER: [string, string] = ['ver', 'Ver'];
+const CRIAR: [string, string] = ['criar', 'Criar'];
+const EDITAR: [string, string] = ['editar', 'Editar'];
+const EXCLUIR: [string, string] = ['excluir', 'Excluir'];
+const ENVIAR: [string, string] = ['enviar_assinatura', 'Enviar para assinatura'];
+const REENVIAR: [string, string] = ['reenviar', 'Reenviar avisos'];
+const CANCELAR: [string, string] = ['cancelar_envio', 'Cancelar envio'];
+const BAIXAR: [string, string] = ['baixar_pdf', 'Baixar PDF'];
+const IMPRIMIR: [string, string] = ['imprimir', 'Imprimir'];
+const CRUD = [VER, CRIAR, EDITAR, EXCLUIR];
+const ASSINATURA = [ENVIAR, REENVIAR, CANCELAR, BAIXAR];
+
+export const TELAS: readonly TelaCatalogo[] = [
+  // Registros diários
+  { grupo: 'Registros diários', chave: 'ptrba', nome: 'PTR-BA', acoes: acoes(...CRUD, ...ASSINATURA) },
+  { grupo: 'Registros diários', chave: 'lro', nome: 'LRO', acoes: acoes(...CRUD, ['finalizar', 'Finalizar'], ['arquivar', 'Arquivar'], ...ASSINATURA) },
+  { grupo: 'Registros diários', chave: 'lro_ocorrencias', nome: 'Ocorrências do LRO', acoes: acoes(...CRUD) },
+  { grupo: 'Registros diários', chave: 'bona_rea', nome: 'BONA / REA', acoes: acoes(...CRUD, ...ASSINATURA) },
+  { grupo: 'Registros diários', chave: 'inspecoes', nome: 'Inspeções', acoes: acoes(...CRUD) },
+  { grupo: 'Registros diários', chave: 'solicitacoes', nome: 'Solicitações (inspeções)', acoes: acoes(...CRUD) },
+  { grupo: 'Registros diários', chave: 'checklists', nome: 'Checklists', acoes: acoes(VER, EDITAR) },
+  // Escalas e pessoal
+  { grupo: 'Escalas e pessoal', chave: 'escala_diaria', nome: 'Escala diária', acoes: acoes(VER, CRIAR, EDITAR, IMPRIMIR) },
+  { grupo: 'Escalas e pessoal', chave: 'escala_mensal', nome: 'Escala mensal', acoes: acoes(...CRUD, IMPRIMIR) },
+  { grupo: 'Escalas e pessoal', chave: 'substituicoes', nome: 'Substituições e extras', acoes: acoes(VER, CRIAR, ['aprovar', 'Aprovar / rejeitar'], ['gerar_relatorio', 'Gerar relatório']) },
+  { grupo: 'Escalas e pessoal', chave: 'ferias', nome: 'Férias', acoes: acoes(...CRUD, ['aprovar', 'Aprovar / rejeitar'], ['gerar_relatorio', 'Gerar relatório']) },
+  { grupo: 'Escalas e pessoal', chave: 'funcionarios', nome: 'Funcionários (ficha)', acoes: acoes(VER, ['dados_pessoais', 'Ver dados pessoais']) },
+  { grupo: 'Escalas e pessoal', chave: 'cadastro_pessoas', nome: 'Bombeiros e APOC (cadastro)', acoes: acoes(VER, CRIAR, EDITAR, ['desligar', 'Registrar desligamento'], EXCLUIR) },
+  { grupo: 'Escalas e pessoal', chave: 'certificacoes', nome: 'Certificações', acoes: acoes(VER, ['abrir_documentos', 'Abrir documentos do Drive'], ['informar_data', 'Informar data do curso'], ['validade', 'Validade dos documentos']) },
+  // Treinamentos e trocas
+  { grupo: 'Treinamentos e trocas', chave: 'taf', nome: 'TAF', acoes: acoes(...CRUD, ...ASSINATURA) },
+  { grupo: 'Treinamentos e trocas', chave: 'tpepr', nome: 'TP/EPR', acoes: acoes(...CRUD, ...ASSINATURA) },
+  { grupo: 'Treinamentos e trocas', chave: 'posicionamento', nome: 'Exercício de Posicionamento', acoes: acoes(...CRUD, ...ASSINATURA) },
+  { grupo: 'Treinamentos e trocas', chave: 'tempo_resposta', nome: 'Tempo Resposta', acoes: acoes(...CRUD, ...ASSINATURA) },
+  { grupo: 'Treinamentos e trocas', chave: 'trocas', nome: 'Trocas de serviço', acoes: acoes(...CRUD, ENVIAR, REENVIAR, CANCELAR, ['arquivar', 'Arquivar'], BAIXAR) },
+  // Materiais e cadastros
+  { grupo: 'Materiais e cadastros', chave: 'epis', nome: 'EPIs', acoes: acoes(...CRUD) },
+  { grupo: 'Materiais e cadastros', chave: 'viaturas_cci', nome: 'Viaturas CCI (panes)', acoes: acoes(...CRUD) },
+  { grupo: 'Materiais e cadastros', chave: 'viaturas', nome: 'Viaturas (cadastro)', acoes: acoes(...CRUD) },
+  { grupo: 'Materiais e cadastros', chave: 'equipamentos', nome: 'Equipamentos', acoes: acoes(...CRUD) },
+  { grupo: 'Materiais e cadastros', chave: 'extintores', nome: 'Extintores', acoes: acoes(...CRUD) },
+  { grupo: 'Materiais e cadastros', chave: 'hidrantes', nome: 'Hidrantes', acoes: acoes(...CRUD) },
+  { grupo: 'Materiais e cadastros', chave: 'agentes_extintores', nome: 'Agentes extintores', acoes: acoes(...CRUD) },
+  { grupo: 'Materiais e cadastros', chave: 'relatorios_agentes', nome: 'Relatórios de agentes extintores', acoes: acoes(VER, CRIAR, EDITAR, ['finalizar', 'Finalizar'], BAIXAR) },
+  { grupo: 'Materiais e cadastros', chave: 'documentos_modelos', nome: 'Documentos (modelos)', acoes: acoes(VER, CRIAR, EDITAR) },
+  { grupo: 'Materiais e cadastros', chave: 'ordem_servico', nome: 'Ordem de Serviço', acoes: acoes(...CRUD, IMPRIMIR) },
+  // Relatórios e arquivo
+  { grupo: 'Relatórios e arquivo', chave: 'rel_bona', nome: 'Relatório BONA', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_lro', nome: 'Relatório LRO', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_ptrba', nome: 'Relatório PTR-BA', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_exercicios', nome: 'Relatório de exercícios', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_substituicoes', nome: 'Relatório de substituições', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'rel_trocas', nome: 'Relatório de trocas', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'arquivo', nome: 'Arquivo', acoes: acoes(VER) },
+  { grupo: 'Relatórios e arquivo', chave: 'estatisticas', nome: 'Estatísticas', acoes: acoes(VER) },
 ];
 
-export interface CelulaPadrao {
-  nivel: NivelPermissao;
-  /** Como a regra funciona hoje, quando ela não cabe só no nível. */
-  observacao?: string;
-}
+/* ───────── Padrão (regras de hoje) ───────── */
 
-const TODOS = (nivel: NivelPermissao, observacao?: string): Record<Funcao, CelulaPadrao> =>
-  Object.fromEntries(FUNCOES.map(funcao => [funcao, { nivel, observacao }])) as Record<Funcao, CelulaPadrao>;
+const REGISTRO_DIARIO_CRIAR = com(todas('nao', 'Também quem tem autorização de registros diários.'), {
+  'BA-CE': c('todas'), 'BA-LR': c('todas'),
+});
+const REGISTRO_DIARIO_ALTERAR = com(todas('nao'), {
+  'BA-CE': c('equipe', 'O que ele criou.'),
+  'BA-LR': c('equipe', 'O que ele criou e o que o BA-CE da equipe criou.'),
+});
+const CADASTRO_BRAVO = com(SO_GS, {
+  'BA-CE': c('nao', 'Hoje o BA-CE da Bravo pode (usar exceção por pessoa).'),
+  'BA-LR': c('nao', 'Hoje o BA-LR da Bravo pode (usar exceção por pessoa).'),
+});
+const CADASTRO_ALFA = com(SO_GS, {
+  'BA-CE': c('nao', 'Hoje o BA-CE da Alfa pode (usar exceção por pessoa).'),
+  'BA-LR': c('nao', 'Hoje o BA-LR da Alfa pode (usar exceção por pessoa).'),
+});
+const RELATORIO_GS = com(SO_GS, { 'BA-LR': c('nao', 'Hoje o BA-LR da Delta vê (usar exceção por pessoa).') });
 
-const SEM_TRAVA = 'Hoje não há nenhuma trava: qualquer função pode criar, editar e excluir.';
+const treinamento = (): Record<string, Linha> => ({
+  ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE,
+  enviar_assinatura: ENVIO, reenviar: ENVIO, cancelar_envio: SO_ADMIN, baixar_pdf: BAIXAR_ASSINADO,
+});
 
-export const PADRAO: Record<string, Record<Funcao, CelulaPadrao>> = {
-  registros_diarios: {
-    ...TODOS('ver'),
-    GS: { nivel: 'ver' },
-    'BA-CE': { nivel: 'equipe', observacao: 'Cria em qualquer equipe; edita e exclui o que criou.' },
-    'BA-LR': { nivel: 'equipe', observacao: 'Cria em qualquer equipe; edita e exclui o que criou e o que o BA-CE da equipe criou.' },
+const PADRAO_POR_TELA: Record<string, Record<string, Linha>> = {
+  ptrba: {
+    ver: VER_TODOS, criar: REGISTRO_DIARIO_CRIAR, editar: REGISTRO_DIARIO_ALTERAR, excluir: REGISTRO_DIARIO_ALTERAR,
+    enviar_assinatura: ENVIO, reenviar: ENVIO, cancelar_envio: SO_ADMIN, baixar_pdf: BAIXAR_ASSINADO,
   },
-  escalas: { ...TODOS('ver'), GS: { nivel: 'tudo' } },
-  substituicoes: TODOS('tudo', SEM_TRAVA),
-  ferias: { ...TODOS('ver'), GS: { nivel: 'tudo' } },
-  bona_rea: { ...TODOS('ver'), GS: { nivel: 'tudo' } },
-  inspecoes: { ...TODOS('ver'), GS: { nivel: 'tudo' } },
-  treinamentos: { ...TODOS('ver'), GS: { nivel: 'tudo' } },
-  epis: TODOS('tudo', SEM_TRAVA),
-  viaturas_cci: TODOS('tudo', SEM_TRAVA),
-  cadastro_pessoas: { ...TODOS('ver', 'Vê o cadastro sem dados pessoais.'), GS: { nivel: 'tudo' } },
+  lro: {
+    ver: VER_TODOS, criar: REGISTRO_DIARIO_CRIAR, editar: REGISTRO_DIARIO_ALTERAR, excluir: REGISTRO_DIARIO_ALTERAR,
+    finalizar: REGISTRO_DIARIO_ALTERAR, arquivar: SO_ADMIN,
+    enviar_assinatura: ENVIO, reenviar: ENVIO, cancelar_envio: SO_ADMIN, baixar_pdf: BAIXAR_ASSINADO,
+  },
+  lro_ocorrencias: { ver: VER_TODOS, criar: REGISTRO_DIARIO_CRIAR, editar: REGISTRO_DIARIO_ALTERAR, excluir: REGISTRO_DIARIO_ALTERAR },
+  bona_rea: {
+    ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE,
+    enviar_assinatura: ENVIO, reenviar: ENVIO, cancelar_envio: SO_ADMIN, baixar_pdf: BAIXAR_ASSINADO,
+  },
+  inspecoes: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE },
+  solicitacoes: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE },
+  checklists: { ver: VER_TODOS, editar: SEM_TRAVA('Checklists quinzenais/fixos: só administrador.') },
+  escala_diaria: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, imprimir: VER_TODOS },
+  escala_mensal: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE, imprimir: VER_TODOS },
+  substituicoes: {
+    ver: VER_TODOS, criar: SEM_TRAVA(), aprovar: SO_GS,
+    gerar_relatorio: com(SO_GS, {}),
+  },
+  ferias: {
+    ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: SO_GS, aprovar: SO_GS, gerar_relatorio: SO_GS,
+  },
+  funcionarios: { ver: VER_TODOS, dados_pessoais: com(SO_GS, {}) },
+  cadastro_pessoas: { ver: todas('todas', 'Sem dados pessoais.'), criar: SO_GS, editar: SO_GS, desligar: SO_GS, excluir: SO_GS },
   certificacoes: {
-    ...TODOS('nenhum'),
-    GS: { nivel: 'tudo' },
-    'BA-CE': { nivel: 'ver', observacao: 'Vê só a própria equipe.' },
-    'BA-LR': { nivel: 'ver', observacao: 'Vê só a própria equipe.' },
+    ver: com(todas('nao'), { GS: c('todas'), 'BA-CE': c('equipe'), 'BA-LR': c('equipe') }),
+    abrir_documentos: com(todas('nao'), { GS: c('todas'), 'BA-CE': c('equipe'), 'BA-LR': c('equipe') }),
+    informar_data: SO_GS,
+    validade: SO_ADMIN,
   },
-  arquivo: { ...TODOS('nenhum'), GS: { nivel: 'tudo' }, 'BA-CE': { nivel: 'ver' }, 'BA-LR': { nivel: 'ver' } },
-  relatorios: {
-    ...TODOS('nenhum'),
-    GS: { nivel: 'ver' },
-    'BA-LR': { nivel: 'ver', observacao: 'Hoje só o BA-LR da equipe Delta.' },
+  taf: treinamento(),
+  tpepr: treinamento(),
+  posicionamento: treinamento(),
+  tempo_resposta: treinamento(),
+  trocas: {
+    ver: VER_TODOS,
+    criar: com(todas('nao', 'Também quem tem autorização de registros diários.'), { GS: c('todas'), 'BA-CE': c('todas'), 'BA-LR': c('todas') }),
+    editar: com(todas('nao'), { GS: c('todas'), 'BA-CE': c('todas'), 'BA-LR': c('todas') }),
+    excluir: com(todas('nao'), { GS: c('todas'), 'BA-CE': c('todas'), 'BA-LR': c('todas') }),
+    enviar_assinatura: ENVIO, reenviar: ENVIO, cancelar_envio: SO_ADMIN, arquivar: SO_ADMIN, baixar_pdf: BAIXAR_ASSINADO,
   },
-  relatorios_ptrba: {
-    ...TODOS('nenhum', 'Hoje toda a equipe Embaixador também vê.'),
-    GS: { nivel: 'ver' },
-    'BA-CE': { nivel: 'ver' },
-    'BA-LR': { nivel: 'ver' },
-  },
-  equipamentos_viaturas: {
-    ...TODOS('ver'),
-    GS: { nivel: 'tudo' },
-    'BA-CE': { nivel: 'equipe', observacao: 'Hoje só o BA-CE da equipe Bravo.' },
-    'BA-LR': { nivel: 'equipe', observacao: 'Hoje só o BA-LR da equipe Bravo.' },
-  },
-  extintores_hidrantes: {
-    ...TODOS('ver'),
-    GS: { nivel: 'tudo' },
-    'BA-CE': { nivel: 'equipe', observacao: 'Hoje só o BA-CE da equipe Alfa.' },
-    'BA-LR': { nivel: 'equipe', observacao: 'Hoje só o BA-LR da equipe Alfa.' },
-  },
+  epis: { ver: VER_TODOS, criar: SEM_TRAVA(), editar: SEM_TRAVA(), excluir: SEM_TRAVA() },
+  viaturas_cci: { ver: VER_TODOS, criar: SEM_TRAVA(), editar: SEM_TRAVA(), excluir: SEM_TRAVA() },
+  viaturas: { ver: VER_TODOS, criar: CADASTRO_BRAVO, editar: CADASTRO_BRAVO, excluir: CADASTRO_BRAVO },
+  equipamentos: { ver: VER_TODOS, criar: CADASTRO_BRAVO, editar: CADASTRO_BRAVO, excluir: CADASTRO_BRAVO },
+  extintores: { ver: VER_TODOS, criar: CADASTRO_ALFA, editar: CADASTRO_ALFA, excluir: CADASTRO_ALFA },
+  hidrantes: { ver: VER_TODOS, criar: CADASTRO_ALFA, editar: CADASTRO_ALFA, excluir: CADASTRO_ALFA },
+  agentes_extintores: { ver: VER_TODOS, criar: CADASTRO_ALFA, editar: CADASTRO_ALFA, excluir: CADASTRO_ALFA },
+  relatorios_agentes: { ver: VER_TODOS, criar: CADASTRO_ALFA, editar: CADASTRO_ALFA, finalizar: CADASTRO_ALFA, baixar_pdf: VER_TODOS },
+  documentos_modelos: { ver: VER_TODOS, criar: SO_GS, editar: SO_GS },
+  ordem_servico: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE, imprimir: VER_TODOS },
+  rel_bona: { ver: RELATORIO_GS },
+  rel_lro: { ver: RELATORIO_GS },
+  rel_exercicios: { ver: RELATORIO_GS },
+  rel_substituicoes: { ver: RELATORIO_GS },
+  rel_trocas: { ver: RELATORIO_GS },
+  rel_ptrba: { ver: com(SO_GS, { 'BA-CE': c('todas'), 'BA-LR': c('todas') }) },
+  arquivo: { ver: com(SO_GS, { 'BA-CE': c('todas'), 'BA-LR': c('todas') }) },
+  estatisticas: { ver: VER_TODOS },
 };
+
+/** Chave da ação: "tela.acao" (ex.: "ptrba.criar"). */
+export const chaveAcao = (tela: string, acao: string) => `${tela}.${acao}`;
+
+/** Todas as ações do catálogo, com o padrão de cada função. */
+export const PADRAO: Record<string, Linha> = Object.fromEntries(
+  TELAS.flatMap(tela => tela.acoes.map(acao => {
+    const linha = PADRAO_POR_TELA[tela.chave]?.[acao.chave] ?? SO_ADMIN;
+    return [chaveAcao(tela.chave, acao.chave), linha];
+  })),
+);
+
+export const ACOES_VALIDAS: ReadonlySet<string> = new Set(Object.keys(PADRAO));

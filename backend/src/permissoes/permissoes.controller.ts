@@ -1,20 +1,30 @@
 import { Body, Controller, Get, Put, Req, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
-import { AlteracaoPermissao, PermissoesService } from './permissoes.service';
+import { MudancaFuncao, MudancaUsuario, PermissoesService } from './permissoes.service';
+
+function usuarioDa(request: Request) {
+  if (!request.authUser) throw new UnauthorizedException('Autenticação necessária.');
+  return request.authUser;
+}
 
 @Controller('permissoes')
 export class PermissoesController {
   constructor(private readonly permissoes: PermissoesService) {}
 
-  /** Qualquer usuário logado lê a grade: as telas vão usar para mostrar ou esconder botões. */
+  /** Grade completa, usuários e exceções (só administrador). */
   @Get()
-  listar() {
-    return this.permissoes.listar();
+  listar(@Req() request: Request) {
+    return this.permissoes.listar(usuarioDa(request));
+  }
+
+  /** O que o usuário logado pode fazer em cada ação. */
+  @Get('minhas')
+  minhas(@Req() request: Request) {
+    return this.permissoes.minhas(usuarioDa(request));
   }
 
   @Put()
-  salvar(@Body() body: { alteracoes?: AlteracaoPermissao[] }, @Req() request: Request) {
-    if (!request.authUser) throw new UnauthorizedException('Autenticação necessária.');
-    return this.permissoes.salvar(request.authUser, body.alteracoes ?? []);
+  salvar(@Body() body: { funcoes?: MudancaFuncao[]; usuarios?: MudancaUsuario[] }, @Req() request: Request) {
+    return this.permissoes.salvar(usuarioDa(request), body.funcoes ?? [], body.usuarios ?? []);
   }
 }

@@ -238,7 +238,8 @@ export default function Permissoes() {
                                       <span className="w-2.5 shrink-0" aria-hidden />
                                       <Pilula compacto alcance={atual} onClick={() => mudarFuncao(acao, f)} titulo={titulo}
                                         destaque={atual !== celula.padrao ? 'alterado' : null} />
-                                      <span className="w-2.5 shrink-0 self-start text-[10px] leading-none text-graphite-400" title={celula.observacao ?? undefined}>
+                                      <span className={`w-2.5 shrink-0 select-none self-start text-[10px] leading-none text-graphite-400 ${celula.observacao ? 'cursor-help' : ''}`}
+                                        title={celula.observacao ?? undefined}>
                                         {celula.observacao ? 'ⓘ' : ''}
                                       </span>
                                     </div>

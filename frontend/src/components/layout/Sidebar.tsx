@@ -181,7 +181,15 @@ function SidebarGroup({ item, collapsed, onPin, depth = 0 }: { item: MenuItemTyp
  */
 function menuComunicante(items: MenuItemType[]): MenuItemType[] {
   const liberada = (path?: string) => !!path && ROTAS_COMUNICANTE.some(rota => rota !== '/perfil' && path === rota);
-  const porPath = (path: string) => items.find(item => item.path === path);
+  // Procura também dentro dos grupos (Início e Fim de plantão ficam em "Administradores").
+  const porPath = (path: string): MenuItemType | undefined => {
+    for (const item of items) {
+      if (item.path === path) return item;
+      const filho = item.children?.find(f => f.path === path);
+      if (filho) return filho;
+    }
+    return undefined;
+  };
   const registros = items.find(item => item.children?.some(filho => filho.path === '/registros-diarios/lro-ocorrencias'));
   const central: MenuItemType = { label: 'Central', icon: Home, path: '/central', description: 'Boas-vindas e o caminho do plantão.' };
   return [

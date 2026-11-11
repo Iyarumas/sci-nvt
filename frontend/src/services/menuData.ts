@@ -1,4 +1,5 @@
 import {
+  Settings,
   LayoutDashboard,
   Database,
   Shield,
@@ -44,40 +45,54 @@ export const menuItems: MenuItem[] = [
     description: 'Visão geral do sistema com indicadores e métricas operacionais.',
   },
   {
-    label: 'Auditoria de exclusões',
-    icon: ShieldCheck,
-    path: '/auditoria',
-    description: 'Histórico de exclusões com usuário, data e identificação do registro.',
+    // Tudo que é só de administrador fica junto. As contas da Central continuam com o menu próprio (Sidebar).
+    label: 'Administradores',
+    icon: Settings,
     adminOnly: true,
-  },
-  {
-    label: 'Início de plantão',
-    icon: Radio,
-    path: '/inicio-plantao',
-    description: 'Informações do comunicante e mensagem do dia.',
-    // No menu normal só para administradores; as contas da Central têm o menu próprio (Sidebar).
-    adminOnly: true,
-  },
-  {
-    label: 'Fim de plantão',
-    icon: ClipboardCheck,
-    path: '/fim-plantao',
-    description: 'Relatório de serviço do comunicante para o chefe.',
-    // No menu normal só para administradores; as contas da Central têm o menu próprio (Sidebar).
-    adminOnly: true,
-  },
-  {
-    label: 'Permissões',
-    icon: KeyRound,
-    path: '/permissoes',
-    description: 'O que cada função pode fazer em cada tela do sistema.',
-    adminOnly: true,
-  },
-  {
-    label: 'Férias',
-    icon: CalendarDays,
-    path: '/cadastro/ferias',
-    description: 'Gestão de férias, escala anual e substituições do efetivo.',
+    children: [
+      {
+        label: 'Auditoria de exclusões',
+        icon: ShieldCheck,
+        path: '/auditoria',
+        description: 'Histórico de exclusões com usuário, data e identificação do registro.',
+        adminOnly: true,
+      },
+      {
+        label: 'Início de plantão',
+        icon: Radio,
+        path: '/inicio-plantao',
+        description: 'Informações do comunicante e mensagem do dia.',
+        adminOnly: true,
+      },
+      {
+        label: 'Fim de plantão',
+        icon: ClipboardCheck,
+        path: '/fim-plantao',
+        description: 'Relatório de serviço do comunicante para o chefe.',
+        adminOnly: true,
+      },
+      {
+        label: 'Permissões',
+        icon: KeyRound,
+        path: '/permissoes',
+        description: 'O que cada função pode fazer em cada tela do sistema.',
+        adminOnly: true,
+      },
+      {
+        label: 'Férias',
+        icon: CalendarDays,
+        path: '/cadastro/ferias',
+        description: 'Gestão de férias, escala anual e substituições do efetivo.',
+        adminOnly: true,
+      },
+      {
+        label: 'Gerenciar Documentos',
+        icon: FileText,
+        path: '/cadastro/documentos',
+        description: 'Templates de documentos para preenchimento e assinatura.',
+        adminOnly: true,
+      },
+    ],
   },
   {
     label: 'Cadastro',
@@ -126,14 +141,6 @@ export const menuItems: MenuItem[] = [
         icon: Truck,
         path: '/cadastro/viaturas',
         description: 'Cadastro de viaturas operacionais.',
-      },
-      {
-        label: 'Gerenciar Documentos',
-        icon: FileText,
-        path: '/cadastro/documentos',
-        description: 'Templates de documentos para preenchimento e assinatura.',
-        // Modelos usados pelas trocas e pelo arquivo do LRO: só administrador mexe.
-        adminOnly: true,
       },
       {
         label: 'Usuários',

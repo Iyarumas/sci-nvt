@@ -298,7 +298,8 @@ export function avaliarArquivo(arquivo: ArquivoDrive, config: ConfigDocumentos, 
   } else if (TIPOS_COM_VALIDADE_PROPRIA.includes(arquivo.tipo)) {
     return { ...base, situacao: 'neutro', vencimento: null, texto: 'Validade não cadastrada' };
   } else if (prazo === 0) {
-    return { ...base, situacao: 'neutro', vencimento: null, texto: 'Não vence' };
+    // A pessoa tem e o documento não vence (formação, cursos de BA-CE/BA-MC, CTPS...): está em dia.
+    return { ...base, situacao: 'emdia', vencimento: null, texto: 'Não vence' };
   } else if ((prazo === null || prazo === undefined) && arquivo.validadeTexto) {
     vencimento = arquivo.validadeTexto; // validade escrita no próprio documento
   } else if ((prazo === null || prazo === undefined) && arquivo.pastaId === PASTA_EXTRAS) {

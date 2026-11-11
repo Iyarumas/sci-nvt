@@ -210,7 +210,12 @@ export default function Permissoes() {
               <div className="space-y-3">
                 {telas.map(tela => (
                   <div key={tela.chave} className="overflow-x-auto rounded-2xl border border-graphite-200 bg-white dark:border-border-dark dark:bg-surface-card">
-                    <table className="w-full min-w-[720px] text-sm">
+                    {/* Larguras fixas: a coluna de cada função fica no mesmo lugar em todas as telas. */}
+                    <table className="w-full min-w-[720px] table-fixed text-sm">
+                      <colgroup>
+                        <col className="w-56" />
+                        {dados.funcoes.map(f => <col key={f} />)}
+                      </colgroup>
                       <thead>
                         <tr className="border-b border-graphite-200 bg-graphite-50 dark:border-border-dark dark:bg-surface-elevated">
                           <th className="px-4 py-2 text-left font-semibold text-graphite-900 dark:text-graphite-100">{tela.nome}</th>

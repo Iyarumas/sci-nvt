@@ -6,12 +6,15 @@ import { PageTitle } from '../../components/layout/PageTitle';
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { obterPdfAssinado, type TipoEnvioAssinatura } from '../../services/autentiqueEnviosService';
 import {
-  listarDocumentosRelatorio, montarPdfRelatorio, naPrimeiraQuinzena,
+  juntarPdfs, listarDocumentosRelatorio, montarPdfRelatorio, naPrimeiraQuinzena,
   type DocumentoRelatorio, type SituacaoRelatorio,
 } from '../../services/relatoriosAssinadosService';
 import { gerarRelatorioTrocasMensalPdf } from '../../services/trocasMensalPdfService';
 import { listarBombeirosPublico } from '../../services/bombeiroService';
 import type { Bombeiro } from '../../types/bombeiro';
+import { listarReas } from '../../services/reaService';
+import { gerarReaPdf } from '../../services/reaPdfService';
+import type { ReaRegistro } from '../../types/rea';
 
 const CONFIG: Record<string, { tipo: TipoEnvioAssinatura; nome: string; sigla: string }> = {
   'ptr-ba': { tipo: 'ptrba', nome: 'PTR-BA', sigla: 'PTRBA' },
@@ -37,9 +40,15 @@ const SITUACAO: Record<SituacaoRelatorio, { rotulo: string; classe: string }> = 
 const br = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '-');
 const normalizar = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 
-export default function RelatoriosAssinados() {
-  const { tipo: rota = 'ptr-ba' } = useParams();
-  const cfg = CONFIG[rota] ?? CONFIG['ptr-ba'];
+export default function RelatoriosAssinados({ rota: rotaFixa }: { rota?: string } = {}) {
+  const { tipo: rotaUrl = 'ptr-ba' } = useParams();
+  const rota = rotaFixa ?? rotaUrl;
+  const cfgRota = CONFIG[rota] ?? CONFIG['ptr-ba'];
+  // Aba BONA/REA: seletor entre os dois. O REA não passa pelo Autentique — o PDF é gerado pelo sistema.
+  const [modelo, setModelo] = useState<'BONA' | 'REA'>('BONA');
+  const ehRea = cfgRota.tipo === 'bona' && modelo === 'REA';
+  const cfg = ehRea ? { ...cfgRota, nome: 'REA', sigla: 'REA' } : cfgRota;
+  const [reas, setReas] = useState<ReaRegistro[]>([]);
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth() + 1);
@@ -59,11 +68,29 @@ export default function RelatoriosAssinados() {
   useEffect(() => {
     setCarregando(true);
     setErro('');
-    listarDocumentosRelatorio(cfg.tipo, ano, mes)
+    const prefixo = `${ano}-${String(mes).padStart(2, '0')}`;
+    // REA sem data do acidente entra pela data em que foi criado, para não sumir do relatório.
+    const dataRea = (r: ReaRegistro) => (r.dataAcidente || r.createdAt || '').slice(0, 10);
+    const busca: Promise<DocumentoRelatorio[]> = ehRea
+      ? listarReas().then(todos => {
+        const lista = todos.filter(r => dataRea(r).startsWith(prefixo));
+        setReas(lista);
+        return [...lista]
+          .sort((a, b) => dataRea(a).localeCompare(dataRea(b)) || (a.horaAcidente || '').localeCompare(b.horaAcidente || ''))
+          .map(r => ({
+            referenciaId: r.id, data: dataRea(r), equipe: r.equipe || '', turno: r.horaAcidente || '',
+            numero: r.numero || '', solicitante: '', solicitado: '', dataTrabalhar: '', criadoEm: r.createdAt,
+            envioId: null, situacao: 'assinado' as const,
+          }));
+      })
+      : listarDocumentosRelatorio(cfg.tipo, ano, mes);
+    busca
       .then(setDocs)
       .catch(e => setErro(e instanceof Error ? e.message : 'Não foi possível carregar os documentos.'))
       .finally(() => setCarregando(false));
-  }, [cfg.tipo, ano, mes]);
+  }, [cfg.tipo, ano, mes, ehRea]);
+
+  const reaPorId = (id: string) => reas.find(r => r.id === id);
 
   /** Trocas: nome completo do cadastro, como no relatório de trocas de hoje. */
   const nomeCompleto = (nome: string) => {
@@ -89,6 +116,7 @@ export default function RelatoriosAssinados() {
 
   const nomeDocumento = (d: DocumentoRelatorio) => {
     if (cfg.tipo === 'troca') return `${nomeCompleto(d.solicitante)} ↔ ${nomeCompleto(d.solicitado)}`;
+    if (ehRea) return `${br(d.data).replace(/\//g, '-')} NVT ${d.numero || 'REA'} ${d.equipe.toUpperCase()}`.trim();
     const numero = d.numero ? ` Nº ${String(d.numero).padStart(3, '0')}` : '';
     return `${br(d.data).replace(/\//g, '-')} NVT ${cfg.sigla}${numero} ${d.equipe.toUpperCase()}`.trim();
   };
@@ -98,26 +126,37 @@ export default function RelatoriosAssinados() {
     return `RELATORIO ${cfg.sigla} ${MESES_MAIUSCULO[mes - 1]} ${ano} ${parte}${equipe ? ` ${equipe.toUpperCase()}` : ''}.pdf`;
   };
 
-  async function gerar(): Promise<Blob | null> {
+  /** Folha do relatório de trocas (a de sempre). Usa a mesma lista, na mesma ordem, das trocas assinadas. */
+  const folhaTrocas = () => gerarRelatorioTrocasMensalPdf({
+    mes: mes - 1, ano, observacao: '',
+    rows: doPeriodo.map(d => ({
+      nomeSolicitante: nomeCompleto(d.solicitante), dataSolicitada: d.data,
+      dataATrabalhar: d.dataTrabalhar, nomeSolicitado: nomeCompleto(d.solicitado),
+    })),
+  });
+
+  async function gerar(soFolha = false): Promise<Blob | null> {
     setErro('');
     if (!assinadosNoPeriodo && cfg.tipo !== 'troca') {
-      setErro('Nenhum documento assinado neste período.');
+      setErro(ehRea ? 'Nenhum REA neste período.' : 'Nenhum documento assinado neste período.');
       return null;
     }
     setGerando('Preparando…');
     try {
-      let inicio: Blob | undefined;
-      if (cfg.tipo === 'troca') {
-        // O relatório de trocas de hoje continua igual; as trocas assinadas entram no final.
-        inicio = await gerarRelatorioTrocasMensalPdf({
-          mes: mes - 1, ano, observacao: '',
-          rows: doPeriodo.map(d => ({
-            nomeSolicitante: nomeCompleto(d.solicitante), dataSolicitada: d.data,
-            dataATrabalhar: d.dataTrabalhar, nomeSolicitado: nomeCompleto(d.solicitado),
-          })),
-        });
+      if (soFolha) return await folhaTrocas();
+      if (ehRea) {
+        const pdfs: Blob[] = [];
+        for (const d of doPeriodo) {
+          const rea = reaPorId(d.referenciaId);
+          if (!rea) continue;
+          pdfs.push(await gerarReaPdf(rea));
+          setGerando(`Gerando ${pdfs.length} de ${doPeriodo.length}…`);
+        }
+        return new Blob([(await juntarPdfs(pdfs)) as BlobPart], { type: 'application/pdf' });
       }
-      const bytes = await montarPdfRelatorio(cfg.tipo, doPeriodo, inicio, (feitos, total) => setGerando(`Juntando ${feitos} de ${total}…`));
+      // Trocas: primeiro as trocas assinadas, por último a folha do relatório de trocas (mesma sequência).
+      const fim = cfg.tipo === 'troca' ? await folhaTrocas() : undefined;
+      const bytes = await montarPdfRelatorio(cfg.tipo, doPeriodo, fim, (feitos, total) => setGerando(`Juntando ${feitos} de ${total}…`));
       return new Blob([bytes as BlobPart], { type: 'application/pdf' });
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível montar o PDF.');
@@ -127,19 +166,19 @@ export default function RelatoriosAssinados() {
     }
   }
 
-  async function baixar() {
-    const blob = await gerar();
+  async function baixar(soFolha = false) {
+    const blob = await gerar(soFolha);
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = nomeArquivo();
+    a.download = soFolha ? nomeArquivo().replace('RELATORIO TROCAS', 'FOLHA TROCAS') : nomeArquivo();
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
-  async function imprimir() {
-    const blob = await gerar();
+  async function imprimir(soFolha = false) {
+    const blob = await gerar(soFolha);
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const iframe = document.createElement('iframe');
@@ -157,9 +196,10 @@ export default function RelatoriosAssinados() {
   }
 
   async function ver(d: DocumentoRelatorio) {
-    if (!d.envioId) return;
+    const rea = ehRea ? reaPorId(d.referenciaId) : undefined;
+    if (!d.envioId && !rea) return;
     try {
-      const pdf = await (await obterPdfAssinado(d.envioId)).arrayBuffer();
+      const pdf = await (rea ? gerarReaPdf(rea) : obterPdfAssinado(d.envioId!)).then(b => b.arrayBuffer());
       setVisualizando({ titulo: nomeDocumento(d), pdf });
     } catch {
       setErro('Não foi possível abrir o documento.');
@@ -177,9 +217,21 @@ export default function RelatoriosAssinados() {
   return (
     <PageContainer>
       <PageTitle icon={FileSignature} title={`Relatório de ${cfg.nome}`}
-        subtitle="Documentos assinados do período, na ordem dos plantões, sem a página de auditoria do Autentique." />
+        subtitle={ehRea
+          ? 'REAs do período, por data e hora, gerados pelo sistema (o REA não passa pelo Autentique).'
+          : 'Documentos assinados do período, na ordem dos plantões, sem a página de auditoria do Autentique.'} />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
+        {cfgRota.tipo === 'bona' && (
+          <div role="radiogroup" aria-label="Documento" className="inline-flex rounded-xl border border-graphite-200 bg-graphite-50 p-1 dark:border-border-dark dark:bg-surface-elevated">
+            {(['BONA', 'REA'] as const).map(m => (
+              <button key={m} type="button" role="radio" aria-checked={modelo === m} onClick={() => setModelo(m)}
+                className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${modelo === m ? 'bg-white text-graphite-900 shadow-sm dark:bg-surface-card dark:text-graphite-100' : 'text-graphite-500'}`}>
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
         <select value={mes} onChange={e => setMes(Number(e.target.value))} className={seletor} aria-label="Mês">
           {MESES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
         </select>
@@ -203,16 +255,26 @@ export default function RelatoriosAssinados() {
             </button>
           ))}
         </div>
-        <button type="button" onClick={baixar} disabled={!!gerando}
+        <button type="button" onClick={() => baixar()} disabled={!!gerando}
           className="flex items-center gap-2 rounded-xl bg-aviation-600 px-4 py-2 text-sm font-medium text-white hover:bg-aviation-500 disabled:opacity-60">
           <FileDown className="h-4 w-4" /> Baixar PDF
         </button>
-        <button type="button" onClick={imprimir} disabled={!!gerando}
+        <button type="button" onClick={() => imprimir()} disabled={!!gerando}
           className="flex items-center gap-2 rounded-xl border border-graphite-300 px-4 py-2 text-sm font-medium text-graphite-700 hover:bg-graphite-50 disabled:opacity-60 dark:border-border-dark dark:text-graphite-200">
           <Printer className="h-4 w-4" /> Imprimir
         </button>
+        {cfg.tipo === 'troca' && (
+          <div className="flex items-center gap-1 border-l border-graphite-200 pl-2 dark:border-border-dark">
+            <span className="text-xs text-graphite-500 dark:text-graphite-400">Só a folha de trocas:</span>
+            <button type="button" onClick={() => baixar(true)} disabled={!!gerando} aria-label="Baixar só a folha de trocas" title="Baixar só a folha de trocas"
+              className="rounded-lg p-2 text-graphite-600 hover:bg-graphite-100 disabled:opacity-60 dark:text-graphite-300 dark:hover:bg-surface-hover"><FileDown className="h-4 w-4" /></button>
+            <button type="button" onClick={() => imprimir(true)} disabled={!!gerando} aria-label="Imprimir só a folha de trocas" title="Imprimir só a folha de trocas"
+              className="rounded-lg p-2 text-graphite-600 hover:bg-graphite-100 disabled:opacity-60 dark:text-graphite-300 dark:hover:bg-surface-hover"><Printer className="h-4 w-4" /></button>
+          </div>
+        )}
         <span className="ml-auto text-xs text-graphite-500 dark:text-graphite-400">
-          {gerando ?? `${assinadosNoPeriodo} assinado(s) entram no PDF${cfg.tipo === 'troca' ? ', depois do relatório de trocas' : ''}`}
+          {gerando ?? (ehRea ? `${assinadosNoPeriodo} REA(s) entram no PDF`
+            : `${assinadosNoPeriodo} assinado(s) entram no PDF${cfg.tipo === 'troca' ? ', e a folha de trocas por último' : ''}`)}
         </span>
       </div>
 
@@ -224,7 +286,7 @@ export default function RelatoriosAssinados() {
             <tr className="border-b border-graphite-200 bg-graphite-50 text-left text-xs text-graphite-500 dark:border-border-dark dark:bg-surface-elevated dark:text-graphite-400">
               <th className="w-10 px-3 py-2 font-semibold">#</th>
               <th className="px-3 py-2 font-semibold">Data</th>
-              {cfg.tipo !== 'troca' && <th className="px-3 py-2 font-semibold">Plantão</th>}
+              {cfg.tipo !== 'troca' && <th className="px-3 py-2 font-semibold">{ehRea ? 'Hora' : 'Plantão'}</th>}
               {cfg.tipo !== 'troca' && <th className="px-3 py-2 font-semibold">Equipe</th>}
               <th className="px-3 py-2 font-semibold">Documento</th>
               <th className="px-3 py-2 font-semibold">Situação</th>
@@ -243,7 +305,10 @@ export default function RelatoriosAssinados() {
                 </tr>,
                 ...itens.map(d => {
                   ordem += 1;
-                  const s = SITUACAO[d.situacao];
+                  const rea = ehRea ? reaPorId(d.referenciaId) : undefined;
+                  const s = rea
+                    ? { rotulo: rea.status, classe: rea.status === 'Fechada' ? SITUACAO.assinado.classe : SITUACAO.aguardando.classe }
+                    : SITUACAO[d.situacao];
                   return (
                     <tr key={d.referenciaId} className="border-t border-graphite-100 dark:border-border-dark">
                       <td className="px-3 py-2 text-xs tabular-nums text-graphite-400">{ordem}</td>
@@ -267,7 +332,8 @@ export default function RelatoriosAssinados() {
         </table>
       </div>
       <p className="mt-2 text-xs text-graphite-500 dark:text-graphite-400">
-        Só os documentos assinados por todos entram no PDF; "Aguardando" e "Não enviado" ficam só na lista.
+        {ehRea ? 'Todos os REAs do período entram no PDF, na ordem da lista.'
+          : 'Só os documentos assinados por todos entram no PDF; "Aguardando" e "Não enviado" ficam só na lista.'}
         {cfg.tipo === 'ptrba' && ' No PTR-BA entra a 1ª página de cada um.'}
       </p>
 

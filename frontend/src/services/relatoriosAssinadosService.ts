@@ -40,20 +40,16 @@ export const naPrimeiraQuinzena = (dataISO: string) => Number(dataISO.slice(8, 1
 /**
  * Junta os documentos assinados, na ordem recebida, sem a página de auditoria do Autentique.
  * PTR-BA entra só com a 1ª página (a tabela com as assinaturas), como no download.
- * `inicio` (opcional) entra antes — usado nas trocas para o relatório de hoje.
+ * `fim` (opcional) entra depois — usado nas trocas para a folha do relatório de trocas.
  */
 export async function montarPdfRelatorio(
   tipo: TipoEnvioAssinatura,
   documentos: DocumentoRelatorio[],
-  inicio?: Blob,
+  fim?: Blob,
   aoAvancar?: (feitos: number, total: number) => void,
 ): Promise<Uint8Array> {
   const { PDFDocument } = await import('pdf-lib');
   const final = await PDFDocument.create();
-  if (inicio) {
-    const doc = await PDFDocument.load(await inicio.arrayBuffer());
-    (await final.copyPages(doc, doc.getPageIndices())).forEach(p => final.addPage(p));
-  }
   const assinados = documentos.filter(d => d.situacao === 'assinado' && d.envioId);
   let feitos = 0;
   for (const d of assinados) {
@@ -67,6 +63,21 @@ export async function montarPdfRelatorio(
     (await final.copyPages(doc, Array.from({ length: quantas }, (_, i) => i))).forEach(p => final.addPage(p));
     feitos++;
     aoAvancar?.(feitos, assinados.length);
+  }
+  if (fim) {
+    const doc = await PDFDocument.load(await fim.arrayBuffer());
+    (await final.copyPages(doc, doc.getPageIndices())).forEach(p => final.addPage(p));
+  }
+  return final.save({ useObjectStreams: true });
+}
+
+/** Junta PDFs inteiros, na ordem (usado no REA, que é gerado pelo sistema e não passa pelo Autentique). */
+export async function juntarPdfs(pdfs: Blob[]): Promise<Uint8Array> {
+  const { PDFDocument } = await import('pdf-lib');
+  const final = await PDFDocument.create();
+  for (const pdf of pdfs) {
+    const doc = await PDFDocument.load(await pdf.arrayBuffer());
+    (await final.copyPages(doc, doc.getPageIndices())).forEach(p => final.addPage(p));
   }
   return final.save({ useObjectStreams: true });
 }

@@ -66,6 +66,9 @@ export const TELAS: readonly TelaCatalogo[] = [
   { grupo: 'Registros diários', chave: 'inspecoes', nome: 'Inspeções', acoes: acoes(...CRUD) },
   { grupo: 'Registros diários', chave: 'solicitacoes', nome: 'Solicitações (inspeções)', acoes: acoes(...CRUD) },
   { grupo: 'Registros diários', chave: 'checklists', nome: 'Checklists', acoes: acoes(VER, EDITAR) },
+  // Central do comunicante (OC)
+  { grupo: 'Central do comunicante', chave: 'inicio_plantao', nome: 'Início de plantão', acoes: acoes(VER, ['preencher', 'Preencher / salvar'], ['qr_code', 'Gerar QR Code da mensagem']) },
+  { grupo: 'Central do comunicante', chave: 'fim_plantao', nome: 'Fim de plantão', acoes: acoes(VER, ['preencher', 'Preencher / salvar'], ['qr_code', 'Gerar QR Code da mensagem']) },
   // Escalas e pessoal
   { grupo: 'Escalas e pessoal', chave: 'escala_diaria', nome: 'Escala diária', acoes: acoes(VER, CRIAR, EDITAR, IMPRIMIR) },
   { grupo: 'Escalas e pessoal', chave: 'escala_mensal', nome: 'Escala mensal', acoes: acoes(...CRUD, IMPRIMIR) },
@@ -130,6 +133,12 @@ const RELATORIO_PTRBA = com(SO_GS, { 'BA-CE': c('todas'), 'BA-LR': c('todas') })
 /** Quem vê o relatório também baixa e imprime (pode separar pela grade). */
 const relatorio = (base: Linha): Record<string, Linha> => ({ ver: base, baixar_pdf: base, imprimir: base });
 
+/** Início/fim de plantão: o comunicante (OC) e a chefia da equipe preenchem; o GS só vê. */
+const PLANTAO_OC = com(todas('nao'), {
+  'BA-CE': c('equipe'), 'BA-LR': c('equipe'),
+  OC: c('equipe', 'O comunicante preenche o plantão da equipe dele.'),
+});
+
 const treinamento = (): Record<string, Linha> => ({
   ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE,
   enviar_assinatura: ENVIO, reenviar: ENVIO, cancelar_envio: SO_ADMIN, baixar_pdf: BAIXAR_ASSINADO,
@@ -153,6 +162,8 @@ const PADRAO_POR_TELA: Record<string, Record<string, Linha>> = {
   inspecoes: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE },
   solicitacoes: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE },
   checklists: { ver: VER_TODOS, editar: SEM_TRAVA('Checklists quinzenais/fixos: só administrador.') },
+  inicio_plantao: { ver: VER_TODOS, preencher: PLANTAO_OC, qr_code: PLANTAO_OC },
+  fim_plantao: { ver: VER_TODOS, preencher: PLANTAO_OC, qr_code: PLANTAO_OC },
   escala_diaria: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, imprimir: VER_TODOS },
   escala_mensal: { ver: VER_TODOS, criar: GS_TODAS_EQUIPE, editar: GS_TODAS_EQUIPE, excluir: GS_TODAS_EQUIPE, imprimir: VER_TODOS },
   substituicoes: {

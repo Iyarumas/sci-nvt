@@ -29,9 +29,12 @@ export interface DadosInicioPlantao {
   twr: string;
   ramaisTwr: string;
   testesRadioHotline: string;
+  /** APOC, SPO, Supervisão, PCM e Fiscal aceitam mais de uma pessoa: os nomes ficam juntos, separados por " / ". */
   apoc: string;
   spo: string;
   supervisao: string;
+  /** Separado da Supervisão (em algumas equipes são pessoas diferentes). Plantões antigos não têm. */
+  pcm: string;
   fiscal: string;
   cabeceira: string;
   testesOperacional: string;

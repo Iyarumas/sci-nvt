@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Radio, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Radio, RefreshCw, Trash2, X } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
@@ -53,6 +53,7 @@ function vazio(): DadosInicioPlantao {
     apoc: '',
     spo: '',
     supervisao: '',
+    pcm: '',
     fiscal: '',
     cabeceira: '',
     testesOperacional: 'OK',
@@ -103,6 +104,7 @@ function sugerirDoAnterior(base: DadosInicioPlantao, anterior: DadosInicioPlanta
     ramaisTwr: anterior.ramaisTwr,
     spo: anterior.spo,
     supervisao: anterior.supervisao,
+    pcm: anterior.pcm ?? '',
     fiscal: anterior.fiscal,
     cabeceira: anterior.cabeceira,
     smeRamal: anterior.smeRamal,
@@ -121,6 +123,46 @@ function Campo({ rotulo, valor, onChange, placeholder, tipo = 'text', sugestoes 
       <span className={label}>{rotulo}</span>
       <input type={tipo} list={sugestoes} autoComplete={sugestoes ? 'off' : undefined} inputMode={tipo === 'number' ? 'decimal' : undefined} value={valor} placeholder={placeholder} onChange={e => onChange(e.target.value)} className={input} />
     </label>
+  );
+}
+
+const SEPARADOR_NOMES = ' / ';
+const separarNomes = (valor: string) => (valor ? valor.split(/\s*\/\s*/) : ['']);
+
+/**
+ * Campo de uma ou mais pessoas (APOC, SPO, Supervisão, PCM, Fiscal). Cada pessoa tem a sua linha;
+ * "+ pessoa" abre mais uma. Os nomes ficam juntos no mesmo texto ("A / B"), como na mensagem.
+ */
+function CampoPessoas({ rotulo, valor, onChange, sugestoes }: {
+  rotulo: string; valor: string; onChange: (v: string) => void; sugestoes?: string;
+}) {
+  const nomes = separarNomes(valor);
+  const gravar = (lista: string[]) => onChange(lista.map(n => n.trim()).filter((n, i, l) => n || l.length === 1).join(SEPARADOR_NOMES));
+  const mudar = (indice: number, texto: string) => {
+    const lista = [...nomes];
+    lista[indice] = texto.replace(/\//g, '');
+    onChange(lista.join(SEPARADOR_NOMES));
+  };
+  return (
+    <div className="block">
+      <span className={label}>{rotulo}</span>
+      <div className="space-y-1.5">
+        {nomes.map((nome, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <input list={sugestoes} autoComplete="off" value={nome} aria-label={`${rotulo} ${i + 1}`}
+              onChange={e => mudar(i, e.target.value)} onBlur={() => gravar(separarNomes(valor))} className={input} />
+            {nomes.length > 1 && (
+              <button type="button" onClick={() => gravar(nomes.filter((_, j) => j !== i))} aria-label={`Tirar ${rotulo} ${i + 1}`} title="Tirar esta pessoa"
+                className="shrink-0 rounded-lg p-2 text-graphite-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"><X className="h-4 w-4" /></button>
+            )}
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={() => onChange([...nomes, ''].join(SEPARADOR_NOMES))}
+        className="mt-1.5 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-aviation-600 hover:bg-aviation-50 dark:text-aviation-300 dark:hover:bg-aviation-900/20">
+        <Plus className="h-3.5 w-3.5" /> pessoa
+      </button>
+    </div>
   );
 }
 
@@ -347,13 +389,12 @@ export default function InicioPlantao() {
                 <Status rotulo="TWR" valor={dados.twr} onChange={v => set('twr', v)} />
                 <Campo rotulo="Ramais da TWR" valor={dados.ramaisTwr} placeholder="9247 / 9248" onChange={v => set('ramaisTwr', v)} />
                 <Status rotulo="Testes de rádio e hotline" valor={dados.testesRadioHotline} onChange={v => set('testesRadioHotline', v)} />
-                <label className="block"><span className={label}>APOC</span>
-                  <input list="apocs-plantao" value={dados.apoc} onChange={e => set('apoc', e.target.value)} className={input} />
-                  <datalist id="apocs-plantao">{apocs.map(a => <option key={a.id} value={a.nomeGuerra} />)}</datalist>
-                </label>
-                <Campo rotulo="SPO" valor={dados.spo} sugestoes="apocs-plantao" onChange={v => set('spo', v)} />
-                <Campo rotulo="Supervisão/PCM" valor={dados.supervisao} sugestoes="apocs-plantao" onChange={v => set('supervisao', v)} />
-                <Campo rotulo="Fiscal" valor={dados.fiscal} sugestoes="apocs-plantao" onChange={v => set('fiscal', v)} />
+                <datalist id="apocs-plantao">{apocs.map(a => <option key={a.id} value={a.nomeGuerra} />)}</datalist>
+                <CampoPessoas rotulo="APOC" valor={dados.apoc} sugestoes="apocs-plantao" onChange={v => set('apoc', v)} />
+                <CampoPessoas rotulo="SPO" valor={dados.spo} sugestoes="apocs-plantao" onChange={v => set('spo', v)} />
+                <CampoPessoas rotulo="Supervisão" valor={dados.supervisao} sugestoes="apocs-plantao" onChange={v => set('supervisao', v)} />
+                <CampoPessoas rotulo="PCM" valor={dados.pcm} sugestoes="apocs-plantao" onChange={v => set('pcm', v)} />
+                <CampoPessoas rotulo="Fiscal" valor={dados.fiscal} sugestoes="apocs-plantao" onChange={v => set('fiscal', v)} />
                 <Campo rotulo="Cabeceira" valor={dados.cabeceira} placeholder="08" onChange={v => set('cabeceira', v)} />
                 <Status rotulo="Testes de hotline e rádio operacional" valor={dados.testesOperacional} onChange={v => set('testesOperacional', v)} />
               </div>

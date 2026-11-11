@@ -15,7 +15,10 @@ const actor = { id: '00000000-0000-4000-8000-000000000001', username: 'qa_admin'
 
 test('controller usa a identidade autenticada, ignorando autoria enviada pelo navegador', async () => {
   let received;
-  const controller = new ResourcesController({ delete: async (...args) => { received = args; return { data: null, error: null }; } }, { invalidateUserCache() {} });
+  const controller = new ResourcesController({
+    conferirCadastroPessoas: async () => {},
+    delete: async (...args) => { received = args; return { data: null, error: null }; },
+  }, { invalidateUserCache() {} });
   const body = { filters: [{ column: 'id', operator: 'eq', value: 'test' }], actor: { username: 'outra_pessoa' } };
   await controller.delete('bombeiros', body, { authUser: actor });
   assert.equal(received[2], actor);

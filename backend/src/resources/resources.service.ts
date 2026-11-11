@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { AuthUser } from '../auth/auth.types';
+import { AuthUser, isAdmin } from '../auth/auth.types';
 import { PoolClient, QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service';
 import {
@@ -20,6 +20,14 @@ const TABELAS_TREINAMENTO_ASSINADO: Record<string, { tipo: string; nome: string 
   treinamentos_tempo_resposta: { tipo: 'temporesposta', nome: 'Tempo Resposta' },
 };
 import { ALLOWED_TABLES } from './resources.config';
+
+/** Cadastro de pessoas: só administrador e GS mexem (ver conferirCadastroPessoas). */
+const TABELAS_CADASTRO_PESSOAS = new Set(['bombeiros', 'apocs']);
+/** O que o BA-CE pode mudar no cadastro: só a decisão da autorização de registros diários. */
+const CAMPOS_AUTORIZACAO_REGISTROS = new Set([
+  'autorizado_registros_diarios', 'autorizacao_registros_diarios_status',
+  'autorizacao_registros_diarios_decidido_por', 'autorizacao_registros_diarios_decidido_em', 'updated_at',
+]);
 
 /** Tabelas em que o comunicante lança registros: ocorrências do LRO, inspeções e solicitações. */
 const TABELAS_DO_COMUNICANTE = new Set(['ocorrencias_operacionais', 'conferencias']);
@@ -347,6 +355,42 @@ export class ResourcesService {
    * O comunicante só edita ou exclui ocorrências, inspeções e solicitações que ele mesmo lançou.
    * Na criação, o autor é sempre ele, nunca o que vier do navegador.
    */
+  /**
+   * Cadastro de pessoas (bombeiros e APOC): só administrador e GS criam, editam e excluem.
+   * O BA-CE só decide a autorização de registros diários de quem é da equipe dele (4 campos).
+   * O cargo vem da pessoa ligada ao usuário, e esse vínculo só o administrador muda.
+   */
+  async conferirCadastroPessoas(
+    table: string,
+    action: 'insert' | 'update' | 'delete',
+    dto: { filters?: unknown[]; or?: string[]; payload?: unknown },
+    user: AuthUser,
+  ): Promise<void> {
+    if (!TABELAS_CADASTRO_PESSOAS.has(table)) return;
+    if (isAdmin(user) || user.funcao === 'GS') return;
+    const payload = (dto.payload && !Array.isArray(dto.payload) ? dto.payload : {}) as Record<string, unknown>;
+    const soAutorizacao = Object.keys(payload).length > 0 && Object.keys(payload).every(chave => CAMPOS_AUTORIZACAO_REGISTROS.has(chave));
+    if (table === 'bombeiros' && action === 'update' && user.funcao === 'BA-CE' && soAutorizacao) {
+      const minha = await this.database.query<{ equipe: string | null }>(
+        `SELECT b.equipe FROM usuarios u JOIN bombeiros b ON b.id::text = u.person_id::text
+          WHERE u.id = $1 AND u.person_type = 'bombeiro' LIMIT 1`,
+        [user.id],
+      );
+      const equipe = minha.rows[0]?.equipe;
+      const params: unknown[] = [];
+      const whereSql = buildWhereSql((dto.filters ?? []) as ResourceFilter[], dto.or, params);
+      if (!whereSql) throw new BadRequestException('Informe qual cadastro alterar.');
+      const alvos = await this.database.query<{ equipe: string | null; autorizacao_registros_diarios_equipe: string | null }>(
+        `SELECT equipe, autorizacao_registros_diarios_equipe FROM bombeiros ${whereSql}`,
+        params,
+      );
+      const daEquipe = alvos.rows.length > 0 && !!equipe
+        && alvos.rows.every(alvo => (alvo.autorizacao_registros_diarios_equipe || alvo.equipe) === equipe);
+      if (daEquipe) return;
+    }
+    throw new ForbiddenException('Só administrador ou GS pode alterar o cadastro de pessoas.');
+  }
+
   async conferirAutoriaComunicante(
     table: string,
     action: 'insert' | 'update' | 'delete',

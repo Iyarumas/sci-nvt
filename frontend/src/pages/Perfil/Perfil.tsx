@@ -137,6 +137,9 @@ export function Perfil() {
     setPersonName(person.nomeCompleto);
   }
 
+  // O vínculo com a pessoa do cadastro define cargo e equipe: só administrador muda.
+  const podeVincular = user?.role === 'admin' || user?.role === 'desenvolvedor';
+
   function handleUnlink() {
     setPersonId(undefined);
     setPersonType(undefined);
@@ -301,16 +304,20 @@ export function Perfil() {
           </div>
         </div>
 
-        {/* Vincular pessoa */}
+        {/* Vincular pessoa: só administrador muda (o vínculo define cargo e equipe, e o servidor confere). */}
         <div className="rounded-2xl border border-graphite-200 bg-white p-6 dark:border-border-dark dark:bg-surface-card">
           <h3 className="mb-4 text-lg font-bold text-graphite-900 dark:text-graphite-100">
             <Link className="mr-2 inline h-5 w-5 text-aviation-600" />
             Vincular Pessoa
           </h3>
           <p className="mb-4 text-sm text-graphite-500 dark:text-graphite-400">
-            {linkedPerson
-              ? 'Sua conta está vinculada a uma pessoa. Você pode alterar o vínculo abaixo.'
-              : 'Sua conta não está vinculada a nenhuma pessoa. Selecione um bombeiro ou APOC para vincular.'}
+            {!podeVincular
+              ? (linkedPerson
+                ? 'Sua conta está vinculada a esta pessoa. Para mudar, peça a um administrador.'
+                : 'Sua conta ainda não está vinculada a uma pessoa. Peça a um administrador para fazer o vínculo.')
+              : linkedPerson
+                ? 'Sua conta está vinculada a uma pessoa. Você pode alterar o vínculo abaixo.'
+                : 'Sua conta não está vinculada a nenhuma pessoa. Selecione um bombeiro ou APOC para vincular.'}
           </p>
 
           {loadingPessoas ? (
@@ -320,6 +327,7 @@ export function Perfil() {
             </div>
           ) : (
             <>
+              {podeVincular && (
               <div className="mb-3">
                 <label className="mb-1 block text-sm font-medium text-graphite-700 dark:text-graphite-300">Buscar pessoa</label>
                 <Autocomplete
@@ -330,6 +338,7 @@ export function Perfil() {
                   className={input}
                 />
               </div>
+              )}
 
               {linkedPerson && (
                 <div className="mb-4 flex items-center gap-3 rounded-xl border border-aviation-200 bg-aviation-50/50 px-3 py-2.5 dark:border-aviation-700 dark:bg-aviation-900/20">
@@ -348,19 +357,19 @@ export function Perfil() {
                       <span className="uppercase">{linkedPerson.type === 'bombeiro' ? 'Bombeiro' : 'APOC'}</span>
                     </p>
                   </div>
-                  <button type="button" onClick={handleUnlink}
+                  {podeVincular && <button type="button" onClick={handleUnlink}
                     className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                     title="Desvincular pessoa">
                     <Unlink className="h-4 w-4" />
-                  </button>
+                  </button>}
                 </div>
               )}
 
-              <button onClick={handleSavePerson} disabled={saving}
+              {podeVincular && <button onClick={handleSavePerson} disabled={saving}
                 className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl hover:from-aviation-500 hover:to-aviation-600 active:scale-[0.98] disabled:opacity-50">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Salvar Vinculo
-              </button>
+              </button>}
             </>
           )}
         </div>

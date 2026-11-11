@@ -17,8 +17,12 @@ const SENSITIVE_USER_COLUMNS = ['password', 'senha_hash'];
 /** Tabelas que so administradores podem ler ou alterar. */
 const ADMIN_ONLY_TABLES = new Set(['convites']);
 
-/** Campos que o proprio usuario pode alterar no seu cadastro (tela Perfil). */
-const SELF_EDITABLE_USER_COLUMNS = new Set(['name', 'person_id', 'person_type', 'updated_at']);
+/**
+ * Campos que o proprio usuario pode alterar no seu cadastro (tela Perfil).
+ * O vinculo com a pessoa do cadastro (person_id/person_type) NAO entra: e ele que define cargo e equipe
+ * (ex.: GS ve todos os documentos do Drive). So o administrador liga uma conta a uma pessoa.
+ */
+const SELF_EDITABLE_USER_COLUMNS = new Set(['name', 'updated_at']);
 
 function mentionsSensitive(text: string | undefined): boolean {
   if (!text) return false;

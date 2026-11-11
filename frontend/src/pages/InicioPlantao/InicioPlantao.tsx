@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { Plus, Radio, RefreshCw, Trash2, X } from 'lucide-react';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
@@ -294,6 +294,9 @@ export default function InicioPlantao() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
   const [recarregar, setRecarregar] = useState(0);
+  /** "Buscar de novo" com o plantão já salvo: refaz só equipagem, férias, trocas e extras pela escala. */
+  const forcarEscala = useRef(false);
+  const [aviso, setAviso] = useState('');
 
   useEffect(() => {
     if (!equipe && equipeEfetiva && (EQUIPES as readonly string[]).includes(equipeEfetiva)) {
@@ -318,12 +321,15 @@ export default function InicioPlantao() {
       try {
         const existente = await obterInicioPlantao(data, equipe);
         if (cancelado) return;
-        if (existente) {
+        const daEscala = forcarEscala.current;
+        forcarEscala.current = false;
+        setAviso('');
+        if (existente && !daEscala) {
           setSalvo(existente);
           setDados({ ...vazio(), ...existente.dados });
           return;
         }
-        setSalvo(null);
+        setSalvo(existente ?? null);
         // Mesma base da escala do dia: escala mensal + férias, substituições, extras e trocas de serviço assinadas.
         const [anterior, gozos, bombeiros, substituicoes, completas, vigencias, trocaFills] = await Promise.all([
           obterInicioPlantaoAnterior(data).catch(() => null),
@@ -357,6 +363,12 @@ export default function InicioPlantao() {
         }).map(t => `${t.funcaoSaindo} ${guerra(t.nomeSaindo)} por ${t.funcaoEntrando} ${guerra(t.nomeEntrando)}`);
         const extras = montarExtrasAfastamentoDoDia({ bombeiros, substituicoes, vigencias, equipe, dataPlantao: data })
           .map(x => `${x.cargoExercido} ${x.substituto.nomeGuerra} no lugar de ${x.cargoAusente} ${x.ausente.nomeGuerra}`);
+        if (existente) {
+          // Já salvo: mantém tudo o que foi preenchido e troca só o que vem da escala.
+          setDados({ ...preencherDasGuarnicoes({ ...vazio(), ...existente.dados }, guarnicoes), ferias, trocas, extras });
+          setAviso('Equipagem, férias, trocas e extras atualizados pela escala. Confira e salve para gravar.');
+          return;
+        }
         // A escala diária é feita depois: os assuntos do PTR-BA são escolhidos pelo comunicante.
         const base = sugerirDoAnterior(vazio(), anterior?.dados);
         setDados({ ...preencherDasGuarnicoes(base, guarnicoes), ferias, trocas, extras, ptrba: [] });
@@ -418,14 +430,24 @@ export default function InicioPlantao() {
             {EQUIPES.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
         </label>
-        {!salvo && equipe && (
-          <button type="button" onClick={() => setRecarregar(v => v + 1)} className="flex items-center gap-2 rounded-xl border border-graphite-300/60 px-3 py-2 text-sm font-medium text-graphite-700 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-200 dark:hover:bg-surface-hover">
+        {equipe && (
+          <button type="button"
+            onClick={() => {
+              if (salvo && !window.confirm('A equipagem das viaturas, as férias, as trocas e os extras voltam a vir da escala (com as trocas e substituições de agora). O resto continua como está. Atualizar?')) return;
+              forcarEscala.current = !!salvo;
+              setRecarregar(v => v + 1);
+            }}
+            title={salvo ? 'Atualizar equipagem, férias, trocas e extras pela escala' : 'Buscar de novo da escala'}
+            className="flex items-center gap-2 rounded-xl border border-graphite-300/60 px-3 py-2 text-sm font-medium text-graphite-700 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-200 dark:hover:bg-surface-hover">
             <RefreshCw className="h-4 w-4" /> Buscar de novo
           </button>
         )}
         <p className="text-xs text-graphite-500 dark:text-graphite-400">
           {salvo ? `Salvo por ${salvo.atualizadoPor} em ${new Date(salvo.atualizadoEm).toLocaleString('pt-BR')}.` : 'Ainda não salvo. Equipagem, férias, extras e trocas vieram da escala mensal; PTR-BA da escala do dia.'}
         </p>
+        {aviso && (
+          <p role="status" className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-300">{aviso}</p>
+        )}
       </div>
 
       {erro && <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">{erro}</div>}

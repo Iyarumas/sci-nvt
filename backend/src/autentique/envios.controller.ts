@@ -33,6 +33,13 @@ export class EnviosController {
     return this.envios.listar(usuario(request), tipo, String(referencias ?? '').split(',').filter(Boolean));
   }
 
+  /** Documentos de um tipo no mês, na ordem dos plantões, com a situação da assinatura. */
+  @Get('relatorio')
+  relatorio(@Query('tipo') tipo: string, @Query('ano') ano: string, @Query('mes') mes: string, @Req() request: Request) {
+    usuario(request);
+    return this.envios.relatorio(String(tipo ?? ''), Number(ano), Number(mes));
+  }
+
   @Post()
   @UseInterceptors(FileInterceptor('pdf', { limits: { fileSize: MAX_PDF_BYTES } }))
   enviar(

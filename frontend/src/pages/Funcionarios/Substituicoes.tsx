@@ -312,6 +312,8 @@ export function Substituicoes() {
   const [deleting, setDeleting] = useState(false);
   const [relatorioMes, setRelatorioMes] = useState(String(new Date().getMonth() + 1));
   const [relatorioAno, setRelatorioAno] = useState(String(new Date().getFullYear()));
+  // Relatório mensal: afastamentos/atestados, INSS, extras e substituições aprovados no mês.
+  const [relatorioTipo, setRelatorioTipo] = useState<'' | 'Afastamento' | 'INSS' | 'Extra' | 'Substituição'>('');
   const [printingMonthly, setPrintingMonthly] = useState(false);
   const [printingSub, setPrintingSub] = useState<SubstituicaoTemporaria | null>(null);
   const [trocaSub, setTrocaSub] = useState<SubstituicaoTemporaria | null>(null);
@@ -554,14 +556,18 @@ export function Substituicoes() {
   const relatorioMensal = useMemo(() => {
     const mes = Number(relatorioMes);
     const ano = Number(relatorioAno);
+    const ehInss = (sub: SubstituicaoTemporaria) => sub.motivo === 'INSS' || sub.motivo === 'INSS Indeterminado';
     return subs
       .filter(sub =>
-        sub.tipo === 'Afastamento' &&
         sub.status === 'Aprovada' &&
-        periodoCruzaMes(sub.dataInicio, sub.dataFim, mes, ano)
+        periodoCruzaMes(sub.dataInicio, sub.dataFim, mes, ano) &&
+        (!relatorioTipo ||
+          (relatorioTipo === 'INSS' ? sub.tipo === 'Afastamento' && ehInss(sub)
+            : relatorioTipo === 'Afastamento' ? sub.tipo === 'Afastamento' && !ehInss(sub)
+              : sub.tipo === relatorioTipo))
       )
       .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio) || a.funcionarioNome.localeCompare(b.funcionarioNome));
-  }, [relatorioAno, relatorioMes, subs]);
+  }, [relatorioAno, relatorioMes, relatorioTipo, subs]);
 
   const filtered = isRelatorioRoute ? relatorioMensal : filteredOperacional;
 
@@ -602,7 +608,9 @@ export function Substituicoes() {
       <section key={sub.id} className="substituicoes-print-card rounded-xl border border-slate-300 bg-white p-4">
         <div className="mb-3 flex items-start justify-between gap-4 border-b border-slate-200 pb-3">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Afastado/Atestado</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              {sub.tipo === 'Afastamento' ? 'Afastado/Atestado' : sub.tipo === 'Extra' ? 'Plantão extra · no lugar de' : 'Substituído'}
+            </p>
             <h3 className="text-base font-bold text-slate-950">{sub.funcionarioNome}</h3>
             <p className="text-xs text-slate-600">{cargoLabel(sub.funcionarioCargo)}</p>
           </div>
@@ -1127,6 +1135,14 @@ export function Substituicoes() {
                 <option key={ano} value={ano}>{ano}</option>
               ))}
             </select>
+            <select value={relatorioTipo} onChange={e => setRelatorioTipo(e.target.value as typeof relatorioTipo)} aria-label="Tipo"
+              className="rounded-xl border border-graphite-300/60 bg-white/70 px-3 py-2 text-sm text-graphite-700 outline-none dark:border-graphite-600 dark:bg-graphite-800 dark:text-graphite-200">
+              <option value="">Todos os tipos</option>
+              <option value="Afastamento">Atestados/Afastamentos</option>
+              <option value="INSS">INSS</option>
+              <option value="Extra">Extras</option>
+              <option value="Substituição">Substituições</option>
+            </select>
           </div>
           <button type="button" onClick={iniciarImpressaoMensal} disabled={!canPrintRelatorios}
             className="flex items-center gap-2 rounded-xl bg-aviation-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-aviation-700 dark:bg-aviation-500 dark:hover:bg-aviation-600">
@@ -1144,7 +1160,7 @@ export function Substituicoes() {
           <h3 className="mb-2 text-lg font-semibold text-graphite-700 dark:text-graphite-300">Nenhuma movimentação encontrada</h3>
           <p className="text-sm text-graphite-400">
             {isRelatorioRoute
-              ? 'Nenhum afastamento/atestado aprovado para o período selecionado.'
+              ? 'Nenhum registro aprovado para o mês selecionado.'
               : 'Clique em "Nova Movimentação" para criar.'}
           </p>
         </div>
@@ -1229,7 +1245,7 @@ export function Substituicoes() {
                         {solicitacoesPendentes.length} {solicitacoesPendentes.length === 1 ? 'troca pendente' : 'trocas pendentes'}
                       </span>
                     )}
-                    {isRelatorioRoute && canPrintRelatorios && sub.tipo === 'Afastamento' && (
+                    {isRelatorioRoute && canPrintRelatorios && (
                       <button onClick={event => { event.stopPropagation(); iniciarImpressaoIndividual(sub); }}
                         className="rounded-lg p-1.5 text-graphite-400 transition-colors hover:bg-aviation-50 hover:text-aviation-600 dark:hover:bg-aviation-900/20 dark:hover:text-aviation-300"
                         title="Imprimir relatório individual">
@@ -1409,7 +1425,7 @@ export function Substituicoes() {
                   ? relatorioMensal.map(renderRelatorioSubstituicao)
                   : (
                     <div className="rounded-xl border border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
-                      Nenhum afastamento/atestado aprovado para o período selecionado.
+                      Nenhum registro aprovado para o mês selecionado.
                     </div>
                   )}
             </div>

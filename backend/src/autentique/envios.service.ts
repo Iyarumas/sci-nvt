@@ -38,6 +38,29 @@ const DOCUMENTOS: Record<string, { tabela: string; nome: string; pasta: string; 
   bona: { tabela: 'ocorrencias_operacionais', nome: 'BONA', pasta: 'BONA', criador: 'created_by' },
 };
 
+/** Colunas de cada tipo para o relatório mensal (expressões SQL sobre a tabela "t"). */
+const RELATORIO_POR_TIPO: Record<string, {
+  data: string; equipe: string; numero: string; hora: string; solicitante: string; solicitado: string; filtro: string;
+  trabalhar?: string;
+}> = {
+  ptrba: { data: 't.data::text', equipe: 't.equipe', numero: "''", hora: "''", solicitante: "''", solicitado: "''", filtro: 'true' },
+  lro: { data: 't.data_plantao::text', equipe: 't.equipe', numero: "''", hora: "''", solicitante: "''", solicitado: "''", filtro: 'true' },
+  bona: {
+    data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')",
+    solicitante: "''", solicitado: "''", filtro: "coalesce(t.tipo_documento, '') ILIKE 'BONA%'",
+  },
+  taf: { data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')", solicitante: "''", solicitado: "''", filtro: 'true' },
+  tpepr: { data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')", solicitante: "''", solicitado: "''", filtro: 'true' },
+  posicionamento: { data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')", solicitante: "''", solicitado: "''", filtro: 'true' },
+  temporesposta: { data: 't.data::text', equipe: 't.equipe', numero: 't.numero::text', hora: "coalesce(t.hora::text, '')", solicitante: "''", solicitado: "''", filtro: 'true' },
+  troca: {
+    data: "coalesce(nullif(t.filled_data->>'data_solicitada', ''), t.filled_data->>'data_folga_solicitado', '')",
+    equipe: "coalesce(t.filled_data->>'equipe', '')", numero: "''", hora: "''",
+    solicitante: "coalesce(t.filled_data->>'nome_solicitante', '')", solicitado: "coalesce(t.filled_data->>'nome_solicitado', '')",
+    filtro: "t.status = 'signed'", trabalhar: "coalesce(t.filled_data->>'data_folga_solicitado', '')",
+  },
+};
+
 /** BONA com ocorrência antes deste dia segue o fluxo antigo (Aprovar manual). */
 export const INICIO_ASSINATURA_BONA = '2026-11-10';
 
@@ -266,6 +289,55 @@ export class EnviosService {
   private podeGerir(user: AuthUser, envio?: Pick<EnvioRow, 'enviado_por_id'>): boolean {
     if (isAdmin(user) || PAPEIS_GESTAO.has(user.role)) return true;
     return !!envio && envio.enviado_por_id === user.id;
+  }
+
+  /**
+   * Relatório de um tipo de documento no mês: todos os documentos do período, na ordem dos plantões
+   * (data; no mesmo dia o diurno — Alfa/Charlie — antes do noturno — Bravo/Delta), com a situação do
+   * envio para assinatura. Trocas vêm com solicitante/solicitado (a tela ordena como o relatório de hoje).
+   */
+  async relatorio(tipo: string, ano: number, mes: number) {
+    const cfg = RELATORIO_POR_TIPO[tipo];
+    if (!cfg) throw new BadRequestException('Tipo de relatório inválido.');
+    if (!Number.isInteger(ano) || ano < 2020 || ano > 2100 || !Number.isInteger(mes) || mes < 1 || mes > 12) {
+      throw new BadRequestException('Mês ou ano inválido.');
+    }
+    const prefixo = `${ano}-${String(mes).padStart(2, '0')}-`;
+    const doc = DOCUMENTOS[tipo];
+    const linhas = await this.database.query<{
+      id: string; data: string | null; equipe: string | null; numero: string | null; hora: string | null;
+      solicitante: string | null; solicitado: string | null; criado: string | null; trabalhar: string | null;
+      envio_id: string | null; envio_status: string | null; tem_pdf: boolean | null;
+    }>(
+      `SELECT t.id::text AS id, ${cfg.data} AS data, ${cfg.equipe} AS equipe, ${cfg.numero} AS numero,
+              ${cfg.hora} AS hora, ${cfg.solicitante} AS solicitante, ${cfg.solicitado} AS solicitado,
+              ${cfg.trabalhar ?? "''"} AS trabalhar,
+              t.created_at::text AS criado,
+              e.id::text AS envio_id, e.status AS envio_status, (e.pdf_assinado_url IS NOT NULL) AS tem_pdf
+         FROM ${doc.tabela} t
+         LEFT JOIN LATERAL (
+           SELECT a.* FROM autentique_envios a
+            WHERE a.tipo = $1 AND a.referencia_id::text = t.id::text AND a.status <> 'cancelado'
+            ORDER BY a.enviado_em DESC LIMIT 1
+         ) e ON true
+        WHERE (${cfg.data}) LIKE $2 AND ${cfg.filtro}
+        ORDER BY data, CASE WHEN ${cfg.equipe} IN ('Bravo', 'Delta') THEN 1 ELSE 0 END, hora, t.created_at`,
+      [tipo, `${prefixo}%`],
+    );
+    return linhas.rows.map(l => ({
+      referenciaId: l.id,
+      data: (l.data ?? '').slice(0, 10),
+      equipe: l.equipe ?? '',
+      turno: l.equipe === 'Bravo' || l.equipe === 'Delta' ? 'Noturno' : l.equipe ? 'Diurno' : '',
+      numero: l.numero ?? '',
+      solicitante: l.solicitante ?? '',
+      solicitado: l.solicitado ?? '',
+      dataTrabalhar: (l.trabalhar ?? '').slice(0, 10),
+      criadoEm: l.criado,
+      envioId: l.envio_id,
+      situacao: l.envio_status === 'assinado' && l.tem_pdf ? 'assinado'
+        : l.envio_status ? 'aguardando' : 'nao_enviado',
+    }));
   }
 
   async listar(user: AuthUser, tipo: string, referencias: string[]) {

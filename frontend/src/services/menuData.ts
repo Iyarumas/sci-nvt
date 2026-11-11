@@ -314,7 +314,7 @@ export const menuItems: MenuItem[] = [
         label: 'PTR-BA Registros',
         icon: FileText,
         path: '/relatorios/ptr-ba-registros',
-        description: 'Lista de todos os PTR-BAs por ordem de data, com impressão.',
+        description: 'PTR-BAs assinados do mês, na ordem dos plantões, em PDF (1ª quinzena ou mês completo).',
         ptrBaRelatoriosOnly: true,
       },
       {
@@ -351,13 +351,6 @@ export const menuItems: MenuItem[] = [
             relatoriosOnly: true,
           },
         ],
-      },
-      {
-        label: 'Ordem de Serviço',
-        icon: ClipboardList,
-        path: '/relatorios/ordem-servico',
-        description: 'Controle de ordens de serviço.',
-        relatoriosOnly: true,
       },
       {
         label: 'Substituições',

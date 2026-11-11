@@ -132,7 +132,8 @@ export const menuItems: MenuItem[] = [
         icon: FileText,
         path: '/cadastro/documentos',
         description: 'Templates de documentos para preenchimento e assinatura.',
-        adminOrGsOnly: true,
+        // Modelos usados pelas trocas e pelo arquivo do LRO: só administrador mexe.
+        adminOnly: true,
       },
       {
         label: 'Usuários',

@@ -11,7 +11,6 @@ import {
   type MudancaUsuario,
   type TelaCatalogo,
 } from '../../services/permissoesService';
-import { ComunicantesPermissao } from './ComunicantesPermissao';
 
 const NOME_ALCANCE: Record<Alcance, string> = { nao: 'Não', equipe: 'Própria equipe', todas: 'Todas' };
 const CURTO_ALCANCE: Record<Alcance, string> = { nao: 'Não', equipe: 'Equipe', todas: 'Todas' };
@@ -379,7 +378,6 @@ export default function Permissoes() {
         </div>
       )}
 
-      <ComunicantesPermissao />
     </PageContainer>
   );
 }

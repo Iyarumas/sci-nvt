@@ -182,17 +182,3 @@ export async function excluirUsuario(username: string): Promise<boolean> {
   if (error) handleSupabaseError(error);
   return true;
 }
-
-/**
- * Liga ou desliga a permissão "Comunicante (OC)": quem tem entra pela Central e vê só as telas da central.
- * Ao desligar, a pessoa volta para a permissão que tinha antes.
- */
-export async function alternarComunicante(usuario: Pick<Usuario, 'username' | 'name' | 'role' | 'previousRole'>): Promise<Usuario | null> {
-  if (usuario.role === 'desenvolvedor' || usuario.role === 'admin') return null;
-  const virando = usuario.role !== 'comunicante';
-  return atualizarUsuario(usuario.username, {
-    name: usuario.name,
-    role: virando ? 'comunicante' : usuario.previousRole || 'bombeiro',
-    previousRole: virando ? usuario.role : null,
-  });
-}

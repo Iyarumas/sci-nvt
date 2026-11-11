@@ -232,10 +232,16 @@ export default function Permissoes() {
                                   celula.alteradoPor ? `Alterado por ${celula.alteradoPor}` : null,
                                 ].filter(Boolean).join(' · ') || undefined;
                                 return (
-                                  <td key={f} className="px-1 py-1.5 text-center">
-                                    <Pilula compacto alcance={atual} onClick={() => mudarFuncao(acao, f)} titulo={titulo}
-                                      destaque={atual !== celula.padrao ? 'alterado' : null} />
-                                    {celula.observacao && <span className="ml-0.5 align-top text-[10px] text-graphite-400" title={celula.observacao}>ⓘ</span>}
+                                  <td key={f} className="px-1 py-1.5">
+                                    {/* Espaço do ⓘ reservado em todas as células: as pílulas ficam alinhadas na coluna. */}
+                                    <div className="flex items-center justify-center gap-0.5">
+                                      <span className="w-2.5 shrink-0" aria-hidden />
+                                      <Pilula compacto alcance={atual} onClick={() => mudarFuncao(acao, f)} titulo={titulo}
+                                        destaque={atual !== celula.padrao ? 'alterado' : null} />
+                                      <span className="w-2.5 shrink-0 self-start text-[10px] leading-none text-graphite-400" title={celula.observacao ?? undefined}>
+                                        {celula.observacao ? 'ⓘ' : ''}
+                                      </span>
+                                    </div>
                                   </td>
                                 );
                               })}

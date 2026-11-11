@@ -96,6 +96,7 @@ export const router = createBrowserRouter([
       { path: 'relatorios/ordem-servico', element: lazyPage(() => import('../pages/Relatorios/OrdemServico').then(m => ({ default: m.OrdemServico }))) },
       { path: 'relatorios/substituicoes', element: lazyPage(() => import('../pages/Funcionarios/Substituicoes')) },
       { path: 'relatorios/trocas', element: lazyPage(() => import('../pages/Relatorios/Trocas')) },
+      { path: 'relatorios/assinados/:tipo', element: lazyPage(() => import('../pages/Relatorios/RelatoriosAssinados')) },
       { path: 'arquivo/:tipo?', element: <AuthGuard developerOnly>{lazyPage(() => import('../pages/Arquivo/Arquivo'))}</AuthGuard> },
       { path: 'configuracoes', element: lazyPage(() => import('../pages/Configuracoes/Configuracoes')) },
       { path: 'auditoria', element: <AuthGuard adminOnly>{lazyPage(() => import('../pages/Auditoria/Auditoria'))}</AuthGuard> },

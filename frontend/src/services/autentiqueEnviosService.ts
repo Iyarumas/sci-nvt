@@ -113,7 +113,7 @@ export async function obterPdfAssinado(envioId: string): Promise<Blob> {
 }
 
 /** Páginas do PDF antes do relatório de auditoria do Autentique (que vem sempre no fim). */
-async function paginasAntesDaAuditoria(pdf: ArrayBuffer): Promise<number | null> {
+export async function paginasAntesDaAuditoria(pdf: ArrayBuffer): Promise<number | null> {
   const { default: pdfjsLib } = await import('../lib/pdfjs-setup');
   const tarefa = pdfjsLib.getDocument({ data: new Uint8Array(pdf.slice(0)) });
   const documento = await tarefa.promise;

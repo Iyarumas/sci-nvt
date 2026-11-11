@@ -91,7 +91,7 @@ export function montarMensagemInicioPlantao(data: string, equipe: string, d: Dad
     `Interno - ${status(d.caixaInterna)}`,
     `Externo - ${status(d.caixaExterna)}`,
     '',
-    `⏱️ Hidrômetro do Reúso : ${d.hidrometro.trim() ? `${d.hidrometro.trim()}m3` : '-'}${d.hidrometroSituacao.trim() ? ` (${d.hidrometroSituacao.trim()})` : ''}`,
+    `⏱️ Hidrômetro do Reúso : ${d.hidrometro.trim() ? `${d.hidrometro.trim()}m³` : '-'}${d.hidrometroSituacao.trim() ? ` (${d.hidrometroSituacao.trim()})` : ''}`,
     '',
     `👥 FÉRIAS: ${lista(d.ferias, 'Não houve')}`,
     '',

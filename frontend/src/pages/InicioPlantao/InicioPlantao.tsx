@@ -360,7 +360,7 @@ export default function InicioPlantao() {
         const guerra = (nome: string) => guerraPorNome.get(nome.trim().toLowerCase()) || nome;
         const trocas = montarTrocasServicoDoDia({
           bombeiros, trocaFills, vigencias, feriasGozo: gozos, escalasCompletas: completas, equipe, dataPlantao: data,
-        }).map(t => `${t.funcaoSaindo} ${guerra(t.nomeSaindo)} por ${t.funcaoEntrando} ${guerra(t.nomeEntrando)}`);
+        }).map(t => `${t.funcaoSaindo} ${guerra(t.nomeSaindo)} X ${t.funcaoEntrando} ${guerra(t.nomeEntrando)}`);
         const extras = montarExtrasAfastamentoDoDia({ bombeiros, substituicoes, vigencias, equipe, dataPlantao: data })
           .map(x => `${x.cargoExercido} ${x.substituto.nomeGuerra} no lugar de ${x.cargoAusente} ${x.ausente.nomeGuerra}`);
         if (existente) {

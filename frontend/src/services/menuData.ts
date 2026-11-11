@@ -55,12 +55,16 @@ export const menuItems: MenuItem[] = [
     icon: Radio,
     path: '/inicio-plantao',
     description: 'Informações do comunicante e mensagem do dia.',
+    // No menu normal só para administradores; as contas da Central têm o menu próprio (Sidebar).
+    adminOnly: true,
   },
   {
     label: 'Fim de plantão',
     icon: ClipboardCheck,
     path: '/fim-plantao',
     description: 'Relatório de serviço do comunicante para o chefe.',
+    // No menu normal só para administradores; as contas da Central têm o menu próprio (Sidebar).
+    adminOnly: true,
   },
   {
     label: 'Permissões',

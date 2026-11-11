@@ -17,6 +17,7 @@ import { listarPTRBACompletos } from '../../services/ptrbaCompletoService';
 import { listarCompletas as listarCompletasEscala, listarConfigs as listarConfigsEscala } from '../../services/escalaMensalService';
 import type { EscalaMensalCompleta, EscalaMensalConfig } from '../../types/escalaMensal';
 import { listarAPOCs } from '../../services/apocService';
+import { obterInicioPlantao } from '../../services/inicioPlantaoService';
 import { listarConferencias } from '../../services/conferenciaService';
 import { atualizarOcorrencia, listarOcorrencias } from '../../services/ocorrenciaService';
 import { listarReas } from '../../services/reaService';
@@ -640,6 +641,21 @@ export function GerarLRO() {
   // -- Wizard state --
   const [equipe, setEquipe] = useState<EquipeOpcao | ''>('');
   const [dataInicio, setDataInicio] = useState(hojeLocalISO());
+  /** APOC informado pela Central no início de plantão: no LRO ele entra como 1.2 Comunicação. */
+  const [apocDaCentral, setApocDaCentral] = useState('');
+  useEffect(() => {
+    setApocDaCentral('');
+    if (!equipe || !dataInicio) return;
+    let ativo = true;
+    obterInicioPlantao(dataInicio, equipe)
+      .then(inicio => {
+        // Mais de um APOC ("A / B"): o primeiro vai para a Comunicação.
+        const primeiro = String(inicio?.dados?.apoc || '').split('/')[0].trim();
+        if (ativo) setApocDaCentral(primeiro);
+      })
+      .catch(() => { if (ativo) setApocDaCentral(''); });
+    return () => { ativo = false; };
+  }, [equipe, dataInicio]);
   const [dataFim, setDataFim] = useState('');
   const [trocaDocId, setTrocaDocId] = useState<string | null>(null);
   const [houveTrocas, setHouveTrocas] = useState<'sim' | 'nao' | null>(null);
@@ -1766,10 +1782,13 @@ export function GerarLRO() {
       setChefeEquipe(candidatoChefe);
     }
 
-    // 1.2 Comunicação BA-OC — comunicante do plantão (rádio fixo da parada do dia)
+    // 1.2 Comunicação BA-OC — o APOC do início de plantão da Central; sem ele, o comunicante do
+    // plantão (rádio fixo da parada do dia).
     const comunicacaoAtual = buscarBombeiroPorNome(comunicacao);
     const comunicacaoAtualSaiu = pessoaSaiuDoPlantao(comunicacaoAtual);
-    if (!campoEquipeFoiEditado('comunicacao') && (!comunicacao || comunicacaoAtualSaiu)) {
+    if (!campoEquipeFoiEditado('comunicacao') && apocDaCentral) {
+      if (comunicacao !== apocDaCentral) setComunicacao(apocDaCentral);
+    } else if (!campoEquipeFoiEditado('comunicacao') && (!comunicacao || comunicacaoAtualSaiu)) {
       const radioOrdenada = parada?.radio
         ? [
             ...parada.radio.filter(r => r.fixo),
@@ -1871,7 +1890,7 @@ export function GerarLRO() {
     if (!registrosIguais(nextCCI, equipagemCCI)) setEquipagemCCI(nextCCI);
     if (!registrosIguais(nextCCIRT, equipagemCCIRT)) setEquipagemCCIRT(nextCCIRT);
     if (!registrosIguais(nextCRS, equipagemCRS)) setEquipagemCRS(nextCRS);
-  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, efetivoDisponivel, cargoExercidoNoPlantao, buscarEfetivoDisponivelPorNome, podeAtuarComoComunicacao, pessoaSaiuDoPlantao, bombeiros, chefeEquipe, comunicacao, equipagemCCI, equipagemCCIRT, equipagemCRS]);
+  }, [dataInicio, equipe, escalasConfigs, escalasCompletas, substituicoesMap, disponiveis, efetivoDisponivel, cargoExercidoNoPlantao, buscarEfetivoDisponivelPorNome, podeAtuarComoComunicacao, pessoaSaiuDoPlantao, bombeiros, chefeEquipe, comunicacao, apocDaCentral, equipagemCCI, equipagemCCIRT, equipagemCRS]);
 
   function montarSubstituicoesLRO() {
     const cargoNoPlantao = (pessoa?: Bombeiro) => pessoa ? (cargoExercidoNoPlantao(pessoa) || pessoa.cargo) : 'BA-2';

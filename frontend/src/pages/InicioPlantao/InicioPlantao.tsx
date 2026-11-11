@@ -45,7 +45,8 @@ function vazio(): DadosInicioPlantao {
   });
   return {
     aeroporto: 'Aeroporto de Navegantes',
-    efetivo: '',
+    // Efetivo padrão da equipe: 10 bombeiros (a pessoa ajusta se faltar alguém).
+    efetivo: '10',
     twr: 'OK',
     // Ramais padrão; depois do primeiro salvo, vale o do último plantão.
     ramaisTwr: '9247 / 9248',
@@ -87,10 +88,9 @@ function preencherDasGuarnicoes(base: DadosInicioPlantao, g: EscalaDiaria['guarn
     faiscaRT: [],
     crs: [{ funcao: 'BA-LR', nome: g.crs?.baLr || '' }, { funcao: 'BA-MC', nome: g.crs?.baMc || '' }, { funcao: 'BA-RE', nome: g.crs?.baRe1 || '' }, { funcao: 'BA-RE', nome: g.crs?.baRe2 || '' }],
   };
-  const efetivo = Object.values(equipagens).flat().filter(t => t.nome.trim()).length;
+  // Efetivo continua o padrão (10); quem preenche ajusta se faltar alguém.
   return {
     ...base,
-    efetivo: efetivo ? String(efetivo) : base.efetivo,
     viaturas: base.viaturas.map(v => ({ ...v, equipagem: equipagens[v.chave] ?? [] })),
   };
 }
@@ -133,32 +133,87 @@ const separarNomes = (valor: string) => (valor ? valor.split(/\s*\/\s*/) : [''])
  * Campo de uma ou mais pessoas (APOC, SPO, Supervisão, PCM, Fiscal). Cada pessoa tem a sua linha;
  * "+ pessoa" abre mais uma. Os nomes ficam juntos no mesmo texto ("A / B"), como na mensagem.
  */
-function CampoPessoas({ rotulo, valor, onChange, sugestoes }: {
-  rotulo: string; valor: string; onChange: (v: string) => void; sugestoes?: string;
+const DIGITAR = '__digitar__';
+
+/**
+ * Uma linha do campo de pessoas: escolhe do cadastro de APOC (a função do campo primeiro) ou,
+ * em "Digitar outro nome", escreve quem não está no cadastro (ex.: SPO e fiscal da ASUR).
+ */
+function LinhaPessoa({ rotulo, valor, pessoas, funcaoPreferida, onChange }: {
+  rotulo: string; valor: string; pessoas: APOC[]; funcaoPreferida?: string; onChange: (v: string) => void;
+}) {
+  const nomes = [...new Set(pessoas.map(p => p.nomeGuerra).filter(Boolean))];
+  const daFuncao = funcaoPreferida
+    ? [...new Set(pessoas.filter(p => p.funcao === funcaoPreferida).map(p => p.nomeGuerra).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    : [];
+  const outros = nomes.filter(n => !daFuncao.includes(n)).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const noCadastro = !valor || nomes.includes(valor);
+  const [digitando, setDigitando] = useState(!noCadastro);
+  if (digitando) {
+    return (
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <input autoFocus={!valor} value={valor} placeholder="Nome da pessoa" aria-label={rotulo}
+          onChange={e => onChange(e.target.value.replace(/\//g, ''))} className={input} />
+        <button type="button" onClick={() => { setDigitando(false); if (!nomes.includes(valor)) onChange(''); }}
+          title="Escolher do cadastro de APOC" className="shrink-0 rounded-lg px-2 py-2 text-[11px] font-semibold text-aviation-600 hover:bg-aviation-50 dark:text-aviation-300 dark:hover:bg-aviation-900/20">
+          Lista
+        </button>
+      </div>
+    );
+  }
+  return (
+    <select aria-label={rotulo} value={valor} className={input}
+      onChange={e => { if (e.target.value === DIGITAR) { setDigitando(true); onChange(''); } else onChange(e.target.value); }}>
+      <option value="">Selecione</option>
+      {daFuncao.length > 0 && (
+        <optgroup label={funcaoPreferida === 'SUPERVISOR' ? 'Supervisores' : 'APOC'}>
+          {daFuncao.map(n => <option key={n} value={n}>{n}</option>)}
+        </optgroup>
+      )}
+      {outros.length > 0 && (
+        <optgroup label={daFuncao.length ? 'Outros do cadastro de APOC' : 'Cadastro de APOC'}>
+          {outros.map(n => <option key={n} value={n}>{n}</option>)}
+        </optgroup>
+      )}
+      <option value={DIGITAR}>✎ Digitar outro nome…</option>
+    </select>
+  );
+}
+
+/**
+ * Campo de uma ou mais pessoas (APOC, SPO, Supervisão, PCM, Fiscal). Cada pessoa tem a sua linha;
+ * "+ pessoa" abre mais uma. Os nomes ficam juntos no mesmo texto ("A / B"), como na mensagem.
+ */
+function CampoPessoas({ rotulo, valor, onChange, pessoas, funcaoPreferida }: {
+  rotulo: string; valor: string; onChange: (v: string) => void; pessoas: APOC[]; funcaoPreferida?: string;
 }) {
   const nomes = separarNomes(valor);
-  const gravar = (lista: string[]) => onChange(lista.map(n => n.trim()).filter((n, i, l) => n || l.length === 1).join(SEPARADOR_NOMES));
+  const juntar = (lista: string[]) => lista.join(SEPARADOR_NOMES);
   const mudar = (indice: number, texto: string) => {
     const lista = [...nomes];
-    lista[indice] = texto.replace(/\//g, '');
-    onChange(lista.join(SEPARADOR_NOMES));
+    lista[indice] = texto;
+    onChange(juntar(lista));
+  };
+  const tirar = (indice: number) => {
+    const lista = nomes.filter((_, j) => j !== indice);
+    onChange(juntar(lista.length ? lista : ['']).replace(/^ \/ $/, ''));
   };
   return (
     <div className="block">
       <span className={label}>{rotulo}</span>
       <div className="space-y-1.5">
         {nomes.map((nome, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <input list={sugestoes} autoComplete="off" value={nome} aria-label={`${rotulo} ${i + 1}`}
-              onChange={e => mudar(i, e.target.value)} onBlur={() => gravar(separarNomes(valor))} className={input} />
+          <div key={`${i}-${nomes.length}`} className="flex items-center gap-1.5">
+            <LinhaPessoa rotulo={nomes.length > 1 ? `${rotulo} ${i + 1}` : rotulo} valor={nome} pessoas={pessoas}
+              funcaoPreferida={funcaoPreferida} onChange={v => mudar(i, v)} />
             {nomes.length > 1 && (
-              <button type="button" onClick={() => gravar(nomes.filter((_, j) => j !== i))} aria-label={`Tirar ${rotulo} ${i + 1}`} title="Tirar esta pessoa"
+              <button type="button" onClick={() => tirar(i)} aria-label={`Tirar ${rotulo} ${i + 1}`} title="Tirar esta pessoa"
                 className="shrink-0 rounded-lg p-2 text-graphite-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"><X className="h-4 w-4" /></button>
             )}
           </div>
         ))}
       </div>
-      <button type="button" onClick={() => onChange([...nomes, ''].join(SEPARADOR_NOMES))}
+      <button type="button" onClick={() => onChange(juntar([...nomes, '']))}
         className="mt-1.5 inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-aviation-600 hover:bg-aviation-50 dark:text-aviation-300 dark:hover:bg-aviation-900/20">
         <Plus className="h-3.5 w-3.5" /> pessoa
       </button>
@@ -389,13 +444,19 @@ export default function InicioPlantao() {
                 <Status rotulo="TWR" valor={dados.twr} onChange={v => set('twr', v)} />
                 <Campo rotulo="Ramais da TWR" valor={dados.ramaisTwr} placeholder="9247 / 9248" onChange={v => set('ramaisTwr', v)} />
                 <Status rotulo="Testes de rádio e hotline" valor={dados.testesRadioHotline} onChange={v => set('testesRadioHotline', v)} />
-                <datalist id="apocs-plantao">{apocs.map(a => <option key={a.id} value={a.nomeGuerra} />)}</datalist>
-                <CampoPessoas rotulo="APOC" valor={dados.apoc} sugestoes="apocs-plantao" onChange={v => set('apoc', v)} />
-                <CampoPessoas rotulo="SPO" valor={dados.spo} sugestoes="apocs-plantao" onChange={v => set('spo', v)} />
-                <CampoPessoas rotulo="Supervisão" valor={dados.supervisao} sugestoes="apocs-plantao" onChange={v => set('supervisao', v)} />
-                <CampoPessoas rotulo="PCM" valor={dados.pcm} sugestoes="apocs-plantao" onChange={v => set('pcm', v)} />
-                <CampoPessoas rotulo="Fiscal" valor={dados.fiscal} sugestoes="apocs-plantao" onChange={v => set('fiscal', v)} />
-                <Campo rotulo="Cabeceira" valor={dados.cabeceira} placeholder="08" onChange={v => set('cabeceira', v)} />
+                <CampoPessoas rotulo="APOC" valor={dados.apoc} pessoas={apocs} funcaoPreferida="APOC" onChange={v => set('apoc', v)} />
+                <CampoPessoas rotulo="SPO" valor={dados.spo} pessoas={apocs} onChange={v => set('spo', v)} />
+                <CampoPessoas rotulo="Supervisão" valor={dados.supervisao} pessoas={apocs} funcaoPreferida="SUPERVISOR" onChange={v => set('supervisao', v)} />
+                <CampoPessoas rotulo="PCM" valor={dados.pcm} pessoas={apocs} onChange={v => set('pcm', v)} />
+                <CampoPessoas rotulo="Fiscal" valor={dados.fiscal} pessoas={apocs} onChange={v => set('fiscal', v)} />
+                <label className="block"><span className={label}>Cabeceira</span>
+                  {/* Navegantes tem só as cabeceiras 08 e 26. */}
+                  <select value={dados.cabeceira} onChange={e => set('cabeceira', e.target.value)} className={input}>
+                    <option value="">Selecione</option>
+                    {['08', '26'].map(c => <option key={c} value={c}>{c}</option>)}
+                    {dados.cabeceira && !['08', '26'].includes(dados.cabeceira) && <option value={dados.cabeceira}>{dados.cabeceira}</option>}
+                  </select>
+                </label>
                 <Status rotulo="Testes de hotline e rádio operacional" valor={dados.testesOperacional} onChange={v => set('testesOperacional', v)} />
               </div>
             </section>

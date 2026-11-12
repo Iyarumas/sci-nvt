@@ -661,7 +661,7 @@ export function GerarLRO() {
   /**
    * Frota (III) a partir da Central: km e combustível INICIAIS do início de plantão; FINAIS da última saída
    * lançada no fim de plantão (sem saída, repete o início). Só preenche o que ainda está vazio no LRO.
-   * Linhas: 0 = Faísca 02, 1 = Faísca 03, 2 = Faísca RT, 3 = CRS (no CRS o km do painel).
+   * Linhas: 0 = Faísca 02, 1 = Faísca 03, 2 = Faísca RT, 3 = CRS (no CRS o km do tacógrafo).
    */
   useEffect(() => {
     if (!equipe || !dataInicio || !viaturas.length) return;
@@ -683,7 +683,8 @@ export function GerarLRO() {
           const cadastro = chave === 'crs'
             ? viaturas.find((vv: any) => /CRS/i.test(String(vv.prefixo || vv.nome || '')))
             : v.numero ? viaturas.find((vv: any) => String(vv.prefixo || vv.nome || '').includes(v.numero)) : undefined;
-          const kmIni = String(v.km || '').trim();
+          // CRS: o km do LRO é o do tacógrafo (TAC); sem ele, o do painel.
+          const kmIni = String((chave === 'crs' ? v.tac || v.km : v.km) || '').trim();
           const combIni = normalizarPercentualCombustivel(String(v.combustivel || ''));
           novo[`row_${rowIdx}`] = {
             ...EMPTY_FROTA_LINHA,
@@ -692,7 +693,7 @@ export function GerarLRO() {
             viaturaId: atual.viaturaId || cadastro?.id || '',
             kmIni: atual.kmIni || kmIni,
             combIni: atual.combIni || combIni,
-            kmFim: atual.kmFim || String(ultima?.km || '').trim() || kmIni,
+            kmFim: atual.kmFim || String((chave === 'crs' ? ultima?.tac || ultima?.km : ultima?.km) || '').trim() || kmIni,
             combFim: atual.combFim || normalizarPercentualCombustivel(String(ultima?.combustivel || '')) || combIni,
             nitrogenio: atual.nitrogenio || (chave === 'crs' ? '' : String(v.n2 || '').trim()),
           } as FrotaLinhaDados;

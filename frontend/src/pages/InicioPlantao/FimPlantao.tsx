@@ -461,18 +461,21 @@ export default function FimPlantao() {
                 {(dados.saidasViaturas ?? []).map((s, i) => (
                   <div key={i} className="grid grid-cols-2 items-end gap-2 rounded-xl border border-graphite-200/70 p-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] dark:border-border-dark">
                     <label className="col-span-2 block sm:col-span-1"><span className={label}>Viatura</span>
-                      <select value={s.chave} onChange={e => setSaida(i, { chave: e.target.value, tac: e.target.value === 'crs' ? s.tac : '' })} className={input}>
+                      <select value={s.chave} onChange={e => setSaida(i, { chave: e.target.value, km: '', tac: '' })} className={input}>
                         {viaturasInicio.map(v => <option key={v.chave} value={v.chave}>{v.posicao}{v.numero ? ` - ${v.numero}` : ''}</option>)}
                       </select>
                     </label>
-                    <label className="block"><span className={label}>Km</span>
-                      <input inputMode="numeric" value={s.km} onChange={e => setSaida(i, { km: e.target.value.replace(/[^\d.,]/g, '') })} className={input} />
-                    </label>
+                    {/* CRS: tudo pelo tacógrafo. CCI: km do painel. */}
                     {s.chave === 'crs' ? (
                       <label className="block"><span className={label}>Km do tacógrafo</span>
                         <input inputMode="numeric" value={s.tac} onChange={e => setSaida(i, { tac: e.target.value.replace(/[^\d.,]/g, '') })} className={input} />
                       </label>
-                    ) : <div className="hidden sm:block" />}
+                    ) : (
+                      <label className="block"><span className={label}>Km</span>
+                        <input inputMode="numeric" value={s.km} onChange={e => setSaida(i, { km: e.target.value.replace(/[^\d.,]/g, '') })} className={input} />
+                      </label>
+                    )}
+                    <div className="hidden sm:block" />
                     <label className="block"><span className={label}>Combustível %</span>
                       <input inputMode="numeric" value={s.combustivel} onChange={e => setSaida(i, { combustivel: e.target.value.replace(/[^\d]/g, '').slice(0, 3) })} className={input} />
                     </label>

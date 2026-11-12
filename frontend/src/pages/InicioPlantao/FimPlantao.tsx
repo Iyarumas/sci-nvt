@@ -272,8 +272,11 @@ export default function FimPlantao() {
 
   /** Lançadas nas telas + digitadas aqui, da noite para a madrugada. */
   const movimentacoesOrdenadas = useMemo(() => {
-    const apoc = dados.sireneApoc ?? SIRENE_VAZIA;
-    const torre = dados.sireneTorre ?? SIRENE_VAZIA;
+    // Se o teste já foi lançado como ocorrência/movimentação, não repete na mensagem.
+    const jaLancado = (quem: RegExp) => [...automaticas, ...dados.movimentacoes]
+      .some(m => /sirene/i.test(m.descricao) && quem.test(m.descricao));
+    const apoc = jaLancado(/apoc/i) ? SIRENE_VAZIA : (dados.sireneApoc ?? SIRENE_VAZIA);
+    const torre = jaLancado(/torre|twr/i) ? SIRENE_VAZIA : (dados.sireneTorre ?? SIRENE_VAZIA);
     const ordenadas = [
       ...automaticas,
       ...dados.movimentacoes.filter(m => m.descricao.trim()),

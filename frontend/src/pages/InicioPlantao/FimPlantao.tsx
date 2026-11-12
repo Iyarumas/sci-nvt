@@ -467,7 +467,7 @@ export default function FimPlantao() {
                     </label>
                     {/* CRS: tudo pelo tacógrafo. CCI: km do painel. */}
                     {s.chave === 'crs' ? (
-                      <label className="block"><span className={label}>Km do tacógrafo</span>
+                      <label className="block"><span className={label}>Km TAC</span>
                         <input inputMode="numeric" value={s.tac} onChange={e => setSaida(i, { tac: e.target.value.replace(/[^\d.,]/g, '') })} className={input} />
                       </label>
                     ) : (

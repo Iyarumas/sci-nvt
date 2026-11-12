@@ -527,7 +527,7 @@ export default function InicioPlantao() {
                       <Campo rotulo="Combustível %" tipo="number" valor={v.combustivel} onChange={x => setViatura(v.chave, { combustivel: x })} />
                       <Campo rotulo="Km" tipo="number" valor={v.km} onChange={x => setViatura(v.chave, { km: x })} />
                       {v.chave === 'crs'
-                        ? <Campo rotulo="TAC" tipo="number" valor={v.tac} onChange={x => setViatura(v.chave, { tac: x })} />
+                        ? <Campo rotulo="Km TAC" tipo="number" valor={v.tac} onChange={x => setViatura(v.chave, { tac: x })} />
                         : <Campo rotulo="N2" tipo="number" valor={v.n2} onChange={x => setViatura(v.chave, { n2: x })} />}
                       <Status rotulo="EPR's" valor={v.epr} onChange={x => setViatura(v.chave, { epr: x })} />
                     </div>

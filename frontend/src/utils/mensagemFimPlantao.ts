@@ -41,7 +41,8 @@ export function montarMensagemFimPlantao(
   if (movimentacoes.length) {
     movimentacoes.forEach((m, i) => {
       if (i) partes.push('');
-      partes.push(`${m.hora || '--:--'} - ${m.descricao.trim()}`);
+      // Sem hora (ex.: teste de sirene que não houve): só o texto.
+      partes.push(m.hora ? `${m.hora} - ${m.descricao.trim()}` : m.descricao.trim());
     });
   } else {
     partes.push('Sem alterações.');

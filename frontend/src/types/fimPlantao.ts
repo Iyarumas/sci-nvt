@@ -18,9 +18,19 @@ export interface MovimentacaoPlantao {
   descricao: string;
 }
 
+/** Teste de sirene: com hora, ou "Não houve" (aí a hora não é necessária). */
+export interface TesteSirene {
+  hora: string;
+  naoHouve: boolean;
+}
+
 export interface DadosFimPlantao {
   checklist: ItemChecklistPlantao[];
   radio: HorarioRadio[];
+  /** Feito pelo APOC no início do plantão. Plantões antigos não têm. */
+  sireneApoc?: TesteSirene;
+  /** Feito pela torre no fim do plantão. Plantões antigos não têm. */
+  sireneTorre?: TesteSirene;
   movimentacoes: MovimentacaoPlantao[];
   despedida: string;
 }

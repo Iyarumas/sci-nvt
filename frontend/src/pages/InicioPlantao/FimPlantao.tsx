@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ClipboardCheck, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { ClipboardCheck, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { listarBombeiros } from '../../services/bombeiroService';
+import { listarFeriasGozo } from '../../services/feriasService';
+import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
+import { listarTrocasServicoAssinadas } from '../../services/efetivoOperacionalService';
+import { listarVigencias } from '../../services/vigenciaSubstituicaoService';
+import type { Bombeiro } from '../../types/bombeiro';
 import { PageContainer } from '../../components/layout/PageContainer';
 import { PageTitle } from '../../components/layout/PageTitle';
 import { useContextoOperacional } from '../../hooks/useContextoOperacional';
@@ -15,10 +21,16 @@ import {
   type HorarioRadio,
   type ItemChecklistPlantao,
   type MovimentacaoPlantao,
+  type TesteSirene,
 } from '../../types/fimPlantao';
 import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import { hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
-import { escalaMensalDoPlantao } from '../../utils/efetivoOperacional';
+import {
+  escalaMensalDoPlantao,
+  montarEfetivoOperacional,
+  montarExtrasAfastamentoDoDia,
+  montarTrocasServicoDoDia,
+} from '../../utils/efetivoOperacional';
 import { montarMensagemFimPlantao } from '../../utils/mensagemFimPlantao';
 import { isComunicante } from '../../utils/permissoes';
 import { listarOcorrencias } from '../../services/ocorrenciaService';
@@ -40,10 +52,112 @@ const label = 'mb-1 block text-xs font-semibold text-graphite-600 dark:text-grap
 const botaoAdicionar = 'mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-dashed border-aviation-400/60 px-4 py-2.5 sm:min-h-0 sm:py-2 text-sm font-semibold text-aviation-700 transition-colors hover:bg-aviation-50 dark:text-aviation-300 dark:hover:bg-aviation-900/20';
 const botaoRemover = 'shrink-0 rounded-lg p-3 sm:p-2 text-graphite-400 transition-colors hover:bg-red-500/10 hover:text-alert-red';
 
+const SIRENE_VAZIA: TesteSirene = { hora: '', naoHouve: false };
+
+/** Pessoas do plantão para a escala de rádio: efetivo do dia (com férias, extras e trocas) e os demais. */
+interface PessoasDoDia {
+  efetivo: string[];
+  outros: string[];
+  /** Nome de guerra de quem saiu → de quem entrou no lugar (troca ou extra). */
+  troca: Map<string, string>;
+  trocasTexto: string[];
+}
+
+async function carregarPessoasDoDia(equipe: string, data: string): Promise<PessoasDoDia> {
+  const [bombeiros, gozos, substituicoes, completas, vigencias, trocaFills] = await Promise.all([
+    listarBombeiros().catch(() => [] as Bombeiro[]),
+    listarFeriasGozo({ equipe }).catch(() => []),
+    listarSubstituicoesTemporarias().catch(() => []),
+    listarCompletas().catch(() => [] as EscalaMensalCompleta[]),
+    listarVigencias({ ativa: true }).catch(() => []),
+    listarTrocasServicoAssinadas().catch(() => []),
+  ]);
+  const ativos = bombeiros.filter(b => !b.dataDesligamento);
+  const efetivo = montarEfetivoOperacional({
+    bombeiros, feriasGozo: gozos, vigencias, trocaFills, escalasCompletas: completas,
+    substituicoesTemporarias: substituicoes, equipe, dataPlantao: data,
+  }).map(e => e.bombeiro.nomeGuerra).filter(Boolean);
+  const guerraPorNome = new Map(ativos.map(b => [b.nomeCompleto.trim().toLowerCase(), b.nomeGuerra]));
+  const guerra = (nome: string) => guerraPorNome.get(nome.trim().toLowerCase()) || nome;
+  const troca = new Map<string, string>();
+  const trocasTexto: string[] = [];
+  for (const t of montarTrocasServicoDoDia({ bombeiros, trocaFills, vigencias, feriasGozo: gozos, escalasCompletas: completas, equipe, dataPlantao: data })) {
+    troca.set(guerra(t.nomeSaindo), guerra(t.nomeEntrando));
+    trocasTexto.push(`${guerra(t.nomeSaindo)} → ${guerra(t.nomeEntrando)}`);
+  }
+  for (const x of montarExtrasAfastamentoDoDia({ bombeiros, substituicoes, vigencias, equipe, dataPlantao: data })) {
+    troca.set(x.ausente.nomeGuerra, x.substituto.nomeGuerra);
+    trocasTexto.push(`${x.ausente.nomeGuerra} → ${x.substituto.nomeGuerra}`);
+  }
+  const doDia = [...new Set(efetivo)].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const outros = [...new Set(ativos.map(b => b.nomeGuerra).filter(n => n && !doDia.includes(n)))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return { efetivo: doDia, outros, troca, trocasTexto };
+}
+
+const DIGITAR = '__digitar__';
+
+/** Quem fica no rádio: escolhe do efetivo do dia, dos outros bombeiros, ou digita. */
+function SeletorRadio({ rotulo, valor, pessoas, onChange }: {
+  rotulo: string; valor: string; pessoas: PessoasDoDia | null; onChange: (v: string) => void;
+}) {
+  const todos = [...(pessoas?.efetivo ?? []), ...(pessoas?.outros ?? [])];
+  const [digitando, setDigitando] = useState(!!valor && !!pessoas && !todos.includes(valor));
+  useEffect(() => {
+    if (pessoas && valor && !todos.includes(valor)) setDigitando(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pessoas]);
+  if (digitando || !pessoas) {
+    return (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <input aria-label={rotulo} value={valor} onChange={e => onChange(e.target.value)} placeholder="Nome de guerra" className={input} />
+        {pessoas && (
+          <button type="button" onClick={() => { setDigitando(false); if (!todos.includes(valor)) onChange(''); }}
+            className="min-h-11 shrink-0 rounded-lg px-3 py-2 text-xs font-semibold text-aviation-600 hover:bg-aviation-50 sm:min-h-0 sm:px-2 dark:text-aviation-300 dark:hover:bg-aviation-900/20">
+            Lista
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <select aria-label={rotulo} value={valor} className={input}
+      onChange={e => { if (e.target.value === DIGITAR) { setDigitando(true); onChange(''); } else onChange(e.target.value); }}>
+      <option value="">Selecione</option>
+      {pessoas.efetivo.length > 0 && <optgroup label="Efetivo do dia">{pessoas.efetivo.map(n => <option key={n} value={n}>{n}</option>)}</optgroup>}
+      {pessoas.outros.length > 0 && <optgroup label="Outros bombeiros">{pessoas.outros.map(n => <option key={n} value={n}>{n}</option>)}</optgroup>}
+      <option value={DIGITAR}>✎ Digitar outro nome…</option>
+    </select>
+  );
+}
+
+/** Teste de sirene: hora, ou "Não houve" (aí não precisa da hora). */
+function LinhaSirene({ titulo, quando, valor, onChange }: {
+  titulo: string; quando: string; valor: TesteSirene; onChange: (v: TesteSirene) => void;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2 border-t border-graphite-100 py-2 first:border-t-0 dark:border-border-dark">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-graphite-900 dark:text-graphite-100">{titulo}</p>
+        <p className="text-xs text-graphite-500 dark:text-graphite-400">{quando}</p>
+      </div>
+      <input type="time" aria-label={`Hora do ${titulo}`} value={valor.naoHouve ? '' : valor.hora} disabled={valor.naoHouve}
+        onChange={e => onChange({ hora: e.target.value, naoHouve: false })} className={`${input} disabled:opacity-50`} />
+      <button type="button" aria-pressed={valor.naoHouve} onClick={() => onChange({ hora: '', naoHouve: !valor.naoHouve })}
+        className={`flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition-colors sm:min-h-0 sm:py-2 ${valor.naoHouve
+          ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300'
+          : 'border-graphite-300/60 text-graphite-600 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
+        <X className="h-4 w-4" /> Não houve
+      </button>
+    </div>
+  );
+}
+
 function vazio(): DadosFimPlantao {
   return {
     checklist: CHECKLIST_PADRAO.map(item => ({ ...item })),
     radio: [],
+    sireneApoc: { ...SIRENE_VAZIA },
+    sireneTorre: { ...SIRENE_VAZIA },
     movimentacoes: [],
     despedida: DESPEDIDA_PADRAO,
   };
@@ -101,7 +215,13 @@ export default function FimPlantao() {
         // Rádio: a escala que o comunicante lançou em LRO/Ocorrências; sem ela, a escala mensal.
         const radioLancado = escalaRadioDasOcorrencias({ ocorrencias, equipe, dataPlantao: data });
         const parada = escalaMensalDoPlantao(completas, equipe, data)?.paradas.find(p => mesmoDiaISO(p.data, data));
-        const radioMensal: HorarioRadio[] = (parada?.radio || []).map(r => ({ inicio: r.horario, fim: r.horarioFim, nome: r.pessoaNomeGuerra || r.pessoaNome }));
+        // Da escala mensal já com as trocas e os extras do dia (quem saiu → quem entrou no lugar).
+        const pessoasDia = await carregarPessoasDoDia(equipe, data).catch(() => null);
+        if (cancelado) return;
+        const radioMensal: HorarioRadio[] = (parada?.radio || []).map(r => {
+          const nome = r.pessoaNomeGuerra || r.pessoaNome;
+          return { inicio: r.horario, fim: r.horarioFim, nome: pessoasDia?.troca.get(nome) ?? nome };
+        });
         const radio = radioLancado.length ? radioLancado : radioMensal;
         setOrigemRadio(radioLancado.length ? 'ocorrencia' : radioMensal.length ? 'mensal' : '');
         const checklistAnterior = anterior?.dados?.checklist ?? [];
@@ -127,6 +247,16 @@ export default function FimPlantao() {
     return () => { cancelado = true; };
   }, [data, equipe, recarregar]);
 
+  // Pessoas do plantão para escolher na escala de rádio (efetivo do dia e os demais bombeiros).
+  const [pessoasDia, setPessoasDia] = useState<PessoasDoDia | null>(null);
+  useEffect(() => {
+    if (!equipe || !data) return;
+    let cancelado = false;
+    setPessoasDia(null);
+    carregarPessoasDoDia(equipe, data).then(p => { if (!cancelado) setPessoasDia(p); }).catch(() => {});
+    return () => { cancelado = true; };
+  }, [data, equipe, recarregar]);
+
   // Ocorrências, inspeções e solicitações do plantão: sempre atualizadas, mesmo depois de salvo.
   useEffect(() => {
     if (!equipe || !data) return;
@@ -141,13 +271,24 @@ export default function FimPlantao() {
   }, [data, equipe, recarregar]);
 
   /** Lançadas nas telas + digitadas aqui, da noite para a madrugada. */
-  const movimentacoesOrdenadas = useMemo(
-    () => [...automaticas, ...dados.movimentacoes.filter(m => m.descricao.trim())]
+  const movimentacoesOrdenadas = useMemo(() => {
+    const apoc = dados.sireneApoc ?? SIRENE_VAZIA;
+    const torre = dados.sireneTorre ?? SIRENE_VAZIA;
+    const ordenadas = [
+      ...automaticas,
+      ...dados.movimentacoes.filter(m => m.descricao.trim()),
+      // Teste sirene do APOC com hora entra na ordem do plantão.
+      ...(apoc.hora && !apoc.naoHouve ? [{ hora: apoc.hora, descricao: 'Teste sirene APOC' }] : []),
+    ]
       .map((m, i) => ({ m, i }))
       .sort((a, b) => ordemNoPlantao(a.m.hora, equipe) - ordemNoPlantao(b.m.hora, equipe) || a.i - b.i)
-      .map(({ m }) => ({ hora: m.hora, descricao: m.descricao })),
-    [automaticas, dados.movimentacoes, equipe],
-  );
+      .map(({ m }) => ({ hora: m.hora, descricao: m.descricao }));
+    // Não houve o do APOC: abre a lista. O da torre é no fim do plantão: fecha a lista.
+    if (apoc.naoHouve) ordenadas.unshift({ hora: '', descricao: 'Teste sirene APOC - Não houve ❌' });
+    if (torre.naoHouve) ordenadas.push({ hora: '', descricao: 'Teste sirene da torre - Não houve ❌' });
+    else if (torre.hora) ordenadas.push({ hora: torre.hora, descricao: 'Teste sirene da torre' });
+    return ordenadas;
+  }, [automaticas, dados.movimentacoes, dados.sireneApoc, dados.sireneTorre, equipe]);
 
   const mensagem = useMemo(
     () => montarMensagemFimPlantao(data, equipe || '-', dados, movimentacoesOrdenadas),
@@ -260,7 +401,7 @@ export default function FimPlantao() {
                     <input type="time" aria-label={`Início do horário ${i + 1}`} value={r.inicio} onChange={e => setRadio(i, { inicio: e.target.value })} className={input} />
                     <span className="text-sm text-graphite-400">às</span>
                     <input type="time" aria-label={`Fim do horário ${i + 1}`} value={r.fim} onChange={e => setRadio(i, { fim: e.target.value })} className={input} />
-                    <input aria-label={`Quem fica no rádio no horário ${i + 1}`} value={r.nome} onChange={e => setRadio(i, { nome: e.target.value })} placeholder="Nome de guerra" className={input} />
+                    <SeletorRadio key={`${i}-${pessoasDia ? 'p' : 's'}`} rotulo={`Quem fica no rádio no horário ${i + 1}`} valor={r.nome} pessoas={pessoasDia} onChange={nome => setRadio(i, { nome })} />
                     <button type="button" title="Remover" aria-label={`Remover horário ${i + 1}`} onClick={() => setDados(a => ({ ...a, radio: a.radio.filter((_, j) => j !== i) }))} className={botaoRemover}><Trash2 className="h-4 w-4" /></button>
                   </div>
                 ))}
@@ -268,6 +409,20 @@ export default function FimPlantao() {
               <button type="button" onClick={() => setDados(a => ({ ...a, radio: [...a.radio, { inicio: a.radio.at(-1)?.fim ?? '', fim: '', nome: '' }] }))} className={botaoAdicionar}>
                 <Plus className="h-4 w-4" /> Adicionar horário
               </button>
+              {pessoasDia && pessoasDia.trocasTexto.length > 0 && (
+                <p className="mt-3 text-xs text-graphite-500 dark:text-graphite-400">
+                  Trocas e extras do dia (já aplicados na escala da escala mensal): {pessoasDia.trocasTexto.join(' · ')}
+                </p>
+              )}
+            </section>
+
+            <section className={card}>
+              <h2 className={tituloCard}>Testes de sirene</h2>
+              <LinhaSirene titulo="Teste sirene APOC" quando="Início do plantão" valor={dados.sireneApoc ?? SIRENE_VAZIA}
+                onChange={v => setDados(a => ({ ...a, sireneApoc: v }))} />
+              <LinhaSirene titulo="Teste sirene da torre" quando="Fim do plantão" valor={dados.sireneTorre ?? SIRENE_VAZIA}
+                onChange={v => setDados(a => ({ ...a, sireneTorre: v }))} />
+              <p className="mt-2 text-xs text-graphite-500 dark:text-graphite-400">Com "Não houve" marcado, não precisa da hora. Os dois testes entram nas movimentações.</p>
             </section>
 
             <section className={card}>

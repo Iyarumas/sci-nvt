@@ -95,7 +95,10 @@ export class AutentiqueApiService {
       query,
       variables: {
         document: { name: params.nome },
-        signers: params.signatarios,
+        // Quem só reconhece (sem marca na folha) vai SEM o campo positions: desde 12/11/2026 o Autentique
+        // recusa positions vazio ou nulo ("field_required"), mas aceita o campo ausente.
+        signers: params.signatarios.map(({ positions, ...signatario }) =>
+          (positions?.length ? { ...signatario, positions } : signatario)),
         file: null,
         ...(params.pastaId ? { folder: params.pastaId } : {}),
       },

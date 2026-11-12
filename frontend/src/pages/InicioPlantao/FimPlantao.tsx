@@ -21,8 +21,10 @@ import {
   type HorarioRadio,
   type ItemChecklistPlantao,
   type MovimentacaoPlantao,
+  type SaidaViatura,
   type TesteSirene,
 } from '../../types/fimPlantao';
+import type { ViaturaPlantao } from '../../types/inicioPlantao';
 import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import { hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
 import {
@@ -53,6 +55,14 @@ const botaoAdicionar = 'mt-3 flex min-h-11 items-center gap-2 rounded-xl border 
 const botaoRemover = 'shrink-0 rounded-lg p-3 sm:p-2 text-graphite-400 transition-colors hover:bg-red-500/10 hover:text-alert-red';
 
 const SIRENE_VAZIA: TesteSirene = { hora: '', naoHouve: false };
+
+/** Viaturas para escolher nas saídas (quando ainda não há início de plantão salvo). */
+const VIATURAS_PADRAO: Array<Pick<ViaturaPlantao, 'chave' | 'posicao' | 'numero'>> = [
+  { chave: 'faisca02', posicao: 'FAÍSCA 02', numero: '' },
+  { chave: 'faisca03', posicao: 'FAÍSCA 03', numero: '' },
+  { chave: 'faiscaRT', posicao: 'FAÍSCA RT', numero: '' },
+  { chave: 'crs', posicao: 'CRS', numero: '' },
+];
 
 /** Pessoas do plantão para a escala de rádio: efetivo do dia (com férias, extras e trocas) e os demais. */
 interface PessoasDoDia {
@@ -247,6 +257,19 @@ export default function FimPlantao() {
     return () => { cancelado = true; };
   }, [data, equipe, recarregar]);
 
+  // Viaturas do início de plantão (posição e número da CCI) para as saídas de viaturas.
+  const [viaturasInicio, setViaturasInicio] = useState<Array<Pick<ViaturaPlantao, 'chave' | 'posicao' | 'numero'>>>(VIATURAS_PADRAO);
+  useEffect(() => {
+    if (!equipe || !data) return;
+    let cancelado = false;
+    obterInicioPlantao(data, equipe)
+      .then(inicio => { if (!cancelado) setViaturasInicio(inicio?.dados?.viaturas?.length ? inicio.dados.viaturas : VIATURAS_PADRAO); })
+      .catch(() => { if (!cancelado) setViaturasInicio(VIATURAS_PADRAO); });
+    return () => { cancelado = true; };
+  }, [data, equipe, recarregar]);
+  const setSaida = (i: number, parcial: Partial<SaidaViatura>) =>
+    setDados(a => ({ ...a, saidasViaturas: (a.saidasViaturas ?? []).map((s, j) => (j === i ? { ...s, ...parcial } : s)) }));
+
   // Pessoas do plantão para escolher na escala de rádio (efetivo do dia e os demais bombeiros).
   const [pessoasDia, setPessoasDia] = useState<PessoasDoDia | null>(null);
   useEffect(() => {
@@ -426,6 +449,43 @@ export default function FimPlantao() {
               <LinhaSirene titulo="Teste sirene da torre" quando="Fim do plantão" valor={dados.sireneTorre ?? SIRENE_VAZIA}
                 onChange={v => setDados(a => ({ ...a, sireneTorre: v }))} />
               <p className="mt-2 text-xs text-graphite-500 dark:text-graphite-400">Com "Não houve" marcado, não precisa da hora. Os dois testes entram nas movimentações.</p>
+            </section>
+
+            <section className={card}>
+              <h2 className={tituloCard}>Saídas de viaturas</h2>
+              <p className="mb-3 text-xs text-graphite-500 dark:text-graphite-400">
+                Se alguma viatura saiu ou o km mudou, lance aqui. Vai para o km e o combustível finais do LRO (vale o último de cada viatura) e não entra na mensagem.
+                Sem saída, o LRO repete o do início de plantão.
+              </p>
+              <div className="space-y-2">
+                {(dados.saidasViaturas ?? []).map((s, i) => (
+                  <div key={i} className="grid grid-cols-2 items-end gap-2 rounded-xl border border-graphite-200/70 p-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] dark:border-border-dark">
+                    <label className="col-span-2 block sm:col-span-1"><span className={label}>Viatura</span>
+                      <select value={s.chave} onChange={e => setSaida(i, { chave: e.target.value, tac: e.target.value === 'crs' ? s.tac : '' })} className={input}>
+                        {viaturasInicio.map(v => <option key={v.chave} value={v.chave}>{v.posicao}{v.numero ? ` - ${v.numero}` : ''}</option>)}
+                      </select>
+                    </label>
+                    <label className="block"><span className={label}>Km</span>
+                      <input inputMode="numeric" value={s.km} onChange={e => setSaida(i, { km: e.target.value.replace(/[^\d.,]/g, '') })} className={input} />
+                    </label>
+                    {s.chave === 'crs' ? (
+                      <label className="block"><span className={label}>Km do tacógrafo</span>
+                        <input inputMode="numeric" value={s.tac} onChange={e => setSaida(i, { tac: e.target.value.replace(/[^\d.,]/g, '') })} className={input} />
+                      </label>
+                    ) : <div className="hidden sm:block" />}
+                    <label className="block"><span className={label}>Combustível %</span>
+                      <input inputMode="numeric" value={s.combustivel} onChange={e => setSaida(i, { combustivel: e.target.value.replace(/[^\d]/g, '').slice(0, 3) })} className={input} />
+                    </label>
+                    <button type="button" title="Remover" aria-label={`Remover saída ${i + 1}`}
+                      onClick={() => setDados(a => ({ ...a, saidasViaturas: (a.saidasViaturas ?? []).filter((_, j) => j !== i) }))} className={botaoRemover}><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ))}
+              </div>
+              <button type="button"
+                onClick={() => setDados(a => ({ ...a, saidasViaturas: [...(a.saidasViaturas ?? []), { chave: viaturasInicio[0]?.chave ?? 'faisca02', km: '', tac: '', combustivel: '' }] }))}
+                className={botaoAdicionar}>
+                <Plus className="h-4 w-4" /> Adicionar saída de viatura
+              </button>
             </section>
 
             <section className={card}>

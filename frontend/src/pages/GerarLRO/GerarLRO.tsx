@@ -18,6 +18,7 @@ import { listarCompletas as listarCompletasEscala, listarConfigs as listarConfig
 import type { EscalaMensalCompleta, EscalaMensalConfig } from '../../types/escalaMensal';
 import { listarAPOCs } from '../../services/apocService';
 import { obterInicioPlantao } from '../../services/inicioPlantaoService';
+import { obterFimPlantao } from '../../services/fimPlantaoService';
 import { listarConferencias } from '../../services/conferenciaService';
 import { atualizarOcorrencia, listarOcorrencias } from '../../services/ocorrenciaService';
 import { listarReas } from '../../services/reaService';
@@ -656,6 +657,52 @@ export function GerarLRO() {
       .catch(() => { if (ativo) setApocDaCentral(''); });
     return () => { ativo = false; };
   }, [equipe, dataInicio]);
+
+  /**
+   * Frota (III) a partir da Central: km e combustível INICIAIS do início de plantão; FINAIS da última saída
+   * lançada no fim de plantão (sem saída, repete o início). Só preenche o que ainda está vazio no LRO.
+   * Linhas: 0 = Faísca 02, 1 = Faísca 03, 2 = Faísca RT, 3 = CRS (no CRS o km do painel).
+   */
+  useEffect(() => {
+    if (!equipe || !dataInicio || !viaturas.length) return;
+    let ativo = true;
+    Promise.all([
+      obterInicioPlantao(dataInicio, equipe).catch(() => null),
+      obterFimPlantao(dataInicio, equipe).catch(() => null),
+    ]).then(([inicio, fim]) => {
+      if (!ativo || !inicio?.dados?.viaturas?.length) return;
+      const saidas = fim?.dados?.saidasViaturas ?? [];
+      const CHAVES = ['faisca02', 'faisca03', 'faiscaRT', 'crs'];
+      setFrotaDados(prev => {
+        const novo = { ...prev };
+        CHAVES.forEach((chave, rowIdx) => {
+          const v = inicio.dados.viaturas.find(x => x.chave === chave);
+          if (!v) return;
+          const ultima = [...saidas].reverse().find(s => s.chave === chave);
+          const atual = novo[`row_${rowIdx}`] || ({} as Partial<FrotaLinhaDados>);
+          const cadastro = chave === 'crs'
+            ? viaturas.find((vv: any) => /CRS/i.test(String(vv.prefixo || vv.nome || '')))
+            : v.numero ? viaturas.find((vv: any) => String(vv.prefixo || vv.nome || '').includes(v.numero)) : undefined;
+          const kmIni = String(v.km || '').trim();
+          const combIni = normalizarPercentualCombustivel(String(v.combustivel || ''));
+          novo[`row_${rowIdx}`] = {
+            ...EMPTY_FROTA_LINHA,
+            ...atual,
+            prefixo: atual.prefixo || ['F2 X6', 'F3 X6', 'FRT X6', ''][rowIdx] || '',
+            viaturaId: atual.viaturaId || cadastro?.id || '',
+            kmIni: atual.kmIni || kmIni,
+            combIni: atual.combIni || combIni,
+            kmFim: atual.kmFim || String(ultima?.km || '').trim() || kmIni,
+            combFim: atual.combFim || normalizarPercentualCombustivel(String(ultima?.combustivel || '')) || combIni,
+            nitrogenio: atual.nitrogenio || (chave === 'crs' ? '' : String(v.n2 || '').trim()),
+          } as FrotaLinhaDados;
+        });
+        return novo;
+      });
+    });
+    return () => { ativo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipe, dataInicio, viaturas]);
   const [dataFim, setDataFim] = useState('');
   const [trocaDocId, setTrocaDocId] = useState<string | null>(null);
   const [houveTrocas, setHouveTrocas] = useState<'sim' | 'nao' | null>(null);

@@ -18,6 +18,19 @@ export interface MovimentacaoPlantao {
   descricao: string;
 }
 
+/**
+ * Saída de viatura no plantão (ou mudança de km): vale a última de cada viatura.
+ * Não vai na mensagem do WhatsApp; vira o km e o combustível FINAL no LRO.
+ */
+export interface SaidaViatura {
+  /** Posição do início de plantão: faisca02, faisca03, faiscaRT ou crs. */
+  chave: string;
+  km: string;
+  /** Só o CRS: km do tacógrafo. */
+  tac: string;
+  combustivel: string;
+}
+
 /** Teste de sirene: com hora, ou "Não houve" (aí a hora não é necessária). */
 export interface TesteSirene {
   hora: string;
@@ -31,6 +44,8 @@ export interface DadosFimPlantao {
   sireneApoc?: TesteSirene;
   /** Feito pela torre no fim do plantão. Plantões antigos não têm. */
   sireneTorre?: TesteSirene;
+  /** Saídas de viaturas (km/combustível finais do LRO). Plantões antigos não têm. */
+  saidasViaturas?: SaidaViatura[];
   movimentacoes: MovimentacaoPlantao[];
   despedida: string;
 }

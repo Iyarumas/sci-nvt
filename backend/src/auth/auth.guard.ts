@@ -62,7 +62,9 @@ export class AuthGuard implements CanActivate {
           throw new ForbiddenException('Seu usuário ainda aguarda a atribuição de uma função.');
         }
         request.authUser = user;
-        if (isComunicante(user) && !acaoPermitidaAoComunicante(request)) {
+        // Rotas públicas (login, convite, mensagem do QR Code...) valem para qualquer um, inclusive o comunicante:
+        // com a sessão antiga ainda no navegador, entrar de novo não pode ser bloqueado.
+        if (isComunicante(user) && !isPublic && !acaoPermitidaAoComunicante(request)) {
           throw new ForbiddenException('O comunicante só pode lançar os registros da central.');
         }
         return true;

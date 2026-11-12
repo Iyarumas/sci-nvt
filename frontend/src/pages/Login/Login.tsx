@@ -40,8 +40,13 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  // Já entrou (ex.: voltou para esta tela com o Voltar do navegador): segue para o sistema.
+  useEffect(() => {
+    if (isAuthenticated) navigate('/', { replace: true });
+  }, [isAuthenticated, navigate]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -53,7 +58,7 @@ export function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!username || !password) {
-      setError('Preencha todos os campossssss.');
+      setError('Preencha todos os campos.');
       return;
     }
     setError('');

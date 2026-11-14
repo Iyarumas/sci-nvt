@@ -7,6 +7,10 @@ export interface ArquivoDriveApi {
   validadeTexto?: string | null;
   origemData?: string | null;
   dataLida?: boolean;
+  /** Texto lido da imagem (OCR). */
+  lidoPorOcr?: boolean;
+  /** É figura e nem a leitura da imagem achou texto. */
+  imagemSemLeitura?: boolean;
   /** Cursos citados no texto do certificado, na ordem em que aparecem ([] = não deu para saber pelo texto). */
   cursosLidos?: string[];
   /** Título do curso como está escrito no certificado (mesmo que o sistema não conheça o curso). */

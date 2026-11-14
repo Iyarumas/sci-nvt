@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { acharCursos, acharTituloCurso, TAMANHO_TRECHO_CURSO } from './curso-pdf';
 import { acharDatas } from './datas-pdf';
 import { DriveApiService, ItemDrive, PASTA_MIME } from './drive-api.service';
+import { LeitorOcr, semTexto } from './ocr';
 
 // pdf-parse 2 (CommonJS): só o texto das primeiras páginas do certificado.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -21,10 +22,15 @@ interface LinhaData {
   versao_leitura: number;
   /** Certificação a que o administrador vinculou o arquivo (o nome do arquivo não bate com o certificado). */
   tipo_informado: string | null;
+  /** O texto veio da leitura da imagem (OCR): PDF que é figura ou foto. */
+  lido_por_ocr: boolean;
 }
 
-/** Versão da leitura dos PDFs: 2 = também guarda o trecho do texto para achar o curso. */
-const VERSAO_LEITURA = 2;
+/**
+ * Versão da leitura dos arquivos: 2 = guarda o trecho do texto para achar o curso;
+ * 3 = PDFs que são figura e fotos JPG/PNG são lidos com OCR.
+ */
+const VERSAO_LEITURA = 3;
 
 /** Pastas de cursos/certificados: só nelas o curso é tirado do texto (RH e credenciamento não). */
 const PASTAS_CURSO_PELO_TEXTO = new Set(['01', '02', '03', '04']);
@@ -32,6 +38,7 @@ const PASTAS_CURSO_PELO_TEXTO = new Set(['01', '02', '03', '04']);
 const PASTAS_COM_DATA_SOLTA = new Set(['01', '02', '03', '04', '06']);
 const LEITURAS_AO_MESMO_TEMPO = 4;
 const TAMANHO_MAXIMO_PDF_DATA = 15 * 1024 * 1024;
+const ehImagem = (mime: string) => /^image\/(jpe?g|png|webp|bmp|tiff?)$/i.test(mime);
 
 const iso = (v: unknown): string | null => {
   if (!v) return null;
@@ -125,6 +132,9 @@ export class DriveService {
   private lendoDatas = false;
   private progresso = { total: 0, feitos: 0 };
 
+  /** Leitura de certificados que são figura (OCR); o modelo de português fica guardado no storage. */
+  private readonly ocr = new LeitorOcr(process.env.STORAGE_PATH || './storage');
+
   constructor(
     private readonly api: DriveApiService,
     private readonly database: DatabaseService,
@@ -165,7 +175,7 @@ export class DriveService {
   private async carregarDatas() {
     if (this.datasCarregadas) return;
     const r = await this.database.query<LinhaData>(
-      'SELECT arquivo_id, modificado, data_curso, validade, origem, data_informada, trecho, versao_leitura, tipo_informado FROM drive_datas',
+      'SELECT arquivo_id, modificado, data_curso, validade, origem, data_informada, trecho, versao_leitura, tipo_informado, lido_por_ocr FROM drive_datas',
     );
     this.datas = new Map(r.rows.map(l => [l.arquivo_id, {
       ...l, modificado: l.modificado ? new Date(l.modificado).toISOString() : null,
@@ -180,10 +190,12 @@ export class DriveService {
     try {
       await this.carregarDatas();
       const pendentes = leitura.pessoas.flatMap(p => p.arquivos).filter(a => {
-        if (!a.mime.includes('pdf') || a.tamanho > TAMANHO_MAXIMO_PDF_DATA) return false;
+        if (!(a.mime.includes('pdf') || ehImagem(a.mime)) || a.tamanho > TAMANHO_MAXIMO_PDF_DATA) return false;
         const lido = this.datas.get(a.id);
+        const versao = lido?.versao_leitura ?? 1;
+        // Versão 3 só relê o que não tinha texto (figura) e as fotos, que nunca tinham sido lidas.
         return !lido || (a.modificado && lido.modificado !== new Date(a.modificado).toISOString())
-          || (lido.versao_leitura ?? 1) < VERSAO_LEITURA;
+          || versao < 2 || (versao < VERSAO_LEITURA && semTexto(lido.trecho));
       });
       this.progresso = { total: pendentes.length, feitos: 0 };
       const hoje = iso(new Date())!;
@@ -207,34 +219,46 @@ export class DriveService {
     let achado: { dataCurso: string | null; validade: string | null; origem: string | null } = { dataCurso: null, validade: null, origem: null };
     let erro: string | null = null;
     let trecho: string | null = null;
+    let porOcr = false;
     try {
       const { dados } = await this.api.baixar(arquivo.id);
-      const parser = new PDFParse({ data: dados });
-      try {
-        const { text } = await parser.getText({ first: 3 });
-        achado = acharDatas(text, hoje, PASTAS_COM_DATA_SOLTA.has(arquivo.pasta));
-        trecho = text.replace(/\s+/g, ' ').trim().slice(0, TAMANHO_TRECHO_CURSO) || null;
-        if (!text.trim()) erro = 'PDF sem texto (imagem)';
-      } finally {
-        await parser.destroy().catch(() => undefined);
+      let text = '';
+      if (ehImagem(arquivo.mime)) {
+        porOcr = true;
+        text = await this.ocr.lerFoto(dados);
+      } else {
+        const parser = new PDFParse({ data: dados });
+        try {
+          text = (await parser.getText({ first: 3 })).text;
+        } finally {
+          await parser.destroy().catch(() => undefined);
+        }
+        // PDF que é figura (escaneado, foto, impressão de imagem): lê a imagem das páginas.
+        if (semTexto(text)) {
+          porOcr = true;
+          text = await this.ocr.lerPdf(dados);
+        }
       }
+      achado = acharDatas(text, hoje, PASTAS_COM_DATA_SOLTA.has(arquivo.pasta));
+      trecho = semTexto(text) ? null : text.replace(/\s+/g, ' ').trim().slice(0, TAMANHO_TRECHO_CURSO) || null;
+      if (!trecho) erro = 'Documento é imagem e não deu para ler o texto';
     } catch (e) {
       erro = (e as Error).message.slice(0, 200);
     }
     const modificado = arquivo.modificado ? new Date(arquivo.modificado).toISOString() : null;
     await this.database.query(
-      `INSERT INTO drive_datas (arquivo_id, modificado, data_curso, validade, origem, erro, trecho, versao_leitura, lido_em)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+      `INSERT INTO drive_datas (arquivo_id, modificado, data_curso, validade, origem, erro, trecho, versao_leitura, lido_por_ocr, lido_em)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
        ON CONFLICT (arquivo_id) DO UPDATE SET modificado = EXCLUDED.modificado, data_curso = EXCLUDED.data_curso,
          validade = EXCLUDED.validade, origem = EXCLUDED.origem, erro = EXCLUDED.erro, trecho = EXCLUDED.trecho,
-         versao_leitura = EXCLUDED.versao_leitura, lido_em = now()`,
-      [arquivo.id, modificado, achado.dataCurso, achado.validade, achado.origem, erro, trecho, VERSAO_LEITURA],
+         versao_leitura = EXCLUDED.versao_leitura, lido_por_ocr = EXCLUDED.lido_por_ocr, lido_em = now()`,
+      [arquivo.id, modificado, achado.dataCurso, achado.validade, achado.origem, erro, trecho, VERSAO_LEITURA, porOcr],
     );
     const anterior = this.datas.get(arquivo.id);
     this.datas.set(arquivo.id, {
       arquivo_id: arquivo.id, modificado, data_curso: achado.dataCurso, validade: achado.validade,
       origem: achado.origem, data_informada: anterior?.data_informada ?? null,
-      trecho, versao_leitura: VERSAO_LEITURA, tipo_informado: anterior?.tipo_informado ?? null,
+      trecho, versao_leitura: VERSAO_LEITURA, tipo_informado: anterior?.tipo_informado ?? null, lido_por_ocr: porOcr,
     });
   }
 
@@ -284,7 +308,7 @@ export class DriveService {
     this.datas.set(arquivoId, {
       arquivo_id: arquivoId, modificado: atual?.modificado ?? null, data_curso: atual?.data_curso ?? null,
       validade: atual?.validade ?? null, origem: atual?.origem ?? null, data_informada: data,
-      trecho: atual?.trecho ?? null, versao_leitura: atual?.versao_leitura ?? 1, tipo_informado: atual?.tipo_informado ?? null,
+      trecho: atual?.trecho ?? null, versao_leitura: atual?.versao_leitura ?? 1, tipo_informado: atual?.tipo_informado ?? null, lido_por_ocr: atual?.lido_por_ocr ?? false,
     });
     return { ok: true };
   }
@@ -309,7 +333,7 @@ export class DriveService {
     this.datas.set(arquivoId, {
       arquivo_id: arquivoId, modificado: atual?.modificado ?? null, data_curso: atual?.data_curso ?? null,
       validade: atual?.validade ?? null, origem: atual?.origem ?? null, data_informada: atual?.data_informada ?? null,
-      trecho: atual?.trecho ?? null, versao_leitura: atual?.versao_leitura ?? 1, tipo_informado: limpo,
+      trecho: atual?.trecho ?? null, versao_leitura: atual?.versao_leitura ?? 1, tipo_informado: limpo, lido_por_ocr: atual?.lido_por_ocr ?? false,
     });
     return { ok: true };
   }
@@ -443,10 +467,14 @@ export class DriveService {
       return {
         ...a,
         // Cursos citados no certificado, na ordem do texto (a tela compara com o nome do arquivo).
-        cursosLidos: d?.trecho && PASTAS_CURSO_PELO_TEXTO.has(a.pasta) ? acharCursos(d.trecho, tiposCadastrados) : [],
+        // Texto lido da IMAGEM (OCR) serve só para a data: curso e título vêm só de PDF com texto.
+        cursosLidos: d?.trecho && !d.lido_por_ocr && PASTAS_CURSO_PELO_TEXTO.has(a.pasta) ? acharCursos(d.trecho, tiposCadastrados) : [],
         // Título do curso como está escrito no certificado (mesmo que o sistema não conheça o curso).
-        tituloLido: d?.trecho && PASTAS_CURSO_PELO_TEXTO.has(a.pasta) ? acharTituloCurso(d.trecho) : null,
+        tituloLido: d?.trecho && !d.lido_por_ocr && PASTAS_CURSO_PELO_TEXTO.has(a.pasta) ? acharTituloCurso(d.trecho) : null,
         tipoInformado: d?.tipo_informado ?? null,
+        // Data lida da imagem (OCR); `imagemSemLeitura`: era figura e a leitura da imagem não achou a data.
+        lidoPorOcr: !!d?.lido_por_ocr,
+        imagemSemLeitura: !!d?.lido_por_ocr && !d.data_curso && !d.validade,
         dataCurso: d?.data_informada ?? d?.data_curso ?? null,
         validadeTexto: d?.validade ?? null,
         origemData: d?.data_informada ? 'informada' : d?.origem ?? null,

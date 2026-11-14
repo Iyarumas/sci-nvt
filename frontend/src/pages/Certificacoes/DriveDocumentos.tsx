@@ -531,7 +531,7 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose, carregar, onIn
                 Data do curso: <strong className="text-graphite-800 dark:text-graphite-200">
                   {arquivo.dataCurso ? arquivo.dataCurso.split('-').reverse().join('/') : 'não encontrada'}
                 </strong>
-                {arquivo.origemData && ` (${arquivo.origemData === 'informada' ? 'informada' : 'lida do PDF'})`}
+                {arquivo.origemData && ` (${arquivo.origemData === 'informada' ? 'informada' : arquivo.lidoPorOcr ? 'lida da imagem do documento' : 'lida do PDF'})`}
               </span>
               {onInformarData && !editandoData && (
                 <button type="button" onClick={() => { setNovaData(arquivo.dataCurso ?? ''); setEditandoData(true); }}

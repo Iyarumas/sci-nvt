@@ -65,6 +65,10 @@ export interface ArquivoDrive {
   origemData?: string | null;
   /** O servidor já tentou ler a data deste arquivo. */
   dataLida?: boolean;
+  /** O texto foi lido da imagem (PDF que é figura ou foto). */
+  lidoPorOcr?: boolean;
+  /** É figura e nem a leitura da imagem achou texto: alguém precisa informar a data. */
+  imagemSemLeitura?: boolean;
   /** Validade escrita no próprio documento (ex.: CNH). Tem prioridade sobre o prazo em meses. */
   validadePropria?: string | null;
   /** Bloco de notas com o nome do documento: na pasta é o aviso de que o documento falta. */
@@ -331,6 +335,7 @@ export function arquivosDoServidor(
   arquivos: Array<{
     id: string; nome: string; pasta: string; caminho: string[]; mime: string;
     dataCurso?: string | null; validadeTexto?: string | null; origemData?: string | null; dataLida?: boolean;
+    lidoPorOcr?: boolean; imagemSemLeitura?: boolean;
     /** Cursos achados no texto do certificado pelo servidor. */
     cursosLidos?: string[];
     tipoInformado?: string | null;
@@ -362,6 +367,8 @@ export function arquivosDoServidor(
         validadeTexto: a.validadeTexto ?? null,
         origemData: a.origemData ?? null,
         dataLida: a.dataLida ?? false,
+        lidoPorOcr: a.lidoPorOcr ?? false,
+        imagemSemLeitura: a.imagemSemLeitura ?? false,
         marcadorFalta: texto,
       };
     })
@@ -419,8 +426,9 @@ export function avaliarArquivo(arquivo: ArquivoDrive, config: ConfigDocumentos, 
   } else if (prazo === null || prazo === undefined) {
     return { ...base, situacao: 'neutro', vencimento: null, texto: 'Prazo a definir' };
   } else if (!arquivo.dataCurso) {
-    const texto = arquivo.formato === 'pdf' && arquivo.dataLida === false ? 'Lendo a data…'
-      : arquivo.dataLida ? 'Data não encontrada no PDF' : 'Falta a data do curso';
+    const texto = arquivo.formato !== 'outro' && arquivo.dataLida === false ? 'Lendo a data…'
+      : arquivo.imagemSemLeitura ? 'Documento é imagem · informe a data'
+        : arquivo.dataLida ? 'Data não encontrada no documento' : 'Falta a data do curso';
     return { ...base, situacao: 'neutro', vencimento: null, texto };
   } else {
     vencimento = somarMeses(arquivo.dataCurso, prazo);

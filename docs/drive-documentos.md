@@ -58,6 +58,11 @@ está no ar. Frontend em `frontend/src/pages/Certificacoes/` (`regrasDrive.ts`, 
   - Só o **administrador** vincula (`POST /api/drive/tipo`, guardado em `drive_datas.tipo_informado`).
     O arquivo no Drive **não** é renomeado: depois de vincular, o aviso "Nome fora do padrão" continua
     para os chefes pedirem a correção; quando renomeiam, o aviso some sozinho.
+- **PDF que é figura** (escaneado, foto, "Microsoft Print to PDF" de uma imagem) e **fotos JPG/PNG**:
+  a data é lida da imagem com OCR (`backend/src/drive/ocr.ts`, tesseract.js em português; gira a
+  imagem até o texto ficar de pé). O texto da imagem serve **só para a data**: o curso continua pelo
+  nome do arquivo. O modelo de português é baixado uma vez para `STORAGE_PATH/tessdata`. Sem data
+  achada, o card diz "Documento é imagem · informe a data".
 - **ASO e cadastro** (ficha cadastral) faltando ficam **verdes** com "responsabilidade GS/Embaixador"
   (quem providencia não é a pessoa).
 - **Credencial aeroportuária** não é obrigatória na pasta 06: quem cobra é o crachá do card (validade

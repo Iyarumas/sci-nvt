@@ -44,8 +44,10 @@ export interface ArquivoDrive {
   pastaId: string;
   /** Nome do arquivo como está no Drive. */
   nomeArquivo: string;
-  /** Tipo do documento, tirado do nome do arquivo (ex.: "NR 35"). */
+  /** Tipo do documento (ex.: "NR 35"): Nº padrão da pasta, curso lido no certificado ou nome do arquivo. */
   tipo: string;
+  /** O tipo veio do texto do certificado (e não do nome do arquivo). */
+  tipoPeloConteudo?: boolean;
   formato: 'pdf' | 'imagem' | 'outro';
   /** Data do curso/emissão (lida do PDF ou informada no card). */
   dataCurso: string | null;
@@ -127,13 +129,33 @@ export function numeroDoArquivo(nomeArquivo: string): string | null {
   return m ? m[1].padStart(2, '0') : null;
 }
 
-/** Tipo final do documento: Nº padrão da pasta (só nos arquivos soltos na pasta) → nome juntado → nome lido. */
-export function resolverTipo(nomeArquivo: string, pastaId: string, nomePessoa: string, config: ConfigDocumentos, naRaizDaPasta = true): string {
+/**
+ * Tipo final do documento: Nº padrão da pasta (só nos arquivos soltos na pasta) → curso lido no texto
+ * do certificado → nome do arquivo (com os nomes juntados).
+ */
+export function resolverTipo(
+  nomeArquivo: string, pastaId: string, nomePessoa: string, config: ConfigDocumentos, naRaizDaPasta = true,
+  cursoLido: string | null = null,
+): string {
+  return resolverTipoComOrigem(nomeArquivo, pastaId, nomePessoa, config, naRaizDaPasta, cursoLido).tipo;
+}
+
+export function resolverTipoComOrigem(
+  nomeArquivo: string, pastaId: string, nomePessoa: string, config: ConfigDocumentos, naRaizDaPasta = true,
+  cursoLido: string | null = null,
+): { tipo: string; peloConteudo: boolean } {
   const numero = naRaizDaPasta ? numeroDoArquivo(nomeArquivo) : null;
   const doNumero = numero ? config.padroes?.[pastaId]?.[numero] : undefined;
-  if (doNumero) return doNumero;
+  if (doNumero) return { tipo: doNumero, peloConteudo: false };
   const lido = tipoPeloNome(nomeArquivo, nomePessoa);
-  return config.apelidos?.[lido] ?? lido;
+  const peloNome = config.apelidos?.[lido] ?? lido;
+  if (cursoLido) {
+    const doTexto = config.apelidos?.[cursoLido] ?? cursoLido;
+    // O nome do arquivo é mais específico que o texto ("NR 20 II" no nome, "NR 20" no certificado): fica o nome.
+    if (peloNome !== doTexto && peloNome.startsWith(`${doTexto} `)) return { tipo: peloNome, peloConteudo: false };
+    return { tipo: doTexto, peloConteudo: doTexto !== peloNome };
+  }
+  return { tipo: peloNome, peloConteudo: false };
 }
 
 export type SituacaoDocumento = 'vencido' | 'vence' | 'emdia' | 'neutro' | 'falta';
@@ -230,6 +252,8 @@ export function arquivosDoServidor(
   arquivos: Array<{
     id: string; nome: string; pasta: string; caminho: string[]; mime: string;
     dataCurso?: string | null; validadeTexto?: string | null; origemData?: string | null; dataLida?: boolean;
+    /** Curso achado no texto do certificado pelo servidor. */
+    cursoLido?: string | null;
   }>,
   nomePastaPessoa: string,
   config: ConfigDocumentos,
@@ -241,11 +265,13 @@ export function arquivosDoServidor(
     .filter(a => !(a.pasta === PASTA_EXTRAS && ehMarcador(a)))
     .map(a => {
       const texto = ehMarcador(a);
+      const { tipo, peloConteudo } = resolverTipoComOrigem(a.nome, a.pasta, nomePessoa, config, a.caminho.length === 0, a.cursoLido ?? null);
       return {
         id: a.id,
         pastaId: a.pasta,
         nomeArquivo: a.nome,
-        tipo: resolverTipo(a.nome, a.pasta, nomePessoa, config, a.caminho.length === 0),
+        tipo,
+        tipoPeloConteudo: peloConteudo,
         formato: a.mime.includes('pdf') ? 'pdf' as const : a.mime.startsWith('image/') ? 'imagem' as const : 'outro' as const,
         dataCurso: a.dataCurso ?? null,
         validadeTexto: a.validadeTexto ?? null,

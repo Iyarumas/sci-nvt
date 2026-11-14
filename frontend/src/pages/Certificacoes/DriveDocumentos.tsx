@@ -407,7 +407,7 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose, carregar, onIn
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-sm font-bold text-graphite-900 dark:text-graphite-100">{doc.tipo} · {pessoaNome}</h3>
             <p className="truncate text-xs text-graphite-500 dark:text-graphite-400">
-              {arquivo.nomeArquivo} · <span className={`font-medium ${estilo.texto}`}>{doc.texto}</span>
+              {arquivo.nomeArquivo}{arquivo.tipoPeloConteudo ? ' · curso lido no certificado' : ''} · <span className={`font-medium ${estilo.texto}`}>{doc.texto}</span>
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-graphite-500 dark:text-graphite-400">
               <span>

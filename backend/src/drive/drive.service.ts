@@ -1,7 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuthUser, isAdmin } from '../auth/auth.types';
 import { DatabaseService } from '../database/database.service';
-import { acharCurso, TAMANHO_TRECHO_CURSO } from './curso-pdf';
 import { acharDatas } from './datas-pdf';
 import { DriveApiService, ItemDrive, PASTA_MIME } from './drive-api.service';
 
@@ -16,16 +15,7 @@ interface LinhaData {
   validade: string | null;
   origem: string | null;
   data_informada: string | null;
-  /** Começo do texto do PDF (título do certificado), para achar o curso. */
-  trecho: string | null;
-  versao_leitura: number;
 }
-
-/** Versão da leitura dos PDFs: 2 = também guarda o trecho do texto para achar o curso. */
-const VERSAO_LEITURA = 2;
-
-/** Pastas de cursos/certificados: só nelas o curso é tirado do texto (RH e credenciamento não). */
-const PASTAS_CURSO_PELO_TEXTO = new Set(['01', '02', '03', '04']);
 
 const PASTAS_COM_DATA_SOLTA = new Set(['01', '02', '03', '04', '06']);
 const LEITURAS_AO_MESMO_TEMPO = 4;
@@ -163,7 +153,7 @@ export class DriveService {
   private async carregarDatas() {
     if (this.datasCarregadas) return;
     const r = await this.database.query<LinhaData>(
-      'SELECT arquivo_id, modificado, data_curso, validade, origem, data_informada, trecho, versao_leitura FROM drive_datas',
+      'SELECT arquivo_id, modificado, data_curso, validade, origem, data_informada FROM drive_datas',
     );
     this.datas = new Map(r.rows.map(l => [l.arquivo_id, {
       ...l, modificado: l.modificado ? new Date(l.modificado).toISOString() : null,
@@ -180,8 +170,7 @@ export class DriveService {
       const pendentes = leitura.pessoas.flatMap(p => p.arquivos).filter(a => {
         if (!a.mime.includes('pdf') || a.tamanho > TAMANHO_MAXIMO_PDF_DATA) return false;
         const lido = this.datas.get(a.id);
-        return !lido || (a.modificado && lido.modificado !== new Date(a.modificado).toISOString())
-          || (lido.versao_leitura ?? 1) < VERSAO_LEITURA;
+        return !lido || (a.modificado && lido.modificado !== new Date(a.modificado).toISOString());
       });
       this.progresso = { total: pendentes.length, feitos: 0 };
       const hoje = iso(new Date())!;
@@ -204,14 +193,12 @@ export class DriveService {
   private async lerDataDoArquivo(arquivo: ArquivoPessoa, hoje: string) {
     let achado: { dataCurso: string | null; validade: string | null; origem: string | null } = { dataCurso: null, validade: null, origem: null };
     let erro: string | null = null;
-    let trecho: string | null = null;
     try {
       const { dados } = await this.api.baixar(arquivo.id);
       const parser = new PDFParse({ data: dados });
       try {
         const { text } = await parser.getText({ first: 3 });
         achado = acharDatas(text, hoje, PASTAS_COM_DATA_SOLTA.has(arquivo.pasta));
-        trecho = text.replace(/\s+/g, ' ').trim().slice(0, TAMANHO_TRECHO_CURSO) || null;
         if (!text.trim()) erro = 'PDF sem texto (imagem)';
       } finally {
         await parser.destroy().catch(() => undefined);
@@ -221,18 +208,16 @@ export class DriveService {
     }
     const modificado = arquivo.modificado ? new Date(arquivo.modificado).toISOString() : null;
     await this.database.query(
-      `INSERT INTO drive_datas (arquivo_id, modificado, data_curso, validade, origem, erro, trecho, versao_leitura, lido_em)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+      `INSERT INTO drive_datas (arquivo_id, modificado, data_curso, validade, origem, erro, lido_em)
+       VALUES ($1, $2, $3, $4, $5, $6, now())
        ON CONFLICT (arquivo_id) DO UPDATE SET modificado = EXCLUDED.modificado, data_curso = EXCLUDED.data_curso,
-         validade = EXCLUDED.validade, origem = EXCLUDED.origem, erro = EXCLUDED.erro, trecho = EXCLUDED.trecho,
-         versao_leitura = EXCLUDED.versao_leitura, lido_em = now()`,
-      [arquivo.id, modificado, achado.dataCurso, achado.validade, achado.origem, erro, trecho, VERSAO_LEITURA],
+         validade = EXCLUDED.validade, origem = EXCLUDED.origem, erro = EXCLUDED.erro, lido_em = now()`,
+      [arquivo.id, modificado, achado.dataCurso, achado.validade, achado.origem, erro],
     );
     const anterior = this.datas.get(arquivo.id);
     this.datas.set(arquivo.id, {
       arquivo_id: arquivo.id, modificado, data_curso: achado.dataCurso, validade: achado.validade,
       origem: achado.origem, data_informada: anterior?.data_informada ?? null,
-      trecho, versao_leitura: VERSAO_LEITURA,
     });
   }
 
@@ -282,7 +267,6 @@ export class DriveService {
     this.datas.set(arquivoId, {
       arquivo_id: arquivoId, modificado: atual?.modificado ?? null, data_curso: atual?.data_curso ?? null,
       validade: atual?.validade ?? null, origem: atual?.origem ?? null, data_informada: data,
-      trecho: atual?.trecho ?? null, versao_leitura: atual?.versao_leitura ?? 1,
     });
     return { ok: true };
   }
@@ -387,20 +371,6 @@ export class DriveService {
     return { ligados, soltos };
   }
 
-  /** Nomes de documentos configurados na aba de validade (também são procurados no texto dos PDFs). */
-  private async tiposCadastrados(): Promise<string[]> {
-    const r = await this.database.query<{ config: Record<string, unknown> | null }>('SELECT config FROM drive_config WHERE id = 1');
-    const c = r.rows[0]?.config;
-    if (!c) return [];
-    const tipos = new Set<string>(Object.keys((c.prazos as Record<string, unknown>) ?? {}));
-    for (const pasta of Object.values((c.padroes as Record<string, Record<string, string>>) ?? {})) {
-      for (const tipo of Object.values(pasta ?? {})) tipos.add(String(tipo));
-    }
-    for (const d of (c.adicionados as Array<{ tipo?: string }>) ?? []) if (d?.tipo) tipos.add(String(d.tipo));
-    for (const destino of Object.values((c.apelidos as Record<string, string>) ?? {})) tipos.add(String(destino));
-    return [...tipos];
-  }
-
   /* ───────── Rotas ───────── */
 
   async documentos(user: AuthUser | undefined, atualizar: boolean) {
@@ -410,13 +380,10 @@ export class DriveService {
     const { ligados, soltos } = await this.vincular(leitura.pessoas);
     const visiveis = ligados.filter(l => escopo.todas || l.bombeiro.equipe === escopo.equipe);
     await this.carregarDatas();
-    const tiposCadastrados = await this.tiposCadastrados();
     const comDatas = (arquivos: ArquivoPessoa[]) => arquivos.map(a => {
       const d = this.datas.get(a.id);
       return {
         ...a,
-        // Curso lido no texto do certificado (vale mais que o nome do arquivo na tela).
-        cursoLido: d?.trecho && PASTAS_CURSO_PELO_TEXTO.has(a.pasta) ? acharCurso(d.trecho, tiposCadastrados) : null,
         dataCurso: d?.data_informada ?? d?.data_curso ?? null,
         validadeTexto: d?.validade ?? null,
         origemData: d?.data_informada ? 'informada' : d?.origem ?? null,

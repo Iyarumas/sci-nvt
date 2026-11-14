@@ -7,8 +7,6 @@ export interface ArquivoDriveApi {
   validadeTexto?: string | null;
   origemData?: string | null;
   dataLida?: boolean;
-  /** Curso achado no texto do certificado (null = não deu para saber pelo texto). */
-  cursoLido?: string | null;
   nome: string;
   pasta: string;
   caminho: string[];

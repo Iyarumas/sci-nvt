@@ -29,7 +29,7 @@ const QUEM: Record<TipoTesteSirene, RegExp> = { apoc: /\bapoc\b/i, twr: /\b(twr|
 
 /**
  * O teste já lançado neste plantão. Primeiro o lançado pelo cartão (título padrão); senão, qualquer ocorrência
- * do plantão que fale de sirene + APOC ou sirene + TWR/torre (lançada à mão em LRO/Ocorrências) — assim não
+ * do plantão que fale de teste de sirene + APOC ou TWR/torre (lançada à mão em LRO/Ocorrências) — assim não
  * vira pendente nem ganha um "Não houve" repetido.
  */
 export function acharTesteSirene(ocorrencias: Ocorrencia[], tipo: TipoTesteSirene, equipe: string, dataPlantao: string): Ocorrencia | null {
@@ -39,7 +39,8 @@ export function acharTesteSirene(ocorrencias: Ocorrencia[], tipo: TipoTesteSiren
   return doPlantao.find(o => igual(o.titulo || '', TITULO_TESTE_SIRENE[tipo]))
     ?? doPlantao.find(o => {
       const texto = `${o.titulo || ''} ${o.descricao || ''}`;
-      return /sirene/i.test(texto) && QUEM[tipo].test(texto);
+      // Precisa falar de "teste": "a torre tocou a sirene para uma ocorrência" não é o teste da TWR.
+      return /\bteste/i.test(texto) && /siren/i.test(texto) && QUEM[tipo].test(texto);
     })
     ?? null;
 }

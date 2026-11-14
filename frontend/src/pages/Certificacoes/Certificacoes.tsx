@@ -399,13 +399,17 @@ function CardRequisito({ titulo, cor, texto, detalhe, icone }: Requisito) {
 }
 
 /**
- * Chefe de Equipe, Motorista/Condutor CCI, CNH D/E e CVE: vale o que estiver marcado no cadastro OU o
- * documento que estiver na pasta do Drive. CNH AD, D, AE ou E com CVE = pode dirigir os veículos da SCI.
+ * Chefe de Equipe, Motorista/Condutor CCI, CNH D/E e CVE. Quem tem pasta no Drive: vale o certificado
+ * na pasta; marcado no cadastro sem o certificado na pasta fica laranja ("falta o certificado").
+ * Sem pasta no Drive: vale o cadastro. CNH AD, D, AE ou E com CVE = pode dirigir os veículos da SCI.
  */
-function requisitosDoCadastro(f: Bombeiro, porPasta: Map<string, DocumentoAvaliado[]>): Requisito[] {
+function requisitosDoCadastro(f: Bombeiro, porPasta: Map<string, DocumentoAvaliado[]>, pastaNoDrive = false): Requisito[] {
   const noDrive = (tipo: string) => {
     for (const docs of porPasta.values()) {
-      const doc = docs.find(d => d.tipo === tipo && d.situacao !== 'falta');
+      // Só conta certificado de verdade: o bloco de notas de "falta" (que vira "Não tem" quando o
+      // curso não é obrigatório) não é o curso.
+      const doc = docs.find(d => d.tipo === tipo && d.situacao !== 'falta' && d.situacao !== 'gs'
+        && d.arquivos.some(a => !a.marcadorFalta));
       if (doc) return doc;
     }
     return undefined;
@@ -417,27 +421,35 @@ function requisitosDoCadastro(f: Bombeiro, porPasta: Map<string, DocumentoAvalia
   const catDE = temCategoriaD(categoria);
   const cnhDoc = noDrive('CNH');
   const cveDoc = noDrive('CVE');
-  const temCVE = (f.cursoCVE || !!cveDoc) && !venceu(cveDoc);
+  // Marcado no cadastro, mas a pasta do Drive não tem o certificado: não conta como "possui".
+  const semCertificado = (noCadastro: boolean | undefined, doc?: DocumentoAvaliado) => pastaNoDrive && !!noCadastro && !doc;
+  const possui = (noCadastro: boolean | undefined, doc?: DocumentoAvaliado) => !!doc || (!!noCadastro && !pastaNoDrive);
+  const FALTA_CERTIFICADO = { cor: 'orange' as const, texto: 'Falta o certificado na pasta', detalhe: 'Marcado no cadastro' };
+  const temCVE = possui(f.cursoCVE, cveDoc) && !venceu(cveDoc);
   const cnhOk = catDE && !venceu(cnhDoc);
 
   const chefeDoc = noDrive('CHEFE DE EQUIPE (BA-CE)');
-  const temChefe = f.cursoChefeEquipe || !!chefeDoc;
+  const temChefe = possui(f.cursoChefeEquipe, chefeDoc);
   const cargoExigeChefe = f.cargo === 'BA-CE' || f.cargo === 'BA-LR';
 
   const motoristaDoc = noDrive('MOTORISTA CONDUTOR (BA-MC)');
-  const temMotorista = f.cursoMotoristaCCI || !!motoristaDoc;
+  const temMotorista = possui(f.cursoMotoristaCCI, motoristaDoc);
   const podeDirigirCRS = !temMotorista && cnhOk && temCVE;
 
   return [
     {
       titulo: 'Chefe de Equipe', icone: 'curso',
-      cor: temChefe ? 'green' : cargoExigeChefe ? 'red' : 'gray',
-      texto: temChefe ? 'Possui o curso' : 'Não possui',
+      ...(semCertificado(f.cursoChefeEquipe, chefeDoc) ? FALTA_CERTIFICADO : {
+        cor: temChefe ? 'green' : cargoExigeChefe ? 'red' : 'gray',
+        texto: temChefe ? 'Possui o curso' : 'Não possui',
+      }),
     },
     {
       titulo: 'Motorista/Condutor CCI', icone: 'carro',
-      cor: temMotorista ? 'green' : podeDirigirCRS ? 'orange' : f.cargo === 'BA-MC' ? 'red' : 'gray',
-      texto: temMotorista ? 'Possui o curso' : podeDirigirCRS ? 'Não possui · pode dirigir o CRS' : 'Não possui',
+      ...(semCertificado(f.cursoMotoristaCCI, motoristaDoc) ? FALTA_CERTIFICADO : {
+        cor: temMotorista ? 'green' : podeDirigirCRS ? 'orange' : f.cargo === 'BA-MC' ? 'red' : 'gray',
+        texto: temMotorista ? 'Possui o curso' : podeDirigirCRS ? 'Não possui · pode dirigir o CRS' : 'Não possui',
+      }),
     },
     {
       titulo: 'CNH Categoria D/E', icone: 'carro',
@@ -450,9 +462,11 @@ function requisitosDoCadastro(f: Bombeiro, porPasta: Map<string, DocumentoAvalia
     },
     {
       titulo: 'CVE', icone: 'curso',
-      cor: venceu(cveDoc) ? 'red' : temCVE ? 'green' : catDE ? 'red' : 'gray',
-      texto: venceu(cveDoc) ? 'Vencido' : temCVE ? 'Possui' : 'Não possui',
-      detalhe: validadeDe(cveDoc),
+      ...(semCertificado(f.cursoCVE, cveDoc) ? FALTA_CERTIFICADO : {
+        cor: venceu(cveDoc) ? 'red' : temCVE ? 'green' : catDE ? 'red' : 'gray',
+        texto: venceu(cveDoc) ? 'Vencido' : temCVE ? 'Possui' : 'Não possui',
+        detalhe: validadeDe(cveDoc),
+      }),
     },
   ];
 }
@@ -558,7 +572,7 @@ function FuncionarioCard({
               <GraduationCap className="h-3.5 w-3.5" /> Cursos do Cadastro
             </h4>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {requisitosDoCadastro(funcionario, resumoDrive.porPasta).map(r => (
+              {requisitosDoCadastro(funcionario, resumoDrive.porPasta, !semDrive && arquivosDrive.length > 0).map(r => (
                 <CardRequisito key={r.titulo} {...r} />
               ))}
             </div>

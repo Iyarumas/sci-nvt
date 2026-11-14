@@ -215,7 +215,8 @@ export function resolverTipoComOrigem(
   return { ...semAviso, aviso: 'conferir' };
 }
 
-export type SituacaoDocumento = 'vencido' | 'vence' | 'emdia' | 'neutro' | 'falta';
+/** gs: falta, mas quem providencia é o GS/Embaixador (ASO, cadastro), não a pessoa. */
+export type SituacaoDocumento = 'vencido' | 'vence' | 'emdia' | 'neutro' | 'falta' | 'gs';
 
 export interface DocumentoAvaliado {
   /** O arquivo que vale (o de validade mais longa quando há mais de um do mesmo documento). */
@@ -414,7 +415,7 @@ export function avaliarArquivo(arquivo: ArquivoDrive, config: ConfigDocumentos, 
 }
 
 /** Qual arquivo vale quando há mais de um do mesmo documento: o que está melhor. */
-const MELHOR: Record<SituacaoDocumento, number> = { emdia: 4, vence: 3, neutro: 2, vencido: 1, falta: 0 };
+const MELHOR: Record<SituacaoDocumento, number> = { emdia: 4, vence: 3, neutro: 2, vencido: 1, gs: 0, falta: 0 };
 
 /** Documentos da pessoa por pasta, incluindo os obrigatórios que não estão na pasta ("Falta"). */
 /**
@@ -430,7 +431,7 @@ function suavizarSeNaoObrigatorio(doc: DocumentoAvaliado, obrigatorio: boolean):
 
 /**
  * ASO e cadastro (ficha cadastral) quem providencia é o GS/Embaixador, não a pessoa:
- * quando faltam, o card fica verde e diz de quem é a responsabilidade.
+ * quando faltam, o card tem cor própria (não vermelho, não verde) e diz de quem é a responsabilidade.
  */
 export function ehResponsabilidadeGs(tipo: string): boolean {
   const t = tipo.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
@@ -441,7 +442,7 @@ export const TEXTO_RESPONSABILIDADE_GS = 'Falta · responsabilidade GS/Embaixado
 
 function faltaDoGs(doc: DocumentoAvaliado): DocumentoAvaliado {
   if (doc.situacao !== 'falta' || !ehResponsabilidadeGs(doc.tipo)) return doc;
-  return { ...doc, situacao: 'emdia', texto: TEXTO_RESPONSABILIDADE_GS };
+  return { ...doc, situacao: 'gs', texto: TEXTO_RESPONSABILIDADE_GS };
 }
 
 export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos, hojeISO: string, cargo?: string | null) {
@@ -467,7 +468,7 @@ export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos
     porPasta.get(pastaId)?.push(faltaDoGs({ arquivo: null, arquivos: [], tipo, pastaId, situacao: 'falta', vencimento: null, texto: 'Não está na pasta' }));
   }
 
-  const contagem: Record<SituacaoDocumento, number> = { vencido: 0, vence: 0, emdia: 0, neutro: 0, falta: 0 };
+  const contagem: Record<SituacaoDocumento, number> = { vencido: 0, vence: 0, emdia: 0, neutro: 0, falta: 0, gs: 0 };
   for (const docs of porPasta.values()) for (const d of docs) contagem[d.situacao]++;
   const pior: SituacaoDocumento = contagem.vencido || contagem.falta
     ? 'vencido'

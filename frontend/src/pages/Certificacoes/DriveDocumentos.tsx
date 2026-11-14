@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import {
-  AlertTriangle, CheckCircle2, CircleDashed, Eye, FileImage, FileSearch, FileText, FolderOpen, FolderSearch, MinusCircle, Plus, Trash2, X, XCircle,
+  AlertTriangle, CheckCircle2, CircleDashed, Eye, FileImage, FileSearch, FileText, FolderOpen, FolderSearch, MinusCircle, Plus, Trash2, UserCog, X, XCircle,
 } from 'lucide-react';
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { hojeLocalISO } from '../../utils/datas';
@@ -35,20 +35,24 @@ export const ESTILO_SITUACAO: Record<SituacaoDocumento, {
     card: 'border-dashed border-red-300 bg-white dark:border-red-800/60 dark:bg-transparent',
     icone: 'bg-white text-red-500 ring-1 ring-red-300 dark:bg-transparent dark:ring-red-800', texto: 'text-red-600 dark:text-red-400', ponto: 'bg-red-300', rotulo: 'Faltam',
   },
+  gs: {
+    card: 'border-sky-200 bg-sky-50/70 hover:border-sky-300 dark:border-sky-800/50 dark:bg-sky-900/15',
+    icone: 'bg-sky-500 text-white', texto: 'text-sky-700 dark:text-sky-300', ponto: 'bg-sky-500', rotulo: 'Faltam · responsabilidade GS/Embaixador',
+  },
 };
 
 const ICONE_SITUACAO: Record<SituacaoDocumento, typeof CheckCircle2> = {
-  vencido: XCircle, vence: AlertTriangle, emdia: CheckCircle2, neutro: MinusCircle, falta: CircleDashed,
+  vencido: XCircle, vence: AlertTriangle, emdia: CheckCircle2, neutro: MinusCircle, falta: CircleDashed, gs: UserCog,
 };
 
-const ORDEM_SITUACAO: SituacaoDocumento[] = ['vencido', 'falta', 'vence', 'emdia', 'neutro'];
+const ORDEM_SITUACAO: SituacaoDocumento[] = ['vencido', 'falta', 'vence', 'gs', 'emdia', 'neutro'];
 
 /* ───────── Crachá (credencial aeroportuária) no cabeçalho do card ───────── */
 
 export { TIPO_CREDENCIAL as TIPO_CRACHA } from './regrasDrive';
 
 const FAIXA_CRACHA: Record<SituacaoDocumento, string> = {
-  vencido: 'bg-red-500', vence: 'bg-amber-500', emdia: 'bg-emerald-500', neutro: 'bg-graphite-400', falta: 'bg-red-300',
+  vencido: 'bg-red-500', vence: 'bg-amber-500', emdia: 'bg-emerald-500', neutro: 'bg-graphite-400', falta: 'bg-red-300', gs: 'bg-sky-500',
 };
 
 /** "faltam 1 ano e 3 meses", "faltam 24 dias", "há 2 meses". */
@@ -116,7 +120,7 @@ export function CrachaValidade({ doc, iniciais, onInfo, alertaAsur }: {
 }) {
   const situacaoCredencial: SituacaoDocumento = doc?.situacao ?? 'falta';
   // A cor do crachá piora junto com os cursos ASUR (base da credencial).
-  const peso: Record<SituacaoDocumento, number> = { vencido: 4, falta: 3, vence: 2, emdia: 1, neutro: 0 };
+  const peso: Record<SituacaoDocumento, number> = { vencido: 4, falta: 3, vence: 2, gs: 1, emdia: 1, neutro: 0 };
   const situacao: SituacaoDocumento = alertaAsur && alertaAsur.situacao !== 'neutro'
     && peso[alertaAsur.situacao] > peso[situacaoCredencial] && situacaoCredencial !== 'falta'
     ? alertaAsur.situacao : situacaoCredencial;
@@ -259,6 +263,7 @@ export function ResumoDrive({ contagem }: { contagem: Record<SituacaoDocumento, 
             s === 'vencido' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
               : s === 'falta' ? 'border border-dashed border-red-300 bg-white text-red-600 dark:border-red-800 dark:bg-transparent dark:text-red-300'
                 : s === 'vence' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  : s === 'gs' ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
                   : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
           }`}>
           <span className={`h-1.5 w-1.5 rounded-full ${ESTILO_SITUACAO[s].ponto}`} />

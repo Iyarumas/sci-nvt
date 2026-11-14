@@ -54,6 +54,8 @@ export interface ArquivoDrive {
   avisoTipo?: AvisoTipo | null;
   /** Curso lido no texto do certificado. */
   cursoLido?: string | null;
+  /** Título do curso como está escrito no certificado. */
+  tituloLido?: string | null;
   formato: 'pdf' | 'imagem' | 'outro';
   /** Data do curso/emissão (lida do PDF ou informada no card). */
   dataCurso: string | null;
@@ -153,8 +155,20 @@ export interface ResolucaoTipo {
   /** Certificação que o NOME do arquivo (ou o Nº padrão) indica. */
   tipoPeloArquivo: string;
   aviso: AvisoTipo | null;
-  /** Curso lido no certificado (o primeiro citado no texto). */
+  /** Curso lido no certificado (o primeiro citado no texto, ou o título quando o curso não é conhecido). */
   cursoLido: string | null;
+  /** Título do curso como está escrito no certificado. */
+  tituloLido: string | null;
+}
+
+const semAcento = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+
+/** O título escrito no certificado fala do mesmo curso que o nome? (alguma palavra de 4+ letras em comum) */
+export function tituloCombina(titulo: string, tipo: string): boolean {
+  const doTitulo = semAcento(titulo);
+  const palavras = semAcento(tipo).split(/[^A-Z0-9]+/).filter(p => p.length >= 4);
+  const emPalavras = ` ${doTitulo.replace(/[^A-Z0-9]+/g, ' ')} `;
+  return palavras.length === 0 || palavras.some(p => emPalavras.includes(` ${p} `));
 }
 
 /** Nomes de certificação que o sistema conhece (padrões, prazos, obrigatórios, cadastrados, juntados e qualquer NR). */
@@ -189,7 +203,7 @@ export function resolverTipo(nomeArquivo: string, pastaId: string, nomePessoa: s
  */
 export function resolverTipoComOrigem(
   nomeArquivo: string, pastaId: string, nomePessoa: string, config: ConfigDocumentos, naRaizDaPasta = true,
-  cursosLidos: string[] = [], tipoInformado: string | null = null,
+  cursosLidos: string[] = [], tipoInformado: string | null = null, tituloLido: string | null = null,
 ): ResolucaoTipo {
   const numero = naRaizDaPasta ? numeroDoArquivo(nomeArquivo) : null;
   const doNumero = numero ? config.padroes?.[pastaId]?.[numero] : undefined;
@@ -198,19 +212,26 @@ export function resolverTipoComOrigem(
   const origemBase: OrigemTipo = doNumero ? 'numero' : 'nome';
   const cursos = [...new Set(cursosLidos.map(c => config.apelidos?.[c] ?? c))];
   const cursoLido = cursos[0] ?? null;
+  const nomeConhecido = !!doNumero || ehTipoConhecido(base, config);
 
   if (tipoInformado) {
-    return { tipo: tipoInformado, origem: 'admin', tipoPeloArquivo: base, aviso: tipoInformado === base ? null : 'fora-do-padrao', cursoLido };
+    return { tipo: tipoInformado, origem: 'admin', tipoPeloArquivo: base, aviso: tipoInformado === base ? null : 'fora-do-padrao', cursoLido, tituloLido };
   }
-  const semAviso: ResolucaoTipo = { tipo: base, origem: origemBase, tipoPeloArquivo: base, aviso: null, cursoLido };
-  if (!cursos.length) return semAviso;
+  const semAviso: ResolucaoTipo = { tipo: base, origem: origemBase, tipoPeloArquivo: base, aviso: null, cursoLido, tituloLido };
+  if (!cursos.length) {
+    // Curso que o sistema não conhece ("Valores Humanos em Foco") num arquivo com nome de outro curso
+    // ("Primeiros Socorros"): pede para conferir, mostrando o título escrito no certificado.
+    if (tituloLido && nomeConhecido && !tituloCombina(tituloLido, base)) {
+      return { ...semAviso, aviso: 'conferir', cursoLido: tituloLido };
+    }
+    return semAviso;
+  }
   // O nome pode ser mais específico que o texto ("NR 20 II" no nome, "NR 20" no certificado).
   const bate = (curso: string) => curso === base || base.startsWith(`${curso} `);
   // Vale o PRIMEIRO curso citado (o título); os outros costumam ser o conteúdo do curso.
   if (bate(cursos[0])) return semAviso;
-  const nomeConhecido = !!doNumero || ehTipoConhecido(base, config);
   if (!nomeConhecido && cursos.length === 1) {
-    return { tipo: cursos[0], origem: 'certificado', tipoPeloArquivo: base, aviso: 'fora-do-padrao', cursoLido };
+    return { tipo: cursos[0], origem: 'certificado', tipoPeloArquivo: base, aviso: 'fora-do-padrao', cursoLido, tituloLido };
   }
   return { ...semAviso, aviso: 'conferir' };
 }
@@ -313,6 +334,7 @@ export function arquivosDoServidor(
     /** Cursos achados no texto do certificado pelo servidor. */
     cursosLidos?: string[];
     tipoInformado?: string | null;
+    tituloLido?: string | null;
   }>,
   nomePastaPessoa: string,
   config: ConfigDocumentos,
@@ -324,7 +346,7 @@ export function arquivosDoServidor(
     .filter(a => !(a.pasta === PASTA_EXTRAS && ehMarcador(a)))
     .map(a => {
       const texto = ehMarcador(a);
-      const r = resolverTipoComOrigem(a.nome, a.pasta, nomePessoa, config, a.caminho.length === 0, a.cursosLidos ?? [], a.tipoInformado ?? null);
+      const r = resolverTipoComOrigem(a.nome, a.pasta, nomePessoa, config, a.caminho.length === 0, a.cursosLidos ?? [], a.tipoInformado ?? null, a.tituloLido ?? null);
       return {
         id: a.id,
         pastaId: a.pasta,
@@ -334,6 +356,7 @@ export function arquivosDoServidor(
         tipoPeloArquivo: r.tipoPeloArquivo,
         avisoTipo: texto ? null : r.aviso,
         cursoLido: r.cursoLido,
+        tituloLido: r.tituloLido,
         formato: a.mime.includes('pdf') ? 'pdf' as const : a.mime.startsWith('image/') ? 'imagem' as const : 'outro' as const,
         dataCurso: a.dataCurso ?? null,
         validadeTexto: a.validadeTexto ?? null,
@@ -464,7 +487,12 @@ export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos
   const tipos = new Set(arquivos.map(a => a.tipo));
   for (const tipo of config.obrigatorios) {
     if (tipos.has(tipo) || !obrigatorioPara(tipo, cargo, config)) continue;
-    const pastaId = config.adicionados?.find(a => a.tipo === tipo)?.pastaId ?? PASTA_PADRAO[tipo] ?? '04';
+    // Pasta do documento que falta: cadastrado à mão → Nº padrão de alguma pasta → catálogo → NR fica
+    // na 03 (Cursos Med+) → o resto na 04 (Cursos Extras).
+    const doPadrao = Object.entries(config.padroes ?? PADROES_INICIAIS)
+      .find(([, daPasta]) => Object.values(daPasta).includes(tipo))?.[0];
+    const pastaId = config.adicionados?.find(a => a.tipo === tipo)?.pastaId ?? doPadrao ?? PASTA_PADRAO[tipo]
+      ?? (/^NR \d/.test(tipo) ? '03' : '04');
     porPasta.get(pastaId)?.push(faltaDoGs({ arquivo: null, arquivos: [], tipo, pastaId, situacao: 'falta', vencimento: null, texto: 'Não está na pasta' }));
   }
 

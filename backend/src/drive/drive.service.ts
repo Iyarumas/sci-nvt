@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuthUser, isAdmin } from '../auth/auth.types';
 import { DatabaseService } from '../database/database.service';
-import { acharCursos, TAMANHO_TRECHO_CURSO } from './curso-pdf';
+import { acharCursos, acharTituloCurso, TAMANHO_TRECHO_CURSO } from './curso-pdf';
 import { acharDatas } from './datas-pdf';
 import { DriveApiService, ItemDrive, PASTA_MIME } from './drive-api.service';
 
@@ -444,6 +444,8 @@ export class DriveService {
         ...a,
         // Cursos citados no certificado, na ordem do texto (a tela compara com o nome do arquivo).
         cursosLidos: d?.trecho && PASTAS_CURSO_PELO_TEXTO.has(a.pasta) ? acharCursos(d.trecho, tiposCadastrados) : [],
+        // Título do curso como está escrito no certificado (mesmo que o sistema não conheça o curso).
+        tituloLido: d?.trecho && PASTAS_CURSO_PELO_TEXTO.has(a.pasta) ? acharTituloCurso(d.trecho) : null,
         tipoInformado: d?.tipo_informado ?? null,
         dataCurso: d?.data_informada ?? d?.data_curso ?? null,
         validadeTexto: d?.validade ?? null,

@@ -9,6 +9,8 @@ export interface ArquivoDriveApi {
   dataLida?: boolean;
   /** Cursos citados no texto do certificado, na ordem em que aparecem ([] = não deu para saber pelo texto). */
   cursosLidos?: string[];
+  /** Título do curso como está escrito no certificado (mesmo que o sistema não conheça o curso). */
+  tituloLido?: string | null;
   /** Certificação a que o administrador vinculou o arquivo. */
   tipoInformado?: string | null;
   nome: string;

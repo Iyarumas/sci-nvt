@@ -387,9 +387,17 @@ function AvisoNomeArquivo({ arquivo, onVincularTipo, tiposDisponiveis, config }:
           <FileSearch className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           Confira: o nome do documento não condiz com o documento que está na pasta com esse nome.
         </p>
-        <p className="mt-0.5 pl-5">
-          No certificado está escrito <strong>{arquivo.cursoLido}</strong>; pelo nome do arquivo seria <strong>{arquivo.tipoPeloArquivo}</strong>.
-        </p>
+        <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 pl-5">
+          <dt className="text-amber-700 dark:text-amber-300">Nome do arquivo:</dt>
+          <dd><strong>{arquivo.nomeArquivo}</strong> (seria {arquivo.tipoPeloArquivo})</dd>
+          <dt className="text-amber-700 dark:text-amber-300">Curso no certificado:</dt>
+          <dd>
+            <strong>{arquivo.tituloLido ?? arquivo.cursoLido}</strong>
+            {arquivo.tituloLido && arquivo.cursoLido && arquivo.cursoLido !== arquivo.tituloLido && ` (${arquivo.cursoLido})`}
+          </dd>
+          <dt className="text-amber-700 dark:text-amber-300">Sugestão:</dt>
+          <dd>renomear o arquivo para <strong>“{config ? nomePadrao(arquivo.pastaId, arquivo.cursoLido ?? '', config) : arquivo.cursoLido}”</strong></dd>
+        </dl>
         {onVincularTipo && (
           <div className="mt-2 flex flex-wrap items-center gap-2 pl-5">
             <button type="button" disabled={salvando} onClick={() => vincular(arquivo.cursoLido ?? null)} className={botao}>

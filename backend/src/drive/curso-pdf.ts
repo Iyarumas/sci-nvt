@@ -22,8 +22,8 @@ const CATALOGO: Array<{ tipo: string; termos: string[] }> = [
   { tipo: 'CVA', termos: ['cva'] },
   { tipo: 'CVE', termos: ['cve', 'condutor de veiculo de emergencia', 'condutores de veiculos de emergencia', 'condutor de veiculos de emergencia'] },
   { tipo: 'CAP BA + CBA AT', termos: ['cap ba', 'cap-ba', 'cba at', 'cba-at'] },
-  { tipo: 'CHEFE DE EQUIPE (BA-CE)', termos: ['ba-ce', 'ba ce', 'bace'] },
-  { tipo: 'MOTORISTA CONDUTOR (BA-MC)', termos: ['ba-mc', 'ba mc', 'bamc', 'motorista condutor'] },
+  { tipo: 'CHEFE DE EQUIPE (BA-CE)', termos: ['ba-ce', 'ba ce', 'bace', 'cba-ce', 'cba ce', 'chefe de equipe'] },
+  { tipo: 'MOTORISTA CONDUTOR (BA-MC)', termos: ['ba-mc', 'ba mc', 'bamc', 'cba-mc', 'cba mc', 'motorista condutor'] },
 ];
 
 /** Tipos genéricos demais para procurar no texto (aparecem em qualquer certificado). */
@@ -60,6 +60,19 @@ function todasNrs(texto: string): Array<{ tipo: string; pos: number }> {
  * `tiposCadastrados`: nomes de documentos configurados na tela (também são procurados no texto).
  */
 export function acharCursos(texto: string, tiposCadastrados: string[] = []): string[] {
+  // O título ("concluiu o curso X com carga horária...") vale mais que o resto do texto: um certificado
+  // de "Valores Humanos em Foco" que cita primeiros socorros no conteúdo não é de Primeiros Socorros.
+  const titulo = acharTituloCurso(texto);
+  if (titulo) {
+    const doTitulo = procurarCursos(titulo, tiposCadastrados);
+    if (doTitulo.length) return doTitulo;
+    // Título sem nome conhecido ("Segurança para trabalhos em altura"): só a NR citada no texto vale.
+    return procurarCursos(texto, tiposCadastrados).filter(c => /^NR \d/.test(c)).slice(0, 1);
+  }
+  return procurarCursos(texto, tiposCadastrados);
+}
+
+function procurarCursos(texto: string, tiposCadastrados: string[]): string[] {
   const trecho = normalizarTexto(texto.slice(0, TAMANHO_TRECHO_CURSO))
     // "função: BA-MC" / "cargo: BA-CE" é o cargo da pessoa, não o curso.
     .replace(/(funcao|cargo)\s*[:-]\s*[^\s,;]+/g, ' ');
@@ -83,4 +96,24 @@ export function acharCursos(texto: string, tiposCadastrados: string[] = []): str
 
   candidatos.sort((a, b) => a.pos - b.pos);
   return [...new Set(candidatos.map(c => c.tipo))];
+}
+
+/** Onde o título do curso termina: "com carga horária", "realizado em", "na modalidade"... */
+const FIM_DO_TITULO = /[,;]|\s+com\s+(?:a\s+)?carga|\s+carga\s+hor|\s+realizad|\s+na\s+modalidade|\s+no\s+per[ií]odo|\s+em\s+conformidade|\s+de\s+acordo|\s+promovid|\s+autorizad|\s+data\s+d|\s+conclu[ií]d|\s+com\s+in[ií]cio|\s+com\s+dura|\s+--\s|\s+ministrad|\s+no\s+dia|\s+em\s+\d/i;
+
+/** Restos que não são título (data, CPF, rodapé do gerador de PDF). */
+const NAO_E_TITULO = /powered|tcpdf|cpf|^\d|\bde\s+\d{4}\b/i;
+
+/**
+ * Título do curso como está escrito no certificado ("concluiu o curso Valores Humanos em Foco: Ética e
+ * Integridade com a carga horária..." → "VALORES HUMANOS EM FOCO: ÉTICA E INTEGRIDADE"), mesmo que o
+ * sistema não conheça o curso. null quando o texto não tem a frase de conclusão/participação.
+ */
+export function acharTituloCurso(texto: string): string | null {
+  const trecho = texto.slice(0, TAMANHO_TRECHO_CURSO).replace(/\s+/g, ' ');
+  const m = /(?:conclu[ií]u|participou|realizou|concluiu\s+com\s+\S+)[^.]{0,60}?\b(?:curso|treinamento)\s+(?:de\s+|do\s+|da\s+)?(.{3,160})/i.exec(trecho);
+  if (!m) return null;
+  const titulo = m[1].split(FIM_DO_TITULO)[0].replace(/[\s:–-]+$/, '').trim();
+  if (titulo.length < 3 || titulo.length > 90 || NAO_E_TITULO.test(titulo)) return null;
+  return titulo.toLocaleUpperCase('pt-BR');
 }

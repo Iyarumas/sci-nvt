@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import {
-  AlertTriangle, CheckCircle2, CircleDashed, Eye, FileImage, FileText, FolderOpen, FolderSearch, MinusCircle, Plus, Trash2, X, XCircle,
+  AlertTriangle, CheckCircle2, CircleDashed, Eye, FileImage, FileSearch, FileText, FolderOpen, FolderSearch, MinusCircle, Plus, Trash2, X, XCircle,
 } from 'lucide-react';
 import { PdfPreview } from '../../components/documentos/PdfPreview';
 import { hojeLocalISO } from '../../utils/datas';
 import {
-  CARGOS_DOCUMENTOS, PASTAS_DRIVE, PASTA_EXTRAS, TIPOS_COM_VALIDADE_PROPRIA, TIPOS_PRAZO_PELO_VENCIMENTO, avaliarPessoa, posicaoNaPasta, documentosDaPastaEscolhida, tipoPeloNome, tiposEncontrados,
+  CARGOS_DOCUMENTOS, PASTAS_DRIVE, PASTA_EXTRAS, TIPO_CREDENCIAL as TIPO_CRACHA_VALIDADE, TIPOS_COM_VALIDADE_PROPRIA, TIPOS_PRAZO_PELO_VENCIMENTO, avaliarPessoa, posicaoNaPasta, documentosDaPastaEscolhida, nomePadrao, tipoPeloNome, tiposEncontrados,
   type ConfigDocumentos, type DocumentoAvaliado, type SituacaoDocumento, type ArquivoDrive,
 } from './regrasDrive';
 
@@ -271,9 +271,15 @@ export function ResumoDrive({ contagem }: { contagem: Record<SituacaoDocumento, 
 
 /* ───────── Blocos por pasta ───────── */
 
+/** Aviso do documento sobre o nome do arquivo: "conferir" pesa mais que "fora do padrão". */
+export function avisoDoDocumento(doc: DocumentoAvaliado) {
+  return doc.arquivos.find(a => a.avisoTipo === 'conferir') ?? doc.arquivos.find(a => a.avisoTipo === 'fora-do-padrao') ?? null;
+}
+
 function CardDocumento({ doc, onAbrir }: { doc: DocumentoAvaliado; onAbrir: (doc: DocumentoAvaliado) => void }) {
   const estilo = ESTILO_SITUACAO[doc.situacao];
   const Icone = ICONE_SITUACAO[doc.situacao];
+  const comAviso = avisoDoDocumento(doc);
   const conteudo = (
     <>
       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${estilo.icone}`}>
@@ -283,13 +289,24 @@ function CardDocumento({ doc, onAbrir }: { doc: DocumentoAvaliado; onAbrir: (doc
         <p className="truncate text-xs font-bold text-graphite-900 dark:text-graphite-100">{doc.tipo}</p>
         <p className={`text-[10.5px] font-medium leading-snug ${estilo.texto}`}>{doc.situacao === 'falta' ? 'Falta · não está na pasta' : doc.texto}</p>
         {doc.arquivos.length > 1 && <p className="text-[10px] text-graphite-500 dark:text-graphite-400">{doc.arquivos.length} arquivos</p>}
+        {comAviso?.avisoTipo === 'conferir' && (
+          <p className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+            <FileSearch className="h-3 w-3 shrink-0" /> <span className="truncate">Conferir: certificado diz {comAviso.cursoLido}</span>
+          </p>
+        )}
+        {comAviso?.avisoTipo === 'fora-do-padrao' && (
+          <p className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-graphite-500 dark:text-graphite-400">
+            <FileSearch className="h-3 w-3 shrink-0" /> <span className="truncate">Nome fora do padrão</span>
+          </p>
+        )}
       </div>
       {doc.arquivo && (doc.arquivo.formato === 'imagem'
         ? <FileImage className="h-3.5 w-3.5 shrink-0 text-graphite-300 transition-colors group-hover:text-graphite-500" />
         : <FileText className="h-3.5 w-3.5 shrink-0 text-graphite-300 transition-colors group-hover:text-graphite-500" />)}
     </>
   );
-  const classe = `group flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${estilo.card}`;
+  const classe = `group flex w-full items-center gap-2.5 rounded-xl border p-2.5 text-left transition-colors ${estilo.card}${
+    comAviso?.avisoTipo === 'conferir' ? ' !border-dashed !border-amber-400 dark:!border-amber-600' : ''}`;
   if (!doc.arquivo || doc.arquivo.marcadorFalta) return <div className={classe}>{conteudo}</div>;
   return (
     <button type="button" onClick={() => onAbrir(doc)} title={`Ver ${doc.arquivo.nomeArquivo}`}
@@ -318,6 +335,11 @@ export function PastasDrive({ arquivos, config, hojeISO, onAbrir, cargo }: {
             <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400">
               <FolderOpen className="h-3.5 w-3.5" /> {pasta.nome}
               <span className="font-normal normal-case tracking-normal text-graphite-400">· {docs.length}</span>
+              {docs.some(d => avisoDoDocumento(d)?.avisoTipo === 'conferir') && (
+                <span className="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  {docs.filter(d => avisoDoDocumento(d)?.avisoTipo === 'conferir').length} para conferir
+                </span>
+              )}
             </h4>
             {docs.length === 0 ? (
               <p className="rounded-xl border border-dashed border-graphite-200 py-3 text-center text-xs text-graphite-400 dark:border-border-dark">Pasta vazia.</p>
@@ -329,6 +351,82 @@ export function PastasDrive({ arquivos, config, hojeISO, onAbrir, cargo }: {
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/* ───────── Aviso: nome do arquivo × curso escrito no certificado ───────── */
+
+function AvisoNomeArquivo({ arquivo, onVincularTipo, tiposDisponiveis, config }: {
+  arquivo: ArquivoDrive;
+  onVincularTipo?: (arquivo: ArquivoDrive, tipo: string | null) => Promise<void>;
+  tiposDisponiveis: string[];
+  config?: ConfigDocumentos;
+}) {
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  if (!arquivo.avisoTipo) return null;
+  const vincular = async (tipo: string | null) => {
+    if (!onVincularTipo) return;
+    setSalvando(true);
+    setErro('');
+    try { await onVincularTipo(arquivo, tipo); } catch { setErro('Não foi possível salvar o vínculo. Tente de novo.'); } finally { setSalvando(false); }
+  };
+  const botao = 'rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800 hover:border-amber-500 disabled:opacity-50 dark:border-amber-700 dark:bg-surface-card dark:text-amber-200';
+
+  if (arquivo.avisoTipo === 'conferir') {
+    const outros = tiposDisponiveis.filter(t => t !== arquivo.cursoLido && t !== arquivo.tipoPeloArquivo);
+    return (
+      <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900 dark:border-amber-800/50 dark:bg-amber-900/20 dark:text-amber-100">
+        <p className="flex items-start gap-1.5 font-semibold">
+          <FileSearch className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Confira: o nome do documento não condiz com o documento que está na pasta com esse nome.
+        </p>
+        <p className="mt-0.5 pl-5">
+          No certificado está escrito <strong>{arquivo.cursoLido}</strong>; pelo nome do arquivo seria <strong>{arquivo.tipoPeloArquivo}</strong>.
+        </p>
+        {onVincularTipo && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 pl-5">
+            <button type="button" disabled={salvando} onClick={() => vincular(arquivo.cursoLido ?? null)} className={botao}>
+              Vincular a {arquivo.cursoLido}
+            </button>
+            <button type="button" disabled={salvando} onClick={() => vincular(arquivo.tipoPeloArquivo ?? arquivo.tipo)} className={botao}>
+              Manter {arquivo.tipoPeloArquivo}
+            </button>
+            {outros.length > 0 && (
+              <select value="" disabled={salvando} aria-label="Vincular a outra certificação"
+                onChange={e => { if (e.target.value) void vincular(e.target.value); }}
+                className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-surface-card dark:text-amber-100">
+                <option value="">Outra certificação…</option>
+                {outros.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            <span className="text-[11px] text-amber-700 dark:text-amber-300">O arquivo no Drive não é renomeado.</span>
+          </div>
+        )}
+        {erro && <p className="mt-1 pl-5 font-medium text-red-600">{erro}</p>}
+      </div>
+    );
+  }
+
+  const sugestao = config ? nomePadrao(arquivo.pastaId, arquivo.tipo, config) : arquivo.tipo;
+  return (
+    <div className="border-b border-graphite-200 bg-graphite-50 px-5 py-2.5 text-xs text-graphite-700 dark:border-border-dark dark:bg-surface-card/60 dark:text-graphite-300">
+      <p className="flex items-start gap-1.5">
+        <FileSearch className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          <strong>Nome fora do padrão.</strong> Este arquivo está vinculado a <strong>{arquivo.tipo}</strong>
+          {arquivo.origemTipo === 'admin' ? ' pelo administrador' : ' pelo curso lido no certificado'}, mas o nome no Drive não segue o padrão.
+          {' '}Renomear para <strong>“{sugestao}”</strong>.
+        </span>
+      </p>
+      {onVincularTipo && arquivo.origemTipo === 'admin' && (
+        <button type="button" disabled={salvando} onClick={() => vincular(null)}
+          className="mt-1.5 ml-5 rounded-md border border-graphite-300 px-2 py-0.5 font-medium text-graphite-700 hover:border-aviation-400 disabled:opacity-50 dark:border-border-dark dark:text-graphite-200">
+          Desfazer vínculo
+        </button>
+      )}
+      {erro && <p className="mt-1 pl-5 font-medium text-red-600">{erro}</p>}
     </div>
   );
 }
@@ -367,8 +465,14 @@ function arquivoDeExemplo(doc: DocumentoAvaliado, arquivo: ArquivoDrive): Promis
   return Promise.resolve({ pdf: pdf.output('arraybuffer') });
 }
 
-export function VisualizadorDocumento({ doc, pessoaNome, onClose, carregar, onInformarData }: {
+export function VisualizadorDocumento({ doc, pessoaNome, onClose, carregar, onInformarData, onVincularTipo, tiposDisponiveis = [], config }: {
   doc: DocumentoAvaliado; pessoaNome: string; onClose: () => void;
+  /** Só administrador: vincula o arquivo a uma certificação (null desfaz). O arquivo no Drive não é renomeado. */
+  onVincularTipo?: (arquivo: ArquivoDrive, tipo: string | null) => Promise<void>;
+  /** Certificações para o "Outra certificação…". */
+  tiposDisponiveis?: string[];
+  /** Para sugerir o nome no padrão da pasta. */
+  config?: ConfigDocumentos;
   /** Só para quem pode corrigir a data (administrador/GS). */
   onInformarData?: (arquivo: ArquivoDrive, data: string | null) => Promise<void>;
   /** Busca o arquivo de verdade (Drive). Sem ele, mostra um arquivo de exemplo. */
@@ -448,6 +552,7 @@ export function VisualizadorDocumento({ doc, pessoaNome, onClose, carregar, onIn
           )}
           <button onClick={onClose} aria-label="Fechar" className="rounded-xl p-1.5 text-graphite-400 hover:bg-graphite-100 dark:hover:bg-surface-hover"><X className="h-5 w-5" /></button>
         </div>
+        <AvisoNomeArquivo arquivo={arquivo} onVincularTipo={onVincularTipo} tiposDisponiveis={tiposDisponiveis} config={config} />
         <div className="flex-1 overflow-auto bg-graphite-100 p-4 dark:bg-surface-card">
           {erro ? (
             <p className="py-16 text-center text-sm text-red-600">{erro}</p>
@@ -749,11 +854,15 @@ export function ValidadeDocumentos({ config, onChange, encontrados, exemplos, on
                       <option value="">Juntar com…</option>
                       {daPasta.filter(o => o.tipo !== tipo).map(o => <option key={o.tipo} value={o.tipo}>{o.tipo}</option>)}
                     </select>
+                    {tipo === TIPO_CRACHA_VALIDADE ? (
+                      <span className="text-xs text-graphite-500 dark:text-graphite-400" title="A credencial é cobrada pelo crachá do card (validade do cadastro)">Cobrada pelo crachá</span>
+                    ) : (
                     <label className="flex items-center gap-2 text-xs text-graphite-500 dark:text-graphite-400">
                       <input type="checkbox" checked={config.obrigatorios.includes(tipo)} onChange={e => mudarObrigatorio(tipo, e.target.checked)}
                         className="h-4 w-4 rounded border-graphite-300 text-aviation-600 focus:ring-aviation-500" />
                       Obrigatório
                     </label>
+                    )}
                     {propria ? (
                       <span className="w-[9.5rem] text-right text-xs text-graphite-500 dark:text-graphite-400">usa a validade do cadastro</span>
                     ) : (

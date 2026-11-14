@@ -29,6 +29,12 @@ export class DriveController {
     return this.drive.informarData(request.authUser, String(body.arquivoId ?? ''), body.data ?? null);
   }
 
+  /** Administrador vincula o arquivo a uma certificação (nome do arquivo ≠ certificado). Não renomeia no Drive. */
+  @Post('tipo')
+  informarTipo(@Req() request: Request, @Body() body: { arquivoId?: string; tipo?: string | null }) {
+    return this.drive.informarTipo(request.authUser, String(body.arquivoId ?? ''), body.tipo ?? null);
+  }
+
   /** Conteúdo de um arquivo para o visualizador do sistema (sem download). */
   @Get('arquivo/:id')
   async arquivo(@Req() request: Request, @Res() response: Response, @Param('id') id: string) {

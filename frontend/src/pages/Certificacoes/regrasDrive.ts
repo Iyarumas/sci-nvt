@@ -44,8 +44,16 @@ export interface ArquivoDrive {
   pastaId: string;
   /** Nome do arquivo como está no Drive. */
   nomeArquivo: string;
-  /** Tipo do documento, tirado do nome do arquivo (ex.: "NR 35"). */
+  /** Certificação do documento (ex.: "NR 35"): vínculo do admin, Nº padrão, nome do arquivo ou curso lido no certificado. */
   tipo: string;
+  /** De onde veio a certificação. */
+  origemTipo?: OrigemTipo;
+  /** Certificação que o nome do arquivo indica (pode ser diferente de `tipo`). */
+  tipoPeloArquivo?: string;
+  /** Nome do arquivo não condiz com o certificado / está fora do padrão. */
+  avisoTipo?: AvisoTipo | null;
+  /** Curso lido no texto do certificado. */
+  cursoLido?: string | null;
   formato: 'pdf' | 'imagem' | 'outro';
   /** Data do curso/emissão (lida do PDF ou informada no card). */
   dataCurso: string | null;
@@ -93,6 +101,8 @@ export const CARGOS_OBRIGATORIO_INICIAIS: Record<string, string[]> = {
 
 /** O documento é obrigatório para quem tem esse cargo? */
 export function obrigatorioPara(tipo: string, cargo: string | null | undefined, config: ConfigDocumentos): boolean {
+  // Credencial aeroportuária: quem cobra é o crachá do card (validade do cadastro), nunca a pasta 06.
+  if (tipo === TIPO_CREDENCIAL) return false;
   if (!config.obrigatorios.includes(tipo)) return false;
   const cargos = config.cargosObrigatorio?.[tipo];
   return !cargos || cargos.length === 0 || (!!cargo && cargos.includes(cargo));
@@ -127,13 +137,82 @@ export function numeroDoArquivo(nomeArquivo: string): string | null {
   return m ? m[1].padStart(2, '0') : null;
 }
 
-/** Tipo final do documento: Nº padrão da pasta (só nos arquivos soltos na pasta) → nome juntado → nome lido. */
+/** De onde veio a certificação do arquivo. */
+export type OrigemTipo = 'numero' | 'nome' | 'certificado' | 'admin';
+
+/**
+ * Aviso sobre o nome do arquivo:
+ * - "conferir": o nome do arquivo não condiz com o curso escrito no certificado (o administrador decide);
+ * - "fora-do-padrao": o arquivo já está ligado à certificação certa, mas o nome no Drive não segue o padrão.
+ */
+export type AvisoTipo = 'conferir' | 'fora-do-padrao';
+
+export interface ResolucaoTipo {
+  tipo: string;
+  origem: OrigemTipo;
+  /** Certificação que o NOME do arquivo (ou o Nº padrão) indica. */
+  tipoPeloArquivo: string;
+  aviso: AvisoTipo | null;
+  /** Curso lido no certificado (o primeiro citado no texto). */
+  cursoLido: string | null;
+}
+
+/** Nomes de certificação que o sistema conhece (padrões, prazos, obrigatórios, cadastrados, juntados e qualquer NR). */
+export function ehTipoConhecido(tipo: string, config: ConfigDocumentos): boolean {
+  if (/^NR \d{2}\b/.test(tipo)) return true;
+  if (tipo in config.prazos || config.obrigatorios.includes(tipo)) return true;
+  if ((config.adicionados ?? []).some(d => d.tipo === tipo)) return true;
+  if (Object.values(config.apelidos ?? {}).includes(tipo)) return true;
+  const padroes = [config.padroes ?? {}, PADROES_INICIAIS];
+  return padroes.some(p => Object.values(p).some(pasta => Object.values(pasta).includes(tipo)));
+}
+
+/** Nome do arquivo no padrão da pasta: "12 - NR 35" (sem Nº padrão, só o nome da certificação). */
+export function nomePadrao(pastaId: string, tipo: string, config: ConfigDocumentos): string {
+  const daPasta = config.padroes?.[pastaId] ?? PADROES_INICIAIS[pastaId] ?? {};
+  const numero = Object.keys(daPasta).find(n => daPasta[n] === tipo);
+  return numero ? `${numero} - ${tipo}` : tipo;
+}
+
+/** Tipo final do documento (ver `resolverTipoComOrigem`). */
 export function resolverTipo(nomeArquivo: string, pastaId: string, nomePessoa: string, config: ConfigDocumentos, naRaizDaPasta = true): string {
+  return resolverTipoComOrigem(nomeArquivo, pastaId, nomePessoa, config, naRaizDaPasta).tipo;
+}
+
+/**
+ * Certificação do arquivo:
+ * 1. vínculo feito pelo administrador (o arquivo no Drive não é renomeado: segue o aviso "fora do padrão");
+ * 2. Nº padrão da pasta (só nos arquivos soltos na pasta) ou nome do arquivo (com os nomes juntados);
+ * 3. curso escrito no certificado: se bate com o nome, nada muda; se o nome não diz nada conhecido e o
+ *    certificado cita um só curso, liga a esse curso; se os dois apontam para cursos diferentes, fica
+ *    o do nome e o arquivo é marcado para conferir.
+ */
+export function resolverTipoComOrigem(
+  nomeArquivo: string, pastaId: string, nomePessoa: string, config: ConfigDocumentos, naRaizDaPasta = true,
+  cursosLidos: string[] = [], tipoInformado: string | null = null,
+): ResolucaoTipo {
   const numero = naRaizDaPasta ? numeroDoArquivo(nomeArquivo) : null;
   const doNumero = numero ? config.padroes?.[pastaId]?.[numero] : undefined;
-  if (doNumero) return doNumero;
   const lido = tipoPeloNome(nomeArquivo, nomePessoa);
-  return config.apelidos?.[lido] ?? lido;
+  const base = doNumero ?? config.apelidos?.[lido] ?? lido;
+  const origemBase: OrigemTipo = doNumero ? 'numero' : 'nome';
+  const cursos = [...new Set(cursosLidos.map(c => config.apelidos?.[c] ?? c))];
+  const cursoLido = cursos[0] ?? null;
+
+  if (tipoInformado) {
+    return { tipo: tipoInformado, origem: 'admin', tipoPeloArquivo: base, aviso: tipoInformado === base ? null : 'fora-do-padrao', cursoLido };
+  }
+  const semAviso: ResolucaoTipo = { tipo: base, origem: origemBase, tipoPeloArquivo: base, aviso: null, cursoLido };
+  if (!cursos.length) return semAviso;
+  // O nome pode ser mais específico que o texto ("NR 20 II" no nome, "NR 20" no certificado).
+  const bate = (curso: string) => curso === base || base.startsWith(`${curso} `);
+  // Vale o PRIMEIRO curso citado (o título); os outros costumam ser o conteúdo do curso.
+  if (bate(cursos[0])) return semAviso;
+  const nomeConhecido = !!doNumero || ehTipoConhecido(base, config);
+  if (!nomeConhecido && cursos.length === 1) {
+    return { tipo: cursos[0], origem: 'certificado', tipoPeloArquivo: base, aviso: 'fora-do-padrao', cursoLido };
+  }
+  return { ...semAviso, aviso: 'conferir' };
 }
 
 export type SituacaoDocumento = 'vencido' | 'vence' | 'emdia' | 'neutro' | 'falta';
@@ -230,6 +309,9 @@ export function arquivosDoServidor(
   arquivos: Array<{
     id: string; nome: string; pasta: string; caminho: string[]; mime: string;
     dataCurso?: string | null; validadeTexto?: string | null; origemData?: string | null; dataLida?: boolean;
+    /** Cursos achados no texto do certificado pelo servidor. */
+    cursosLidos?: string[];
+    tipoInformado?: string | null;
   }>,
   nomePastaPessoa: string,
   config: ConfigDocumentos,
@@ -241,11 +323,16 @@ export function arquivosDoServidor(
     .filter(a => !(a.pasta === PASTA_EXTRAS && ehMarcador(a)))
     .map(a => {
       const texto = ehMarcador(a);
+      const r = resolverTipoComOrigem(a.nome, a.pasta, nomePessoa, config, a.caminho.length === 0, a.cursosLidos ?? [], a.tipoInformado ?? null);
       return {
         id: a.id,
         pastaId: a.pasta,
         nomeArquivo: a.nome,
-        tipo: resolverTipo(a.nome, a.pasta, nomePessoa, config, a.caminho.length === 0),
+        tipo: r.tipo,
+        origemTipo: r.origem,
+        tipoPeloArquivo: r.tipoPeloArquivo,
+        avisoTipo: texto ? null : r.aviso,
+        cursoLido: r.cursoLido,
         formato: a.mime.includes('pdf') ? 'pdf' as const : a.mime.startsWith('image/') ? 'imagem' as const : 'outro' as const,
         dataCurso: a.dataCurso ?? null,
         validadeTexto: a.validadeTexto ?? null,
@@ -341,6 +428,22 @@ function suavizarSeNaoObrigatorio(doc: DocumentoAvaliado, obrigatorio: boolean):
   return { ...doc, situacao: 'emdia', texto };
 }
 
+/**
+ * ASO e cadastro (ficha cadastral) quem providencia é o GS/Embaixador, não a pessoa:
+ * quando faltam, o card fica verde e diz de quem é a responsabilidade.
+ */
+export function ehResponsabilidadeGs(tipo: string): boolean {
+  const t = tipo.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  return /(^|\s)ASO(\s|$)/.test(t) || /CADASTR/.test(t);
+}
+
+export const TEXTO_RESPONSABILIDADE_GS = 'Falta · responsabilidade GS/Embaixador';
+
+function faltaDoGs(doc: DocumentoAvaliado): DocumentoAvaliado {
+  if (doc.situacao !== 'falta' || !ehResponsabilidadeGs(doc.tipo)) return doc;
+  return { ...doc, situacao: 'emdia', texto: TEXTO_RESPONSABILIDADE_GS };
+}
+
 export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos, hojeISO: string, cargo?: string | null) {
   const porPasta = new Map<string, DocumentoAvaliado[]>();
   for (const pasta of PASTAS_DRIVE) porPasta.set(pasta.id, []);
@@ -354,14 +457,14 @@ export function avaliarPessoa(arquivos: ArquivoDrive[], config: ConfigDocumentos
     const avaliados = doGrupo.map(a => avaliarArquivo(a, config, hojeISO));
     const melhor = avaliados.reduce((a, b) => (MELHOR[b.situacao] > MELHOR[a.situacao]
       || (MELHOR[b.situacao] === MELHOR[a.situacao] && (b.vencimento ?? '') > (a.vencimento ?? '')) ? b : a));
-    porPasta.get(melhor.pastaId)?.push(suavizarSeNaoObrigatorio({ ...melhor, arquivos: doGrupo }, obrigatorioPara(melhor.tipo, cargo, config)));
+    porPasta.get(melhor.pastaId)?.push(faltaDoGs(suavizarSeNaoObrigatorio({ ...melhor, arquivos: doGrupo }, obrigatorioPara(melhor.tipo, cargo, config))));
   }
 
   const tipos = new Set(arquivos.map(a => a.tipo));
   for (const tipo of config.obrigatorios) {
     if (tipos.has(tipo) || !obrigatorioPara(tipo, cargo, config)) continue;
     const pastaId = config.adicionados?.find(a => a.tipo === tipo)?.pastaId ?? PASTA_PADRAO[tipo] ?? '04';
-    porPasta.get(pastaId)?.push({ arquivo: null, arquivos: [], tipo, pastaId, situacao: 'falta', vencimento: null, texto: 'Não está na pasta' });
+    porPasta.get(pastaId)?.push(faltaDoGs({ arquivo: null, arquivos: [], tipo, pastaId, situacao: 'falta', vencimento: null, texto: 'Não está na pasta' }));
   }
 
   const contagem: Record<SituacaoDocumento, number> = { vencido: 0, vence: 0, emdia: 0, neutro: 0, falta: 0 };
@@ -431,7 +534,7 @@ export const CONFIG_EXEMPLO: ConfigDocumentos = {
     'FICHA CADASTRAL': 0, CTPS: 0, ASO: 12, 'COMPROVANTE DE RESIDÊNCIA': 12, ESCOLARIDADE: 0, 'FICHA EPI': 0,
     'ANTECEDENTES CRIMINAIS': 6,
   },
-  obrigatorios: ['CNH', 'CVE', 'APAM', 'AVSEC', 'NR 10', 'NR 35', 'ASO', 'CREDENCIAL AEROPORTUÁRIA'],
+  obrigatorios: ['CNH', 'CVE', 'APAM', 'AVSEC', 'NR 10', 'NR 35', 'ASO'],
 };
 
 /* ───────── Dados de exemplo ───────── */

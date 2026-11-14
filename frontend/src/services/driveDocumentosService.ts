@@ -7,6 +7,10 @@ export interface ArquivoDriveApi {
   validadeTexto?: string | null;
   origemData?: string | null;
   dataLida?: boolean;
+  /** Cursos citados no texto do certificado, na ordem em que aparecem ([] = não deu para saber pelo texto). */
+  cursosLidos?: string[];
+  /** Certificação a que o administrador vinculou o arquivo. */
+  tipoInformado?: string | null;
   nome: string;
   pasta: string;
   caminho: string[];
@@ -39,6 +43,11 @@ export function salvarConfigDrive(config: unknown): Promise<{ ok: boolean }> {
 /** Data do curso digitada (PDF sem texto ou data lida errada). null apaga. */
 export function informarDataDrive(arquivoId: string, data: string | null): Promise<{ ok: boolean }> {
   return apiFetch('/drive/data', { method: 'POST', body: JSON.stringify({ arquivoId, data }), headers: { 'Content-Type': 'application/json' } });
+}
+
+/** Administrador vincula o arquivo a uma certificação (o arquivo no Drive não é renomeado). null desfaz. */
+export function vincularTipoDrive(arquivoId: string, tipo: string | null): Promise<{ ok: boolean }> {
+  return apiFetch('/drive/tipo', { method: 'POST', body: JSON.stringify({ arquivoId, tipo }), headers: { 'Content-Type': 'application/json' } });
 }
 
 /** Conteúdo do arquivo para o visualizador (passa pelo servidor; o Drive não fica exposto). */

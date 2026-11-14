@@ -47,6 +47,21 @@ está no ar. Frontend em `frontend/src/pages/Certificacoes/` (`regrasDrive.ts`, 
 - O sistema liga a pasta à pessoa do cadastro pelo nome e lê os arquivos (o `desktop.ini` é ignorado).
 - O tipo do documento sai do nome do arquivo, ignorando o número da frente (`05 - `), o nome da
   pessoa (credenciamento) e cópias (`(1)`). Qualquer NR é reconhecida (`NR 10`, `NR10 NAVEGANTES`…).
+- **Curso escrito no certificado** (pastas 01 a 04, só PDF com texto; foto/escaneado segue pelo nome):
+  o servidor guarda o começo do texto (`drive_datas.trecho`) e acha os cursos citados (NR em qualquer
+  forma, catálogo de sinônimos em `backend/src/drive/curso-pdf.ts` e os nomes da aba Validade).
+  - Bate com o nome do arquivo (ou o nome é mais específico, ex.: `NR 20 II`): nada muda.
+  - Nome não diz nada conhecido e o certificado cita um só curso: liga sozinho a esse curso e avisa
+    **Nome fora do padrão** (com o nome sugerido, ex.: `12 - NR 35`).
+  - Nome e certificado apontam para cursos diferentes: fica o do nome e o card mostra **Conferir**
+    ("o nome do documento não condiz com o documento que está na pasta com esse nome").
+  - Só o **administrador** vincula (`POST /api/drive/tipo`, guardado em `drive_datas.tipo_informado`).
+    O arquivo no Drive **não** é renomeado: depois de vincular, o aviso "Nome fora do padrão" continua
+    para os chefes pedirem a correção; quando renomeiam, o aviso some sozinho.
+- **ASO e cadastro** (ficha cadastral) faltando ficam **verdes** com "responsabilidade GS/Embaixador"
+  (quem providencia não é a pessoa).
+- **Credencial aeroportuária** não é obrigatória na pasta 06: quem cobra é o crachá do card (validade
+  do cadastro).
 - Cada documento vira um card com a cor da validade e a data embaixo:
   - **vermelho**: vencido ("Venceu em …, há N dias");
   - **amarelo**: vence em até 3 meses ("Vence em …, faltam N dias");

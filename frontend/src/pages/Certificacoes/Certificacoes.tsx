@@ -36,7 +36,7 @@ import {
   type ArquivoDrive, type ConfigDocumentos, type DocumentoAvaliado,
 } from './regrasDrive';
 import {
-  abrirArquivoDrive, buscarDocumentosDrive, informarDataDrive, lerConfigDrive, salvarConfigDrive, type DocumentosDriveApi,
+  abrirArquivoDrive, buscarDocumentosDrive, informarDataDrive, vincularTipoDrive, lerConfigDrive, salvarConfigDrive, type DocumentosDriveApi,
 } from '../../services/driveDocumentosService';
 import { completarConfig, lerConfigLocal } from './regrasDrive';
 import { listarSubstituicoesTemporarias } from '../../services/substituicaoTemporariaService';
@@ -499,6 +499,7 @@ function FuncionarioCard({
   const resumoDrive = useMemo(() => avaliarPessoa(arquivosDrive, configDrive, hojeISO, funcionario.cargo),
     [arquivosDrive, configDrive, hojeISO, funcionario.cargo]);
   const temAnexados = certNR.length + certCurso.length > 0;
+  const paraConferir = arquivosDrive.filter(a => a.avisoTipo === 'conferir').length;
   const credencial = credencialDoCadastro(funcionario, resumoDrive.porPasta, configDrive, hojeISO);
   const cursosInternos = CURSO_OPTIONS.filter(c => c.categoria === 'interno');
   const cursosAsur = CURSO_OPTIONS.filter(c => c.categoria === 'asur');
@@ -533,6 +534,12 @@ function FuncionarioCard({
             onInfo={() => setInfoCredencial(true)} />
         </div>
         <div className="flex items-center justify-end gap-2">
+          {paraConferir > 0 && (
+            <span title="Nome do arquivo não condiz com o certificado"
+              className="rounded-full border border-dashed border-amber-400 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-600 dark:text-amber-300">
+              {paraConferir} conferir
+            </span>
+          )}
           <ResumoDrive contagem={resumoDrive.contagem} />
           {expanded ? <ChevronUp className="h-4 w-4 text-graphite-400" /> : <ChevronDown className="h-4 w-4 text-graphite-400" />}
         </div>
@@ -742,6 +749,13 @@ export function Certificacoes() {
   const [docAberto, setDocAberto] = useState<{ doc: DocumentoAvaliado; pessoaNome: string } | null>(null);
   const hojeISO = hojeLocalISO();
   const podeEditarValidade = isAdministradorSistema(user);
+  // Certificações que o administrador pode escolher ao vincular um arquivo (Nº padrão, prazos e cadastradas).
+  const tiposDisponiveisDrive = useMemo(() => {
+    const tipos = new Set<string>(Object.keys(configDrive.prazos));
+    for (const pasta of Object.values(configDrive.padroes ?? {})) for (const t of Object.values(pasta)) tipos.add(t);
+    for (const d of configDrive.adicionados ?? []) tipos.add(d.tipo);
+    return [...tipos].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  }, [configDrive]);
 
   // A configuração que vale é a do banco (uma para todos). O navegador guarda só uma cópia.
   const [configSalva, setConfigSalva] = useState<{ estado: 'ok' | 'salvando' | 'erro'; em: string | null; por: string | null }>(
@@ -1110,7 +1124,14 @@ export function Certificacoes() {
           await informarDataDrive(arquivo.id, data);
           setDocAberto(null);
           await carregarDrive();
-        } : undefined} />}
+        } : undefined}
+        onVincularTipo={driveEstado === 'drive' && podeEditarValidade ? async (arquivo, tipo) => {
+          await vincularTipoDrive(arquivo.id, tipo);
+          setDocAberto(null);
+          await carregarDrive();
+        } : undefined}
+        tiposDisponiveis={tiposDisponiveisDrive}
+        config={configDrive} />}
       {arquivoModal && <ArquivoModal arquivo={arquivoModal.arquivo} title={arquivoModal.title} onClose={() => setArquivoModal(null)} />}
       <PageTour
         steps={CERTIFICACOES_TOUR_STEPS}

@@ -77,9 +77,30 @@ jobs:
 
           ssh-keyscan -H "$ORACLE_HOST" >> ~/.ssh/known_hosts
 
+          # Desde 14/11/2026 o SSH saindo do GitHub travava na troca de chaves (pacotes grandes perdidos
+          # no caminho ate a VM, que usa MTU 9000). Troca de chaves e chave do servidor menores, limite de
+          # tempo e aviso de conexao parada, para nao ficar 2 minutos esperando.
+          cat >> ~/.ssh/config <<EOF
+          Host $ORACLE_HOST
+            KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+            HostKeyAlgorithms ssh-ed25519
+            ConnectTimeout 30
+            ServerAliveInterval 15
+            ServerAliveCountMax 8
+          EOF
+          chmod 600 ~/.ssh/config
+
       - name: Copy deploy script to Oracle VM
         run: |
-          scp -i ~/.ssh/oracle_key deploy/deploy-production.sh "$ORACLE_USER@$ORACLE_HOST:/tmp/sci-nvt-deploy-production.sh"
+          # Ate 3 tentativas; se todas falharem, a ultima sai detalhada (-v) no log para achar onde trava.
+          for tentativa in 1 2 3; do
+            if timeout 90 scp -i ~/.ssh/oracle_key deploy/deploy-production.sh "$ORACLE_USER@$ORACLE_HOST:/tmp/sci-nvt-deploy-production.sh"; then
+              exit 0
+            fi
+            echo "::warning::Copia para a VM falhou (tentativa $tentativa de 3)"
+            sleep 10
+          done
+          timeout 90 scp -v -i ~/.ssh/oracle_key deploy/deploy-production.sh "$ORACLE_USER@$ORACLE_HOST:/tmp/sci-nvt-deploy-production.sh"
 
       - name: Deploy on Oracle VM
         env:

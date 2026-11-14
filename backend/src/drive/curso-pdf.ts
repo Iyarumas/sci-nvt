@@ -62,7 +62,7 @@ function todasNrs(texto: string): Array<{ tipo: string; pos: number }> {
 export function acharCursos(texto: string, tiposCadastrados: string[] = []): string[] {
   const trecho = normalizarTexto(texto.slice(0, TAMANHO_TRECHO_CURSO))
     // "função: BA-MC" / "cargo: BA-CE" é o cargo da pessoa, não o curso.
-    .replace(/(funcao|cargo)\s*[:\-]\s*[^\s,;]+/g, ' ');
+    .replace(/(funcao|cargo)\s*[:-]\s*[^\s,;]+/g, ' ');
   if (!trecho.trim()) return [];
 
   const candidatos: Array<{ tipo: string; pos: number }> = [...todasNrs(trecho)];

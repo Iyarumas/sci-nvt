@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { listarBombeiros } from '../../services/bombeiroService';
+import { minhasPermissoes, type Alcance } from '../../services/permissoesService';
 import { NR_OPTIONS } from '../../types/certificacao';
 import type { CertificacaoNR } from '../../types/certificacao';
 import {
@@ -501,7 +502,7 @@ function FuncionarioCard({
   canManage: boolean; onAddNR: (id: string, nome: string) => void;
   onAddCurso: (id: string, nome: string) => void; onViewArquivo: (arquivo: string, title: string) => void;
   arquivosDrive: ArquivoDrive[]; configDrive: ConfigDocumentos; hojeISO: string;
-  onAbrirDrive: (doc: DocumentoAvaliado, pessoaNome: string) => void;
+  onAbrirDrive: (doc: DocumentoAvaliado, pessoaNome: string, equipe?: string | null) => void;
   /** Google Drive não ligado neste servidor: não mostra os blocos nem cobra documentos. */
   semDrive?: boolean;
   /** Afastado pelo INSS hoje (substituição temporária aprovada ou pasta do Drive marcada "- INSS"). */
@@ -586,7 +587,7 @@ function FuncionarioCard({
               </p>
             ) : (
               <PastasDrive arquivos={arquivosDrive} config={configDrive} hojeISO={hojeISO} cargo={funcionario.cargo}
-                onAbrir={(doc: DocumentoAvaliado) => onAbrirDrive(doc, funcionario.nomeCompleto)} />
+                onAbrir={(doc: DocumentoAvaliado) => onAbrirDrive(doc, funcionario.nomeCompleto, funcionario.equipe)} />
             )}
           </div>
 
@@ -760,7 +761,16 @@ export function Certificacoes() {
   const [permissoesReady, setPermissoesReady] = useState(false);
   const [aba, setAba] = useState<'pessoas' | 'validade'>('pessoas');
   const [configDrive, setConfigDrive] = useState<ConfigDocumentos>(() => lerConfig());
-  const [docAberto, setDocAberto] = useState<{ doc: DocumentoAvaliado; pessoaNome: string } | null>(null);
+  const [docAberto, setDocAberto] = useState<{ doc: DocumentoAvaliado; pessoaNome: string; equipe?: string | null } | null>(null);
+  // Tela Permissões → Certificações → "Informar data do curso": Não / Própria equipe / Todas.
+  const [permInformarData, setPermInformarData] = useState<{ alcance: Alcance; equipe: string | null } | null>(null);
+  useEffect(() => {
+    minhasPermissoes()
+      .then(p => setPermInformarData({ alcance: p.acessoTotal ? 'todas' : p.acoes['certificacoes.informar_data'] ?? 'nao', equipe: p.equipe }))
+      .catch(() => setPermInformarData(null));
+  }, []);
+  const podeInformarData = (equipe?: string | null) => !!permInformarData && (permInformarData.alcance === 'todas'
+    || (permInformarData.alcance === 'equipe' && !!equipe && equipe === permInformarData.equipe));
   const hojeISO = hojeLocalISO();
   const podeEditarValidade = isAdministradorSistema(user);
   // Certificações que o administrador pode escolher ao vincular um arquivo (Nº padrão, prazos e cadastradas).
@@ -1101,7 +1111,7 @@ export function Certificacoes() {
                 arquivosDrive={arquivosDrivePorPessoa.get(b.id) ?? []} configDrive={semDrive ? configSemDrive : configDrive} hojeISO={hojeISO}
                 semDrive={semDrive}
                 afastadoInss={afastadosInss.has(b.id)}
-                onAbrirDrive={(doc, pessoaNome) => setDocAberto({ doc, pessoaNome })}
+                onAbrirDrive={(doc, pessoaNome, equipe) => setDocAberto({ doc, pessoaNome, equipe })}
               />
               {canManageCertificacoes && formNR === b.id && (
                 <div className="mt-2 overflow-hidden rounded-2xl border border-aviation-200 bg-white shadow-lg dark:border-aviation-700 dark:bg-surface-card">
@@ -1134,7 +1144,7 @@ export function Certificacoes() {
 
       {docAberto && <VisualizadorDocumento doc={docAberto.doc} pessoaNome={docAberto.pessoaNome} onClose={() => setDocAberto(null)}
         carregar={driveEstado === 'drive' ? (arquivo => abrirArquivoDrive(arquivo.id)) : undefined}
-        onInformarData={driveEstado === 'drive' && canManageCertificacoes ? async (arquivo, data) => {
+        onInformarData={driveEstado === 'drive' && podeInformarData(docAberto.equipe) ? async (arquivo, data) => {
           await informarDataDrive(arquivo.id, data);
           setDocAberto(null);
           await carregarDrive();

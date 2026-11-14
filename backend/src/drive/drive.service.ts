@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuthUser, isAdmin } from '../auth/auth.types';
 import { DatabaseService } from '../database/database.service';
+import { chaveAcao } from '../permissoes/permissoes.padrao';
+import { PermissoesService } from '../permissoes/permissoes.service';
 import { acharCursos, acharTituloCurso, TAMANHO_TRECHO_CURSO } from './curso-pdf';
 import { acharDatas } from './datas-pdf';
 import { DriveApiService, ItemDrive, PASTA_MIME } from './drive-api.service';
@@ -138,6 +140,7 @@ export class DriveService {
   constructor(
     private readonly api: DriveApiService,
     private readonly database: DatabaseService,
+    private readonly permissoes: PermissoesService,
   ) {}
 
   /* ───────── Quem pode ver ───────── */
@@ -293,11 +296,22 @@ export class DriveService {
 
   /** Data digitada por alguém (PDF sem texto ou data errada). null apaga. */
   async informarData(user: AuthUser | undefined, arquivoId: string, data: string | null) {
-    const escopo = await this.escopo(user);
-    if (!escopo.todas) throw new ForbiddenException('Somente Administradores e GS podem informar a data.');
+    await this.escopo(user);
     if (data !== null && !/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new BadRequestException('Data inválida.');
     const leitura = await this.ler(false);
-    if (!leitura.donoDoArquivo.has(arquivoId)) throw new NotFoundException('Arquivo não encontrado na pasta de documentos.');
+    const pastaDona = leitura.donoDoArquivo.get(arquivoId);
+    if (!pastaDona) throw new NotFoundException('Arquivo não encontrado na pasta de documentos.');
+    // Quem pode: tela Permissões → Certificações → "Informar data do curso" (Não / Própria equipe / Todas).
+    const minhas = await this.permissoes.minhas(user!);
+    const alcance = minhas.acoes[chaveAcao('certificacoes', 'informar_data')] ?? 'nao';
+    if (alcance === 'nao') throw new ForbiddenException('Sem permissão para informar a data (tela Permissões).');
+    if (alcance === 'equipe') {
+      const { ligados } = await this.vincular(leitura.pessoas);
+      const dono = ligados.find(l => l.pessoa.pastaId === pastaDona);
+      if (!dono || !minhas.equipe || dono.bombeiro.equipe !== minhas.equipe) {
+        throw new ForbiddenException('Só é possível informar a data de documentos da própria equipe.');
+      }
+    }
     await this.carregarDatas();
     await this.database.query(
       `INSERT INTO drive_datas (arquivo_id, data_informada, informada_por) VALUES ($1, $2, $3)

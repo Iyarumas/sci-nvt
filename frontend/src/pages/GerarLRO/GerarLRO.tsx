@@ -19,6 +19,7 @@ import type { EscalaMensalCompleta, EscalaMensalConfig } from '../../types/escal
 import { listarAPOCs } from '../../services/apocService';
 import { obterInicioPlantao } from '../../services/inicioPlantaoService';
 import { obterFimPlantao } from '../../services/fimPlantaoService';
+import { MINUTOS_ANTES_DO_PLANTAO } from '../../utils/plantaoRegistros';
 import { listarConferencias } from '../../services/conferenciaService';
 import { atualizarOcorrencia, listarOcorrencias } from '../../services/ocorrenciaService';
 import { listarReas } from '../../services/reaService';
@@ -1303,6 +1304,12 @@ export function GerarLRO() {
 
     const horario = horarioPlantaoPorEquipe(equipeAlvo);
     const dataFimResolvida = dataFimAlvo || dataSaidaPlantao(equipeAlvo, dataInicioAlvo);
+    // Lançado até 30 min antes do início (a equipe assumiu antes): conta neste plantão.
+    if (data === dataInicioAlvo && hora && hora < horario.horarioInicio) {
+      const [h, m] = horario.horarioInicio.split(':').map(Number);
+      const [hr, mr] = hora.split(':').map(Number);
+      if (h * 60 + m - (hr * 60 + mr) <= MINUTOS_ANTES_DO_PLANTAO) return true;
+    }
 
     if (horario.turno === 'Noturno') {
       if (data === dataInicioAlvo && (!hora || hora >= horario.horarioInicio)) return true;

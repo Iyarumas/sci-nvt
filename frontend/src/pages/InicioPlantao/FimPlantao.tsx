@@ -22,9 +22,10 @@ import {
   type ItemChecklistPlantao,
   type MovimentacaoPlantao,
   type SaidaViatura,
-  type TesteSirene,
 } from '../../types/fimPlantao';
 import type { ViaturaPlantao } from '../../types/inicioPlantao';
+import { lancarTestesPendentesComoNaoHouve, TITULO_TESTE_SIRENE } from '../../utils/testesSirene';
+import { TestesSirene } from './TestesSirene';
 import type { EscalaMensalCompleta } from '../../types/escalaMensal';
 import { hojeLocalISO, mesmoDiaISO } from '../../utils/datas';
 import {
@@ -54,7 +55,6 @@ const label = 'mb-1 block text-xs font-semibold text-graphite-600 dark:text-grap
 const botaoAdicionar = 'mt-3 flex min-h-11 items-center gap-2 rounded-xl border border-dashed border-aviation-400/60 px-4 py-2.5 sm:min-h-0 sm:py-2 text-sm font-semibold text-aviation-700 transition-colors hover:bg-aviation-50 dark:text-aviation-300 dark:hover:bg-aviation-900/20';
 const botaoRemover = 'shrink-0 rounded-lg p-3 sm:p-2 text-graphite-400 transition-colors hover:bg-red-500/10 hover:text-alert-red';
 
-const SIRENE_VAZIA: TesteSirene = { hora: '', naoHouve: false };
 
 /** Viaturas para escolher nas saídas (quando ainda não há início de plantão salvo). */
 const VIATURAS_PADRAO: Array<Pick<ViaturaPlantao, 'chave' | 'posicao' | 'numero'>> = [
@@ -140,34 +140,26 @@ function SeletorRadio({ rotulo, valor, pessoas, onChange }: {
   );
 }
 
-/** Teste de sirene: hora, ou "Não houve" (aí não precisa da hora). */
-function LinhaSirene({ titulo, quando, valor, onChange }: {
-  titulo: string; quando: string; valor: TesteSirene; onChange: (v: TesteSirene) => void;
-}) {
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2 border-t border-graphite-100 py-2 first:border-t-0 dark:border-border-dark">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-graphite-900 dark:text-graphite-100">{titulo}</p>
-        <p className="text-xs text-graphite-500 dark:text-graphite-400">{quando}</p>
-      </div>
-      <input type="time" aria-label={`Hora do ${titulo}`} value={valor.naoHouve ? '' : valor.hora} disabled={valor.naoHouve}
-        onChange={e => onChange({ hora: e.target.value, naoHouve: false })} className={`${input} disabled:opacity-50`} />
-      <button type="button" aria-pressed={valor.naoHouve} onClick={() => onChange({ hora: '', naoHouve: !valor.naoHouve })}
-        className={`flex min-h-11 items-center gap-1.5 rounded-xl border px-3 text-sm font-semibold transition-colors sm:min-h-0 sm:py-2 ${valor.naoHouve
-          ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300'
-          : 'border-graphite-300/60 text-graphite-600 hover:bg-graphite-50 dark:border-border-dark dark:text-graphite-300 dark:hover:bg-surface-hover'}`}>
-        <X className="h-4 w-4" /> Não houve
-      </button>
-    </div>
-  );
+/**
+ * Ordem do plantão (noite e depois madrugada). Teste de sirene sem hora ("Não houve"): o do APOC abre a lista
+ * e o da TWR fecha — são o primeiro e o último do plantão.
+ */
+function ordenarMovimentacoes(lista: Array<{ hora: string; descricao: string }>, equipe: string): MovimentacaoPlantao[] {
+  const peso = (m: { hora: string; descricao: string }) => {
+    if (!m.hora && m.descricao.startsWith(TITULO_TESTE_SIRENE.apoc)) return -10_000;
+    if (!m.hora && m.descricao.startsWith(TITULO_TESTE_SIRENE.twr)) return 10_000_000;
+    return ordemNoPlantao(m.hora, equipe);
+  };
+  return lista
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => peso(a.m) - peso(b.m) || a.i - b.i)
+    .map(({ m }) => ({ hora: m.hora, descricao: m.descricao }));
 }
 
 function vazio(): DadosFimPlantao {
   return {
     checklist: CHECKLIST_PADRAO.map(item => ({ ...item })),
     radio: [],
-    sireneApoc: { ...SIRENE_VAZIA },
-    sireneTorre: { ...SIRENE_VAZIA },
     movimentacoes: [],
     despedida: DESPEDIDA_PADRAO,
   };
@@ -294,27 +286,10 @@ export default function FimPlantao() {
   }, [data, equipe, recarregar]);
 
   /** Lançadas nas telas + digitadas aqui, da noite para a madrugada. */
-  const movimentacoesOrdenadas = useMemo(() => {
-    // Se o teste já foi lançado como ocorrência/movimentação, não repete na mensagem.
-    const jaLancado = (quem: RegExp) => [...automaticas, ...dados.movimentacoes]
-      .some(m => /sirene/i.test(m.descricao) && quem.test(m.descricao));
-    const apoc = jaLancado(/apoc/i) ? SIRENE_VAZIA : (dados.sireneApoc ?? SIRENE_VAZIA);
-    const torre = jaLancado(/torre|twr/i) ? SIRENE_VAZIA : (dados.sireneTorre ?? SIRENE_VAZIA);
-    const ordenadas = [
-      ...automaticas,
-      ...dados.movimentacoes.filter(m => m.descricao.trim()),
-      // Teste sirene do APOC com hora entra na ordem do plantão.
-      ...(apoc.hora && !apoc.naoHouve ? [{ hora: apoc.hora, descricao: 'Teste sirene APOC' }] : []),
-    ]
-      .map((m, i) => ({ m, i }))
-      .sort((a, b) => ordemNoPlantao(a.m.hora, equipe) - ordemNoPlantao(b.m.hora, equipe) || a.i - b.i)
-      .map(({ m }) => ({ hora: m.hora, descricao: m.descricao }));
-    // Não houve o do APOC: abre a lista. O da torre é no fim do plantão: fecha a lista.
-    if (apoc.naoHouve) ordenadas.unshift({ hora: '', descricao: 'Teste sirene APOC - Não houve ❌' });
-    if (torre.naoHouve) ordenadas.push({ hora: '', descricao: 'Teste sirene da torre - Não houve ❌' });
-    else if (torre.hora) ordenadas.push({ hora: torre.hora, descricao: 'Teste sirene da torre' });
-    return ordenadas;
-  }, [automaticas, dados.movimentacoes, dados.sireneApoc, dados.sireneTorre, equipe]);
+  const movimentacoesOrdenadas = useMemo(
+    () => ordenarMovimentacoes([...automaticas, ...dados.movimentacoes.filter(m => m.descricao.trim())], equipe),
+    [automaticas, dados.movimentacoes, equipe],
+  );
 
   const mensagem = useMemo(
     () => montarMensagemFimPlantao(data, equipe || '-', dados, movimentacoesOrdenadas),
@@ -333,7 +308,17 @@ export default function FimPlantao() {
     setSalvando(true);
     setErro('');
     try {
-      setSalvo(await salvarFimPlantao({ data, equipe, dados, mensagem }));
+      let mensagemFinal = mensagem;
+      const lancados = await lancarTestesPendentesComoNaoHouve(equipe, data, user?.username || '');
+      if (lancados.length) {
+        // Recalcula com os testes "Não houve" que acabaram de virar ocorrência.
+        const [ocorrencias, conferencias] = await Promise.all([listarOcorrencias(), listarConferencias().catch(() => [] as Conferencia[])]);
+        const novas = movimentacoesDoPlantao({ ocorrencias, conferencias, equipe, dataPlantao: data });
+        setAutomaticas(novas);
+        mensagemFinal = montarMensagemFimPlantao(data, equipe, dados,
+          ordenarMovimentacoes([...novas, ...dados.movimentacoes.filter(m => m.descricao.trim())], equipe));
+      }
+      setSalvo(await salvarFimPlantao({ data, equipe, dados, mensagem: mensagemFinal }));
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Não foi possível salvar.');
     } finally {
@@ -442,14 +427,10 @@ export default function FimPlantao() {
               )}
             </section>
 
-            <section className={card}>
-              <h2 className={tituloCard}>Testes de sirene</h2>
-              <LinhaSirene titulo="Teste sirene APOC" quando="Início do plantão" valor={dados.sireneApoc ?? SIRENE_VAZIA}
-                onChange={v => setDados(a => ({ ...a, sireneApoc: v }))} />
-              <LinhaSirene titulo="Teste sirene da torre" quando="Fim do plantão" valor={dados.sireneTorre ?? SIRENE_VAZIA}
-                onChange={v => setDados(a => ({ ...a, sireneTorre: v }))} />
-              <p className="mt-2 text-xs text-graphite-500 dark:text-graphite-400">Com "Não houve" marcado, não precisa da hora. Os dois testes entram nas movimentações.</p>
-            </section>
+            {equipe && data && (
+              <TestesSirene key={`${equipe}-${data}-${recarregar}`} equipe={equipe} dataPlantao={data} usuario={user?.username || ''}
+                somentePendentes onMudou={() => setRecarregar(v => v + 1)} />
+            )}
 
             <section className={card}>
               <h2 className={tituloCard}>Saídas de viaturas</h2>

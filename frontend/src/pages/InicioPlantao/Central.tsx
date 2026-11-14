@@ -11,6 +11,7 @@ import type { Conferencia } from '../../types/conferencia';
 import type { Ocorrencia } from '../../types/ocorrencia';
 import { horarioPlantaoPorEquipe } from '../../utils/equipes';
 import { dataDoPlantaoAtual, movimentacoesDoPlantao } from '../../utils/plantaoRegistros';
+import { TestesSirene } from './TestesSirene';
 
 interface Situacao {
   inicio: { por: string; em: string } | null;
@@ -127,6 +128,12 @@ export default function Central() {
           </Link>
         </li>
       </ol>
+
+      {equipe && dataPlantao && (
+        <div className="mt-4">
+          <TestesSirene equipe={equipe} dataPlantao={dataPlantao} usuario={user?.username || ''} />
+        </div>
+      )}
     </PageContainer>
   );
 }

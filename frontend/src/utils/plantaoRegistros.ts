@@ -30,6 +30,7 @@ export function registroNoPlantao(params: {
   const hora = horaCurta(params.hora);
   if (!data) return false;
   const horario = horarioPlantaoPorEquipe(equipe);
+  if (data === dataPlantao && hora && hora < horario.horarioInicio && hora >= menosMinutos(horario.horarioInicio, MINUTOS_ANTES_DO_PLANTAO)) return true;
   if (horario.turno === 'Noturno') {
     if (data === dataPlantao && (!hora || hora >= horario.horarioInicio)) return true;
     return data === dataSaidaPlantao(equipe, dataPlantao) && (!hora || hora < horario.horarioTermino);
@@ -44,7 +45,19 @@ export function ordemNoPlantao(hora: string, equipe: string): number {
   if (!m) return Number.MAX_SAFE_INTEGER;
   const [hi, mi] = horarioPlantaoPorEquipe(equipe).horarioInicio.split(':').map(Number);
   const minutos = Number(m[1]) * 60 + Number(m[2]);
-  return (minutos - (hi * 60 + mi) + 1440) % 1440;
+  const diferenca = minutos - (hi * 60 + mi);
+  // Lançado até 30 min antes do início (a equipe assumiu antes): é o começo deste plantão, não o fim.
+  if (diferenca < 0 && diferenca >= -MINUTOS_ANTES_DO_PLANTAO) return diferenca;
+  return (diferenca + 1440) % 1440;
+}
+
+/** Quanto antes do horário a equipe pode assumir e já lançar registros do plantão dela. */
+export const MINUTOS_ANTES_DO_PLANTAO = 30;
+
+function menosMinutos(hora: string, minutos: number): string {
+  const [h, m] = hora.split(':').map(Number);
+  const total = Math.max(0, h * 60 + m - minutos);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function normalizar(texto: string): string {

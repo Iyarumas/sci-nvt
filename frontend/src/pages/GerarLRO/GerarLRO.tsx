@@ -19,7 +19,7 @@ import type { EscalaMensalCompleta, EscalaMensalConfig } from '../../types/escal
 import { listarAPOCs } from '../../services/apocService';
 import { obterInicioPlantao } from '../../services/inicioPlantaoService';
 import { obterFimPlantao } from '../../services/fimPlantaoService';
-import { dataTurnoCorrigida, frotaFinalDaCentral, MINUTOS_ANTES_DO_PLANTAO } from '../../utils/plantaoRegistros';
+import { dataTurnoCorrigida, frotaFinalDaCentral, MINUTOS_ANTES_DO_PLANTAO, ordemNoPlantao } from '../../utils/plantaoRegistros';
 import { ehTesteSireneNaoFeito } from '../../utils/testesSirene';
 import { listarConferencias } from '../../services/conferenciaService';
 import { atualizarOcorrencia, listarOcorrencias } from '../../services/ocorrenciaService';
@@ -1358,6 +1358,61 @@ export function GerarLRO() {
       registroNoPlantaoAlvo(registro.data, registro.hora, registro.equipe, equipeAlvo, dataInicioAlvo, dataFimAlvo, registro.local);
   }
 
+  /** Linha salva "HH:MM - Título\nDescrição" que é um teste de sirene não feito. */
+  function linhaEhTesteNaoFeito(linha: string): boolean {
+    const [cabecalho, ...resto] = String(linha || '').split('\n');
+    const titulo = cabecalho.replace(/^\s*\d{1,2}:\d{2}\s*-\s*/, '');
+    return ehTesteSireneNaoFeito({ titulo, descricao: resto.join(' ') });
+  }
+
+  /**
+   * Seção XII de um LRO SALVO, conferida com as ocorrências do plantão como estão agora. O LRO salvo é uma
+   * foto da hora em que foi salvo: o que a Central lançou depois ficava de fora (Delta 15/11/2026, salvo
+   * às 20:09 e com as alterações lançadas das 20:32 em diante). Mantém o que já estava (inclusive texto
+   * digitado à mão), tira o teste de sirene não feito e acrescenta, na ordem do plantão, o que falta.
+   */
+  function ocorrenciasXIIAtualizadas(
+    dados: Record<string, unknown>,
+    equipeDraft: string,
+    dataPlantaoDraft: string,
+    ocorrencias: Ocorrencia[],
+  ): { linhas: string[]; ids: string[]; novas: number; removidas: number } {
+    const equipeAlvo = String(dados.equipeNome || equipeDraft || '');
+    const dataInicioAlvo = String(dados.dataInicio || dataPlantaoDraft || '');
+    const dataFimAlvo = String(dados.dataFim || dataSaidaPlantao(equipeAlvo, dataInicioAlvo));
+    const salvas = (Array.isArray(dados.ocorrenciasXII)
+      ? (dados.ocorrenciasXII as unknown[]).map(x => String(x ?? ''))
+      : dividirEmLancamentos(String(dados.ocorrenciasXII || ''))
+    ).filter(l => l.trim());
+    const mantidas = salvas.filter(l => !linhaEhTesteNaoFeito(l));
+    const textoMantido = textoInline(mantidas.join('\n\n'));
+    const incluidas = equipeAlvo && dataInicioAlvo
+      ? ocorrencias.filter(o => ocorrenciaEntraNoLRO(o, equipeAlvo, dataInicioAlvo, dataFimAlvo))
+      : [];
+    const comLinha = incluidas
+      .map(o => ({ o, linha: linhaLXII(o.hora, o.titulo || o.categoria || 'Ocorrência', o.descricao) }))
+      .filter(x => x.linha);
+    const novas = comLinha.filter(x => !textoMantido.includes(textoInline(x.linha))).map(x => x.linha);
+    const ordem = (l: string) => {
+      const m = l.match(/^\s*(\d{1,2}):(\d{2})/);
+      return m ? ordemNoPlantao(`${m[1].padStart(2, '0')}:${m[2]}`, equipeAlvo) : Number.MAX_SAFE_INTEGER;
+    };
+    const linhas = [...mantidas, ...novas]
+      .map((l, i) => ({ l, i }))
+      .sort((a, b) => ordem(a.l) - ordem(b.l) || a.i - b.i)
+      .map(x => x.l);
+    const textoFinal = textoInline(linhas.join('\n\n'));
+    const idsIncluidas = new Set(incluidas.map(o => o.id));
+    const idsSalvos = Array.isArray(dados._ocorrenciasOperacionaisIds)
+      ? (dados._ocorrenciasOperacionaisIds as unknown[]).filter((id): id is string => typeof id === 'string' && idsIncluidas.has(id))
+      : [];
+    const ids = Array.from(new Set([
+      ...idsSalvos,
+      ...comLinha.filter(x => textoFinal.includes(textoInline(x.linha))).map(x => x.o.id),
+    ]));
+    return { linhas, ids, novas: novas.length, removidas: salvas.length - mantidas.length };
+  }
+
   const solicitacoesAutomaticas = useMemo(() => {
     return conferencias
       .filter(registro =>
@@ -2264,6 +2319,8 @@ export function GerarLRO() {
     setDraftId(draft.id);
     setDraftEmEdicaoStatus(draft.status);
     setFrotaCentralVersao(v => v + 1);
+    // Rascunho salvo cedo: busca as ocorrências de agora para a XII trazer o que foi lançado depois.
+    listarOcorrencias().then(setOcorrenciasOperacionais).catch(() => undefined);
     setStep('preencher');
     setEquipe((dd.equipeNome || draft.equipe || 'Alfa') as EquipeOpcao);
     setDataInicio(dd.dataInicio || draft.data_plantao || hojeLocalISO());
@@ -2546,7 +2603,16 @@ export function GerarLRO() {
     setEnviandoLro(true);
     setErroEnvioLro(null);
     try {
-      const salvos = (draft.dados as Record<string, unknown>) || {};
+      const salvosAntes = (draft.dados as Record<string, unknown>) || {};
+      // O rascunho pode ter sido salvo no começo do plantão: confere a XII com as ocorrências de agora
+      // e grava o rascunho atualizado antes de gerar o PDF.
+      const atuais = await listarOcorrencias().catch(() => ocorrenciasOperacionais);
+      setOcorrenciasOperacionais(atuais);
+      const xii = ocorrenciasXIIAtualizadas(salvosAntes, draft.equipe, draft.data_plantao, atuais);
+      const salvos: Record<string, unknown> = { ...salvosAntes, ocorrenciasXII: xii.linhas, _ocorrenciasOperacionaisIds: xii.ids };
+      const draftEnviado = xii.novas || xii.removidas
+        ? await salvarDraft(salvos, draft.equipe, draft.data_plantao, username, draft.id)
+        : draft;
       // Nome impresso embaixo das linhas = quem vai assinar (ex.: o substituto do gerente nas férias dele).
       const gerenteDoDia = previaEnvioLro?.find(p => p.funcoes.includes('Gerente'))?.nome;
       const chefeDoDia = previaEnvioLro?.find(p => p.funcoes.includes('Chefe de equipe'))?.nome;
@@ -2560,7 +2626,7 @@ export function GerarLRO() {
         String(dados.dataInicio || draft.data_plantao || ''), 'LRO', String(dados.equipeNome || draft.equipe || ''),
       );
       await enviarParaAssinatura({ tipo: 'lro', referenciaId: draft.id, pdf: blob, nomeArquivo, linhasAssinatura: assinaturas });
-      await fecharOcorrenciasIncluidasNoDraft(draft).catch(() => 0);
+      await fecharOcorrenciasIncluidasNoDraft(draftEnviado).catch(() => 0);
       setEnvioLroDraft(null);
       await recarregarLrosEEnvios();
     } catch (err) {
@@ -2884,7 +2950,16 @@ export function GerarLRO() {
                       {lroTextCard('Ocorrências/BONA', dd.ocorrenciasNA)}
                       {lroTextCard('REA', dd.emergenciaXI)}
                       {lroTextCard('Inspeções', dd.inspecoes)}
-                      {lroTextCard('Outras Ocorrências', dd.ocorrenciasXII)}
+                      {(() => {
+                        // Rascunho: mostra a XII como vai sair ao enviar (com o que foi lançado depois de salvo).
+                        if (d.status !== 'rascunho') return lroTextCard('Outras Ocorrências', dd.ocorrenciasXII);
+                        const xii = ocorrenciasXIIAtualizadas(dd, d.equipe, d.data_plantao, ocorrenciasOperacionais);
+                        const aviso = [
+                          xii.novas ? `${xii.novas} lançada(s) depois que o LRO foi salvo` : '',
+                          xii.removidas ? `${xii.removidas} teste(s) de sirene não feito(s) retirado(s)` : '',
+                        ].filter(Boolean).join(' · ');
+                        return lroTextCard(aviso ? `Outras Ocorrências — ${aviso}; entram ao enviar` : 'Outras Ocorrências', xii.linhas);
+                      })()}
                       {lroTextCard('Solicitações ASUR', dd.solicitacoes)}
                       {lroTextCard('Trocas Manuais', formatarTrocasDraft(dd._trocasManuais))}
                       {lroTextCard('Substituições', formatarSubstituicoesDraft(dd._substituicoesDetectadas))}

@@ -14,7 +14,7 @@ import type { Ocorrencia } from '../../types/ocorrencia';
 import type { Bombeiro } from '../../types/bombeiro';
 import { formatarDataBR, hojeLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
-import { dataDoPlantaoAtual, registroNoPlantao } from '../../utils/plantaoRegistros';
+import { dataDoPlantaoAtual, dataPlantaoDoRegistro, dataTurnoCorrigida, registroNoPlantao } from '../../utils/plantaoRegistros';
 import { montarPessoasAuditoria, resumoAuditoria } from '../../utils/auditoria';
 import type { PessoaAuditoria } from '../../utils/auditoria';
 import {
@@ -106,20 +106,39 @@ function OcorrenciaForm({
   onSave: (data: Omit<Ocorrencia, 'id' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy'>) => void;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState(ocorrencia ? {
-    tipoDocumento: ocorrencia.tipoDocumento, numero: ocorrencia.numero,
-    data: ocorrencia.data, hora: ocorrencia.hora, equipe: ocorrencia.equipe,
-    turno: ocorrencia.turno, categoria: ocorrencia.categoria, titulo: ocorrencia.titulo,
-    descricao: ocorrencia.descricao, local: ocorrencia.local || ocorrencia.data, envolvidos: ocorrencia.envolvidos,
-    acoesTomadas: ocorrencia.acoesTomadas, status: ocorrencia.status, fotos: ocorrencia.fotos,
-  } : { ...emptyOcorrencia(), equipe: userEquipe });
+  const [form, setForm] = useState(() => {
+    if (ocorrencia) {
+      return {
+        tipoDocumento: ocorrencia.tipoDocumento, numero: ocorrencia.numero,
+        data: ocorrencia.data, hora: ocorrencia.hora, equipe: ocorrencia.equipe,
+        turno: ocorrencia.turno, categoria: ocorrencia.categoria, titulo: ocorrencia.titulo,
+        descricao: ocorrencia.descricao,
+        local: dataTurnoCorrigida(ocorrencia.equipe, ocorrencia.data, ocorrencia.hora, ocorrencia.local)
+          || dataPlantaoDoRegistro(ocorrencia.equipe, ocorrencia.data, ocorrencia.hora) || ocorrencia.data,
+        envolvidos: ocorrencia.envolvidos,
+        acoesTomadas: ocorrencia.acoesTomadas, status: ocorrencia.status, fotos: ocorrencia.fotos,
+      };
+    }
+    const nova = { ...emptyOcorrencia(), equipe: userEquipe };
+    return { ...nova, local: dataPlantaoDoRegistro(userEquipe, nova.data, nova.hora) || nova.data };
+  });
+  /**
+   * A data do turno acompanha data, hora e equipe (na equipe da noite, de madrugada é o plantão da véspera)
+   * até a pessoa mudar o campo à mão. Ao editar, o que foi gravado é mantido.
+   */
+  const [turnoManual, setTurnoManual] = useState(!!ocorrencia);
+  useEffect(() => {
+    if (turnoManual) return;
+    const turno = dataPlantaoDoRegistro(form.equipe, form.data, form.hora);
+    if (turno && turno !== form.local) setForm(f => ({ ...f, local: turno }));
+  }, [turnoManual, form.equipe, form.data, form.hora, form.local]);
 
   const input = 'w-full rounded-xl border border-graphite-300/70 bg-white/70 px-3 py-2.5 text-sm backdrop-blur-sm transition-all duration-200 hover:border-graphite-300/70 focus:border-aviation-500/50 focus:bg-white focus:ring-2 focus:ring-aviation-500/10 dark:border-border-dark dark:bg-surface-card dark:text-graphite-100 dark:hover:border-graphite-500 dark:focus:border-aviation-400/50 dark:focus:bg-surface-elevated dark:focus:ring-aviation-400/10 dark:placeholder:text-graphite-500 dark:scheme-dark';
   const select = input;
   const label = 'block mb-1.5 text-xs font-semibold uppercase tracking-wider text-graphite-500 dark:text-graphite-400';
 
   function handleDataChange(value: string) {
-    setForm(f => ({ ...f, data: value, local: f.local === f.data ? value : f.local }));
+    setForm(f => ({ ...f, data: value }));
   }
 
   return (
@@ -138,7 +157,7 @@ function OcorrenciaForm({
             </div>
             <div>
               <label className={label}>Data do Turno *</label>
-              <input type="date" value={form.local} onChange={e => setForm(f => ({ ...f, local: e.target.value }))} className={input} />
+              <input type="date" value={form.local} onChange={e => { setTurnoManual(true); setForm(f => ({ ...f, local: e.target.value })); }} className={input} />
             </div>
             <div>
               <label className={label}>Hora *</label>
@@ -198,7 +217,7 @@ function OcorrenciaView({ ocorrencia, onBack }: { ocorrencia: Ocorrencia; onBack
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div><p className={label}>Equipe</p><p className={value}>{ocorrencia.equipe}</p></div>
-        <div><p className={label}>Data do Turno</p><p className={value}>{formatarDataBR(ocorrencia.local)}</p></div>
+        <div><p className={label}>Data do Turno</p><p className={value}>{formatarDataBR(dataTurnoCorrigida(ocorrencia.equipe, ocorrencia.data, ocorrencia.hora, ocorrencia.local) || ocorrencia.local)}</p></div>
         <div><p className={label}>Tipo</p><p className={value}>{ocorrencia.titulo || '—'}</p></div>
       </div>
 
@@ -244,7 +263,7 @@ function OcorrenciaCard({
             <span>{formatarDataBR(o.data)}</span>
             {o.hora && <span>às {o.hora}</span>}
             <span>Equipe {o.equipe}</span>
-            {o.local && <span>· Turno {formatarDataBR(o.local)}</span>}
+            {o.local && <span>· Turno {formatarDataBR(dataTurnoCorrigida(o.equipe, o.data, o.hora, o.local) || o.local)}</span>}
           </div>
           <p className="mt-1 text-xs text-graphite-500 dark:text-graphite-400">{auditoria}</p>
         </div>

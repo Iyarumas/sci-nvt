@@ -45,6 +45,22 @@ export function acharTesteSirene(ocorrencias: Ocorrencia[], tipo: TipoTesteSiren
     ?? null;
 }
 
+/**
+ * Teste de sirene que NÃO foi feito: o "Não houve" do cartão da Central, ou uma ocorrência lançada à mão
+ * que fala de teste de sirene e diz que não houve / não foi feito / não foi realizado. Fica registrado na
+ * Central e no fim de plantão, mas não vai para o LRO.
+ */
+export function ehTesteSireneNaoFeito(o: Pick<Ocorrencia, 'titulo' | 'descricao'>): boolean {
+  const titulo = (o.titulo || '').trim();
+  const descricao = (o.descricao || '').trim();
+  const doCartao = (Object.values(TITULO_TESTE_SIRENE) as string[]).some(t => igual(titulo, t));
+  if (doCartao && igual(descricao, NAO_HOUVE)) return true;
+  const texto = `${titulo} ${descricao}`.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (!/\bteste/i.test(texto) || !/siren/i.test(texto)) return false;
+  // "não houve alteração" é teste feito, sem problema: não conta.
+  return /\bnao\s+(houve\b(?!\s+(alteracao|alteracoes|problema|falha))|foi\s+(feito|realizado|efetuado)\b|(feito|realizado|efetuado)\b)|\bsem\s+teste\b/i.test(texto);
+}
+
 export function estadoTesteSirene(ocorrencias: Ocorrencia[], tipo: TipoTesteSirene, equipe: string, dataPlantao: string): EstadoTesteSirene {
   const ocorrencia = acharTesteSirene(ocorrencias, tipo, equipe, dataPlantao);
   const naoHouve = !!ocorrencia && igual(ocorrencia.descricao || '', NAO_HOUVE);

@@ -19,7 +19,8 @@ import type { EscalaMensalCompleta, EscalaMensalConfig } from '../../types/escal
 import { listarAPOCs } from '../../services/apocService';
 import { obterInicioPlantao } from '../../services/inicioPlantaoService';
 import { obterFimPlantao } from '../../services/fimPlantaoService';
-import { MINUTOS_ANTES_DO_PLANTAO } from '../../utils/plantaoRegistros';
+import { dataTurnoCorrigida, frotaFinalDaCentral, MINUTOS_ANTES_DO_PLANTAO } from '../../utils/plantaoRegistros';
+import { ehTesteSireneNaoFeito } from '../../utils/testesSirene';
 import { listarConferencias } from '../../services/conferenciaService';
 import { atualizarOcorrencia, listarOcorrencias } from '../../services/ocorrenciaService';
 import { listarReas } from '../../services/reaService';
@@ -661,11 +662,16 @@ export function GerarLRO() {
 
   /**
    * Frota (III) a partir da Central: km e combustível INICIAIS do início de plantão; FINAIS da última saída
-   * lançada no fim de plantão (sem saída, repete o início). Só preenche o que ainda está vazio no LRO.
+   * lançada no fim de plantão. Sem saída daquela viatura, os finais são IGUAIS aos iniciais.
+   * Com o início de plantão salvo, a Central manda nesses quatro campos (inclusive em rascunho já salvo ou
+   * LRO clonado, que traria o km de outro dia); LRO enviado/assinado/finalizado não é mexido.
    * Linhas: 0 = Faísca 02, 1 = Faísca 03, 2 = Faísca RT, 3 = CRS (no CRS o km do tacógrafo).
    */
+  /** Sobe ao abrir um LRO salvo: a frota volta a ser conferida com a Central mesmo sem trocar equipe/data. */
+  const [frotaCentralVersao, setFrotaCentralVersao] = useState(0);
   useEffect(() => {
     if (!equipe || !dataInicio || !viaturas.length) return;
+    const lroTravado = !!draftEmEdicaoStatus && draftEmEdicaoStatus !== 'rascunho';
     let ativo = true;
     Promise.all([
       obterInicioPlantao(dataInicio, equipe).catch(() => null),
@@ -679,32 +685,49 @@ export function GerarLRO() {
         CHAVES.forEach((chave, rowIdx) => {
           const v = inicio.dados.viaturas.find(x => x.chave === chave);
           if (!v) return;
-          const ultima = [...saidas].reverse().find(s => s.chave === chave);
           const atual = novo[`row_${rowIdx}`] || ({} as Partial<FrotaLinhaDados>);
           const cadastro = chave === 'crs'
             ? viaturas.find((vv: any) => /CRS/i.test(String(vv.prefixo || vv.nome || '')))
             : v.numero ? viaturas.find((vv: any) => String(vv.prefixo || vv.nome || '').includes(v.numero)) : undefined;
-          // CRS: o km do LRO é o do tacógrafo (TAC); sem ele, o do painel.
-          const kmIni = String((chave === 'crs' ? v.tac || v.km : v.km) || '').trim();
-          const combIni = normalizarPercentualCombustivel(String(v.combustivel || ''));
-          novo[`row_${rowIdx}`] = {
+          const central = frotaFinalDaCentral(chave, v, saidas);
+          const { kmIni, kmFim } = central;
+          const combIni = normalizarPercentualCombustivel(central.combIni);
+          const combFim = normalizarPercentualCombustivel(central.combFim);
+          const base = {
             ...EMPTY_FROTA_LINHA,
             ...atual,
             prefixo: atual.prefixo || ['F2 X6', 'F3 X6', 'FRT X6', ''][rowIdx] || '',
             viaturaId: atual.viaturaId || cadastro?.id || '',
-            kmIni: atual.kmIni || kmIni,
-            combIni: atual.combIni || combIni,
-            kmFim: atual.kmFim || String((chave === 'crs' ? ultima?.tac || ultima?.km : ultima?.km) || '').trim() || kmIni,
-            combFim: atual.combFim || normalizarPercentualCombustivel(String(ultima?.combustivel || '')) || combIni,
             nitrogenio: atual.nitrogenio || (chave === 'crs' ? '' : String(v.n2 || '').trim()),
           } as FrotaLinhaDados;
+          if (lroTravado) {
+            // LRO já enviado: só completa o que estiver vazio.
+            novo[`row_${rowIdx}`] = {
+              ...base,
+              kmIni: atual.kmIni || kmIni,
+              combIni: atual.combIni || combIni,
+              kmFim: atual.kmFim || kmFim,
+              combFim: atual.combFim || combFim,
+            };
+            return;
+          }
+          // Campo que a Central não tem (ex.: km em branco no início de plantão) fica como estava no LRO.
+          const ini = kmIni || atual.kmIni || '';
+          const cIni = combIni || atual.combIni || '';
+          novo[`row_${rowIdx}`] = {
+            ...base,
+            kmIni: ini,
+            combIni: cIni,
+            kmFim: kmFim || ini,
+            combFim: combFim || cIni,
+          };
         });
         return novo;
       });
     });
     return () => { ativo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [equipe, dataInicio, viaturas]);
+  }, [equipe, dataInicio, viaturas, frotaCentralVersao]);
   const [dataFim, setDataFim] = useState('');
   const [trocaDocId, setTrocaDocId] = useState<string | null>(null);
   const [houveTrocas, setHouveTrocas] = useState<'sim' | 'nao' | null>(null);
@@ -1254,8 +1277,9 @@ export function GerarLRO() {
 
   function linhaLXII(hora: string, tipo: string, descricao: string): string {
     const descricaoLimpa = textoInline(descricao);
-    if (!descricaoLimpa) return '';
     const cabecalho = [horaCurta(hora), textoInline(tipo)].filter(Boolean).join(' - ');
+    // Sem descrição, o título basta (ex.: "06:40 - Teste sirene TWR", lançado pelo cartão da Central).
+    if (!descricaoLimpa) return textoInline(tipo) ? cabecalho : '';
     return cabecalho ? `${cabecalho}\n${descricaoLimpa}` : descricaoLimpa;
   }
 
@@ -1295,7 +1319,8 @@ export function GerarLRO() {
     dataTurno?: string,
   ): boolean {
     if (!equipeAlvo || !dataInicioAlvo || equipeRegistro !== equipeAlvo) return false;
-    const turnoInformado = dataISO(dataTurno);
+    // Corrige o turno gravado errado de madrugada na equipe da noite (ver dataTurnoCorrigida).
+    const turnoInformado = dataTurnoCorrigida(equipeAlvo, dataRegistro, horaRegistro, dataTurno);
     if (turnoInformado) return turnoInformado === dataInicioAlvo;
 
     const data = dataISO(dataRegistro);
@@ -1327,7 +1352,9 @@ export function GerarLRO() {
   }
 
   function ocorrenciaEntraNoLRO(registro: Ocorrencia, equipeAlvo: string, dataInicioAlvo: string, dataFimAlvo?: string): boolean {
+    // Teste de sirene que não foi feito ("Não houve") fica só na Central: não vai para o LRO.
     return !registro.numero?.trim() &&
+      !ehTesteSireneNaoFeito(registro) &&
       registroNoPlantaoAlvo(registro.data, registro.hora, registro.equipe, equipeAlvo, dataInicioAlvo, dataFimAlvo, registro.local);
   }
 
@@ -2236,6 +2263,7 @@ export function GerarLRO() {
     const dd = draft.dados as Record<string, any> || {};
     setDraftId(draft.id);
     setDraftEmEdicaoStatus(draft.status);
+    setFrotaCentralVersao(v => v + 1);
     setStep('preencher');
     setEquipe((dd.equipeNome || draft.equipe || 'Alfa') as EquipeOpcao);
     setDataInicio(dd.dataInicio || draft.data_plantao || hojeLocalISO());

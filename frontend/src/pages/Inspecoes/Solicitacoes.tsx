@@ -10,7 +10,7 @@ import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
-import { dataDoPlantaoAtual, registroNoPlantao } from '../../utils/plantaoRegistros';
+import { dataDoPlantaoAtual, dataPlantaoDoRegistro, dataTurnoCorrigida, registroNoPlantao } from '../../utils/plantaoRegistros';
 import { resumoAuditoria } from '../../utils/auditoria';
 
 const EQUIPES_SOLICITACAO = EQUIPE_OPTIONS.filter(eq => eq !== 'Ferista' && eq !== 'Embaixador');
@@ -63,6 +63,8 @@ export function Solicitacoes() {
   const [modo, setModo] = useState<'lista' | 'form'>('lista');
   const [data, setData] = useState(hojeLocalISO());
   const [dataTurno, setDataTurno] = useState(hojeLocalISO());
+  /** A data do turno acompanha data, hora e equipe (equipe da noite, de madrugada: a véspera) até ser mudada à mão. */
+  const [turnoManual, setTurnoManual] = useState(false);
   const [hora, setHora] = useState(new Date().toTimeString().split(':').slice(0, 2).join(':'));
   const [equipe, setEquipe] = useState<Equipe | ''>('');
   const [tipoSolicitacao, setTipoSolicitacao] = useState('');
@@ -87,6 +89,12 @@ export function Solicitacoes() {
   useEffect(() => {
     if (!canManageGlobal && equipeEfetiva) setEquipe(equipeEfetiva);
   }, [canManageGlobal, equipeEfetiva]);
+
+  useEffect(() => {
+    if (turnoManual) return;
+    const turno = dataPlantaoDoRegistro(equipe || equipeEfetiva || '', data, hora);
+    if (turno) setDataTurno(turno);
+  }, [turnoManual, equipe, equipeEfetiva, data, hora]);
 
   async function carregar() {
     const [c, b] = await Promise.all([listarConferencias(), listarBombeiros()]);
@@ -183,7 +191,8 @@ export function Solicitacoes() {
     const d = r.dataConferencia ? new Date(r.dataConferencia) : new Date();
     setData(dataLocalISO(d));
     setHora(d.toTimeString().slice(0, 5));
-    setDataTurno(r.dataProximaInspecao || dataLocalISO(d));
+    setDataTurno(dataTurnoCorrigida(r.equipe || '', dataLocalISO(d), d.toTimeString().slice(0, 5), r.dataProximaInspecao) || dataLocalISO(d));
+    setTurnoManual(true);
     setEquipe(r.equipe || equipeEfetiva || '');
     setModo('form');
   }
@@ -216,7 +225,7 @@ export function Solicitacoes() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-x-3">
         <PageTitle icon={ClipboardList} title="Solicitações" />
         {modo === 'lista' && (canManageGlobal || equipeEfetiva) && (
-          <button onClick={() => { setEditando(null); setTipoSolicitacao(''); setDescricao(''); setModo('form'); }}
+          <button onClick={() => { setEditando(null); setTipoSolicitacao(''); setDescricao(''); setData(hojeLocalISO()); setHora(new Date().toTimeString().slice(0, 5)); setTurnoManual(false); setModo('form'); }}
             className="mb-6 flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-gradient-to-r from-aviation-600 to-aviation-700 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-aviation-500/20 transition-all hover:shadow-xl active:scale-[0.98]">
             <Plus className="h-4 w-4" /> Nova Solicitação
           </button>
@@ -240,16 +249,14 @@ export function Solicitacoes() {
                   <CalendarDays className="h-3.5 w-3.5" /> Data
                 </label>
                 <input type="date" value={data} onChange={e => {
-                  const value = e.target.value;
-                  setDataTurno(prev => prev === data ? value : prev);
-                  setData(value);
+                  setData(e.target.value);
                 }} className={inputForm} required />
               </div>
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-graphite-500 dark:text-graphite-400">
                   <CalendarDays className="h-3.5 w-3.5" /> Data do Turno
                 </label>
-                <input type="date" value={dataTurno} onChange={e => setDataTurno(e.target.value)} className={inputForm} required />
+                <input type="date" value={dataTurno} onChange={e => { setTurnoManual(true); setDataTurno(e.target.value); }} className={inputForm} required />
               </div>
               <div>
                 <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-graphite-500 dark:text-graphite-400">

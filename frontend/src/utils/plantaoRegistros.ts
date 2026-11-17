@@ -1,6 +1,8 @@
 import type { Conferencia } from '../types/conferencia';
-import type { HorarioRadio, MovimentacaoPlantao } from '../types/fimPlantao';
+import type { HorarioRadio, MovimentacaoPlantao, SaidaViatura } from '../types/fimPlantao';
+import type { ViaturaPlantao } from '../types/inicioPlantao';
 import type { Ocorrencia } from '../types/ocorrencia';
+import { somarDiasISO } from './datas';
 import { dataSaidaPlantao, horarioPlantaoPorEquipe } from './equipes';
 
 function dataISO(valor: string | undefined): string {
@@ -11,6 +13,32 @@ function dataISO(valor: string | undefined): string {
 function horaCurta(valor: string | undefined): string {
   const m = String(valor || '').match(/(\d{2}):(\d{2})/);
   return m ? `${m[1]}:${m[2]}` : '';
+}
+
+/**
+ * Data do plantão a que pertence um registro pela data e hora em que aconteceu. Na equipe da noite
+ * (19:00 às 07:00), o que acontece de madrugada é do plantão que começou na véspera.
+ */
+export function dataPlantaoDoRegistro(equipe: string, data: string, hora: string): string {
+  const dia = dataISO(data);
+  if (!dia || !equipe) return dia;
+  const h = horaCurta(hora);
+  const horario = horarioPlantaoPorEquipe(equipe);
+  if (horario.turno === 'Noturno' && h && h < horario.horarioTermino) return somarDiasISO(dia, -1);
+  return dia;
+}
+
+/**
+ * "Data do turno" gravada no registro, corrigida. Até 16/11/2026 as telas de Ocorrências, Inspeções e
+ * Solicitações preenchiam a data do turno com a data do calendário. Na equipe da noite, o que era lançado
+ * de madrugada ficava com o turno do dia seguinte e sumia do LRO, da Central e do fim de plantão.
+ * Turno igual à data do registro, de madrugada, numa equipe da noite, é sempre esse erro: vale a véspera.
+ */
+export function dataTurnoCorrigida(equipe: string, data: string, hora: string, dataTurno: string | undefined): string {
+  const turno = dataISO(dataTurno);
+  if (!turno) return '';
+  if (turno === dataISO(data)) return dataPlantaoDoRegistro(equipe, data, hora);
+  return turno;
 }
 
 /** Mesma regra do Gerar LRO: a data do turno vale se informada; senão, data e hora dentro do plantão. */
@@ -24,7 +52,7 @@ export function registroNoPlantao(params: {
 }): boolean {
   const { equipe, dataPlantao } = params;
   if (!equipe || !dataPlantao || params.equipeRegistro !== equipe) return false;
-  const turno = dataISO(params.dataTurno);
+  const turno = dataTurnoCorrigida(equipe, params.data, params.hora, params.dataTurno);
   if (turno) return turno === dataPlantao;
   const data = dataISO(params.data);
   const hora = horaCurta(params.hora);
@@ -157,6 +185,35 @@ export function escalaRadioDasOcorrencias(params: {
     .sort((a, b) => (a.updatedAt || a.createdAt || '').localeCompare(b.updatedAt || b.createdAt || ''));
   const ultima = lancadas.at(-1);
   return ultima ? interpretarEscalaRadio(ultima.descricao || '') : [];
+}
+
+function percentual(valor: unknown): string {
+  return String(valor ?? '').replace('%', '').trim();
+}
+
+/**
+ * Km e combustível da viatura no LRO a partir da Central. Iniciais: os do início de plantão (no CRS o km
+ * do tacógrafo, TAC). Finais: os da última saída lançada para aquela viatura no fim de plantão; sem saída
+ * (ou com o campo em branco na saída), os finais são IGUAIS aos iniciais.
+ */
+export function frotaFinalDaCentral(
+  chave: string,
+  inicio: Pick<ViaturaPlantao, 'km' | 'tac' | 'combustivel'>,
+  saidas: SaidaViatura[],
+): { kmIni: string; combIni: string; kmFim: string; combFim: string } {
+  const crs = chave === 'crs';
+  const kmDe = (v: { km?: string; tac?: string } | undefined) => String((crs ? v?.tac || v?.km : v?.km) || '').trim();
+  const kmIni = kmDe(inicio);
+  const combIni = percentual(inicio.combustivel);
+  const daViatura = saidas.filter(s => s.chave === chave);
+  const ultimaComKm = [...daViatura].reverse().find(s => kmDe(s));
+  const ultimaComComb = [...daViatura].reverse().find(s => percentual(s.combustivel));
+  return {
+    kmIni,
+    combIni,
+    kmFim: ultimaComKm ? kmDe(ultimaComKm) : kmIni,
+    combFim: ultimaComComb ? percentual(ultimaComComb.combustivel) : combIni,
+  };
 }
 
 /**

@@ -21,7 +21,7 @@ import { posicaoTpepr } from './posicoes-tpepr';
 import { VAGAS_TAF, posicaoLinhaTaf, posicaoRodapeTaf } from './posicoes-taf';
 import { posicaoEquipagem, posicaoMotorista, posicaoRodapePosicionamento } from './posicoes-posicionamento';
 import { posicaoEquipagemTempoResposta, posicaoMotoristaTempoResposta, posicaoRodapeTempoResposta } from './posicoes-tempo-resposta';
-import type { PosicaoAutentique } from './autentique-api.service';
+import type { AssinaturaAutentique, PosicaoAutentique } from './autentique-api.service';
 import { posicaoNaLinhaBona, validarLinhasBona } from './posicoes-bona';
 
 export const TIPOS_ENVIO = new Set(['ptrba', 'lro', 'troca', 'tpepr', 'taf', 'posicionamento', 'temporesposta', 'bona']);
@@ -140,6 +140,29 @@ const NAO_SEGURAM = new Set(['APOC', FUNCAO_RECONHECIMENTO.toUpperCase(), FUNCAO
 function naoSeguraDocumento(funcoes: string): boolean {
   const lista = String(funcoes ?? '').split(',').map(f => f.trim().toUpperCase()).filter(Boolean);
   return lista.length > 0 && lista.every(f => NAO_SEGURAM.has(f));
+}
+
+/** Palavras do nome que identificam a pessoa (sem acento, sem "de/da/dos" e afins). */
+function palavrasDoNome(nome: string | null | undefined): Set<string> {
+  const ignorar = new Set(['DE', 'DA', 'DO', 'DAS', 'DOS', 'E']);
+  return new Set(String(nome ?? '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+    .split(/[^A-Z]+/).filter(p => p.length > 1 && !ignorar.has(p)));
+}
+
+/**
+ * A assinatura do Autentique é da pessoa do envio? Precisa do mesmo primeiro nome e de mais uma palavra
+ * em comum (ex.: "Rafael Adalto dos Santos" no cadastro e "Rafael Adalto Sescinc" na conta do Autentique).
+ */
+function mesmaPessoa(nomeCadastro: string, nomesAutentique: (string | null | undefined)[]): boolean {
+  const cadastro = palavrasDoNome(nomeCadastro);
+  const primeiro = [...cadastro][0];
+  if (!primeiro) return false;
+  return nomesAutentique.some(nome => {
+    const lido = palavrasDoNome(nome);
+    if (!lido.has(primeiro)) return false;
+    return [...lido].filter(p => cadastro.has(p)).length >= 2;
+  });
 }
 
 /** Onde ficam os PDFs assinados baixados do Autentique. */
@@ -1425,13 +1448,34 @@ export class EnviosService {
     const porId = new Map(documento.signatures.map(s => [s.public_id, s]));
     const porEmail = new Map(documento.signatures.filter(s => s.email).map(s => [String(s.email).toLowerCase(), s]));
 
+    // Quem foi trocado no painel do Autentique (ex.: e-mail corrigido lá) vira outra assinatura, com outro
+    // código e outro e-mail: sem isto ficava "pendente" para sempre, embora tivesse assinado (Rafael Adalto,
+    // PTR-BA Bravo 10/11 e Delta 11/11/2026). A assinatura que não casa com ninguém é ligada pelo nome.
+    const lerPorIdOuEmail = (s: SignatarioRow) => (s.autentique_signature_id && porId.get(s.autentique_signature_id))
+      || porEmail.get(String(s.email ?? '').toLowerCase());
+    const reconhecidas = new Set(signatarios.rows.map(lerPorIdOuEmail).filter(Boolean).map(s => s!.public_id));
+    const soltas = documento.signatures.filter(s => !reconhecidas.has(s.public_id));
+    const religadas = new Map<string, AssinaturaAutentique>();
+    for (const signatario of signatarios.rows) {
+      if (lerPorIdOuEmail(signatario)) continue;
+      const candidatas = soltas.filter(s => mesmaPessoa(signatario.nome, [s.name, s.user?.name]));
+      if (candidatas.length !== 1) continue;
+      const nova = candidatas[0];
+      soltas.splice(soltas.indexOf(nova), 1);
+      religadas.set(signatario.id, nova);
+      await this.database.query(
+        `UPDATE autentique_signatarios SET autentique_signature_id = $2, email = coalesce(nullif($3, ''), email) WHERE id = $1`,
+        [signatario.id, nova.public_id, String(nova.email ?? '').trim()],
+      );
+      this.logger.log(`Envio ${envio.id}: assinatura de ${signatario.nome} trocada no Autentique foi religada pelo nome.`);
+    }
+
     let baAssinaram = signatarios.rows.some(s => !naoSeguraDocumento(s.funcoes));
     let alguemRecusou = false;
     let mudou = false;
     let alguemAssinou = false;
     for (const signatario of signatarios.rows) {
-      const lido = (signatario.autentique_signature_id && porId.get(signatario.autentique_signature_id))
-        || porEmail.get(String(signatario.email ?? '').toLowerCase());
+      const lido = lerPorIdOuEmail(signatario) || religadas.get(signatario.id);
       const status = lido?.rejected ? 'recusado' : lido?.signed ? 'assinado' : 'pendente';
       const naoSegura = naoSeguraDocumento(signatario.funcoes);
       if (status === 'assinado') alguemAssinou = true;

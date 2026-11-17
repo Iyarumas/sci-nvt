@@ -24,6 +24,9 @@ export interface SignatarioAutentique {
 export interface AssinaturaAutentique {
   public_id: string;
   email: string | null;
+  /** Nome no pedido e nome da conta de quem abriu (podem vir vazios). */
+  name?: string | null;
+  user?: { name: string | null } | null;
   signed: { created_at: string } | null;
   rejected: { created_at: string } | null;
 }
@@ -149,7 +152,7 @@ export class AutentiqueApiService {
   /** Situação de cada assinatura e o link do PDF assinado (custa R$ 0,001 por consulta). */
   async situacao(documentoId: string): Promise<{ signatures: AssinaturaAutentique[]; files: { signed: string | null } | null }> {
     const dados = await this.graphql<{ document: { signatures: AssinaturaAutentique[]; files: { signed: string | null } | null } }>(
-      `query($id: UUID!) { document(id: $id) { signatures { public_id email signed { created_at } rejected { created_at } } files { signed } } }`,
+      `query($id: UUID!) { document(id: $id) { signatures { public_id email name user { name } signed { created_at } rejected { created_at } } files { signed } } }`,
       { id: documentoId },
     );
     return dados.document;

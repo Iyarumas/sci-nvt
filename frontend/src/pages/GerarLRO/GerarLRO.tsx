@@ -2299,8 +2299,15 @@ export function GerarLRO() {
     return STATUS_LRO_TRAVAM_OCORRENCIAS.has(draft.status);
   }
 
-  function handleVerDocumentoLRO(draft: LRODraft) {
-    const dados = (draft.dados as Record<string, unknown>) || {};
+  async function handleVerDocumentoLRO(draft: LRODraft) {
+    let dados = (draft.dados as Record<string, unknown>) || {};
+    // Rascunho: a prévia sai com as ocorrências de agora, igual ao card e ao envio (não só o que havia ao salvar).
+    if (draft.status === 'rascunho') {
+      const atuais = await listarOcorrencias().catch(() => ocorrenciasOperacionais);
+      setOcorrenciasOperacionais(atuais);
+      const xii = ocorrenciasXIIAtualizadas(dados, draft.equipe, draft.data_plantao, atuais);
+      dados = { ...dados, ocorrenciasXII: xii.linhas, _ocorrenciasOperacionaisIds: xii.ids };
+    }
     navigate('/registros-diarios/preview-lro', {
       state: {
         ...dados,

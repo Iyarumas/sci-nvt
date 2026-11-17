@@ -2299,6 +2299,59 @@ export function GerarLRO() {
     return STATUS_LRO_TRAVAM_OCORRENCIAS.has(draft.status);
   }
 
+  /**
+   * Frota (III) de um LRO SALVO como rascunho, refeita pela Central (mesma regra do assistente): iniciais do
+   * início de plantão, finais da última saída ou iguais aos iniciais. O rascunho da Delta 15/11/2026 foi salvo
+   * às 20:09 com a frota em branco e o km entrou no início de plantão depois. Sem início de plantão: null.
+   */
+  async function frotaDaCentralParaDraft(draft: LRODraft): Promise<Record<string, unknown>[] | null> {
+    const dd = (draft.dados as Record<string, unknown>) || {};
+    const equipeAlvo = String(dd.equipeNome || draft.equipe || '');
+    const dataAlvo = String(dd.dataInicio || draft.data_plantao || '').slice(0, 10);
+    if (!equipeAlvo || !dataAlvo) return null;
+    const [inicio, fim] = await Promise.all([
+      obterInicioPlantao(dataAlvo, equipeAlvo).catch(() => null),
+      obterFimPlantao(dataAlvo, equipeAlvo).catch(() => null),
+    ]);
+    if (!inicio?.dados?.viaturas?.length) return null;
+    const saidas = fim?.dados?.saidasViaturas ?? [];
+    const frota = (Array.isArray(dd.frota) ? dd.frota as Record<string, unknown>[] : []).map(f => ({ ...f }));
+    ['faisca02', 'faisca03', 'faiscaRT', 'crs'].forEach((chave, i) => {
+      const v = inicio.dados.viaturas.find(x => x.chave === chave);
+      if (!v) return;
+      const central = frotaFinalDaCentral(chave, v, saidas);
+      const linha: Record<string, unknown> = frota[i] || {
+        viatura: '', viaturaId: '', prefixo: ['F2 X6', 'F3 X6', 'FRT X6', ''][i] || '',
+        kmIni: '', kmFim: '', combIni: '', combFim: '', nitrogenio: '', situacao: '',
+      };
+      const kmIni = central.kmIni || String(linha.kmIni || '');
+      const combIni = normalizarPercentualCombustivel(central.combIni) || normalizarPercentualCombustivel(linha.combIni);
+      frota[i] = {
+        ...linha,
+        kmIni,
+        combIni,
+        kmFim: central.kmFim || kmIni,
+        combFim: normalizarPercentualCombustivel(central.combFim) || combIni,
+        nitrogenio: String(linha.nitrogenio || '') || (chave === 'crs' ? '' : String(v.n2 || '').trim()),
+      };
+    });
+    return frota;
+  }
+
+  /** Frota refeita pela Central para os rascunhos da lista (o card mostra o que vai sair). */
+  const [frotaCentralPorDraft, setFrotaCentralPorDraft] = useState<Record<string, Record<string, unknown>[]>>({});
+  useEffect(() => {
+    let ativo = true;
+    const rascunhos = drafts.filter(d => d.status === 'rascunho');
+    Promise.all(rascunhos.map(async d => [d.id, await frotaDaCentralParaDraft(d).catch(() => null)] as const))
+      .then(pares => {
+        if (!ativo) return;
+        setFrotaCentralPorDraft(Object.fromEntries(pares.filter(([, f]) => f) as [string, Record<string, unknown>[]][]));
+      });
+    return () => { ativo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drafts]);
+
   async function handleVerDocumentoLRO(draft: LRODraft) {
     let dados = (draft.dados as Record<string, unknown>) || {};
     // Rascunho: a prévia sai com as ocorrências de agora, igual ao card e ao envio (não só o que havia ao salvar).
@@ -2306,7 +2359,8 @@ export function GerarLRO() {
       const atuais = await listarOcorrencias().catch(() => ocorrenciasOperacionais);
       setOcorrenciasOperacionais(atuais);
       const xii = ocorrenciasXIIAtualizadas(dados, draft.equipe, draft.data_plantao, atuais);
-      dados = { ...dados, ocorrenciasXII: xii.linhas, _ocorrenciasOperacionaisIds: xii.ids };
+      const frota = await frotaDaCentralParaDraft(draft);
+      dados = { ...dados, ocorrenciasXII: xii.linhas, _ocorrenciasOperacionaisIds: xii.ids, ...(frota ? { frota } : {}) };
     }
     navigate('/registros-diarios/preview-lro', {
       state: {
@@ -2616,8 +2670,16 @@ export function GerarLRO() {
       const atuais = await listarOcorrencias().catch(() => ocorrenciasOperacionais);
       setOcorrenciasOperacionais(atuais);
       const xii = ocorrenciasXIIAtualizadas(salvosAntes, draft.equipe, draft.data_plantao, atuais);
-      const salvos: Record<string, unknown> = { ...salvosAntes, ocorrenciasXII: xii.linhas, _ocorrenciasOperacionaisIds: xii.ids };
-      const draftEnviado = xii.novas || xii.removidas
+      // Frota (III) também pela Central: o km/combustível pode ter sido lançado depois de salvo o rascunho.
+      const frota = await frotaDaCentralParaDraft(draft);
+      const salvos: Record<string, unknown> = {
+        ...salvosAntes,
+        ocorrenciasXII: xii.linhas,
+        _ocorrenciasOperacionaisIds: xii.ids,
+        ...(frota ? { frota } : {}),
+      };
+      const frotaMudou = !!frota && JSON.stringify(frota) !== JSON.stringify(salvosAntes.frota ?? []);
+      const draftEnviado = xii.novas || xii.removidas || frotaMudou
         ? await salvarDraft(salvos, draft.equipe, draft.data_plantao, username, draft.id)
         : draft;
       // Nome impresso embaixo das linhas = quem vai assinar (ex.: o substituto do gerente nas férias dele).
@@ -2950,7 +3012,7 @@ export function GerarLRO() {
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {lroTextCard('Instruções', dd.instrucoes)}
-                      {lroTextCard('Frota', formatarFrotaDraft(dd.frota))}
+                      {lroTextCard('Frota', formatarFrotaDraft(d.status === 'rascunho' ? (frotaCentralPorDraft[d.id] ?? dd.frota) : dd.frota))}
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

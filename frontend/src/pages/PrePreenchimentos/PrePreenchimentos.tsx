@@ -128,8 +128,17 @@ export default function PrePreenchimentos() {
         </button>
       </div>
 
-      {rascunho && (
-        <form onSubmit={salvar} className="mb-6 rounded-2xl border border-aviation-200/70 bg-white/90 p-5 shadow-sm dark:border-aviation-800/40 dark:bg-surface-card">
+      {/* Novo modelo: formulário em cima da lista. Editar abre o formulário no lugar do próprio card. */}
+      {!editandoId && formulario('mb-6')}
+
+      {lista()}
+    </PageContainer>
+  );
+
+  function formulario(classeExtra: string) {
+    if (!rascunho) return null;
+    return (
+        <form onSubmit={salvar} className={`${classeExtra} rounded-2xl border border-aviation-200/70 bg-white/90 p-5 shadow-sm dark:border-aviation-800/40 dark:bg-surface-card`}>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-bold text-graphite-900 dark:text-graphite-100">{editandoId ? 'Editar pré-preenchimento' : 'Novo pré-preenchimento'}</h2>
             <button type="button" onClick={fechar} aria-label="Fechar" className="rounded-lg p-1.5 text-graphite-400 hover:bg-graphite-100 hover:text-graphite-600 dark:hover:bg-surface-hover"><X className="h-4 w-4" /></button>
@@ -160,9 +169,11 @@ export default function PrePreenchimentos() {
             </button>
           </div>
         </form>
-      )}
+    );
+  }
 
-      {loading ? (
+  function lista() {
+    return loading ? (
         <div role="status" className="flex items-center justify-center gap-3 py-16"><div className="h-8 w-8 animate-spin rounded-full border-4 border-aviation-500 border-t-transparent" /><span>Carregando...</span></div>
       ) : daSecao.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-graphite-300 p-12 text-center dark:border-border-dark">
@@ -172,7 +183,9 @@ export default function PrePreenchimentos() {
         </div>
       ) : (
         <ul className="grid gap-3 lg:grid-cols-2">
-          {daSecao.map(m => (
+          {daSecao.map(m => m.id === editandoId ? (
+            <li key={m.id} className="lg:col-span-2">{formulario('')}</li>
+          ) : (
             <li key={m.id} className="rounded-2xl border border-graphite-200/60 bg-white/80 p-4 shadow-sm dark:border-border-dark dark:bg-surface-card">
               <div className="flex items-start justify-between gap-3">
                 <h3 className="font-semibold text-graphite-900 dark:text-graphite-100">{m.tipo}</h3>
@@ -185,7 +198,6 @@ export default function PrePreenchimentos() {
             </li>
           ))}
         </ul>
-      )}
-    </PageContainer>
-  );
+      );
+  }
 }

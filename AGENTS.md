@@ -255,6 +255,7 @@ Podes combinar múltiplas skills carregando-as em sequência. A ordem importa:
 |------|------|-----------|
 | `/configuracoes` | Configurações | Definições do sistema |
 | `/auditoria` | Auditoria de exclusões | Histórico de exclusões com conta autenticada, data/hora, módulo e identificação do registro; somente admin/desenvolvedor, com pesquisa, período e paginação |
+| `/pre-preenchimentos` | Pré-preenchimentos | Modelos de Tipo e Descrição por seção (LRO/Ocorrências, Inspeções ou Solicitações — uma por modelo); somente admin/desenvolvedor. Nas três telas, `src/components/ui/PrePreenchimentoSelect.tsx` ("Usar pré-preenchimento") copia o modelo para o formulário e a pessoa completa os trechos com "...."; sem modelos da seção, o seletor não aparece |
 | `/perfil` | Perfil | Perfil do utilizador |
 
 ### Autenticação

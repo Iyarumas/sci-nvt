@@ -34,6 +34,7 @@ import {
   ArrowLeftRight,
   Package,
   KeyRound,
+  Sparkles,
 } from 'lucide-react';
 import type { MenuItem } from '../types/navigation';
 
@@ -69,6 +70,13 @@ export const menuItems: MenuItem[] = [
         icon: ClipboardCheck,
         path: '/fim-plantao',
         description: 'Relatório de serviço do comunicante para o chefe.',
+        adminOnly: true,
+      },
+      {
+        label: 'Pré-preenchimentos',
+        icon: Sparkles,
+        path: '/pre-preenchimentos',
+        description: 'Modelos de Tipo e Descrição para LRO/Ocorrências, Inspeções e Solicitações.',
         adminOnly: true,
       },
       {

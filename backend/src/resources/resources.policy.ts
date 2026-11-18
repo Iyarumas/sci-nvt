@@ -17,6 +17,9 @@ const SENSITIVE_USER_COLUMNS = ['password', 'senha_hash'];
 /** Tabelas que so administradores podem ler ou alterar. */
 const ADMIN_ONLY_TABLES = new Set(['convites']);
 
+/** Tabelas que todos leem, mas só administradores criam, alteram ou excluem. */
+const ADMIN_WRITE_TABLES = new Set(['pre_preenchimentos']);
+
 /**
  * Campos que o proprio usuario pode alterar no seu cadastro (tela Perfil).
  * O vinculo com a pessoa do cadastro (person_id/person_type) NAO entra: e ele que define cargo e equipe
@@ -48,6 +51,10 @@ export function authorizeResource(user: AuthUser | undefined, table: string, act
 
   if (ADMIN_ONLY_TABLES.has(table) && !isAdmin(user)) {
     throw new ForbiddenException('Apenas administradores podem acessar este recurso.');
+  }
+
+  if (ADMIN_WRITE_TABLES.has(table) && action !== 'query' && !isAdmin(user)) {
+    throw new ForbiddenException('Apenas administradores podem alterar este recurso.');
   }
 
   if (table === 'usuarios') authorizeUsuarios(user, action, dto);

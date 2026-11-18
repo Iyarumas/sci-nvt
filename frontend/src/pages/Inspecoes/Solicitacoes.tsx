@@ -10,6 +10,7 @@ import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
+import { PrePreenchimentoSelect } from '../../components/ui/PrePreenchimentoSelect';
 import { dataDoPlantaoAtual, dataPlantaoDoRegistro, dataTurnoCorrigida, registroNoPlantao } from '../../utils/plantaoRegistros';
 import { resumoAuditoria } from '../../utils/auditoria';
 
@@ -273,6 +274,16 @@ export function Solicitacoes() {
                   {EQUIPES_SOLICITACAO.filter(eq => canManageGlobal || eq === equipeEfetiva).map(eq => <option key={eq} value={eq}>{eq}</option>)}
                 </select>
               </div>
+            </div>
+
+            <div className="mb-6">
+              <PrePreenchimentoSelect
+                tela="solicitacoes"
+                tipoAtual={tipoSolicitacao}
+                descricaoAtual={descricao}
+                onAplicar={(tipo, texto) => { setTipoSolicitacao(tipo); setDescricao(texto); }}
+                inputClassName={inputForm}
+              />
             </div>
 
             <div className="mb-6">

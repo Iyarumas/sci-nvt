@@ -10,6 +10,7 @@ import type { Bombeiro, Equipe } from '../../types/bombeiro';
 import { EQUIPE_OPTIONS } from '../../types/bombeiro';
 import { dataLocalISO, formatarDataBR, formatarDataHoraBR, hojeLocalISO, parseDataLocalISO } from '../../utils/datas';
 import { PageTour } from '../../components/ui/PageTour';
+import { PrePreenchimentoSelect } from '../../components/ui/PrePreenchimentoSelect';
 import { dataDoPlantaoAtual, dataPlantaoDoRegistro, dataTurnoCorrigida, registroNoPlantao } from '../../utils/plantaoRegistros';
 import { resumoAuditoria } from '../../utils/auditoria';
 
@@ -280,6 +281,16 @@ export function Inspecoes() {
                   {EQUIPES_INSPECAO.filter(eq => canManageGlobal || eq === equipeEfetiva).map(eq => <option key={eq} value={eq}>{eq}</option>)}
                 </select>
               </div>
+            </div>
+
+            <div className="mb-6">
+              <PrePreenchimentoSelect
+                tela="inspecoes"
+                tipoAtual={tipoInspecao}
+                descricaoAtual={descricao}
+                onAplicar={(tipo, texto) => { setTipoInspecao(tipo); setDescricao(texto); }}
+                inputClassName={INPUT_CLASS}
+              />
             </div>
 
             <div className="mb-6">

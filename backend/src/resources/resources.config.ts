@@ -36,6 +36,7 @@ export const ALLOWED_TABLES = new Set([
   'ocorrencias',
   'ocorrencias_operacionais',
   'ordens_servico',
+  'pre_preenchimentos',
   'ptrb_registros',
   'ptrba_completo_registros',
   'rea_registros',

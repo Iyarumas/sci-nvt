@@ -17,6 +17,7 @@ import { PageTour } from '../../components/ui/PageTour';
 import { dataDoPlantaoAtual, dataPlantaoDoRegistro, dataTurnoCorrigida, registroNoPlantao } from '../../utils/plantaoRegistros';
 import { montarPessoasAuditoria, resumoAuditoria } from '../../utils/auditoria';
 import type { PessoaAuditoria } from '../../utils/auditoria';
+import { PrePreenchimentoSelect } from '../../components/ui/PrePreenchimentoSelect';
 import {
   canCriarRegistrosDiarios,
   canEditarRegistroDiario,
@@ -169,6 +170,15 @@ function OcorrenciaForm({
                 <option value="">Selecione</option>
                 {EQUIPES.filter(eq => canManageGlobal || eq === userEquipe).map(eq => <option key={eq} value={eq}>{eq}</option>)}
               </select>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-4">
+              <PrePreenchimentoSelect
+                tela="ocorrencias"
+                tipoAtual={form.titulo}
+                descricaoAtual={form.descricao}
+                onAplicar={(tipo, texto) => setForm(f => ({ ...f, titulo: tipo, descricao: texto }))}
+                inputClassName={input}
+              />
             </div>
             <div className="sm:col-span-2 lg:col-span-4">
               <label className={label}>Tipo *</label>

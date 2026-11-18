@@ -320,6 +320,7 @@ function getPageTitle(pathname: string): string {
     estatisticas: 'Estatísticas',
     configuracoes: 'Configurações',
     auditoria: 'Auditoria de exclusões',
+    'pre-preenchimentos': 'Pré-preenchimentos',
     permissoes: 'Permissões',
     central: 'Central',
     'inicio-plantao': 'Início de plantão',

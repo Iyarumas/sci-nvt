@@ -109,6 +109,7 @@ Service: `frontend/src/services/auditoriaService.ts` (HTTP autenticado com `apiF
 | 30 | tpeprService | `treinamentos_tpepr` | 6 | ✅ |
 | 30.1 | tpeprPdfService | — | 2 | ✅ |
 | 31 | ordemServicoService | `ordens_servico` | 5 | ✅ |
+| 32 | prePreenchimentoService | `pre_preenchimentos` | 4 | ✅ |
 | 25 | autentiqueService | — (API externa) | 9 | ✅ |
 | 26 | notificacaoService | — (computed + localStorage) | 4 | ⚠️ cache local |
 | — | store/api/* (10 ficheiros) | — | ~50 | ❌ DEAD CODE (fakeBaseQuery localStorage) |
@@ -2541,6 +2542,27 @@ Todos em `src/store/api/*.ts`. Usam `fakeBaseQuery()` com localStorage. **Nunca 
 **Mapping snake_case ↔ camelCase:** ✅ Completo para emissão, manutenção, cancelamento, finalização e observações.
 
 `numero` identifica a ordem interna da SCI e permanece preservado nas ordens importadas. `numero_cliente` ↔ `numeroCliente` é texto independente, opcional (vazio quando não informado), para o número recebido do cliente, preservando zeros, letras e pontuação. É usado no formulário, pesquisa, lista, detalhes e impressão interna/pública. A migration 072 recupera valores explicitamente identificados como `Número da ordem do cliente:` nas observações, sem remover o histórico nem sobrescrever números já preenchidos. Os CSVs de origem podem ser usados para conferir esses valores; nunca inferir número de cliente a partir do número SCI, equipamento ou códigos de referência.
+
+---
+
+# 32. Pré-preenchimentos — `prePreenchimentoService.ts`
+
+**Tabela:** `pre_preenchimentos`  
+**Ficheiro:** `src/services/prePreenchimentoService.ts`  
+**Tipo:** `src/types/prePreenchimento.ts` — `PrePreenchimento`, `TelaPrePreenchimento`  
+**Migration:** `backend/database/migrations/093_pre_preenchimentos.sql`
+
+**Funções:** `listarPrePreenchimentos(tela?)`, `criarPrePreenchimento`, `atualizarPrePreenchimento`, `excluirPrePreenchimento` — todas ✅ OK
+
+**REST equivalência:**
+- `GET /rest/v1/pre_preenchimentos?select=*&tela=eq.{tela}&order=tipo.asc`
+- `POST /rest/v1/pre_preenchimentos`
+- `PATCH /rest/v1/pre_preenchimentos?id=eq.{id}`
+- `DELETE /rest/v1/pre_preenchimentos?id=eq.{id}`
+
+**Mapping snake_case ↔ camelCase:** `tela`, `tipo`, `descricao`, `created_by` ↔ `createdBy`, `created_at` ↔ `createdAt`, `updated_at` ↔ `updatedAt`.
+
+Modelos de Tipo e Descrição que o administrador cadastra em `/pre-preenchimentos` para padronizar os registros. `tela` é uma só por modelo: `ocorrencias` (LRO/Ocorrências), `inspecoes` ou `solicitacoes`. Todos os usuários logados leem (inclusive a Central); só `admin`/`desenvolvedor` gravam (`ADMIN_WRITE_TABLES` em `resources.policy.ts`). Nas telas de registro o componente `PrePreenchimentoSelect` copia Tipo e Descrição para o formulário; o registro gravado não guarda vínculo com o modelo, então editar ou excluir um modelo não muda registros já feitos.
 
 As telas interna e pública ordenam os resultados por data de emissão decrescente, inclusive em `Todos os meses`; usam a data de cadastro como fallback e desempate. Alterar filtros não modifica a lista de estado nem usa `updated_at` para a cronologia.
 

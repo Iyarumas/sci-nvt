@@ -1413,6 +1413,51 @@ export function GerarLRO() {
     return { linhas, ids, novas: novas.length, removidas: salvas.length - mantidas.length };
   }
 
+  function bonaEntraNoLRO(registro: Ocorrencia, equipeAlvo: string, dataInicioAlvo: string, dataFimAlvo?: string): boolean {
+    return registro.tipoDocumento === 'BONA' &&
+      !!registro.numero?.trim().startsWith('BONA') &&
+      registroNoPlantaoAlvo(registro.data, registro.hora, registro.equipe, equipeAlvo, dataInicioAlvo, dataFimAlvo);
+  }
+
+  /**
+   * Seção "Ocorrências/BONA" de um LRO SALVO, conferida com os BONA do plantão como estão agora (mesma ideia
+   * da XII). O rascunho recebe o BONA feito depois de salvo até ser enviado para assinatura (Delta 23/11/2026:
+   * LRO salvo no começo do plantão, BONA de madrugada ficava de fora). Mantém o texto salvo e acrescenta,
+   * na ordem do plantão, o que falta.
+   */
+  function bonaNAAtualizadas(
+    dados: Record<string, unknown>,
+    equipeDraft: string,
+    dataPlantaoDraft: string,
+    ocorrencias: Ocorrencia[],
+  ): { texto: string; novas: number } {
+    const equipeAlvo = String(dados.equipeNome || equipeDraft || '');
+    const dataInicioAlvo = String(dados.dataInicio || dataPlantaoDraft || '');
+    const dataFimAlvo = String(dados.dataFim || dataSaidaPlantao(equipeAlvo, dataInicioAlvo));
+    const salvas = (Array.isArray(dados.ocorrenciasNA)
+      ? (dados.ocorrenciasNA as unknown[]).map(x => String(x ?? ''))
+      : dividirEmLancamentos(String(dados.ocorrenciasNA || ''))
+    ).filter(l => l.trim());
+    const textoSalvo = textoInline(salvas.join('\n\n'));
+    const novas = equipeAlvo && dataInicioAlvo
+      ? ocorrencias
+        .filter(o => bonaEntraNoLRO(o, equipeAlvo, dataInicioAlvo, dataFimAlvo))
+        .map(linhaBonaLRO)
+        .filter(l => l && !textoSalvo.includes(textoInline(l)))
+      : [];
+    if (novas.length === 0) return { texto: String(dados.ocorrenciasNA || ''), novas: 0 };
+    const ordem = (l: string) => {
+      const m = l.match(/^\s*(\d{1,2}):(\d{2})/);
+      return m ? ordemNoPlantao(`${m[1].padStart(2, '0')}:${m[2]}`, equipeAlvo) : Number.MAX_SAFE_INTEGER;
+    };
+    const texto = [...salvas, ...novas]
+      .map((l, i) => ({ l, i }))
+      .sort((a, b) => ordem(a.l) - ordem(b.l) || a.i - b.i)
+      .map(x => x.l)
+      .join('\n\n');
+    return { texto, novas: novas.length };
+  }
+
   const solicitacoesAutomaticas = useMemo(() => {
     return conferencias
       .filter(registro =>
@@ -1468,11 +1513,7 @@ export function GerarLRO() {
 
   const bonaAutomaticas = useMemo(() => {
     return ocorrenciasOperacionais
-      .filter(registro =>
-        registro.tipoDocumento === 'BONA' &&
-        registro.numero?.trim().startsWith('BONA') &&
-        registroNoPlantao(registro.data, registro.hora, registro.equipe)
-      )
+      .filter(registro => bonaEntraNoLRO(registro, equipe, dataInicio, dataFim))
       .sort((a, b) => `${dataISO(a.data)} ${horaCurta(a.hora)}`.localeCompare(`${dataISO(b.data)} ${horaCurta(b.hora)}`))
       .map(linhaBonaLRO)
       .filter(Boolean)
@@ -2359,8 +2400,9 @@ export function GerarLRO() {
       const atuais = await listarOcorrencias().catch(() => ocorrenciasOperacionais);
       setOcorrenciasOperacionais(atuais);
       const xii = ocorrenciasXIIAtualizadas(dados, draft.equipe, draft.data_plantao, atuais);
+      const bona = bonaNAAtualizadas(dados, draft.equipe, draft.data_plantao, atuais);
       const frota = await frotaDaCentralParaDraft(draft);
-      dados = { ...dados, ocorrenciasXII: xii.linhas, _ocorrenciasOperacionaisIds: xii.ids, ...(frota ? { frota } : {}) };
+      dados = { ...dados, ocorrenciasXII: xii.linhas, _ocorrenciasOperacionaisIds: xii.ids, ocorrenciasNA: bona.texto, ...(frota ? { frota } : {}) };
     }
     navigate('/registros-diarios/preview-lro', {
       state: {
@@ -2423,7 +2465,9 @@ export function GerarLRO() {
     setEquipTexto(dd.equipTexto || '');
     setEdifTemAlteracao(!!dd.edifTemAlteracao);
     setEdifTexto(dd.edifTexto || '');
-    setOcorrenciasNA(dd.ocorrenciasNA || '');
+    setOcorrenciasNA(draft.status === 'rascunho'
+      ? bonaNAAtualizadas(dd, draft.equipe, draft.data_plantao, ocorrenciasOperacionais).texto
+      : (dd.ocorrenciasNA || ''));
     setInspecoes(dd.inspecoes || '');
     setEmergenciaXI(dd.emergenciaXI || '');
     setOutrasOcorrencias(lancamentosParaTexto(dd.ocorrenciasXII));
@@ -2670,16 +2714,19 @@ export function GerarLRO() {
       const atuais = await listarOcorrencias().catch(() => ocorrenciasOperacionais);
       setOcorrenciasOperacionais(atuais);
       const xii = ocorrenciasXIIAtualizadas(salvosAntes, draft.equipe, draft.data_plantao, atuais);
+      // BONA feito depois de salvo também entra (até aqui; depois de enviado o LRO não muda mais).
+      const bona = bonaNAAtualizadas(salvosAntes, draft.equipe, draft.data_plantao, atuais);
       // Frota (III) também pela Central: o km/combustível pode ter sido lançado depois de salvo o rascunho.
       const frota = await frotaDaCentralParaDraft(draft);
       const salvos: Record<string, unknown> = {
         ...salvosAntes,
         ocorrenciasXII: xii.linhas,
         _ocorrenciasOperacionaisIds: xii.ids,
+        ocorrenciasNA: bona.texto,
         ...(frota ? { frota } : {}),
       };
       const frotaMudou = !!frota && JSON.stringify(frota) !== JSON.stringify(salvosAntes.frota ?? []);
-      const draftEnviado = xii.novas || xii.removidas || frotaMudou
+      const draftEnviado = xii.novas || xii.removidas || bona.novas || frotaMudou
         ? await salvarDraft(salvos, draft.equipe, draft.data_plantao, username, draft.id)
         : draft;
       // Nome impresso embaixo das linhas = quem vai assinar (ex.: o substituto do gerente nas férias dele).
@@ -2992,7 +3039,7 @@ export function GerarLRO() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                      {lroDetailCard('Ocorrências/BONA', `${countDraftTextLines(dd.ocorrenciasNA)} lançamento(s)`)}
+                      {lroDetailCard('Ocorrências/BONA', `${countDraftTextLines(d.status === 'rascunho' ? bonaNAAtualizadas(dd, d.equipe, d.data_plantao, ocorrenciasOperacionais).texto : dd.ocorrenciasNA)} lançamento(s)`)}
                       {lroDetailCard('REA', `${countDraftTextLines(dd.emergenciaXI)} lançamento(s)`)}
                       {lroDetailCard('Inspeções', `${countDraftTextLines(dd.inspecoes)} lançamento(s)`)}
                       {lroDetailCard('Solicitações ASUR', `${countDraftTextLines(dd.solicitacoes)} lançamento(s)`)}
@@ -3016,7 +3063,12 @@ export function GerarLRO() {
                     </div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {lroTextCard('Ocorrências/BONA', dd.ocorrenciasNA)}
+                      {(() => {
+                        // Rascunho: mostra os BONA como vão sair ao enviar (com o que foi feito depois de salvo).
+                        if (d.status !== 'rascunho') return lroTextCard('Ocorrências/BONA', dd.ocorrenciasNA);
+                        const bona = bonaNAAtualizadas(dd, d.equipe, d.data_plantao, ocorrenciasOperacionais);
+                        return lroTextCard(bona.novas ? `Ocorrências/BONA — ${bona.novas} feito(s) depois que o LRO foi salvo; entram ao enviar` : 'Ocorrências/BONA', bona.texto);
+                      })()}
                       {lroTextCard('REA', dd.emergenciaXI)}
                       {lroTextCard('Inspeções', dd.inspecoes)}
                       {(() => {
